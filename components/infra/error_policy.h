@@ -23,6 +23,8 @@
 
 #include "esp_log.h"
 #include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 /* ── NB_ASSERT — não-fatal ────────────────────────────────────────────────── */
 

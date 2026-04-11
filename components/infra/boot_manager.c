@@ -7,17 +7,17 @@
  * do início ao fim mesmo com firmware parcialmente implementado.
  */
 
-#include "boot_manager.h"
-#include "logger.h"
-#include "watchdog_service.h"
-#include "error_policy.h"
-
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_system.h"
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+
+#include "boot_manager.h"
+#include "logger.h"
+#include "watchdog_service.h"
+#include "error_policy.h"
 
 #define TAG "nb_boot"
 

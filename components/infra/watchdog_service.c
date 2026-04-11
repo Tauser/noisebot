@@ -2,12 +2,13 @@
  * watchdog_service.c — Implementação do serviço de watchdog
  */
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_task_wdt.h"
+
 #include "watchdog_service.h"
 #include "logger.h"
 #include "error_policy.h"
-#include "esp_task_wdt.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 #define TAG "nb_wdog"
 
