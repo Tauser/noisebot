@@ -3,5 +3,6 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES
         infra
-        # Demais componentes serão adicionados conforme as etapas avançam
+        freertos
+        log
 )
