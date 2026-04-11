@@ -1,4 +1,4 @@
-# NodeBot — Energia, Brownout e Boot Safety
+# NoiseBot — Energia, Brownout e Boot Safety
 
 ## Por que energia deve ser pensada desde o primeiro dia
 

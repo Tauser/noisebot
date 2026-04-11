@@ -1,4 +1,4 @@
-# NodeBot — Servos e Motion Safety
+# NoiseBot — Servos e Motion Safety
 
 ## Por que servos nao devem entrar cedo na integracao
 

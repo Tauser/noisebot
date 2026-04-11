@@ -1,8 +1,8 @@
-# NodeBot — Contexto para Claude Code
+# NoiseBot — Contexto para Claude Code
 
 ## O que e este projeto
 
-NodeBot e um companion robot desktop com ESP32-S3 como MCU principal. O robo tem expressividade visual, personalidade, interacao por voz, sensores, movimentos fisicos e operacao offline-first.
+NoiseBot e um companion robot desktop com ESP32-S3 como MCU principal. O robo tem expressividade visual, personalidade, interacao por voz, sensores, movimentos fisicos e operacao offline-first.
 
 Este repositorio contem o firmware embarcado. Nao e um app — e firmware real com eletrica, energia, perifericos fisicos e risco mecanico.
 

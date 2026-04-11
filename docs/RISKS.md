@@ -1,4 +1,4 @@
-# NodeBot — Riscos Criticos do Projeto
+# NoiseBot — Riscos Criticos do Projeto
 
 ## Sumario de Risco
 

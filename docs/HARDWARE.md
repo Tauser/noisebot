@@ -1,4 +1,4 @@
-# NodeBot — Especificacao de Hardware
+# NoiseBot — Especificacao de Hardware
 
 > Hardware congelado. Nenhum componente pode ser alterado salvo risco critico incontornavel documentado.
 

@@ -1,8 +1,8 @@
-# NodeBot — Visao Geral do Projeto
+# NoiseBot — Visao Geral do Projeto
 
-## O que e o NodeBot
+## O que e o NoiseBot
 
-NodeBot e um companion robot desktop autonomo, construido sobre o ESP32-S3, capaz de:
+NoiseBot e um companion robot desktop autonomo, construido sobre o ESP32-S3, capaz de:
 
 - Exibir expressividade visual via display e LEDs
 - Interagir por voz (microfone + speaker)
@@ -17,7 +17,7 @@ NodeBot e um companion robot desktop autonomo, construido sobre o ESP32-S3, capa
 > Somente depois integrar servicos como IMU, motion, touch, audio, camera e comportamento.
 > Cada novo subsistema deve entrar sobre uma base ja validada, observavel e com risco controlado."
 
-O NodeBot nao e um prototipo descartavel. E uma plataforma que deve crescer sem se tornar fragil.
+O NoiseBot nao e um prototipo descartavel. E uma plataforma que deve crescer sem se tornar fragil.
 
 ## Objetivos tecnicos
 

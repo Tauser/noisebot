@@ -1,4 +1,4 @@
-# NodeBot — Estrategia de Integracao Progressiva
+# NoiseBot — Estrategia de Integracao Progressiva
 
 ## Principio
 

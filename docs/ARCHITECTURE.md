@@ -1,4 +1,4 @@
-# NodeBot — Arquitetura do Sistema
+# NoiseBot — Arquitetura do Sistema
 
 ## Principios Arquiteturais
 

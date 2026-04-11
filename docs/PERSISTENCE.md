@@ -1,4 +1,4 @@
-# NodeBot — Persistência e Memória de Longo Prazo
+# NoiseBot — Persistência e Memória de Longo Prazo
 
 ## Adendo Arquitetural
 
@@ -80,7 +80,7 @@ O sistema tem cinco camadas de persistência com características distintas. Cad
 #### Estrutura de diretórios
 
 ```
-/nodebot/
+/noisebot/
   /logs/
     system_0001.log        # Log rotativo atual
     system_0002.log        # Arquivo anterior
@@ -409,7 +409,7 @@ O robô **funciona** sem SD — apenas sem memória, sem assets e sem logs persi
 > Init microSD, API de arquivo sobre VFS, log rotation, fallback se ausente.
 
 **Depois (escopo expandido):**
-> Init microSD, criação da estrutura de diretórios `/nodebot/...` no primeiro boot, API de arquivo sobre VFS, log rotation, `PersistenceManager` inicializado (mesmo que operações de memória de longo prazo retornem NOT_SUPPORTED sem implementação), health monitor task, fallback gracioso se SD ausente.
+> Init microSD, criação da estrutura de diretórios `/noisebot/...` no primeiro boot, API de arquivo sobre VFS, log rotation, `PersistenceManager` inicializado (mesmo que operações de memória de longo prazo retornem NOT_SUPPORTED sem implementação), health monitor task, fallback gracioso se SD ausente.
 
 **Schema dos arquivos de memória deve ser definido e commitado como código antes da Etapa 7.1 (BehaviorFSM)**, mesmo que a leitura/escrita desses arquivos não esteja implementada ainda. O FSM de comportamento é o primeiro consumidor da memória — ele precisa conhecer a interface antes de ser escrito.
 
@@ -422,8 +422,8 @@ Imediatamente após a Etapa 1.3 (Storage), antes da Etapa 2.1 (Power Path):
 **Objetivo:** Estabelecer a camada de persistência que sustentará todo o sistema de memória do robô, mesmo que a maioria das funcionalidades esteja vazia inicialmente.
 
 **Escopo que entra:**
-- Criação da estrutura de diretórios `/nodebot/` no microSD na primeira inicialização
-- Health check file: `/nodebot/.health` escrito e lido no boot para verificar SD funcional
+- Criação da estrutura de diretórios `/noisebot/` no microSD na primeira inicialização
+- Health check file: `/noisebot/.health` escrito e lido no boot para verificar SD funcional
 - `infra/persistence_manager.h/c`: API completa com stubs — funções implementadas mas retornando dados defaults / operações vazias onde a funcionalidade ainda não existe
 - Structs definidas e versionadas: `nb_episode_t`, `nb_preferences_t`, `nb_persona_traits_t`, `nb_context_t`, `nb_system_snapshot_t`
 - Snapshot de sistema implementado completamente (é simples e de alto valor imediato)
@@ -440,7 +440,7 @@ Imediatamente após a Etapa 1.3 (Storage), antes da Etapa 2.1 (Power Path):
 - `infra/persistence_manager.h` com API completa e contratos documentados
 - `infra/persistence_manager.c` com snapshots funcionais e stubs para memória de longo prazo
 - Schema de todos os arquivos JSON definido e documentado (campos, tipos, versão)
-- Diretório `/nodebot/` criado no SD com estrutura completa e arquivo `.health`
+- Diretório `/noisebot/` criado no SD com estrutura completa e arquivo `.health`
 
 **Critério de aceitação:**
 - Boot com SD presente: estrutura de diretórios criada, health check OK, snapshot gravado
@@ -455,17 +455,17 @@ Imediatamente após a Etapa 1.3 (Storage), antes da Etapa 2.1 (Power Path):
 |---------------------------------|----------------|----------------------------------------|
 | Flags de boot, crash counter    | RTC memory + NVS | `nb_rtc_state_t` + `nb_system/`       |
 | Calibração de touch baseline    | NVS            | `nb_touch/baseline_TN`                 |
-| Calibração completa do IMU      | SD             | `/nodebot/config/imu_calibration.json` |
+| Calibração completa do IMU      | SD             | `/noisebot/config/imu_calibration.json` |
 | Parâmetros do sistema (thresholds)| NVS          | `nb_power/`, `nb_servo/`, etc.         |
-| Config estendida (mappings)     | SD             | `/nodebot/config/extended_config.json` |
-| Logs de sistema                 | SD             | `/nodebot/logs/system_NNNN.log`        |
-| Assets de áudio                 | SD             | `/nodebot/assets/audio/*.wav`          |
-| Histórico de interações         | SD             | `/nodebot/memory/episodic/YYYY-MM.jsonl` |
-| Preferências aprendidas         | SD             | `/nodebot/memory/semantic/preferences.json` |
-| Traços de persona               | SD             | `/nodebot/memory/persona/traits.json`  |
-| Contexto entre sessões          | SD             | `/nodebot/memory/semantic/context.json`|
-| Snapshot de estado              | SD             | `/nodebot/memory/snapshots/state_*.json` |
-| Crash reports                   | SD             | `/nodebot/diagnostics/crash_reports/`  |
-| Métricas diárias                | SD             | `/nodebot/diagnostics/metrics/`        |
+| Config estendida (mappings)     | SD             | `/noisebot/config/extended_config.json` |
+| Logs de sistema                 | SD             | `/noisebot/logs/system_NNNN.log`        |
+| Assets de áudio                 | SD             | `/noisebot/assets/audio/*.wav`          |
+| Histórico de interações         | SD             | `/noisebot/memory/episodic/YYYY-MM.jsonl` |
+| Preferências aprendidas         | SD             | `/noisebot/memory/semantic/preferences.json` |
+| Traços de persona               | SD             | `/noisebot/memory/persona/traits.json`  |
+| Contexto entre sessões          | SD             | `/noisebot/memory/semantic/context.json`|
+| Snapshot de estado              | SD             | `/noisebot/memory/snapshots/state_*.json` |
+| Crash reports                   | SD             | `/noisebot/diagnostics/crash_reports/`  |
+| Métricas diárias                | SD             | `/noisebot/diagnostics/metrics/`        |
 | Device ID / nome do robô        | NVS            | `nb_identity/device_id`                |
 | Ponteiro para contexto ativo    | NVS            | `nb_memory/ctx_path`                   |

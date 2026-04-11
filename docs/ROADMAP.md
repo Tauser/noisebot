@@ -1,4 +1,4 @@
-# NodeBot — Roadmap e Etapas de Desenvolvimento
+# NoiseBot — Roadmap e Etapas de Desenvolvimento
 
 ## Roadmap Macro
 
@@ -261,8 +261,8 @@ BLOCO 8 — Integracao total e validacao longa
 **Por que nao pode ser adiado para a fase de comportamento:** O BehaviorFSM (Etapa 7.1) e o primeiro consumidor da memoria. Se a API e os schemas nao existirem antes dele, o comportamento crescera sem memoria e precisara ser refatorado — exatamente o remendo arquitetural que se quer evitar.
 
 **Escopo que entra:**
-- Criacao da estrutura de diretorios `/nodebot/` no SD na primeira inicializacao
-- Health check file: `/nodebot/.health` escrito e lido no boot para verificar SD funcional
+- Criacao da estrutura de diretorios `/noisebot/` no SD na primeira inicializacao
+- Health check file: `/noisebot/.health` escrito e lido no boot para verificar SD funcional
 - `infra/persistence_manager.h/c`: API completa com stubs funcionais
 - Structs definidas e versionadas em `infra/nb_persist_types.h`: `nb_episode_t`, `nb_preferences_t`, `nb_persona_traits_t`, `nb_context_t`, `nb_system_snapshot_t`
 - Snapshot de sistema completamente implementado (simples, alto valor imediato de diagnostico)
@@ -278,10 +278,10 @@ BLOCO 8 — Integracao total e validacao longa
 - `infra/persistence_manager.h` com API completa e contratos documentados
 - `infra/persistence_manager.c` com snapshots funcionais e stubs para memoria longa
 - `infra/nb_persist_types.h` com schemas versionados de todos os tipos de dados
-- Estrutura `/nodebot/` criada no SD com subdiretorios e arquivo `.health`
+- Estrutura `/noisebot/` criada no SD com subdiretorios e arquivo `.health`
 
 **Criterios de aceitacao:**
-- Boot com SD presente: estrutura de diretorios criada, health check OK, snapshot gravado em `/nodebot/memory/snapshots/`
+- Boot com SD presente: estrutura de diretorios criada, health check OK, snapshot gravado em `/noisebot/memory/snapshots/`
 - Boot sem SD: modo amnesico ativo, log em UART, nenhum crash
 - Remocao de SD em operacao: EVT_STORAGE_DEGRADED publicado em < 120s, sistema continua operando normalmente
 - Snapshot carregado no proximo boot e logado (uptime, soc_pct, boot_count do boot anterior)
