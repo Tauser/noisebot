@@ -233,6 +233,8 @@ BLOCO 8 — Integracao total e validacao longa
 
 **Objetivo:** Armazenamento persistente para logs, assets e calibracoes.
 
+> Ver adendo completo em `docs/PERSISTENCE.md`. O microSD nao e periferico opcional — e camada central de persistencia do sistema.
+
 **Escopo que entra:**
 - Init microSD via SPI com FAT32/VFS do ESP-IDF
 - `services/storage_service.h/c`: API sobre VFS — open, read, write, append, sync, close
@@ -249,6 +251,40 @@ BLOCO 8 — Integracao total e validacao longa
 - Log gravado em arquivo sem perda apos reset controlado
 - Deteccao correta de ausencia de card (sem crash, modo degradado logado)
 - Write de log nao bloqueia LoggerTask por mais de 20ms
+
+---
+
+### ETAPA 1.3b — PersistenceManager e Estrutura de Memoria
+
+**Objetivo:** Estabelecer a camada de persistencia que sustentara a memoria de longo prazo do robo, com API completa e estrutura de diretorios no SD, mesmo que a maioria das funcionalidades esteja vazia inicialmente.
+
+**Por que nao pode ser adiado para a fase de comportamento:** O BehaviorFSM (Etapa 7.1) e o primeiro consumidor da memoria. Se a API e os schemas nao existirem antes dele, o comportamento crescera sem memoria e precisara ser refatorado — exatamente o remendo arquitetural que se quer evitar.
+
+**Escopo que entra:**
+- Criacao da estrutura de diretorios `/nodebot/` no SD na primeira inicializacao
+- Health check file: `/nodebot/.health` escrito e lido no boot para verificar SD funcional
+- `infra/persistence_manager.h/c`: API completa com stubs funcionais
+- Structs definidas e versionadas em `infra/nb_persist_types.h`: `nb_episode_t`, `nb_preferences_t`, `nb_persona_traits_t`, `nb_context_t`, `nb_system_snapshot_t`
+- Snapshot de sistema completamente implementado (simples, alto valor imediato de diagnostico)
+- SD health monitor task (verifica SD a cada 60s, publica EVT_STORAGE_DEGRADED se falhar)
+- Evento `EVT_STORAGE_DEGRADED` implementado no event bus
+
+**Fora do escopo:**
+- Leitura e escrita de preferencias (sem comportamento para consumir ainda)
+- Registros episodicos (sem BehaviorFSM para gerar)
+- Evolucao de persona traits (sem interacao real)
+
+**Entregaveis:**
+- `infra/persistence_manager.h` com API completa e contratos documentados
+- `infra/persistence_manager.c` com snapshots funcionais e stubs para memoria longa
+- `infra/nb_persist_types.h` com schemas versionados de todos os tipos de dados
+- Estrutura `/nodebot/` criada no SD com subdiretorios e arquivo `.health`
+
+**Criterios de aceitacao:**
+- Boot com SD presente: estrutura de diretorios criada, health check OK, snapshot gravado em `/nodebot/memory/snapshots/`
+- Boot sem SD: modo amnesico ativo, log em UART, nenhum crash
+- Remocao de SD em operacao: EVT_STORAGE_DEGRADED publicado em < 120s, sistema continua operando normalmente
+- Snapshot carregado no proximo boot e logado (uptime, soc_pct, boot_count do boot anterior)
 
 ---
 

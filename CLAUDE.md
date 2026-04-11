@@ -73,6 +73,10 @@ noisebot/
 3. Nenhum servico avancado inicializa com bateria em estado CRITICAL
 4. Brownout reason e sempre logado e persistido em RTC memory
 5. Safe mode ativa apos 3 boots com falha consecutiva
+6. microSD nao e periferico opcional — e camada central de persistencia do sistema
+7. Boot critico (fases 0-2) tem zero dependencia de microSD — SD ausente = modo amnesico, nao HALT
+8. Escrita no SD sempre via PersistenceManager — nunca diretamente do servico de comportamento
+9. Schema de todos os arquivos de memoria definido antes do BehaviorFSM ser implementado
 
 ## Documentacao tecnica
 
@@ -84,3 +88,4 @@ noisebot/
 - `docs/SERVO_SAFETY.md` — motion safety
 - `docs/RISKS.md` — riscos criticos
 - `docs/INTEGRATION_STRATEGY.md` — ordem de integracao dos subsistemas
+- `docs/PERSISTENCE.md` — persistencia em camadas e memoria de longo prazo (adendo arquitetural)

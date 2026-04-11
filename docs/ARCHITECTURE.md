@@ -9,6 +9,11 @@
 5. **Politica de erro documentada por modulo** antes de qualquer integracao
 6. **DMA buffers em SRAM interna** — nunca em PSRAM (latencia incompativel com DMA)
 7. **Buffers grandes (framebuffer, audio ring) em PSRAM**
+8. **microSD nao e periferico opcional** — e camada de persistencia central do sistema
+9. **Escrita no SD sempre via PersistenceManager** — nunca diretamente do servico de comportamento
+10. **Boot critico (fases 0-2) tem zero dependencia de microSD** — SD falho = modo amnesico, nao HALT
+
+> Estrategia completa de persistencia e memoria de longo prazo: ver `docs/PERSISTENCE.md`
 
 ---
 
@@ -58,13 +63,14 @@ noisebot/
     CMakeLists.txt
   components/
     infra/              # Infraestrutura core
-      boot_manager.h/c  # Fases de boot, reset reason, safe mode
-      logger.h/c        # Logger estruturado com buffer circular
-      config_manager.h/c # API sobre NVS com schema versionado
-      event_bus.h/c     # Event bus tipado via FreeRTOS Queue
-      watchdog_service.h/c # Heartbeat multicamada
-      power_manager.h/c # Estado global de energia, politicas
-      error_policy.h    # Definicoes de politica de erro por modulo
+      boot_manager.h/c        # Fases de boot, reset reason, safe mode
+      logger.h/c              # Logger estruturado com buffer circular
+      config_manager.h/c      # API sobre NVS com schema versionado
+      event_bus.h/c           # Event bus tipado via FreeRTOS Queue
+      watchdog_service.h/c    # Heartbeat multicamada
+      power_manager.h/c       # Estado global de energia, politicas
+      persistence_manager.h/c # Persistencia em camadas: NVS + SD + memoria longa
+      error_policy.h          # Definicoes de politica de erro por modulo
     hal/                # Drivers de hardware
       display/
         st7789_drv.h/c
