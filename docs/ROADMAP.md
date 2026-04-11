@@ -177,16 +177,16 @@ BLOCO 8 — Integracao total e validacao longa
 **Por que aqui:** Zero risco eletrico, zero risco mecanico. Muito valor de debug — substitui UART puro como output de estado. Todas as fases seguintes se beneficiam de ter display.
 
 **Escopo que entra:**
-- Driver SPI para ST7789: init, fill, draw retangulo, draw texto (fonte bitmap embutida)
-- Framebuffer em PSRAM (240x320 @ 16bpp = 150KB)
-- DMA para transferencia SPI
-- `services/display_service.h/c`: API de alto nivel, telas de diagnostico
+- Stack grafica baseada em **LovyanGFX** (ver `docs/ARCHITECTURE.md` — secao "Contrato Arquitetural: Stack Grafica")
+- `hal/display/st7789_drv.cpp + st7789_drv.h`: wrapper C-compatible sobre LovyanGFX com config LGFX para ST7789 2" via SPI
+- Framebuffer em PSRAM (240x320 @ 16bpp = 150KB); DMA para transferencia SPI gerenciado pelo LovyanGFX
+- `services/display_service.h/c`: API de alto nivel, telas de diagnostico, mutex de acesso multi-task
 - Telas minimas: BOOTING, ERROR(code, msg), POWER(soc%, voltage, charger_status), SAFE_MODE
 - DisplayTask: 30fps maximo, sem bloquear tasks de maior prioridade
 
 **Fora do escopo:**
-- LVGL ou qualquer framework de UI completo
-- Animacoes expressivas
+- LVGL ou qualquer outro framework de UI
+- Animacoes expressivas (sprites sao criados mas sem conteudo de persona)
 - Conteudo de comportamento/persona
 
 **Riscos:**
