@@ -1,0 +1,43 @@
+# ESP-IDF build artifacts
+build/
+sdkconfig
+sdkconfig.old
+.idf_build_apps.json
+dependencies.lock
+managed_components/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs e dumps temporários
+*.log
+*.dmp
+*.core
+
+# Binários compilados
+*.bin
+*.elf
+*.map
+
+# Documentação gerada
+docs/_build/
+
+# microSD content (assets não versionados)
+assets/

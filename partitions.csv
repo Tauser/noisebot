@@ -1,0 +1,22 @@
+# NodeBot — Tabela de Partições (ESP32-S3, 16MB Flash)
+#
+# Layout total: 16MB (0x1000000)
+#   Bootloader   : 0x000000 – 0x007FFF  (32KB, padrão ESP-IDF)
+#   Partition tbl: 0x008000 – 0x008FFF  (4KB, padrão)
+#   NVS          : 0x009000 – 0x010FFF  (32KB)
+#   otadata      : 0x011000 – 0x012FFF  (8KB, reservado para OTA futuro)
+#   phy_init     : 0x013000 – 0x013FFF  (4KB)
+#   factory app  : 0x014000 – 0x313FFF  (3MB)
+#   storage      : 0x314000 – 0xFFFFFF  (~12.9MB, SPIFFS, fallback de assets)
+#
+# Namespaces NVS definidos em software (não em partições separadas):
+#   nb_sys  — estado do sistema (boot count, safe mode flag, reset reason)
+#   nb_cfg  — configuração do produto (servo limits, volume, brightness)
+#   nb_svc  — estado de serviços (last emotion, persona seed)
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x8000,
+otadata,    data, ota,      0x11000,  0x2000,
+phy_init,   data, phy,      0x13000,  0x1000,
+factory,    app,  factory,  0x14000,  0x300000,
+storage,    data, spiffs,   0x314000, 0xCEC000,
