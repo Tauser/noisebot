@@ -1,0 +1,43 @@
+# ESP-IDF build artifacts
+build/
+.idf_cmake_build/
+sdkconfig.old
+dependencies.lock
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.piopm
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Compiled objects
+*.o
+*.a
+*.elf
+*.bin
+*.map
+*.hex
+*.lst
+
+# Managed components (fetched by idf-component-manager)
+managed_components/
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Credentials / secrets
+secrets.h
+credentials.h
