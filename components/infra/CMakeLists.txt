@@ -1,0 +1,20 @@
+idf_component_register(
+    SRCS
+        "boot_manager.c"
+        "logger.c"
+        "config_manager.c"
+        "event_bus.c"
+        "watchdog_service.c"
+        "power_manager.c"
+        "persistence_manager.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        nvs_flash
+        esp_system
+        esp_timer
+        esp_task_wdt
+        driver
+        log
+        freertos
+)
