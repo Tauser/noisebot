@@ -4,6 +4,7 @@ idf_component_register(
         "watchdog_service.c"
         "nvs_hal.c"
         "config_manager.c"
+        "persistence_mgr.c"
         "boot_manager.c"
     INCLUDE_DIRS "."
     REQUIRES
@@ -12,4 +13,5 @@ idf_component_register(
         esp_system
         esp_hw_support
         freertos
+        nb_hal
 )

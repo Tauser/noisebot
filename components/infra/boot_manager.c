@@ -19,6 +19,8 @@
 #include "watchdog_service.h"
 #include "error_policy.h"
 #include "config_manager.h"
+#include "sd_hal.h"
+#include "persistence_mgr.h"
 
 #define TAG "nb_boot"
 
@@ -251,20 +253,26 @@ static esp_err_t phase_power(void)
 
 /*
  * PHASE_STORAGE — Etapa 0.3
- * Stub: microSD mount e persistence_manager.
- * Falha aqui é não-crítica (modo SD-degradado).
+ *
+ * Inicializa: sd_hal (SPI3 + FATFS) e persistence_mgr (fila + task + log hook).
+ * Falha no SD é não-crítica — sistema entra em modo SD-degradado.
+ * persistence_mgr é sempre inicializado (fila e task ficam ativas mesmo sem SD).
  */
 static esp_err_t phase_storage(void)
 {
     phase_enter(NB_BOOT_PHASE_STORAGE);
-    phase_stub(NB_BOOT_PHASE_STORAGE, "Etapa 0.3");
 
-    /*
-     * Quando implementado, falha no mount deve:
-     *   s_status.sd_degraded = true;
-     *   NB_LOGW(TAG, "SD nao disponivel — modo degradado");
-     *   return ESP_OK;  // nao fatal
-     */
+    /* 1. Tentar montar o SD. Falha não é fatal. */
+    esp_err_t err = sd_hal_init();
+    if (err != ESP_OK) {
+        s_status.sd_degraded = true;
+        NB_LOGW(TAG, "SD nao disponivel — modo degradado ativo");
+    }
+
+    /* 2. Iniciar persistence_mgr (fila + task + hook de log). */
+    err = persistence_mgr_init();
+    NB_ASSERT_FATAL(err == ESP_OK, TAG, "persistence_mgr_init falhou: %s",
+                    esp_err_to_name(err));
 
     phase_ok(NB_BOOT_PHASE_STORAGE);
     return ESP_OK;
