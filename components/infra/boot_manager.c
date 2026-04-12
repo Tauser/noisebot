@@ -20,6 +20,7 @@
 #include "error_policy.h"
 #include "config_manager.h"
 #include "power_monitor.h"
+#include "event_bus.h"
 #include "sd_hal.h"
 #include "persistence_mgr.h"
 
@@ -320,16 +321,24 @@ static esp_err_t phase_safety(void)
 }
 
 /*
- * PHASE_SERVICES — Bloco 4-5
- * Stub: render, audio, behavior, conductor.
- * Em safe mode: pulada.
+ * PHASE_SERVICES — Etapa 0.5 + Blocos 4-5
+ *
+ * Inicializa: event bus (Etapa 0.5). Serviços de domínio (render, audio,
+ * behavior, conductor) são stubs aguardando implementação nos Blocos 4-5.
+ * Em safe mode: event bus é inicializado mesmo assim (necessário para logs
+ * de safety); serviços de domínio são pulados.
  */
 static esp_err_t phase_services(void)
 {
     phase_enter(NB_BOOT_PHASE_SERVICES);
 
+    /* Event bus: sempre inicializado, mesmo em safe mode. */
+    esp_err_t err = nb_event_bus_init();
+    NB_ASSERT_FATAL(err == ESP_OK, TAG, "nb_event_bus_init falhou: %s",
+                    esp_err_to_name(err));
+
     if (s_status.safe_mode) {
-        phase_skip(NB_BOOT_PHASE_SERVICES, "safe mode ativo");
+        phase_skip(NB_BOOT_PHASE_SERVICES, "safe mode ativo — servicos de dominio pulados");
         return ESP_OK;
     }
 

@@ -6,6 +6,7 @@ idf_component_register(
         "config_manager.c"
         "persistence_mgr.c"
         "power_monitor.c"
+        "event_bus.c"
         "boot_manager.c"
     INCLUDE_DIRS "."
     REQUIRES
@@ -13,6 +14,7 @@ idf_component_register(
         nvs_flash
         esp_system
         esp_hw_support
+        esp_timer
         freertos
         nb_hal
 )
