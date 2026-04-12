@@ -1,0 +1,4 @@
+## IDF Component Manager — nb_hal
+## LovyanGFX é gerenciado como submodule em components/LovyanGFX/
+## (não usar component manager para LovyanGFX — não está no registry público)
+dependencies: {}

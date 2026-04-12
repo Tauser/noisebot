@@ -23,6 +23,7 @@
 #include "event_bus.h"
 #include "sd_hal.h"
 #include "persistence_mgr.h"
+#include "display_hal.h"
 
 #define TAG "nb_boot"
 
@@ -290,13 +291,29 @@ static esp_err_t phase_storage(void)
 }
 
 /*
- * PHASE_HAL — Bloco 1-2
- * Stub: display, LEDs, touch, servo PING.
+ * PHASE_HAL — Etapa 1.1 + Blocos 2-3
+ *
+ * Inicializa: display_hal (Etapa 1.1). LEDs, touch, servo PING são stubs.
+ * Falha no display é não-crítica em safe mode (sem expressão visual, mas
+ * sistema continua para logging). Em modo normal é fatal.
  */
 static esp_err_t phase_hal(void)
 {
     phase_enter(NB_BOOT_PHASE_HAL);
-    phase_stub(NB_BOOT_PHASE_HAL, "Blocos 1-2");
+
+    esp_err_t err = display_hal_init();
+    if (err != ESP_OK) {
+        if (s_status.safe_mode) {
+            NB_LOGW(TAG, "display_hal_init falhou em safe mode: %s — continuando sem display",
+                    esp_err_to_name(err));
+        } else {
+            NB_ASSERT_FATAL(false, TAG, "display_hal_init falhou: %s", esp_err_to_name(err));
+        }
+    }
+
+    /* LEDs (Etapa 2.1), Touch (Etapa 2.2), Servo PING (Etapa 3.1) */
+    phase_stub(NB_BOOT_PHASE_HAL, "Blocos 2-3");
+
     phase_ok(NB_BOOT_PHASE_HAL);
     return ESP_OK;
 }

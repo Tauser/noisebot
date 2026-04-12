@@ -27,18 +27,48 @@
 #define NB_SD_MOUNT_POINT   "/sdcard"
 #define NB_SD_MAX_FILES     5
 
-/* ── Display ST7789 (SPI2) ───────────────────────────────────────────────── */
-/* TODO(etapa-1.1): preencher após consulta ao schematic */
-#define NB_DISP_PIN_SCLK    (-1)    /* SPI2 clock */
-#define NB_DISP_PIN_MOSI    (-1)    /* SPI2 data  */
-#define NB_DISP_PIN_CS      (-1)    /* Chip select */
-#define NB_DISP_PIN_DC      (-1)    /* Data/Command */
-#define NB_DISP_PIN_RST     (-1)    /* Reset (ativo baixo) */
-#define NB_DISP_PIN_BL      (-1)    /* Backlight PWM (LEDC) */
-#define NB_DISP_SPI_HOST    SPI2_HOST
-#define NB_DISP_SPI_FREQ_KHZ 40000  /* 40MHz no bring-up; testar 80MHz */
-#define NB_DISP_WIDTH       240
-#define NB_DISP_HEIGHT      240
+/*
+ * ── Display (SPI2) ─────────────────────────────────────────────────────────
+ *
+ * Barramente SPI2 compartilhado pelos dois painéis suportados.
+ * Selecionar driver ativo com NB_DISP_DRIVER_ILI9342 (default: ST7789).
+ *
+ * Sinais comuns SPI2:
+ */
+#define NB_DISP_PIN_SCLK        47
+#define NB_DISP_PIN_MOSI        21
+#define NB_DISP_PIN_MISO        (-1)    /* ST7789 não usa MISO              */
+#define NB_DISP_PIN_DC          45      /* Data/Command                      */
+#define NB_DISP_SPI_HOST        SPI2_HOST
+#define NB_DISP_SPI_FREQ_KHZ    40000   /* 40MHz no bring-up; testar 80MHz  */
+
+/* ── ST7789 240×240 (painel atual) ──────────────────────────────────────── */
+#define NB_DISP_ST7789_PIN_CS   (-1)    /* CS ligado ao GND — sempre ativo  */
+#define NB_DISP_ST7789_PIN_RST  (-1)    /* Sem pino RST — software reset    */
+#define NB_DISP_ST7789_PIN_BL   (-1)    /* Sem backlight no módulo atual     */
+#define NB_DISP_ST7789_WIDTH    240
+#define NB_DISP_ST7789_HEIGHT   240
+
+/* ── ILI9342 320×240 (painel futuro) ────────────────────────────────────── */
+/* TODO(etapa-1.1-ili9342): preencher quando painel for conectado */
+#define NB_DISP_ILI9342_PIN_CS  (-1)    /* TBD                              */
+#define NB_DISP_ILI9342_PIN_RST (-1)    /* TBD                              */
+#define NB_DISP_ILI9342_PIN_BL  (-1)    /* TBD — backlight via LEDC         */
+#define NB_DISP_ILI9342_WIDTH   320
+#define NB_DISP_ILI9342_HEIGHT  240
+
+/* Backlight LEDC (usado pelo ILI9342) */
+#define NB_DISP_LEDC_CHANNEL    0
+#define NB_DISP_LEDC_TIMER      0
+
+/* Largura/altura do driver ativo (usado pelo render_service) */
+#if defined(NB_DISP_DRIVER_ILI9342)
+#  define NB_DISP_WIDTH   NB_DISP_ILI9342_WIDTH
+#  define NB_DISP_HEIGHT  NB_DISP_ILI9342_HEIGHT
+#else
+#  define NB_DISP_WIDTH   NB_DISP_ST7789_WIDTH
+#  define NB_DISP_HEIGHT  NB_DISP_ST7789_HEIGHT
+#endif
 
 /* ── WS2812 LEDs (RMT) ───────────────────────────────────────────────────── */
 /* TODO(etapa-2.1): preencher após consulta ao schematic */
