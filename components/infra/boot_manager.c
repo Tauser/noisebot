@@ -1,5 +1,5 @@
 /*
- * boot_manager.c — Implementação do gerenciador de boot do NodeBot
+ * boot_manager.c — Implementação do gerenciador de boot do NoiseBot
  *
  * Cada fase é implementada como função estática com prefixo phase_.
  * Fases ainda não implementadas retornam ESP_OK imediatamente com log
@@ -18,6 +18,7 @@
 #include "logger.h"
 #include "watchdog_service.h"
 #include "error_policy.h"
+#include "config_manager.h"
 
 #define TAG "nb_boot"
 
@@ -156,9 +157,10 @@ static void phase_stub(nb_boot_phase_t phase, const char *etapa)
 /* ── Implementação das fases ─────────────────────────────────────────────── */
 
 /*
- * PHASE_EARLY — Etapa 0.1
+ * PHASE_EARLY — Etapas 0.1 e 0.2
  *
- * Inicializa: logger, watchdog, NVS, reset reason, safe mode check.
+ * Inicializa: logger, watchdog, NVS flash, config_manager, reset reason,
+ * boot_count e verificação de safe mode.
  * Esta fase é CRÍTICA: falha aqui não pode ser recuperada.
  */
 static esp_err_t phase_early(void)
@@ -168,7 +170,7 @@ static esp_err_t phase_early(void)
     /* 1. Logger (primeira coisa — a partir daqui podemos usar NB_LOG*). */
     nb_logger_init(NB_LOG_LEVEL_INFO);
 
-    NB_LOGI(TAG, "NodeBot firmware v0.1.0 iniciando...");
+    NB_LOGI(TAG, "NoiseBot firmware v0.1.0 iniciando...");
 
     /* 2. Registrar a task atual (app_main) no TWDT do boot. */
     esp_err_t err = nb_watchdog_add_task(NULL);
@@ -197,7 +199,12 @@ static esp_err_t phase_early(void)
     NB_ASSERT_FATAL(err == ESP_OK, TAG, "nvs_flash_init falhou: %s",
                     esp_err_to_name(err));
 
-    /* 5. Ler reset reason, incrementar boot_count, verificar safe mode. */
+    /* 5. Config manager (Etapa 0.2) — carrega/aplica defaults de configuração. */
+    err = config_manager_init();
+    NB_ASSERT_FATAL(err == ESP_OK, TAG, "config_manager_init falhou: %s",
+                    esp_err_to_name(err));
+
+    /* 6. Ler reset reason, incrementar boot_count, verificar safe mode. */
     err = boot_nvs_load_and_update();
     if (err != ESP_OK) {
         /*
@@ -208,7 +215,7 @@ static esp_err_t phase_early(void)
                 esp_err_to_name(err));
     }
 
-    /* 6. Logar estado do boot. */
+    /* 7. Logar estado do boot. */
     NB_LOGI(TAG, "Reset reason : %s (%u)",
             reset_reason_name(s_status.reset_reason), s_status.reset_reason);
     NB_LOGI(TAG, "Boot count   : %lu (sem sucesso consecutivo)",

@@ -1,4 +1,4 @@
-# NodeBot — Servo Safety
+# NoiseBot — Servo Safety
 
 ## Princípio
 
@@ -119,6 +119,7 @@ A cada 50ms:
 Este checklist deve ser executado com hardware real antes de qualquer feature de movimento expressivo ser desenvolvida:
 
 **Fase 1 — Comunicação (Etapa 3.1)**
+
 - [ ] PING servo ID=1: OK
 - [ ] PING servo ID=2: OK
 - [ ] READ posição de ambos os servos: valores estáveis
@@ -126,6 +127,7 @@ Este checklist deve ser executado com hardware real antes de qualquer feature de
 - [ ] Timeout de comunicação: retorna erro, não trava
 
 **Fase 2 — Safety Layer (Etapa 3.2)**
+
 - [ ] Comando de posição abaixo do mínimo: rejeitado pelo software, servo não se move
 - [ ] Comando de posição acima do máximo: rejeitado, servo não se move
 - [ ] Stall simulado (bloquear servo com a mão em movimento lento): torque disable em <150ms
@@ -135,6 +137,7 @@ Este checklist deve ser executado com hardware real antes de qualquer feature de
 - [ ] 10 minutos de operação idle (sem movimento): temperatura estável, sem alarme falso
 
 **Fase 3 — Primitivos (Etapa 3.3)**
+
 - [ ] Pan: mover de centro para mínimo (30° esquerda), retornar. 50 vezes. Sem desvio >2°.
 - [ ] Pan: mover de centro para máximo (30° direita), retornar. 50 vezes.
 - [ ] Tilt: mover de centro para mínimo (15° baixo), retornar. 50 vezes.
@@ -153,6 +156,7 @@ A posição "centro" do servo (2048 unidades SCS) deve corresponder à posição
 
 **Expansão de range:**
 Após calibrar o centro, expandir os limites gradualmente:
+
 1. Mover até o limite atual e observar visualmente: há folga mecânica?
 2. Se sim, aumentar o limite em 5° e repetir
 3. Nunca expandir além do ponto onde a mecânica começa a se estressar
@@ -165,6 +169,7 @@ Em posição estacionária, o servo mantém torque habilitado para segurar a pos
 ## Referência de Protocolo SCS (Feetech SCSCL)
 
 Formato de pacote:
+
 ```
 [0xFF] [0xFF] [ID] [LENGTH] [INSTRUCTION] [PARAM_1] ... [PARAM_N] [CHECKSUM]
 CHECKSUM = ~(ID + LENGTH + INSTRUCTION + PARAM_1 + ... + PARAM_N) & 0xFF

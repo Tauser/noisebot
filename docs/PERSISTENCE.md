@@ -1,13 +1,13 @@
-# NodeBot — Persistência
+# NoiseBot — Persistência
 
 ## Visão Geral
 
 O sistema usa dois mecanismos de persistência com papeis distintos e complementares:
 
-| Mecanismo | Capacidade | Velocidade | Uso |
-|---|---|---|---|
-| **NVS** (flash interna) | ~32KB utilizável | Rápido, síncrono | Config crítica, flags de safety, estado de boot |
-| **microSD** (FATFS) | Gigabytes | Variável (5–50ms/write) | Logs, assets, memória longa, backups |
+| Mecanismo               | Capacidade       | Velocidade              | Uso                                             |
+| ----------------------- | ---------------- | ----------------------- | ----------------------------------------------- |
+| **NVS** (flash interna) | ~32KB utilizável | Rápido, síncrono        | Config crítica, flags de safety, estado de boot |
+| **microSD** (FATFS)     | Gigabytes        | Variável (5–50ms/write) | Logs, assets, memória longa, backups            |
 
 **Regra fundamental:** NVS é lido durante o boot antes do SD estar disponível. Nada que seja necessário no boot pode estar só no SD.
 
@@ -17,40 +17,40 @@ O sistema usa dois mecanismos de persistência com papeis distintos e complement
 
 ### NVS — Namespace `nb_sys` (estado do sistema)
 
-| Chave | Tipo | Descrição | Default |
-|---|---|---|---|
-| `boot_count` | uint32 | Contagem de boots desde o último sucesso | 0 |
-| `last_reset_reason` | uint8 | `esp_reset_reason_t` do último reset | POWERON |
-| `safe_mode_flag` | uint8 | 1 = próximo boot em safe mode | 0 |
-| `boot_success` | uint8 | 1 = último boot concluiu todas as fases | 0 |
-| `fw_version` | string | Versão do firmware atual | "0.0.0" |
+| Chave               | Tipo   | Descrição                                | Default |
+| ------------------- | ------ | ---------------------------------------- | ------- |
+| `boot_count`        | uint32 | Contagem de boots desde o último sucesso | 0       |
+| `last_reset_reason` | uint8  | `esp_reset_reason_t` do último reset     | POWERON |
+| `safe_mode_flag`    | uint8  | 1 = próximo boot em safe mode            | 0       |
+| `boot_success`      | uint8  | 1 = último boot concluiu todas as fases  | 0       |
+| `fw_version`        | string | Versão do firmware atual                 | "0.0.0" |
 
 ### NVS — Namespace `nb_cfg` (configuração do produto)
 
-| Chave | Tipo | Descrição | Default |
-|---|---|---|---|
-| `servo_pan_min` | int16 | Limite mínimo do servo PAN (unid. SCS) | 1638 |
-| `servo_pan_max` | int16 | Limite máximo do servo PAN | 2458 |
-| `servo_pan_center` | int16 | Posição central PAN | 2048 |
-| `servo_tilt_min` | int16 | Limite mínimo do servo TILT | 1843 |
-| `servo_tilt_max` | int16 | Limite máximo do servo TILT | 2253 |
-| `servo_tilt_center` | int16 | Posição central TILT | 2048 |
-| `servo_speed_max` | uint16 | Velocidade máxima (unid. SCS) | 200 |
-| `volume_level` | uint8 | Volume de 0 a 100 | 70 |
-| `display_brightness` | uint8 | Backlight de 0 a 255 | 180 |
-| `touch_sensitivity` | float | Fator de sensibilidade touch | 0.20 |
-| `idle_timeout_s` | uint32 | Segundos até entrar em SLEEPING | 300 |
-| `log_level` | uint8 | Nível mínimo de log (0=VERBOSE) | 3 (INFO) |
+| Chave                | Tipo   | Descrição                              | Default  |
+| -------------------- | ------ | -------------------------------------- | -------- |
+| `servo_pan_min`      | int16  | Limite mínimo do servo PAN (unid. SCS) | 1638     |
+| `servo_pan_max`      | int16  | Limite máximo do servo PAN             | 2458     |
+| `servo_pan_center`   | int16  | Posição central PAN                    | 2048     |
+| `servo_tilt_min`     | int16  | Limite mínimo do servo TILT            | 1843     |
+| `servo_tilt_max`     | int16  | Limite máximo do servo TILT            | 2253     |
+| `servo_tilt_center`  | int16  | Posição central TILT                   | 2048     |
+| `servo_speed_max`    | uint16 | Velocidade máxima (unid. SCS)          | 200      |
+| `volume_level`       | uint8  | Volume de 0 a 100                      | 70       |
+| `display_brightness` | uint8  | Backlight de 0 a 255                   | 180      |
+| `touch_sensitivity`  | float  | Fator de sensibilidade touch           | 0.20     |
+| `idle_timeout_s`     | uint32 | Segundos até entrar em SLEEPING        | 300      |
+| `log_level`          | uint8  | Nível mínimo de log (0=VERBOSE)        | 3 (INFO) |
 
 ### NVS — Namespace `nb_svc` (estado de serviços)
 
-| Chave | Tipo | Descrição | Default |
-|---|---|---|---|
-| `persona_seed` | uint32 | Seed de personalidade (imutável) | rand no 1º boot |
-| `last_emotion_val` | float | Última valência emocional | 0.0 |
-| `last_emotion_aro` | float | Último arousal emocional | 0.0 |
-| `total_touch_count` | uint32 | Snapshot rápido de toques totais | 0 |
-| `total_hours_x100` | uint32 | Horas totais × 100 (sem ponto flutuante) | 0 |
+| Chave               | Tipo   | Descrição                                | Default         |
+| ------------------- | ------ | ---------------------------------------- | --------------- |
+| `persona_seed`      | uint32 | Seed de personalidade (imutável)         | rand no 1º boot |
+| `last_emotion_val`  | float  | Última valência emocional                | 0.0             |
+| `last_emotion_aro`  | float  | Último arousal emocional                 | 0.0             |
+| `total_touch_count` | uint32 | Snapshot rápido de toques totais         | 0               |
+| `total_hours_x100`  | uint32 | Horas totais × 100 (sem ponto flutuante) | 0               |
 
 ### microSD
 
@@ -135,6 +135,7 @@ Event journal com entradas de tamanho variável (máx 64 bytes por entrada).
 Header: magic, versão, entry_count, head_offset. Append-only com wrap-around.
 
 Exemplos de entradas significativas:
+
 - Primeiro boot
 - Primeiro toque do usuário
 - Temperatura máxima registrada nos servos
@@ -162,6 +163,7 @@ chamador → persistence_mgr_enqueue() → [fila FreeRTOS] → persistence_task 
 ### Escrita Síncrona (exceções)
 
 Usada apenas quando:
+
 - Crash dump (sistema já em falha, não há task de fila)
 - Config backup ao entrar em SLEEPING (bloqueante intencional)
 
@@ -206,16 +208,16 @@ Vulnerável a power-off durante escrita. Mitigações:
 
 O sistema deve funcionar em modo degradado sem SD:
 
-| Feature | Com SD | Sem SD (modo degradado) |
-|---|---|---|
-| Logging UART | ✅ | ✅ |
-| Logging SD | ✅ | ❌ (buffered, dropped) |
-| Assets de áudio | ✅ | ❌ (silêncio) |
-| Memória de longo prazo | ✅ | ❌ (operações em memória, descartadas) |
-| Config de NVS | ✅ | ✅ |
-| Expressão facial | ✅ | ✅ |
-| Motion | ✅ | ✅ |
-| Touch | ✅ | ✅ |
+| Feature                | Com SD | Sem SD (modo degradado)                |
+| ---------------------- | ------ | -------------------------------------- |
+| Logging UART           | ✅     | ✅                                     |
+| Logging SD             | ✅     | ❌ (buffered, dropped)                 |
+| Assets de áudio        | ✅     | ❌ (silêncio)                          |
+| Memória de longo prazo | ✅     | ❌ (operações em memória, descartadas) |
+| Config de NVS          | ✅     | ✅                                     |
+| Expressão facial       | ✅     | ✅                                     |
+| Motion                 | ✅     | ✅                                     |
+| Touch                  | ✅     | ✅                                     |
 
 SD-degradado é loggado em UART. Nenhum comportamento crítico depende do SD.
 

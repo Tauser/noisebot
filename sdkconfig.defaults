@@ -1,4 +1,4 @@
-# NodeBot — sdkconfig.defaults
+# NoiseBot — sdkconfig.defaults
 # Aplicado sobre os defaults do ESP-IDF. Não editar sdkconfig diretamente.
 # Para sobrescrever localmente: criar sdkconfig.defaults.local (não versionado).
 
@@ -6,7 +6,7 @@
 CONFIG_IDF_TARGET="esp32s3"
 
 # ── CPU ───────────────────────────────────────────────────────────────────────
-CONFIG_ESP32S3_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=y
 
 # ── Flash ─────────────────────────────────────────────────────────────────────
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y

@@ -1,4 +1,4 @@
-# NodeBot — Arquitetura
+# NoiseBot — Arquitetura
 
 ## Camadas do Sistema
 
@@ -108,6 +108,7 @@ components/
 
 Pool estático de `NB_EVENT_POOL_SIZE` eventos (sem malloc por evento).
 Dois modos de entrega:
+
 - **Síncrono:** subscriber chamado na task do publisher. Zero latência. Subscriber não pode bloquear.
 - **Assíncrono:** evento entra na fila FreeRTOS da task destino.
 
@@ -177,18 +178,18 @@ esp_err_t event_bus_unsubscribe(nb_event_type_t type,
 
 ## Tasks FreeRTOS
 
-| Task | Componente | Core | Prioridade | Stack | Notas |
-|---|---|---|---|---|---|
-| `nb_wdog_task` | watchdog_service | 0 | 24 | 2KB | TWDT reporter |
-| `nb_servo_safety_task` | motion_safety | 1 | 23 | 4KB | Poll load/temp 20Hz |
-| `nb_motion_task` | motion_service | 1 | 20 | 4KB | Interpolação posição |
-| `nb_audio_task` | audio_service | 0 | 18 | 8KB | I2S DMA feeding |
-| `nb_render_task` | render_service | 1 | 15 | 8KB | SPI display 30-60fps |
-| `nb_behavior_task` | behavior_engine | 1 | 12 | 6KB | Estado + ações |
-| `nb_touch_task` | touch_service | 0 | 10 | 3KB | Poll touch 50Hz |
-| `nb_led_task` | led_service | 0 | 8 | 2KB | RMT updates |
-| `nb_persist_task` | persistence_mgr | 0 | 5 | 4KB | SD writes não-urgentes |
-| `nb_logger_task` | logger | 0 | 3 | 4KB | Flush log para SD |
+| Task                   | Componente       | Core | Prioridade | Stack | Notas                  |
+| ---------------------- | ---------------- | ---- | ---------- | ----- | ---------------------- |
+| `nb_wdog_task`         | watchdog_service | 0    | 24         | 2KB   | TWDT reporter          |
+| `nb_servo_safety_task` | motion_safety    | 1    | 23         | 4KB   | Poll load/temp 20Hz    |
+| `nb_motion_task`       | motion_service   | 1    | 20         | 4KB   | Interpolação posição   |
+| `nb_audio_task`        | audio_service    | 0    | 18         | 8KB   | I2S DMA feeding        |
+| `nb_render_task`       | render_service   | 1    | 15         | 8KB   | SPI display 30-60fps   |
+| `nb_behavior_task`     | behavior_engine  | 1    | 12         | 6KB   | Estado + ações         |
+| `nb_touch_task`        | touch_service    | 0    | 10         | 3KB   | Poll touch 50Hz        |
+| `nb_led_task`          | led_service      | 0    | 8          | 2KB   | RMT updates            |
+| `nb_persist_task`      | persistence_mgr  | 0    | 5          | 4KB   | SD writes não-urgentes |
+| `nb_logger_task`       | logger           | 0    | 3          | 4KB   | Flush log para SD      |
 
 **Regra:** Tasks de safety (prioridade ≥ 20) nunca preemptadas por tasks de comportamento (prioridade ≤ 15).
 
@@ -213,12 +214,12 @@ Toda interação com o display passa por `display_hal.h`.
 
 ```cpp
 // display_lgfx_config.hpp
-class LGFX_NodeBot : public lgfx::LGFX_Device {
+class LGFX_NoiseBot : public lgfx::LGFX_Device {
     lgfx::Panel_ST7789 _panel;
     lgfx::Bus_SPI      _bus;
     lgfx::Light_PWM    _light;
 public:
-    LGFX_NodeBot(void) {
+    LGFX_NoiseBot(void) {
         { auto cfg = _bus.config();
           cfg.spi_host    = SPI2_HOST;
           cfg.freq_write  = 40000000;    // 40MHz, testar 80MHz
@@ -265,12 +266,12 @@ Todos os pinos `NB_PIN_*` definidos em `hal/nb_hw_config.h`.
 
 ## Política de Memória
 
-| Recurso | Regra |
-|---|---|
+| Recurso      | Regra                                                                                                          |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
 | SRAM (512KB) | FreeRTOS kernel, stacks de tasks, I2S DMA buffers (DMA não alcança PSRAM via I2S), variáveis de estado crítico |
-| PSRAM (8MB) | Framebuffers de display, buffers de áudio secundários, circular buffer de LTM, futuro frame buffer de câmera |
-| Flash/NVS | Config crítica, flags de safety, calibração, persona seed |
-| microSD | Logs, assets de áudio, memória de longo prazo |
+| PSRAM (8MB)  | Framebuffers de display, buffers de áudio secundários, circular buffer de LTM, futuro frame buffer de câmera   |
+| Flash/NVS    | Config crítica, flags de safety, calibração, persona seed                                                      |
+| microSD      | Logs, assets de áudio, memória de longo prazo                                                                  |
 
 **Headroom obrigatório em PSRAM:** manter ≥300KB livres para futuro frame buffer da câmera.
 Monitorar em produção: `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)`.

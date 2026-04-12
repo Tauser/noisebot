@@ -1,10 +1,10 @@
-# NodeBot — Documento de Projeto
+# NoiseBot — Documento de Projeto
 
 ## Visão Geral
 
-NodeBot é um companion robot desktop expressivo. O objetivo central não é um gadget com features de vitrine: é um robô que parece vivo, que responde ao toque, que olha para você, que se move com intenção, e que tem uma persona recognoscível mesmo em repouso.
+NoiseBot é um companion robot desktop expressivo. O objetivo central não é um gadget com features de vitrine: é um robô que parece vivo, que responde ao toque, que olha para você, que se move com intenção, e que tem uma persona recognoscível mesmo em repouso.
 
-Com dois servos, um display de 2", dois LEDs, microfone, speaker e fita de cobre, o NodeBot entrega presença real — desde que a base técnica seja sólida, o comportamento seja disciplinado, e cada grau de liberdade seja usado com intenção.
+Com dois servos, um display de 2", dois LEDs, microfone, speaker e fita de cobre, o NoiseBot entrega presença real — desde que a base técnica seja sólida, o comportamento seja disciplinado, e cada grau de liberdade seja usado com intenção.
 
 ## Objetivos do Produto
 
@@ -19,16 +19,16 @@ Com dois servos, um display de 2", dois LEDs, microfone, speaker e fita de cobre
 
 ## Princípios de Comportamento
 
-| Princípio | Descrição |
-|---|---|
-| Presença em repouso | Idle não é estático. É movimento mínimo vivo. |
-| Gaze como atenção | Direção do olhar precede qualquer expressão. |
-| Neutral forte | A posição de repouso da face é desenhada com intenção. |
-| Movimento econômico | Cada ação tem início claro, destino claro, retorno limpo ao neutral. |
-| Touch é vínculo | Resposta imediata (<80ms percebido), calorosa, contextual. |
-| Timing social | Pausas, pre-speech signals, post-speech settle são parte do produto. |
+| Princípio             | Descrição                                                                   |
+| --------------------- | --------------------------------------------------------------------------- |
+| Presença em repouso   | Idle não é estático. É movimento mínimo vivo.                               |
+| Gaze como atenção     | Direção do olhar precede qualquer expressão.                                |
+| Neutral forte         | A posição de repouso da face é desenhada com intenção.                      |
+| Movimento econômico   | Cada ação tem início claro, destino claro, retorno limpo ao neutral.        |
+| Touch é vínculo       | Resposta imediata (<80ms percebido), calorosa, contextual.                  |
+| Timing social         | Pausas, pre-speech signals, post-speech settle são parte do produto.        |
 | Coordenação de output | Face, motion e áudio são orquestrados pelo conductor — nunca independentes. |
-| Estado interno modula | Emotion model (valência × ativação) influi sutilmente em toda expressão. |
+| Estado interno modula | Emotion model (valência × ativação) influi sutilmente em toda expressão.    |
 
 ## Hardware (Fase Inicial)
 
@@ -56,16 +56,16 @@ Nenhuma feature de expressividade ou comportamento é liberada antes deste marco
 
 ## Roadmap Resumido
 
-| Bloco | Nome | Resultado |
-|---|---|---|
-| 0 | Fundação | Boot, watchdog, NVS, SD, event bus, brownout |
-| 1 | Display | LovyanGFX, framebuffer, face procedural |
-| 2 | Periféricos | WS2812, touch capacitivo |
-| 3 | Motion Safety | Driver servo, safety layer, motion primitivos |
-| 4 | Áudio | Microfone + VAD, speaker + playback |
-| 5 | Comportamento | State machine, gaze, idle, expressão, conductor |
-| 6 | Integração | Integração completa, memória de longo prazo |
-| 7 | Polimento | Performance, refinamento comportamental, testes de produto |
-| 8+ | Expansões | Câmera, IMU, bateria |
+| Bloco | Nome          | Resultado                                                  |
+| ----- | ------------- | ---------------------------------------------------------- |
+| 0     | Fundação      | Boot, watchdog, NVS, SD, event bus, brownout               |
+| 1     | Display       | LovyanGFX, framebuffer, face procedural                    |
+| 2     | Periféricos   | WS2812, touch capacitivo                                   |
+| 3     | Motion Safety | Driver servo, safety layer, motion primitivos              |
+| 4     | Áudio         | Microfone + VAD, speaker + playback                        |
+| 5     | Comportamento | State machine, gaze, idle, expressão, conductor            |
+| 6     | Integração    | Integração completa, memória de longo prazo                |
+| 7     | Polimento     | Performance, refinamento comportamental, testes de produto |
+| 8+    | Expansões     | Câmera, IMU, bateria                                       |
 
 Ver `docs/ROADMAP.md` para etapas detalhadas, critérios de aceitação e dependências.
