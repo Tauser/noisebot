@@ -1,5 +1,5 @@
 /*
- * boot_manager.h — Gerenciador de boot do NodeBot
+ * boot_manager.h — Gerenciador de boot do NoiseBot
  *
  * Centraliza a sequência de inicialização em fases ordenadas.
  * Cada fase reporta sucesso ou falha. Falha em fase crítica → safe mode.

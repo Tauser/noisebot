@@ -1,5 +1,5 @@
 /*
- * error_policy.h — Política de erros e macros de assert do NodeBot
+ * error_policy.h — Política de erros e macros de assert do NoiseBot
  *
  * Três níveis de severidade:
  *

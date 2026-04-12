@@ -5,6 +5,7 @@ idf_component_register(
         "nvs_hal.c"
         "config_manager.c"
         "persistence_mgr.c"
+        "power_monitor.c"
         "boot_manager.c"
     INCLUDE_DIRS "."
     REQUIRES

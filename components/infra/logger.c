@@ -1,5 +1,5 @@
 /*
- * logger.c — Implementação do logger do NodeBot
+ * logger.c — Implementação do logger do NoiseBot
  */
 
 #include "logger.h"

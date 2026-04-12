@@ -19,6 +19,7 @@
 #include "watchdog_service.h"
 #include "error_policy.h"
 #include "config_manager.h"
+#include "power_monitor.h"
 #include "sd_hal.h"
 #include "persistence_mgr.h"
 
@@ -95,6 +96,7 @@ static void boot_nvs_clear_fail_count(void)
     nvs_set_u32(handle, NVS_KEY_BOOT_COUNT, 0);
     nvs_set_u8(handle, NVS_KEY_SAFE_MODE,   0);
     nvs_set_u8(handle, NVS_KEY_BOOT_SUCCESS, 1);
+    nvs_set_u8(handle, "brn_count",          0);  /* zera contador de brownouts */
     nvs_commit(handle);
     nvs_close(handle);
 }
@@ -241,12 +243,20 @@ static esp_err_t phase_early(void)
 
 /*
  * PHASE_POWER — Etapa 0.4
- * Stub: brownout callback e power monitor.
+ *
+ * Inicializa: power_monitor (brownout detection, brn_count NVS, callback).
+ * Falha é não-fatal — sistema continua sem proteção de brownout.
+ * O modo de operação final é definido em PHASE_COMPLETE, após conhecer
+ * sd_degraded (PHASE_STORAGE) e safe_mode (PHASE_EARLY).
  */
 static esp_err_t phase_power(void)
 {
     phase_enter(NB_BOOT_PHASE_POWER);
-    phase_stub(NB_BOOT_PHASE_POWER, "Etapa 0.4");
+
+    esp_err_t err = power_monitor_init();
+    NB_ASSERT(err == ESP_OK, TAG, "power_monitor_init falhou: %s — continuando",
+              esp_err_to_name(err));
+
     phase_ok(NB_BOOT_PHASE_POWER);
     return ESP_OK;
 }
@@ -349,18 +359,27 @@ static esp_err_t phase_motion(void)
 
 /*
  * PHASE_COMPLETE — boot concluído.
+ *
+ * Define modo de operação final baseado no estado acumulado do boot.
+ * Prioridade: SAFE_MODE > SD_DEGRADED > NORMAL.
  */
 static esp_err_t phase_complete(void)
 {
     phase_enter(NB_BOOT_PHASE_COMPLETE);
 
+    /* Definir modo de operação com base no estado do boot. */
     if (s_status.safe_mode) {
+        power_monitor_set_mode(NB_POWER_SAFE_MODE, "safe_mode ativo no boot");
         NB_LOGW(TAG, "Boot completo em SAFE MODE — motion desabilitado");
+    } else if (s_status.sd_degraded) {
+        power_monitor_set_mode(NB_POWER_SD_DEGRADED, "SD nao disponivel");
+        NB_LOGW(TAG, "Boot completo — modo SD_DEGRADED (logging so UART)");
     } else {
+        power_monitor_set_mode(NB_POWER_NORMAL, "boot bem-sucedido");
         NB_LOGI(TAG, "Boot completo — sistema operacional");
     }
 
-    /* Reportar sucesso (reseta boot_count no NVS). */
+    /* Reportar sucesso (reseta boot_count e brn_count no NVS). */
     boot_manager_report_success();
 
     phase_ok(NB_BOOT_PHASE_COMPLETE);

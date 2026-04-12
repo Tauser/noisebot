@@ -1,5 +1,5 @@
 /*
- * watchdog_service.h — Serviço de watchdog do NodeBot
+ * watchdog_service.h — Serviço de watchdog do NoiseBot
  *
  * Wrapper sobre o Task Watchdog Timer (TWDT) do ESP-IDF.
  * O TWDT é pré-configurado via sdkconfig (timeout 5s, panic habilitado).

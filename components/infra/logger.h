@@ -1,5 +1,5 @@
 /*
- * logger.h — Logger do NodeBot
+ * logger.h — Logger do NoiseBot
  *
  * Thin wrapper sobre esp_log com ponto de inicialização centralizado,
  * controle de nível e hook para flush futuro em microSD (Etapa 0.3).
