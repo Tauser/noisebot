@@ -8,6 +8,5 @@ idf_component_register(
         log
         nvs_flash
         esp_system
-        esp_task_wdt
         freertos
 )
