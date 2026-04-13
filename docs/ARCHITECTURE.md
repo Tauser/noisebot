@@ -77,15 +77,16 @@ components/
 │
 ├── services/
 │   ├── CMakeLists.txt
-│   ├── render_service.c / .h    # Render loop, layer system, FPS control
-│   ├── expression_primitives.c/.h # Primitivos de face procedural
+│   ├── render_service.cpp / .h  # Render loop, layer system, FPS control (C++)
 │   ├── motion_service.c / .h    # Interpolação, primitivos de pescoço
 │   ├── audio_service.c / .h     # Playback WAV do SD
 │   ├── led_service.c / .h       # Animações de LED
 │   ├── touch_service.c / .h     # Detecção TAP/LONG/SUSTAINED + eventos
-│   ├── gaze_service.c / .h      # Saccade model, gaze targets
+│   ├── gaze_service.c / .h      # Saccade model, gaze targets (sem pupila)
 │   ├── idle_service.c / .h      # Microbehaviors de idle
-│   ├── expression_service.c/.h  # Interpolação de face_state, fila de expressões
+│   ├── expression_service.cpp/.h # Modelo EMO: nb_face_state_t paramétrica,
+│   │                             #   9 expressões, blink bilateral/assimétrico,
+│   │                             #   renderer coluna-a-coluna com AA sub-pixel
 │   └── conductor.c / .h         # Coordenação face/motion/áudio
 │
 ├── behavior/
@@ -184,7 +185,7 @@ esp_err_t event_bus_unsubscribe(nb_event_type_t type,
 | `nb_servo_safety_task` | motion_safety    | 1    | 23         | 4KB   | Poll load/temp 20Hz    |
 | `nb_motion_task`       | motion_service   | 1    | 20         | 4KB   | Interpolação posição   |
 | `nb_audio_task`        | audio_service    | 0    | 18         | 8KB   | I2S DMA feeding        |
-| `nb_render_task`       | render_service   | 1    | 15         | 8KB   | SPI display 30-60fps   |
+| `nb_render_task`       | render_service   | 1    | 4          | 4KB   | SPI display 30fps      |
 | `nb_behavior_task`     | behavior_engine  | 1    | 12         | 6KB   | Estado + ações         |
 | `nb_touch_task`        | touch_service    | 0    | 10         | 3KB   | Poll touch 50Hz        |
 | `nb_led_task`          | led_service      | 0    | 8          | 2KB   | RMT updates            |
@@ -251,10 +252,11 @@ Todos os pinos `NB_PIN_*` definidos em `hal/nb_hw_config.h`.
 
 ### Framebuffer e Sprites
 
-- Sprite principal (face canvas): 240×240 @ 16bpp = ~115KB em PSRAM
-- `LGFX_Sprite` com `setPsram(true)`
-- Double buffering: dois sprites A/B em PSRAM; render em B enquanto A é enviado via SPI DMA
-- Verificar empiricamente no bring-up se DMA SPI alcança PSRAM no S3
+- Display lógico: 320×240 landscape (painel ST7789 240×320 girado via `offset_rotation=1`)
+- Dois sprites 320×240 @ 16bpp em PSRAM (double buffer): ~300KB total
+- `LGFX_Sprite` com `setPsram(true)` — nenhum framebuffer em SRAM
+- Render em buffer B enquanto A é enviado via SPI DMA; troca após push
+- DMA SPI → PSRAM verificado funcional no S3 (etapa 1.1)
 
 ### Thread Safety
 
@@ -293,7 +295,7 @@ expression_service ──► current_face_state_t (interpolada a cada frame)
 render_service ──► render_layer_fn_t callbacks
       │            [face_layer, overlay_layer, debug_layer]
       ▼
-LGFX_Sprite (PSRAM, 240×240)
+LGFX_Sprite (PSRAM, 320×240)
       │
       ▼
 display_hal_sprite_push() ──► LovyanGFX SPI DMA ──► ST7789

@@ -17,4 +17,6 @@ idf_component_register(
         esp_timer
         freertos
         nb_hal
+        render_service
+        expression_service
 )

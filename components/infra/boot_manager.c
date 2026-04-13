@@ -24,6 +24,8 @@
 #include "sd_hal.h"
 #include "persistence_mgr.h"
 #include "display_hal.h"
+#include "render_service.h"
+#include "expression_service.h"
 
 #define TAG "nb_boot"
 
@@ -359,7 +361,25 @@ static esp_err_t phase_services(void)
         return ESP_OK;
     }
 
-    phase_stub(NB_BOOT_PHASE_SERVICES, "Blocos 4-5");
+    /* render_service (Etapa 1.2): framebuffer + render_task. */
+    err = render_service_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "render_service_init falhou: %s — display sem render_task",
+                esp_err_to_name(err));
+    } else {
+        err = render_service_start();
+        NB_ASSERT(err == ESP_OK, TAG, "render_service_start falhou: %s",
+                  esp_err_to_name(err));
+    }
+
+    /* expression_service (Etapa 1.3): face procedural + blink */
+    err = expression_service_init();
+    NB_ASSERT(err == ESP_OK, TAG, "expression_service_init falhou: %s",
+              esp_err_to_name(err));
+
+    /* audio_service, behavior, conductor: stubs Blocos 4-5 */
+    phase_stub(NB_BOOT_PHASE_SERVICES, "Blocos 4-5 (audio/behavior/conductor)");
+
     phase_ok(NB_BOOT_PHASE_SERVICES);
     return ESP_OK;
 }

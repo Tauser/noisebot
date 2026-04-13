@@ -32,12 +32,12 @@ O desenvolvimento é organizado em **Blocos** (agrupamentos temáticos) e **Etap
 
 **Critérios de aceitação:**
 
-- [ ] Boot completa em <2s sem periféricos conectados
-- [ ] Cada fase de boot aparece no log com timestamp e status OK/FAIL
-- [ ] Travar uma task propositalmente → sistema reseta em <WDT_TIMEOUT
-- [ ] 3 boots com falha simulada → boot seguinte logga "SAFE MODE" e desabilita motion
-- [ ] `NB_ASSERT_FATAL(false, "test")` → log de causa + reset
-- [ ] Reset reason (POWERON / BROWNOUT / WDT / SW) loggado em cada boot
+- [x] Boot completa em <2s sem periféricos conectados
+- [x] Cada fase de boot aparece no log com timestamp e status OK/FAIL
+- [x] Travar uma task propositalmente → sistema reseta em <WDT_TIMEOUT
+- [x] 3 boots com falha simulada → boot seguinte logga "SAFE MODE" e desabilita motion
+- [x] `NB_ASSERT_FATAL(false, "test")` → log de causa + reset
+- [x] Reset reason (POWERON / BROWNOUT / WDT / SW) loggado em cada boot
 
 ---
 
@@ -55,10 +55,10 @@ O desenvolvimento é organizado em **Blocos** (agrupamentos temáticos) e **Etap
 
 **Critérios de aceitação:**
 
-- [ ] Escrever config, resetar, ler: valor persistiu
-- [ ] Escrever valor fora de range: erro retornado, valor não persistido
-- [ ] `idf.py erase_flash` + boot: defaults aplicados, sem panic
-- [ ] Boot count incrementa a cada reset, zera em boot de sucesso (após Etapa 0.1)
+- [x] Escrever config, resetar, ler: valor persistiu
+- [x] Escrever valor fora de range: erro retornado, valor não persistido
+- [x] `idf.py erase_flash` + boot: defaults aplicados, sem panic
+- [x] Boot count incrementa a cada reset, zera em boot de sucesso (após Etapa 0.1)
 
 ---
 
@@ -77,11 +77,11 @@ O desenvolvimento é organizado em **Blocos** (agrupamentos temáticos) e **Etap
 
 **Critérios de aceitação:**
 
-- [ ] SD presente: mount OK, diretórios criados, confirmado via log
-- [ ] SD ausente no boot: logga "SD nao disponivel — modo degradado", sistema continua
-- [ ] Escrever 500 entradas de log: arquivo no SD tem tamanho correto
-- [ ] SD removido durante operação: erro loggado, modo degradado ativado, sem crash
-- [ ] Flush assíncrono: escrita via fila não bloqueia task de alta prioridade
+- [x] SD presente: mount OK, diretórios criados, confirmado via log
+- [x] SD ausente no boot: logga "SD nao disponivel — modo degradado", sistema continua
+- [x] Escrever 500 entradas de log: arquivo no SD tem tamanho correto
+- [x] SD removido durante operação: erro loggado, modo degradado ativado, sem crash
+- [x] Flush assíncrono: escrita via fila não bloqueia task de alta prioridade
 
 ---
 
@@ -102,10 +102,10 @@ O desenvolvimento é organizado em **Blocos** (agrupamentos temáticos) e **Etap
 
 **Critérios de aceitação:**
 
-- [ ] Brownout simulado: callback dispara, evento publicado no bus, loggado
-- [ ] 3 brownouts consecutivos → próximo boot em safe mode
-- [ ] Em safe mode: servos não inicializam mesmo que código de servo esteja presente
-- [ ] Transição entre modos de operação loggada com motivo
+- [x] Brownout simulado: callback dispara, evento publicado no bus, loggado
+- [x] 3 brownouts consecutivos → próximo boot em safe mode
+- [x] Em safe mode: servos não inicializam mesmo que código de servo esteja presente
+- [x] Transição entre modos de operação loggada com motivo
 
 ---
 
@@ -124,10 +124,10 @@ O desenvolvimento é organizado em **Blocos** (agrupamentos temáticos) e **Etap
 
 **Critérios de aceitação:**
 
-- [ ] 1000 publish/subscribe em loop: zero corrupção, zero leak de pool
-- [ ] Cross-task: publisher em prioridade alta, subscriber em prioridade baixa → entrega ocorre
-- [ ] Pool cheio: evento dropped contabilizado, sistema não trava
-- [ ] Unsubscribe funciona: evento não mais entregue após unsubscribe
+- [x] 1000 publish/subscribe em loop: zero corrupção, zero leak de pool
+- [x] Cross-task: publisher em prioridade alta, subscriber em prioridade baixa → entrega ocorre
+- [x] Pool cheio: evento dropped contabilizado, sistema não trava
+- [x] Unsubscribe funciona: evento não mais entregue após unsubscribe
 
 ---
 
@@ -184,10 +184,10 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação:**
 
-- [ ] FPS estável ≥ 30fps medido por 5 minutos contínuos
-- [ ] Nenhum artefato de tear durante updates de cor
+- [x] FPS estável ≥ 30fps medido por 5 minutos contínuos
+- [x] Nenhum artefato de tear durante updates de cor
 - [ ] Layer registrado/removido em runtime: sem flicker ou crash
-- [ ] `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)`: ≥ 300KB após alocação de sprites
+- [x] `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)`: ≥ 300KB após alocação de sprites
 
 ---
 
@@ -198,18 +198,24 @@ Critérios adicionais de integração do Bloco 0:
 
 **O que entra:**
 
-- `expression_primitives`: funções de desenho (olho, pálpebra, brow, pupila) usando primitivos LovyanGFX.
-- `face_state_t`: struct paramétrica completa da face (abertura de olho, squint, brow, posição de pupila, blink phase).
-- 8 expressões base definidas: NEUTRAL, HAPPY, CURIOUS, SURPRISED, SLEEPY, FOCUSED, SAD, ALARMED.
-- Interpolação linear entre dois `face_state_t`.
-- Blink automático com distribuição de Poisson (média 4s, mínimo 1.5s, duração ~150ms).
+- `expression_service` (C++): renderer de olhos no estilo EMO — sem pupila, sem brow estrutural.
+- `nb_face_state_t`: struct paramétrica com geometria por olho (cantos tl/tr/bl/br, abertura,
+  squint, offset vertical/horizontal, curvatura, arredondamento, cor).
+- 9 expressões base: NEUTRAL, HAPPY, CURIOUS, SLEEPY, FOCUSED, SUSPICIOUS,
+  SURPRISED, SAD, ALARMED. Expressão vem exclusivamente do shape dos olhos.
+- Boca e sobrancelhas: peças ocasionais de Layer 5+, não parte do modelo base.
+- Interpolação linear entre dois `nb_face_state_t` (todos os 19 campos float + color step).
+- Blink bilateral com distribuição de Poisson (µ=4.2s, min=1.6s). Olhos independentes:
+  blink assimétrico ocasional (~20%) e wink suportados pelo modelo.
+- Anti-aliasing sub-pixel nas bordas dos olhos (blend com fundo preto).
 
 **Critérios de aceitação:**
 
-- [ ] 8 expressões renderizadas e visualmente distinguíveis por observador sem contexto
-- [ ] NEUTRAL é forte e recognoscível: não parece "olhos genéricos"
+- [ ] 9 expressões renderizadas e visualmente distinguíveis por observador sem contexto
+- [ ] NEUTRAL forte e reconhecível: não parece olho genérico
 - [ ] Interpolação NEUTRAL → HAPPY em 300ms: suave, sem salto
-- [ ] Blink: 20 blinks observados, todos com timing diferente (não periódico)
+- [ ] Blink: 20 blinks observados, todos com timing diferente (distribuição Poisson)
+- [ ] Blink assimétrico: pelo menos 1 em 5 blinks com olhos ligeiramente dessincronizados
 - [ ] FPS mantido ≥ 30fps durante renderização de face completa
 
 ---
@@ -414,7 +420,7 @@ Critérios adicionais de integração do Bloco 0:
 
 - [ ] Todas as transições de estado loggadas com motivo e timestamp
 - [ ] Emotion decai para neutral após 60s: verificado
-- [ ] 8 emoções → 8 faces distinguíveis: verificado visualmente
+- [ ] 9 emoções → 9 faces distinguíveis: verificado visualmente
 - [ ] Timeout IDLE → SLEEPING: configurável via NVS, funcionando
 
 ---
@@ -426,7 +432,7 @@ Critérios adicionais de integração do Bloco 0:
 
 **O que entra:**
 
-- `gaze_service`: saccade model (movimento rápido + overshoot + settle), micro-drift gaussiano, aversive gaze periódico. Gaze afeta pupila E leve tilt de pescoço. Gaze lidera o pescoço por 100ms.
+- `gaze_service`: saccade model (movimento rápido + overshoot + settle), micro-drift gaussiano, aversive gaze periódico. Gaze reinterpretado no modelo EMO: sem pupila — afeta microdeslocamento do shape do olho (y_l/y_r, x_off) e leve tilt de pescoço. Gaze lidera o pescoço por 100ms.
 - `idle_service`: microbehaviors probabilísticos — blink (Poisson, µ=4s), micro-saccade (5-15s), micro-neck-movement (10-30s), LED breathing (4s), yawn ocasional.
 
 **Critério subjetivo obrigatório:**
@@ -574,11 +580,11 @@ Ações: bq25185, MAX17048, TPS61088, power manager completo, modos de economia.
 
 ## Resumo de Marcos
 
-| Marco            | Bloco          | Indicador                                         |
-| ---------------- | -------------- | ------------------------------------------------- |
-| BASE SÓLIDA      | Fim do Bloco 0 | Boot determinístico, watchdog, NVS, SD, event bus |
-| DISPLAY PRONTO   | Etapa 1.3      | Face procedural com 8 expressões, FPS ≥ 30        |
-| MOTION SAFE      | Etapa 3.2      | Todos os critérios de safety verificados          |
-| ROBOT EXPRESSIVO | Etapa 5.4      | Conductor funcionando, outputs coordenados        |
-| PRODUTO INICIAL  | Etapa 6.1      | 1h sem panic, latência OK, temperatura OK         |
-| PRODUTO MADURO   | Etapa 7.3      | 8h contínuas, 100 power cycles, testes de produto |
+| Marco            | Bloco          | Indicador                                              |
+| ---------------- | -------------- | ------------------------------------------------------ |
+| BASE SÓLIDA      | Fim do Bloco 0 | Boot determinístico, watchdog, NVS, SD, event bus      |
+| DISPLAY PRONTO   | Etapa 1.3      | Face EMO com 9 expressões, blink assimétrico, FPS ≥ 30 |
+| MOTION SAFE      | Etapa 3.2      | Todos os critérios de safety verificados               |
+| ROBOT EXPRESSIVO | Etapa 5.4      | Conductor funcionando, outputs coordenados             |
+| PRODUTO INICIAL  | Etapa 6.1      | 1h sem panic, latência OK, temperatura OK              |
+| PRODUTO MADURO   | Etapa 7.3      | 8h contínuas, 100 power cycles, testes de produto      |
