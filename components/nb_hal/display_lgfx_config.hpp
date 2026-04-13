@@ -32,7 +32,7 @@ public:
         {
             auto cfg        = _bus.config();
             cfg.spi_host    = NB_DISP_SPI_HOST;
-            cfg.spi_mode    = 3;                            /* ST7789: mode 3 */
+            cfg.spi_mode    = 0;
             cfg.freq_write  = NB_DISP_SPI_FREQ_KHZ * 1000;
             cfg.freq_read   = 16000000;
             cfg.pin_sclk    = NB_DISP_PIN_SCLK;
@@ -50,17 +50,18 @@ public:
             cfg.pin_cs          = NB_DISP_ST7789_PIN_CS;   /* -1 = CS no GND */
             cfg.pin_rst         = NB_DISP_ST7789_PIN_RST;  /* -1 = sem RST   */
             cfg.pin_busy        = -1;
-            cfg.memory_width    = NB_DISP_ST7789_WIDTH;
-            cfg.memory_height   = NB_DISP_ST7789_HEIGHT;
-            cfg.panel_width     = NB_DISP_ST7789_WIDTH;
-            cfg.panel_height    = NB_DISP_ST7789_HEIGHT;
+            /* ST7789 320x240 landscape nativo (sem rotação de memória). */
+            cfg.memory_width    = 240;
+            cfg.memory_height   = 320;
+            cfg.panel_width     = 240;
+            cfg.panel_height    = 320;
             cfg.offset_x        = 0;
             cfg.offset_y        = 0;
-            cfg.offset_rotation = 0;
+            cfg.offset_rotation = 1;
             cfg.dummy_read_pixel = 8;
             cfg.dummy_read_bits  = 1;
             cfg.readable        = false;
-            cfg.invert          = true;                     /* ST7789 típico  */
+            cfg.invert          = true;
             cfg.rgb_order       = false;
             cfg.dlen_16bit      = false;
             cfg.bus_shared      = false;
@@ -85,7 +86,7 @@ public:
         {
             auto cfg        = _bus.config();
             cfg.spi_host    = NB_DISP_SPI_HOST;
-            cfg.spi_mode    = 0;                            /* ILI9342: mode 0 */
+            cfg.spi_mode    = 3;                            /* ILI9342: mode 0 */
             cfg.freq_write  = NB_DISP_SPI_FREQ_KHZ * 1000;
             cfg.freq_read   = 16000000;
             cfg.pin_sclk    = NB_DISP_PIN_SCLK;
