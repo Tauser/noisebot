@@ -71,46 +71,115 @@
 #endif
 
 /* ── WS2812 LEDs (RMT) ───────────────────────────────────────────────────── */
-/* TODO(etapa-2.1): preencher após consulta ao schematic */
-#define NB_LED_PIN_DATA     (-1)    /* RMT canal 0 */
+#define NB_LED_PIN_DATA     19      /* RMT canal 0 — 2 LEDs em série          */
 #define NB_LED_COUNT        2
 #define NB_LED_RMT_CHANNEL  0
 
+/* ── Áudio Full-Duplex (I2S0 — mic RX + speaker TX compartilhados) ──────── */
+/*
+ * INMP441 (RX) e MAX98357A (TX) compartilham I2S0 em modo full-duplex.
+ * BCLK e WS são comuns (GPIO 41/42); dados em pinos separados.
+ * Restrição: ambos operam no mesmo sample rate (16kHz).
+ *
+ * GPIO 41/42 escolhidos para clock pois não têm função touch nem strapping.
+ * GPIO 14 (MIC SD) e GPIO 1 (SPK DIN) sacrificam TOUCH_PAD_NUM14 e T1.
+ */
+#define NB_AUDIO_I2S_PORT    I2S_NUM_0
+#define NB_AUDIO_SAMPLE_RATE 16000
+#define NB_AUDIO_PIN_BCLK    41     /* I2S BCLK — compartilhado mic + speaker */
+#define NB_AUDIO_PIN_WS      42     /* I2S LRCK — compartilhado mic + speaker */
+
 /* ── INMP441 Microfone (I2S0 RX) ─────────────────────────────────────────── */
-/* TODO(etapa-4.1): preencher após consulta ao schematic */
-#define NB_MIC_PIN_WS       (-1)    /* Word select (LRCK) */
-#define NB_MIC_PIN_SCK      (-1)    /* Bit clock */
-#define NB_MIC_PIN_SD       (-1)    /* Serial data */
-#define NB_MIC_I2S_PORT     I2S_NUM_0
-#define NB_MIC_SAMPLE_RATE  16000
+#define NB_MIC_PIN_WS       NB_AUDIO_PIN_WS   /* GPIO 42 — compartilhado */
+#define NB_MIC_PIN_SCK      NB_AUDIO_PIN_BCLK /* GPIO 41 — compartilhado */
+#define NB_MIC_PIN_SD       14      /* Serial data (RX) — sacrifica TOUCH_PAD_NUM14 */
+#define NB_MIC_I2S_PORT     NB_AUDIO_I2S_PORT
+#define NB_MIC_SAMPLE_RATE  NB_AUDIO_SAMPLE_RATE
 #define NB_MIC_BITS         32      /* 32 bits por sample; 24 úteis */
 
-/* ── MAX98357A Speaker (I2S1 TX) ─────────────────────────────────────────── */
-/* TODO(etapa-4.2): preencher após consulta ao schematic */
-#define NB_SPK_PIN_BCLK     (-1)
-#define NB_SPK_PIN_LRC      (-1)
-#define NB_SPK_PIN_DIN      (-1)
-#define NB_SPK_PIN_SD_MODE  (-1)    /* HIGH=ativo, LOW=shutdown */
-#define NB_SPK_I2S_PORT     I2S_NUM_1
+/* ── MAX98357A Speaker (I2S0 TX, full-duplex com mic) ────────────────────── */
+/*
+ * SD_MODE: tied HIGH externamente (3.3V via resistor 10kΩ).
+ * Amplificador sempre ativo; controle de volume via divisão digital do PCM.
+ * GPIO 48 (LED onboard da placa) não é usado aqui — reservado como LED de status.
+ */
+#define NB_SPK_PIN_BCLK     NB_AUDIO_PIN_BCLK /* GPIO 41 — compartilhado */
+#define NB_SPK_PIN_LRC      NB_AUDIO_PIN_WS   /* GPIO 42 — compartilhado */
+#define NB_SPK_PIN_DIN      1       /* Serial data (TX) — sacrifica TOUCH_PAD_NUM1 */
+#define NB_SPK_PIN_SD_MODE  (-1)    /* Tied HIGH externamente — sem controle SW */
+#define NB_SPK_I2S_PORT     NB_AUDIO_I2S_PORT
 
 /* ── SCS0009 Servos (UART1 via FE-TTLinker) ──────────────────────────────── */
-/* TODO(etapa-3.1): preencher após consulta ao schematic */
-#define NB_SERVO_PIN_TX     (-1)    /* UART1 TX → FE-TTLinker RX */
-#define NB_SERVO_PIN_RX     (-1)    /* UART1 RX ← FE-TTLinker TX */
+/*
+ * GPIO 20 (TX) e GPIO 33 (RX): nenhum é strapping pin.
+ * GPIO 46 foi descartado para RX: seu pull-down interno em reset faz o ROM
+ * habilitar mensagens de debug na UART0 (download mode), corrompendo uploads.
+ * Com GPIO 33, uploads via UART funcionam sem interferência e sem pull-up externo.
+ */
+#define NB_SERVO_PIN_TX     20      /* UART1 TX → FE-TTLinker RX */
+#define NB_SERVO_PIN_RX     33      /* UART1 RX ← FE-TTLinker TX */
 #define NB_SERVO_UART_PORT  UART_NUM_1
 #define NB_SERVO_BAUD_RATE  1000000 /* 1Mbps padrão Feetech */
 #define NB_SERVO_ID_PAN     1
 #define NB_SERVO_ID_TILT    2
 
 /* ── Touch — fita de cobre ───────────────────────────────────────────────── */
-/* TODO(etapa-2.2): preencher após consulta ao schematic */
-#define NB_TOUCH_PIN        (-1)    /* GPIO com função touch ESP32-S3 */
+#define NB_TOUCH_PIN        2       /* GPIO com função touch ESP32-S3        */
+#define NB_TOUCH_PAD_NUM    1       /* TOUCH_PAD_NUM1 (GPIO2 no ESP32-S3)    */
 
 /* ── Câmera OV2640 (DVP) — ADIADA ────────────────────────────────────────── */
 /*
- * RESERVADO_CAMERA: pinos fisicamente conectados na placa.
- * NUNCA realocar estes GPIOs para outro uso.
- * TODO(etapa-8.1): mapear D0–D7, XCLK, PCLK, VSYNC, HREF, SIOD, SIOC, RST, PWDN
+ * RESERVADO_CAMERA: pinos fisicamente soldados na placa Freenove N16R8.
+ * NUNCA realocar estes GPIOs — estão no header E no conector FPC da câmera.
+ *
+ * Confirmado pelo pinout oficial da placa (docs/ESP32S3_Pinout.png):
+ *   D0 (Y2)=11  D1 (Y3)=9   D2 (Y4)=8   D3 (Y5)=10
+ *   D4 (Y6)=12  D5 (Y7)=18  D6 (Y8)=17  D7 (Y9)=16
+ *   PCLK=13     XCLK=15     VSYNC=6     HREF=7
+ *   SIOD (SDA)=4             SIOC (SCL)=5
+ *   RESET=-1 (tied 3V3)     PWDN=-1 (tied GND)
+ *
+ * I2C câmera (GPIO 4/5) pode ser compartilhado com IMU e fuel gauge
+ * quando etapa-8.x for implementada (endereços não colidem).
+ *
+ * TODO(etapa-8.1): inicializar esp32-camera com os pinos acima.
+ */
+#define NB_CAM_PIN_D0       11
+#define NB_CAM_PIN_D1       9
+#define NB_CAM_PIN_D2       8
+#define NB_CAM_PIN_D3       10
+#define NB_CAM_PIN_D4       12
+#define NB_CAM_PIN_D5       18
+#define NB_CAM_PIN_D6       17
+#define NB_CAM_PIN_D7       16
+#define NB_CAM_PIN_PCLK     13
+#define NB_CAM_PIN_XCLK     15
+#define NB_CAM_PIN_VSYNC    6
+#define NB_CAM_PIN_HREF     7
+#define NB_CAM_PIN_SIOD     4       /* I2C SDA — compartilhado com IMU */
+#define NB_CAM_PIN_SIOC     5       /* I2C SCL — compartilhado com IMU */
+#define NB_CAM_PIN_RESET    (-1)    /* Tied 3.3V na placa */
+#define NB_CAM_PIN_PWDN     (-1)    /* Tied GND na placa */
+
+/* ── GPIOs Livres / Reserva ───────────────────────────────────────────────── */
+/*
+ * GPIO 3  (T3): spare — touch futuro ou periférico adicional
+ * GPIO 46:      spare — strapping (pull-down interno); não usar como saída
+ * GPIO 48:      LED onboard azul da placa Freenove — reservado para status visual
+ *               NÃO repurposear: útil em debug e diferencia estados de boot
+ *
+ * GPIOs que NUNCA devem ser usados:
+ *   GPIO 0        — strapping boot mode (pull-down = download mode)
+ *   GPIO 43/44    — UART0 TX/RX (debug/programming)
+ *   GPIO 26–37    — PSRAM/Flash interno (inacessíveis no N16R8)
+ *
+ * GPIO 45 (display DC): strapping VDD_SPI — já comprometido, funcional.
+ *   Verificar com osciloscópio se há glitch LOW durante power-on.
+ *   Se houver: adicionar pull-up 10kΩ externo.
+ *
+ * GPIO 46: NÃO usar para UART RX nem para qualquer sinal TTL idle-HIGH.
+ *   Pull-down interno em reset faz ROM habilitar debug na UART0 em download
+ *   mode quando GPIO 46 está puxado HIGH — corrompe uploads via esptool.
  */
 
 #endif /* NB_HW_CONFIG_H */
