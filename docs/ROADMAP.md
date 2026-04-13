@@ -228,40 +228,133 @@ Critérios adicionais de integração do Bloco 0:
 
 ### Etapa 2.1 — WS2812 LEDs
 
-**Dependências:** Bloco 0 concluído
+**Dependências:** Bloco 0 concluído  
 **Hardware necessário:** Sim
 
 **O que entra:**
 
 - `led_hal`: RMT com driver `led_strip` do ESP-IDF.
-- `led_service`: `led_set_color`, `led_set_all`, `led_fade_to(ms)`, `led_blink(count)`, `led_breathe(period_ms)`.
-- Presets de cor: boot (branco pulsante), idle (quente baixo), touch (flash quente), safe mode (laranja), error (vermelho pulsante).
+- `led_service`: serviço não-bloqueante com `init`, `update(dt_ms)` e flush controlado para o HAL.
+- API pública:
+  - `led_set_color(idx, color)`
+  - `led_set_all(color)`
+  - `led_set_brightness(uint8_t)`
+  - `led_fade_to(color, ms)`
+  - `led_blink(count)`
+  - `led_breathe(period_ms)`
+- Controle por LED individual e em conjunto.
+- Presets de estado:
+  - boot (branco pulsante)
+  - idle (quente baixo)
+  - touch (flash quente)
+  - safe mode (laranja)
+  - error (vermelho pulsante)
+- Camadas de comportamento:
+  - `base state` persistente
+  - `overlay effect` temporário com retorno automático ao estado base
+- Prioridade entre estados:
+  - `ERROR > SAFE_MODE > TOUCH > BOOT > IDLE`
+- Transições não-bloqueantes com easing perceptual.
+- Correção gamma para brilho visualmente mais linear.
+- Limitador global de brilho/corrente para evitar pico desnecessário no barramento.
+- Paleta nomeada/calibrada do projeto.
+- Estrutura preparada para reuso pelo `idle_service` na Etapa 5.2.
+- Patterns adicionais leves e reutilizáveis:
+  - `flash_decay`
+  - `heartbeat_pulse`
+  - `solid`
+  - `pulse`
+- Respiração com pequena diferença de fase entre os 2 LEDs para evitar visual excessivamente mecânico.
+- Timeout automático de efeitos transitórios.
+- Otimização para só enviar frame ao WS2812 quando houver mudança real de estado.
+- Modo noturno com brilho reduzido por configuração.
 
 **Critérios de aceitação:**
 
 - [ ] Cores corretas em ambos os LEDs sem glitch de timing
+- [ ] `led_set_brightness(0..255)`: gradação visualmente suave
 - [ ] Fade de 0% a 100% em 500ms: visualmente linear
 - [ ] `led_breathe(4000)`: ciclo sinusoidal por 2 minutos sem drift
+- [ ] `flash_decay` de touch é visivelmente limpo e retorna ao estado base sem salto
+- [ ] `heartbeat_pulse` é distinguível de `breathe` e visualmente agradável
+- [ ] `touch` como efeito transitório retorna automaticamente ao estado base
+- [ ] `error` e `safe mode` sempre sobrepõem `idle`
+- [ ] Controle individual dos 2 LEDs funciona sem artefatos
+- [ ] Diferença de fase entre LEDs em idle permanece sutil e estável
+- [ ] Brilho máximo limitado: sem brownout/reset em teste contínuo de 5 minutos
+- [ ] Serviço roda sem bloquear render, touch ou loop principal
+- [ ] Frames não são reenviados inutilmente quando não há mudança visual
+- [ ] API e arquitetura reutilizáveis em 5.2 sem refator grande
+
+**Implementação:** `components/nb_hal/led_hal.[c/h]` + `components/services/led_service/led_service.[c/h]`  
+**GPIO LED DATA:** 19 (RMT canal 0, 2 LEDs em série)
 
 ---
 
 ### Etapa 2.2 — Touch Capacitivo
 
-**Dependências:** Bloco 0 concluído
+**Dependências:** Bloco 0 concluído  
 **Hardware necessário:** Sim (fita de cobre conectada)
 
 **O que entra:**
 
-- `touch_hal`: touch peripheral ESP32-S3, polling a 50Hz, calibração de baseline no boot.
-- `touch_service`: detecta TAP (<300ms), LONG_PRESS (>800ms), SUSTAINED (>3s), WAKE (toque em SLEEPING). Publica eventos correspondentes.
-- Threshold = baseline × (1 + SENSITIVITY_FACTOR). SENSITIVITY_FACTOR em NVS.
+- `touch_hal`: uso do periférico touch do ESP32-S3 com polling fixo a `50 Hz`.
+- Calibração de baseline no boot.
+- `touch_service`: interpretação de toque em nível mais alto.
+- Eventos mínimos:
+  - `TAP` (<300ms)
+  - `LONG_PRESS` (>800ms)
+  - `SUSTAINED` (>3s)
+  - `WAKE` (toque em `SLEEPING`)
+- Threshold baseado em baseline × `SENSITIVITY_FACTOR`.
+- `SENSITIVITY_FACTOR` persistido em NVS.
+- Debounce de entrada para evitar ruído e falsos gatilhos.
+- Histerese entre `touch_on` e `touch_off` para evitar chatter perto do threshold.
+- Recalibração lenta de baseline quando o sistema estiver claramente sem toque.
+- Proteção contra “baseline poisoning”:
+  - não recalibrar enquanto houver toque ativo
+  - não recalibrar durante ruído excessivo
+- Estados internos do serviço:
+  - `IDLE`
+  - `TOUCHING`
+  - `LONG_PRESSING`
+  - `SUSTAINED_ACTIVE`
+- Separação entre:
+  - eventos one-shot (`TAP`, `LONG_PRESS`, `WAKE`)
+  - estado contínuo (`is_touched`, `touch_duration_ms`)
+- API de leitura para debug:
+  - valor cru atual
+  - baseline atual
+  - threshold atual
+  - estado atual
+- Timeout de estabilização após boot para evitar falso toque na partida.
+- Estrutura preparada para integração futura com:
+  - LEDs (`touch flash`)
+  - expressão facial
+  - transições de estado do robô
+
+**O que fica de fora nesta etapa:**
+
+- gestos complexos
+- multi-touch
+- reconhecimento por posição
+- sensor fusion com emoção/comportamento
+- wake por interrupção profunda de energia
+- ajuste automático avançado por contexto
 
 **Critérios de aceitação:**
 
 - [ ] TAP detectado em <20ms após toque
 - [ ] 5 minutos sem toque: zero falsos positivos
 - [ ] TAP vs LONG_PRESS: distinguíveis de forma confiável em 20 tentativas
-- [ ] Operação simultânea de servos + touch: sem interferência (testar no Bloco 3)
+- [ ] Operação simultânea de servos + touch: sem interferência perceptível
+- [ ] Touch não entra em chatter ao ficar próximo do threshold
+- [ ] Baseline permanece estável em repouso por 10 minutos
+- [ ] Recalibração lenta compensa drift ambiental sem gerar falso evento
+- [ ] Durante toque contínuo, baseline não deriva de forma a “engolir” o toque
+- [ ] `WAKE` em estado `SLEEPING` funciona de forma confiável
+- [ ] Métricas de debug (raw, baseline, threshold, state) refletem corretamente o comportamento observado
+- [ ] Serviço roda sem bloquear render, LEDs ou loop principal
 
 ---
 

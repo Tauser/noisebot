@@ -15,15 +15,60 @@
 
 ### Recursos de Periféricos Relevantes
 
-| Periférico | Qtd disponível                          | Uso no NoiseBot                      |
-| ---------- | --------------------------------------- | ------------------------------------ |
-| SPI        | 4 (SPI0/1 internos, SPI2/3 disponíveis) | SPI2: display, SPI3: microSD         |
-| I2S        | 2                                       | I2S0: mic, I2S1: speaker             |
-| UART       | 3                                       | UART0: debug, UART1: FE-TTLinker     |
-| RMT        | 8 canais                                | 1 canal: WS2812                      |
-| Touch      | 14 canais                               | 1+ canais: fita de cobre             |
-| I2C        | 2                                       | Reservado: IMU, fuel gauge (adiados) |
-| LEDC/PWM   | 8 canais                                | 1 canal: backlight display           |
+| Periférico | Qtd disponível                          | Uso no NoiseBot                              |
+| ---------- | --------------------------------------- | -------------------------------------------- |
+| SPI        | 4 (SPI0/1 internos, SPI2/3 disponíveis) | SPI2: display                                |
+| SDMMC      | 1                                       | SDMMC 1-bit: microSD (onboard)              |
+| I2S        | 2                                       | I2S0: mic + speaker (full-duplex); I2S1: livre |
+| UART       | 3                                       | UART0: debug, UART1: FE-TTLinker            |
+| RMT        | 8 canais                                | 1 canal: WS2812                              |
+| Touch      | 14 canais                               | T2 (GPIO 2): fita de cobre                  |
+| I2C        | 2                                       | Reservado: câmera SCCB + IMU (adiados)      |
+| LEDC/PWM   | 8 canais                                | Disponível (backlight caso ILI9342)         |
+
+---
+
+## Mapa de GPIOs
+
+| GPIO  | Status            | Periférico / Função                                      |
+| ----- | ----------------- | -------------------------------------------------------- |
+| 0     | EVITAR            | Strapping: boot mode (LOW = download mode)               |
+| 1     | EM USO            | I2S0 DIN — speaker MAX98357A TX (sacrifica T1)          |
+| 2     | EM USO            | Touch T2 — fita de cobre                                |
+| 3     | SPARE             | Touch T3, JTAG — reserva para expansão                  |
+| 4     | RESERVADO\_CAMERA | DVP SIOD (SDA câmera + I2C IMU futuro)                  |
+| 5     | RESERVADO\_CAMERA | DVP SIOC (SCL câmera + I2C IMU futuro)                  |
+| 6     | RESERVADO\_CAMERA | DVP VSYNC                                                |
+| 7     | RESERVADO\_CAMERA | DVP HREF                                                 |
+| 8     | RESERVADO\_CAMERA | DVP D2 (Y4)                                              |
+| 9     | RESERVADO\_CAMERA | DVP D1 (Y3)                                              |
+| 10    | RESERVADO\_CAMERA | DVP D3 (Y5)                                              |
+| 11    | RESERVADO\_CAMERA | DVP D0 (Y2)                                              |
+| 12    | RESERVADO\_CAMERA | DVP D4 (Y6)                                              |
+| 13    | RESERVADO\_CAMERA | DVP PCLK                                                 |
+| 14    | EM USO            | I2S0 SD — mic INMP441 RX (sacrifica T14)                |
+| 15    | RESERVADO\_CAMERA | DVP XCLK                                                 |
+| 16    | RESERVADO\_CAMERA | DVP D7 (Y9)                                              |
+| 17    | RESERVADO\_CAMERA | DVP D6 (Y8)                                              |
+| 18    | RESERVADO\_CAMERA | DVP D5 (Y7)                                              |
+| 19    | EM USO            | WS2812 RMT — 2 LEDs externos (= USB OTG D-)             |
+| 20    | EM USO            | UART1 TX — FE-TTLinker (servo)                          |
+| 21    | EM USO            | SPI2 MOSI — display ST7789                              |
+| 22–25 | N/A               | Não existem no ESP32-S3                                  |
+| 26–32 | INACESSÍVEL       | Octal PSRAM (SPI0/1 interno, N16R8)                     |
+| 33    | EM USO            | UART1 RX — FE-TTLinker (servo)                          |
+| 34–37 | INACESSÍVEL       | Flash (SPI0/1 interno, N16R8)                           |
+| 38    | EM USO            | SDMMC CMD — microSD                                     |
+| 39    | EM USO            | SDMMC CLK — microSD                                     |
+| 40    | EM USO            | SDMMC DATA0 — microSD                                   |
+| 41    | EM USO            | I2S0 BCLK — mic + speaker compartilhado                 |
+| 42    | EM USO            | I2S0 LRCK — mic + speaker compartilhado                 |
+| 43    | RESERVADO\_SYS    | UART0 TX — debug/programming                            |
+| 44    | RESERVADO\_SYS    | UART0 RX — debug/programming                            |
+| 45    | EM USO ⚠          | SPI2 DC — display ST7789 (strapping VDD\_SPI)           |
+| 46    | EVITAR            | Strapping SDIO: pull-down interno corrompe upload UART  |
+| 47    | EM USO            | SPI2 SCLK — display ST7789                              |
+| 48    | RESERVADO\_SYS    | LED onboard azul Freenove — status visual, não repurpose |
 
 ---
 
@@ -31,81 +76,95 @@
 
 ### Display — ST7789 2" (SPI2)
 
-| Sinal | GPIO | Notas                                     |
-| ----- | ---- | ----------------------------------------- |
-| SCLK  | TBD  | SPI2 clock                                |
-| MOSI  | TBD  | SPI2 data                                 |
-| MISO  | TBD  | Não usado pelo ST7789, mas pino reservado |
-| CS    | TBD  | Chip select display                       |
-| DC    | TBD  | Data/Command                              |
-| RST   | TBD  | Reset display (ativo baixo)               |
-| BL    | TBD  | Backlight (LEDC PWM)                      |
+| Sinal | GPIO | Notas                                              |
+| ----- | ---- | -------------------------------------------------- |
+| SCLK  | 47   | SPI2 clock                                         |
+| MOSI  | 21   | SPI2 data                                          |
+| MISO  | —    | Não usado pelo ST7789 (sem leitura)                |
+| CS    | GND  | Tied GND — display sempre selecionado              |
+| DC    | 45   | Data/Command ⚠ strapping pin (VDD_SPI); ver nota  |
+| RST   | —    | Software reset (sem pino físico neste módulo)      |
+| BL    | —    | Sem backlight no módulo ST7789 atual               |
 
-Frequência SPI: 40MHz conservador no bring-up; testar 80MHz após estabilização.
+Frequência SPI: 60MHz (80MHz instável no bring-up). Testado e validado em hardware.
 
-### microSD (SPI3)
+> ⚠ **GPIO 45 (DC) é strapping pin** (VDD\_SPI voltage). O estado ao ligar
+> depende do driver LovyanGFX, que inicializa DC como OUTPUT HIGH antes do
+> primeiro comando. Se houver glitch LOW no boot, adicionar pull-up 10kΩ.
 
-| Sinal | GPIO | Notas          |
-| ----- | ---- | -------------- |
-| CLK   | TBD  | SPI3 clock     |
-| MOSI  | TBD  | SPI3 data out  |
-| MISO  | TBD  | SPI3 data in   |
-| CS    | TBD  | Chip select SD |
+### microSD (SDMMC 1-bit)
 
-O microSD da placa Freenove está onboard. Confirmar pinos com schematic da placa.
-Bus SPI3 dedicado ao SD (não compartilhar com display para evitar arbitragem).
+| Sinal | GPIO | Notas                       |
+| ----- | ---- | --------------------------- |
+| CLK   | 39   | SDMMC clock                 |
+| CMD   | 38   | SDMMC command               |
+| DATA0 | 40   | SDMMC data (1-bit mode)     |
+| CS    | —    | Não usado em SDMMC (sem CS) |
+
+Interface: **SDMMC** (não SPI). SD onboard da placa Freenove, 1-bit mode.
+GPIO 39/40 também são pinos JTAG (TCK/TDO) — JTAG externo incompatível com SD ativo.
 
 ### WS2812 LEDs (RMT)
 
 | Sinal | GPIO | Notas                        |
 | ----- | ---- | ---------------------------- |
-| DATA  | TBD  | RMT canal 0, 2 LEDs em série |
+| DATA  | 19   | RMT canal 0, 2 LEDs em série |
 
 Alimentação: 5V direto. Corrente máxima: ~120mA a 100% RGB (não usar 100% em operação normal).
 
-### INMP441 — Microfone (I2S0)
+> GPIO 19 = USB D- (OTG nativo do ESP32-S3). USB OTG inutilizável enquanto
+> WS2812 estiver inicializado — aceitável; NoiseBot não usa OTG.
 
-| Sinal     | GPIO | Notas                       |
-| --------- | ---- | --------------------------- |
-| WS (LRCK) | TBD  | Word select                 |
-| SCK (BCK) | TBD  | Bit clock                   |
-| SD (DATA) | TBD  | Saída serial do mic         |
-| L/R       | GND  | Canal esquerdo (LOW = left) |
+### INMP441 — Microfone + MAX98357A — Amplificador (I2S0 full-duplex)
 
-Frequência: 16kHz, 32 bits por sample (24 bits úteis, justificados à esquerda).
+Mic (RX) e speaker (TX) **compartilham I2S0** em modo full-duplex.
+BCLK e WS em GPIO 41/42 (sem função touch nem strapping).
+GPIO 14 e 1 usados para dados — sacrificam TOUCH\_PAD\_NUM14 e T1.
+**Restrição:** ambos operam a 16kHz (sample rate unificado).
 
-### MAX98357A — Amplificador (I2S1)
+| Sinal            | GPIO | Periférico        | Notas                             |
+| ---------------- | ---- | ----------------- | --------------------------------- |
+| BCLK (SCK)       | 41   | Mic + Speaker     | Compartilhado — sem função touch  |
+| WS (LRCK)        | 42   | Mic + Speaker     | Compartilhado — sem função touch  |
+| SD (DATA)        | 14   | Mic INMP441       | RX — sacrifica TOUCH\_PAD\_NUM14  |
+| DIN              | 1    | Speaker MAX98357A | TX — sacrifica TOUCH\_PAD\_NUM1   |
+| SD\_MODE         | —    | Speaker MAX98357A | Tied 3.3V (10kΩ) — sempre ativo  |
+| GAIN             | —    | Speaker MAX98357A | Float = 9dB (15W@4Ω max)         |
+| L/R              | GND  | Mic INMP441       | Canal esquerdo                    |
 
-| Sinal    | GPIO | Notas                                   |
-| -------- | ---- | --------------------------------------- |
-| BCLK     | TBD  | Bit clock                               |
-| LRC (WS) | TBD  | Left/right clock                        |
-| DIN      | TBD  | Dado serial                             |
-| SD_MODE  | TBD  | HIGH=ativo, LOW=shutdown (zero consumo) |
-| GAIN     | —    | Hardware (resistor/float define ganho)  |
-
-Configuração de ganho padrão: pino GAIN flutuante = 9dB (15W@4Ω max).
-Controle de volume: via divisão digital do sinal PCM — MAX98357A não tem controle I2C.
+Controle de volume: divisão digital do sinal PCM (MAX98357A não tem I2C).
+GPIO 48: LED onboard azul da placa Freenove — reservado para status visual, não repurposear.
 
 ### SCS0009 Servos (UART1 via FE-TTLinker)
 
-| Sinal | GPIO | Notas                     |
-| ----- | ---- | ------------------------- |
-| TX    | TBD  | UART1 TX → FE-TTLinker RX |
-| RX    | TBD  | UART1 RX ← FE-TTLinker TX |
+| Sinal | GPIO | Notas                      |
+| ----- | ---- | -------------------------- |
+| TX    | 20   | UART1 TX → FE-TTLinker RX  |
+| RX    | 33   | UART1 RX ← FE-TTLinker TX  |
 
-Baud rate: confirmar com datasheet SCS0009 (padrão Feetech: 1Mbps, mas configurável).
-IDs de servo: NECK_PAN = 1, NECK_TILT = 2.
+Nenhum strapping pin em uso. Uploads via UART funcionam sem interferência.
+
+> **Por que não GPIO 46 para RX:**  
+> GPIO 46 tem pull-down interno durante reset. Com pull-up externo (para manter
+> idle UART HIGH), o pino lê HIGH em download mode. Isso faz o ROM do ESP32-S3
+> habilitar mensagens de debug na UART0, corrompendo o handshake do esptool.
+> Resistores de 4.7kΩ ou 10kΩ não resolvem — o problema é o nível lógico, não
+> a impedância. GPIO 33 não tem essa restrição.
+
+Baud rate: 1Mbps (padrão Feetech SCS0009).
+IDs de servo: NECK\_PAN = 1, NECK\_TILT = 2.
 Alimentação servos: 5V (linha separada com capacitor bulk obrigatório).
 
 ### Touch — Fita de Cobre (Touch Peripheral)
 
-| Sinal    | GPIO | Notas                          |
-| -------- | ---- | ------------------------------ |
-| TOUCH_IN | TBD  | GPIO com função touch ESP32-S3 |
+| Sinal    | GPIO | Notas                              |
+| -------- | ---- | ---------------------------------- |
+| TOUCH\_IN | 2   | Touch T2 — fita de cobre          |
 
-Threshold calibrado em runtime (baseline × 1 + SENSITIVITY_FACTOR).
-SENSITIVITY_FACTOR default: 0.2 (ajustar empiricamente com material final).
+Threshold calibrado em runtime (baseline × 1 + SENSITIVITY\_FACTOR).
+SENSITIVITY\_FACTOR default: 0.2 (ajustar empiricamente com material final).
+
+GPIOs touch disponíveis para expansão futura: GPIO 1 (T1, em uso como WS), GPIO 3 (T3, spare).
 
 ---
 
@@ -114,19 +173,30 @@ SENSITIVITY_FACTOR default: 0.2 (ajustar empiricamente com material final).
 ### OV2640 — Câmera (DVP, ADIADA)
 
 A câmera OV2640 usa a interface DVP (parallel) com os pinos abaixo.
-**ESTES PINOS NÃO PODEM SER REUSADOS.** Estão fisicamente conectados na placa Freenove.
+**ESTES PINOS NÃO PODEM SER REUSADOS.** Estão no header da placa E no conector FPC da câmera.
+Confirmado pelo pinout oficial (docs/ESP32S3\_Pinout.png).
 
-| Sinal DVP  | GPIO          | Restrição                     |
-| ---------- | ------------- | ----------------------------- |
-| D0–D7      | TBD (8 pinos) | Dados de pixel — RESERVADOS   |
-| XCLK       | TBD           | Clock para câmera — RESERVADO |
-| PCLK       | TBD           | Pixel clock — RESERVADO       |
-| VSYNC      | TBD           | Sync vertical — RESERVADO     |
-| HREF       | TBD           | Sync horizontal — RESERVADO   |
-| SIOD (SDA) | TBD           | I2C câmera — RESERVADO        |
-| SIOC (SCL) | TBD           | I2C câmera — RESERVADO        |
-| RESET      | TBD           | Reset câmera — RESERVADO      |
-| PWDN       | TBD           | Power down câmera             |
+| Sinal DVP  | GPIO | Restrição                                       |
+| ---------- | ---- | ----------------------------------------------- |
+| D0 (Y2)    | 11   | Dado pixel — RESERVADO\_CAMERA                  |
+| D1 (Y3)    | 9    | Dado pixel — RESERVADO\_CAMERA                  |
+| D2 (Y4)    | 8    | Dado pixel — RESERVADO\_CAMERA                  |
+| D3 (Y5)    | 10   | Dado pixel — RESERVADO\_CAMERA                  |
+| D4 (Y6)    | 12   | Dado pixel — RESERVADO\_CAMERA                  |
+| D5 (Y7)    | 18   | Dado pixel — RESERVADO\_CAMERA                  |
+| D6 (Y8)    | 17   | Dado pixel — RESERVADO\_CAMERA                  |
+| D7 (Y9)    | 16   | Dado pixel — RESERVADO\_CAMERA                  |
+| PCLK       | 13   | Pixel clock — RESERVADO\_CAMERA                 |
+| XCLK       | 15   | Clock saída para câmera — RESERVADO\_CAMERA     |
+| VSYNC      | 6    | Sync vertical — RESERVADO\_CAMERA               |
+| HREF       | 7    | Sync horizontal — RESERVADO\_CAMERA             |
+| SIOD (SDA) | 4    | I2C câmera — compartilhável com IMU (etapa-8.x) |
+| SIOC (SCL) | 5    | I2C câmera — compartilhável com IMU (etapa-8.x) |
+| RESET      | —    | Tied 3.3V na placa (sem pino GPIO)              |
+| PWDN       | —    | Tied GND na placa (sem pino GPIO)               |
+
+> I2C da câmera (GPIO 4/5) pode ser compartilhado com MPU-6050 (0x68),
+> bq25185 (0x6B) e MAX17048 (0x36) — endereços não colidem com OV2640 (0x3C).
 
 Ao reativar a câmera: alocar 300KB de PSRAM para frame buffer (manter headroom desde já).
 
