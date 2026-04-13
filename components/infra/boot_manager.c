@@ -26,6 +26,9 @@
 #include "display_hal.h"
 #include "render_service.h"
 #include "expression_service.h"
+#include "led_service.h"
+#include "touch_service.h"
+#include "nb_config_keys.h"
 
 #define TAG "nb_boot"
 
@@ -292,17 +295,74 @@ static esp_err_t phase_storage(void)
     return ESP_OK;
 }
 
+/* ── Task de update do led_service ──────────────────────────────────────── */
+/*
+ * Tick a 50Hz (20ms). Prioridade baixa — não interfere com render nem safety.
+ * Stack: 2KB — led_service_update usa só stack local + mutex.
+ *
+ * Task: "nb_led_task"  Core: qualquer  Prioridade: 3  Stack: 2048
+ */
+/* ── Relay de eventos de touch → event bus ───────────────────────────────── */
+
+static void on_touch_event(nb_touch_event_t evt)
+{
+    static const nb_event_type_t k_map[] = {
+        NB_EVT_TOUCH_TAP,
+        NB_EVT_TOUCH_LONG_PRESS,
+        NB_EVT_TOUCH_SUSTAINED,
+        NB_EVT_TOUCH_WAKE,
+    };
+    nb_event_t bus_evt = { .type = k_map[evt] };
+    nb_event_publish(&bus_evt);
+
+    /* Efeito visual imediato no TAP. */
+    if (evt == NB_TOUCH_EVT_TAP) {
+        led_effect_touch();
+    }
+}
+
+/* ── Task de update do led_service ──────────────────────────────────────── */
+static void led_update_task(void *arg)
+{
+    (void)arg;
+    const TickType_t period = pdMS_TO_TICKS(20);
+    TickType_t last_wake = xTaskGetTickCount();
+
+    while (1) {
+        led_service_update(20);
+        vTaskDelayUntil(&last_wake, period);
+    }
+}
+
+/* ── Task de update do touch_service ────────────────────────────────────── */
+/*
+ * Task: "nb_touch_task"  Core: qualquer  Prioridade: 4  Stack: 2048
+ * 50Hz para garantir detecção de TAP em <20ms.
+ */
+static void touch_update_task(void *arg)
+{
+    (void)arg;
+    const TickType_t period = pdMS_TO_TICKS(20);
+    TickType_t last_wake = xTaskGetTickCount();
+
+    while (1) {
+        touch_service_update(20);
+        vTaskDelayUntil(&last_wake, period);
+    }
+}
+
 /*
  * PHASE_HAL — Etapa 1.1 + Blocos 2-3
  *
- * Inicializa: display_hal (Etapa 1.1). LEDs, touch, servo PING são stubs.
- * Falha no display é não-crítica em safe mode (sem expressão visual, mas
- * sistema continua para logging). Em modo normal é fatal.
+ * Inicializa: display_hal (Etapa 1.1), led_service (Etapa 2.1).
+ * Touch (Etapa 2.2), Servo PING (Etapa 3.1): stubs.
+ * Falha no display é não-crítica em safe mode.
  */
 static esp_err_t phase_hal(void)
 {
     phase_enter(NB_BOOT_PHASE_HAL);
 
+    /* Display (Etapa 1.1) */
     esp_err_t err = display_hal_init();
     if (err != ESP_OK) {
         if (s_status.safe_mode) {
@@ -313,8 +373,51 @@ static esp_err_t phase_hal(void)
         }
     }
 
-    /* LEDs (Etapa 2.1), Touch (Etapa 2.2), Servo PING (Etapa 3.1) */
-    phase_stub(NB_BOOT_PHASE_HAL, "Blocos 2-3");
+    /* LEDs (Etapa 2.1) */
+    err = led_service_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "led_service_init falhou: %s — LEDs desativados", esp_err_to_name(err));
+    } else {
+        BaseType_t rc = xTaskCreate(led_update_task, "nb_led_task",
+                                    2048, NULL, 3, NULL);
+        NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate nb_led_task falhou");
+    }
+
+    /* Touch (Etapa 2.2) */
+    {
+        /*
+         * CALIBRAÇÃO TEMPORÁRIA — override direto em float.
+         *
+         * O pad de cobre atual gera ~1% de variação de sinal no toque, mas o
+         * noise floor do sensor oscila até ~0.8% acima do baseline em repouso.
+         * Usando 0.008f (0.8%) como threshold: fica abaixo do pico de toque (~1%)
+         * mas acima da maior parte do ruído. Combinado com DEBOUNCE_ON_COUNT=3
+         * (60ms contínuos acima do threshold), elimina disparos espúrios.
+         *
+         * Referência medida: baseline ~36950, noise peak ~37350 (+1.08%),
+         * toque real provavelmente >37350. Ajustar se toque legítimo não for
+         * detectado ou se falsos positivos persistirem.
+         *
+         * Não usar NB_CFG_DEFAULT_TOUCH_SENS / 100.0f — daria 0.01f (1%), alto demais.
+         * Migrar para schema sub-percentual quando config_manager suportar migração.
+         */
+        float sens_factor = 0.008f;
+
+        err = touch_service_init();
+        if (err != ESP_OK) {
+            NB_LOGW(TAG, "touch_service_init falhou: %s — touch desativado",
+                    esp_err_to_name(err));
+        } else {
+            touch_service_set_sensitivity(sens_factor);
+            touch_service_set_event_cb(on_touch_event);
+            BaseType_t rc = xTaskCreate(touch_update_task, "nb_touch_task",
+                                        4096, NULL, 4, NULL);
+            NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate nb_touch_task falhou");
+        }
+    }
+
+    /* Servo PING (Etapa 3.1) */
+    phase_stub(NB_BOOT_PHASE_HAL, "Etapa 3.1");
 
     phase_ok(NB_BOOT_PHASE_HAL);
     return ESP_OK;
@@ -427,6 +530,10 @@ static esp_err_t phase_complete(void)
 
     /* Reportar sucesso (reseta boot_count e brn_count no NVS). */
     boot_manager_report_success();
+
+    /* Transição de LED: BOOT → IDLE (breathe quente). */
+    led_base_set(NB_LED_BASE_BOOT, false);
+    led_base_set(NB_LED_BASE_IDLE, true);
 
     phase_ok(NB_BOOT_PHASE_COMPLETE);
     return ESP_OK;
