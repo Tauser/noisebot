@@ -75,6 +75,11 @@ static constexpr uint32_t BLINK_ASYM_THRESH = 52u;   /* ~20% */
 static constexpr int64_t  BLINK_ASYM_MIN_US = 20000LL;
 static constexpr int64_t  BLINK_ASYM_RANGE  = 80000LL;
 
+/* Blink bar EMO: acima deste blink_ph, os dois olhos são substituídos por uma
+ * barra única que abrange ambos. Threshold 0.75 → barra visível por ~2 frames. */
+static constexpr float   BLINK_BAR_PH_THRESH = 0.75f;
+static constexpr int16_t BLINK_BAR_EXTRA_HW  = 3;    /* px de padding além das bordas externas dos olhos */
+
 typedef enum {
     BLINK_IDLE,
     BLINK_CLOSING,
@@ -297,16 +302,21 @@ static int64_t poisson_blink_delay_us(void)
 static void blink_trigger_bilateral(int64_t now_us)
 {
     s_blink[0].state = BLINK_CLOSING;
-    s_blink[0].t0    = now_us;
     s_blink[1].state = BLINK_CLOSING;
 
     uint32_t rnd = esp_random();
     if ((rnd & 0xFFu) < BLINK_ASYM_THRESH) {
-        /* Assimetria: olho direito começa ligeiramente atrasado */
-        int64_t delay = BLINK_ASYM_MIN_US
-                      + (int64_t)(((rnd >> 8) & 0x7Fu) * (BLINK_ASYM_RANGE / 128LL));
-        s_blink[1].t0 = now_us + delay;
+        /*
+         * Assimetria: qual olho atrasa é sorteado a cada blink (bit 16 do rng).
+         * Evita o padrão de direito sempre atrasado, tornando o efeito mais natural.
+         */
+        int64_t delay    = BLINK_ASYM_MIN_US
+                         + (int64_t)(((rnd >> 8) & 0x7Fu) * (BLINK_ASYM_RANGE / 128LL));
+        int     late_eye = (int)((rnd >> 16) & 1u);   /* 0 = esq atrasa, 1 = dir atrasa */
+        s_blink[late_eye].t0     = now_us + delay;
+        s_blink[1 - late_eye].t0 = now_us;
     } else {
+        s_blink[0].t0 = now_us;
         s_blink[1].t0 = now_us;
     }
 }
@@ -405,7 +415,7 @@ static void draw_emo_eye(LGFX_Sprite *spr,
     int16_t cx  = base_cx;
     int16_t cy  = (int16_t)(cy_f + 0.5f);
 
-    /* Olho praticamente fechado: linha de blink */
+    /* Fallback: eff_open numericamente zero (fase de barra é tratada no render_layer_cb) */
     if (eff_open < 0.03f) {
         spr->drawFastHLine(cx - HW_I, cy, HW_I * 2, color);
         return;
@@ -544,32 +554,51 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
 
     /* Canvas já limpo em TFT_BLACK pelo render_service */
 
-    /* Olho esquerdo */
-    draw_emo_eye(spr,
-                 left_cx, s_current.y_l,
-                 s_current.open_l,
-                 s_current.tl_l, s_current.tr_l,
-                 s_current.bl_l, s_current.br_l,
-                 s_current.squint_l,
-                 s_current.rt_top, s_current.rb_bot,
-                 s_current.cv_top, s_current.cv_bot,
-                 s_blink[0].phase,
-                 s_current.color);
+    /*
+     * Blink bar EMO: quando qualquer olho entra na fase de barra, os dois olhos
+     * são substituídos por uma barra única que vai da borda externa do olho
+     * esquerdo à borda externa do olho direito (+ padding). Mais larga que
+     * cada olho individual — visual unificado característico do estilo EMO.
+     */
+    if (s_blink[0].phase > BLINK_BAR_PH_THRESH ||
+        s_blink[1].phase > BLINK_BAR_PH_THRESH) {
 
-    /* Olho direito — sem espelhamento de cantos.
-     * tl_r/bl_r = lados esquerdo/interno (menor x) na perspectiva do observador.
-     * tr_r/br_r = lados direito/externo.
-     * Simetria de expressão: tl_l==tr_r (externos) e tr_l==tl_r (internos). */
-    draw_emo_eye(spr,
-                 right_cx, s_current.y_r,
-                 s_current.open_r,
-                 s_current.tl_r, s_current.tr_r,
-                 s_current.bl_r, s_current.br_r,
-                 s_current.squint_r,
-                 s_current.rt_top, s_current.rb_bot,
-                 s_current.cv_top, s_current.cv_bot,
-                 s_blink[1].phase,
-                 s_current.color);
+        float   bar_cy_f = (float)EYE_CY_BASE
+                         + (s_current.y_l + s_current.y_r) * 0.5f * Y_TRAVEL_PX;
+        int16_t bar_cy   = (int16_t)(bar_cy_f + 0.5f);
+        int16_t bx       = left_cx  - HW_I - BLINK_BAR_EXTRA_HW;
+        int16_t bw       = (right_cx + HW_I + BLINK_BAR_EXTRA_HW) - bx;
+
+        spr->drawFastHLine(bx, bar_cy - 1, bw, s_current.color);
+        spr->drawFastHLine(bx, bar_cy,     bw, s_current.color);
+        spr->drawFastHLine(bx, bar_cy + 1, bw, s_current.color);
+
+    } else {
+
+        /* Olho esquerdo */
+        draw_emo_eye(spr,
+                     left_cx, s_current.y_l,
+                     s_current.open_l,
+                     s_current.tl_l, s_current.tr_l,
+                     s_current.bl_l, s_current.br_l,
+                     s_current.squint_l,
+                     s_current.rt_top, s_current.rb_bot,
+                     s_current.cv_top, s_current.cv_bot,
+                     s_blink[0].phase,
+                     s_current.color);
+
+        /* Olho direito — tl_r/bl_r = lados internos, tr_r/br_r = externos. */
+        draw_emo_eye(spr,
+                     right_cx, s_current.y_r,
+                     s_current.open_r,
+                     s_current.tl_r, s_current.tr_r,
+                     s_current.bl_r, s_current.br_r,
+                     s_current.squint_r,
+                     s_current.rt_top, s_current.rb_bot,
+                     s_current.cv_top, s_current.cv_bot,
+                     s_blink[1].phase,
+                     s_current.color);
+    }
 }
 
 /* ── API pública (extern "C") ────────────────────────────────────────────── */
