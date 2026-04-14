@@ -28,6 +28,9 @@
 
 #define TAG "audio_svc"
 
+/* Mínimo de chunks consecutivos acima do threshold para declarar VAD START (3 × 16ms = 48ms). */
+#define VAD_ENTER_CHUNKS 3U
+
 /* ── Configuração da task ────────────────────────────────────────────────── */
 
 #define AUDIO_TASK_STACK    4096U
@@ -74,12 +77,14 @@ static struct {
     /* Playback */
     volatile play_state_t play_state;
     char                 play_path[128];
+    bool                 play_raw_pcm;   /* true = PCM raw (sem header WAV) */
     uint8_t              volume;         /* 0–100 */
 
     /* VAD */
     int32_t              vad_threshold;
     vad_state_t          vad_state;
     int64_t              vad_silence_start_us;
+    uint8_t              vad_enter_count;  /* chunks consecutivos acima do threshold */
 
     /* Gravação de diagnóstico */
     rec_state_t          rec_state;
@@ -178,14 +183,19 @@ static void vad_update(const int32_t *mic, size_t n)
 
     if (rms > s.vad_threshold) {
         if (s.vad_state == VAD_SILENCE) {
-            s.vad_state = VAD_ACTIVE;
-            s.vad_silence_start_us = 0;
-            if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
-            ESP_LOGD(TAG, "VAD START rms=%ld", (long)rms);
+            if (++s.vad_enter_count >= VAD_ENTER_CHUNKS) {
+                s.vad_enter_count = 0;
+                s.vad_state = VAD_ACTIVE;
+                s.vad_silence_start_us = 0;
+                if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
+                ESP_LOGI(TAG, "VAD START rms=%ld", (long)rms);
+            }
         } else {
+            s.vad_enter_count = 0;
             s.vad_silence_start_us = 0;  /* reinicia contador de silêncio */
         }
     } else {
+        s.vad_enter_count = 0;
         if (s.vad_state == VAD_ACTIVE) {
             if (s.vad_silence_start_us == 0) {
                 s.vad_silence_start_us = now_us;
@@ -194,7 +204,7 @@ static void vad_update(const int32_t *mic, size_t n)
                 if (silence_ms >= (int64_t)NB_AUDIO_VAD_SILENCE_MS) {
                     s.vad_state = VAD_SILENCE;
                     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
-                    ESP_LOGD(TAG, "VAD END silence=%lldms", (long long)silence_ms);
+                    ESP_LOGI(TAG, "VAD END silence=%lldms", (long long)silence_ms);
                 }
             }
         }
@@ -237,8 +247,10 @@ static void audio_task(void *arg)
             /* Abrir arquivo na primeira vez */
             if (!wav_file) {
                 char path[128];
+                bool raw_pcm;
                 xSemaphoreTake(s.mutex, portMAX_DELAY);
                 memcpy(path, s.play_path, sizeof(path));
+                raw_pcm = s.play_raw_pcm;
                 xSemaphoreGive(s.mutex);
 
                 wav_file = fopen(path, "rb");
@@ -247,6 +259,15 @@ static void audio_task(void *arg)
                     xSemaphoreTake(s.mutex, portMAX_DELAY);
                     s.play_state = PLAY_IDLE;
                     xSemaphoreGive(s.mutex);
+                } else if (raw_pcm) {
+                    /* PCM raw: sem header, começa no byte 0 */
+                    long file_size = 0;
+                    fseek(wav_file, 0, SEEK_END);
+                    file_size = ftell(wav_file);
+                    fseek(wav_file, 0, SEEK_SET);
+                    uint32_t duration_ms = (uint32_t)((file_size / 2U * 1000U) / 16000U);
+                    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, duration_ms);
+                    ESP_LOGI(TAG, "reproduzindo PCM raw: %s (%ums)", path, (unsigned)duration_ms);
                 } else {
                     uint32_t duration_ms = 0;
                     long data_off = wav_parse_header(wav_file, &duration_ms);
@@ -333,10 +354,10 @@ static void audio_task(void *arg)
                 for (size_t i = 0; i < to_write; i++) {
                     /*
                      * s_mic_buf[i]: valor 24-bit (audio_hal já fez >> 8 do raw 32-bit).
-                     * Para 16-bit, apenas clamp — sem shift adicional.
-                     * INMP441: pico típico de voz direta ~400K–800K (24-bit range ±8M).
+                     * Shift >> 8 para descer ao range 16-bit antes do clamp.
+                     * Pico típico de voz direta ~400K–800K → ~1500–3000 em 16-bit.
                      */
-                    int32_t v = s_mic_buf[i];
+                    int32_t v = (s_mic_buf[i] >> 8) << 3;  /* +18 dB de ganho de gravação */
                     if (v >  32767) v =  32767;
                     if (v < -32768) v = -32768;
                     s_rec_chunk[i] = (int16_t)v;
@@ -409,7 +430,19 @@ esp_err_t audio_play_file(const char *path)
     if (!s.initialized || !path) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     snprintf(s.play_path, sizeof(s.play_path), "%s", path);
-    s.play_state = PLAY_ACTIVE;
+    s.play_raw_pcm = false;
+    s.play_state   = PLAY_ACTIVE;
+    xSemaphoreGive(s.mutex);
+    return ESP_OK;
+}
+
+esp_err_t audio_play_pcm_raw(const char *path)
+{
+    if (!s.initialized || !path) return ESP_ERR_INVALID_STATE;
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    snprintf(s.play_path, sizeof(s.play_path), "%s", path);
+    s.play_raw_pcm = true;
+    s.play_state   = PLAY_ACTIVE;
     xSemaphoreGive(s.mutex);
     return ESP_OK;
 }

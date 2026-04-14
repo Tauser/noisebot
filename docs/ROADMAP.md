@@ -135,10 +135,10 @@ O desenvolvimento é organizado em **Blocos** (agrupamentos temáticos) e **Etap
 
 Critérios adicionais de integração do Bloco 0:
 
-- [ ] Sistema estável por 1 hora sem periféricos externos: zero panics
-- [ ] Stack high watermark de todas as tasks medido e documentado
-- [ ] Heap usage estável (sem crescimento contínuo)
-- [ ] Safe mode: verificado de ponta a ponta com hardware
+- [x] Sistema estável por 1 hora sem periféricos externos: zero panics
+- [x] Stack high watermark de todas as tasks medido e documentado
+- [x] Heap usage estável (sem crescimento contínuo)
+- [x] Safe mode: verificado de ponta a ponta com hardware
 
 ---
 
@@ -471,9 +471,9 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação:**
 
-- [ ] Gravação de 3s: PCM audível sem artefatos (verificar via playback)
-- [ ] Falar perto do mic: `VOICE_ACTIVITY_START` em <200ms
-- [ ] Silêncio por 500ms: `VOICE_ACTIVITY_END` publicado
+- [x] Gravação de 3s: PCM audível sem artefatos (verificar via playback)
+- [x] Falar perto do mic: `VOICE_ACTIVITY_START` em <200ms
+- [x] Silêncio por 500ms: `VOICE_ACTIVITY_END` publicado
 
 ---
 
@@ -494,10 +494,10 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação:**
 
-- [ ] WAV 16kHz mono 16-bit: playback sem glitch
-- [ ] `audio_set_volume(0)`: silêncio (volume digital zerado)
-- [ ] Streaming de arquivo 1MB: sem OOM, sem glitch
-- [ ] Playback simultâneo com render de face ≥30fps: nenhum artefato em ambos
+- [x] WAV 16kHz mono 16-bit: playback sem glitch
+- [x] `audio_set_volume(0)`: silêncio (volume digital zerado)
+- [x] Streaming de arquivo 1MB: sem OOM, sem glitch
+- [x] Playback simultâneo com render de face ≥30fps: nenhum artefato em ambos
 
 ---
 

@@ -39,10 +39,9 @@ void app_main(void)
 
     /* ── TESTE TEMPORÁRIO BLOCO 4 — remover após verificação ────────────── */
     vTaskDelay(pdMS_TO_TICKS(3000));  /* espera tasks subirem */
-    audio_record_diagnostic("/sdcard/logs/mic_diag.wav", 3);
-    ESP_LOGI(TAG, "TEST: gravando 3s do mic -> /sdcard/logs/mic_diag.wav");
-    /* Para testar playback: copiar WAV para o SD e descomentar:
-     * audio_play_file("/sdcard/assets/audio/greet_01.wav"); */
+    audio_set_volume(80);
+    ESP_LOGI(TAG, "TEST: tocando ding_notif.pcm com VAD ativo");
+    audio_play_pcm_raw("/sdcard/assets/audio/ding_notif.pcm");
     /* ── FIM DO TESTE ────────────────────────────────────────────────────── */
 
     while (1) {

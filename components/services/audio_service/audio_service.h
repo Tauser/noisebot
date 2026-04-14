@@ -47,7 +47,7 @@ extern "C" {
  * Unidade: valor int32_t signed, 24-bit centrado em zero (pós-shift do INMP441).
  * Default calibrado para ambiente de escritório silencioso.
  */
-#define NB_AUDIO_VAD_THRESHOLD_DEFAULT   2000
+#define NB_AUDIO_VAD_THRESHOLD_DEFAULT   80000
 
 /** Silêncio contínuo em ms antes de emitir VOICE_END. */
 #define NB_AUDIO_VAD_SILENCE_MS          300U
@@ -104,6 +104,17 @@ void audio_service_set_event_cb(nb_audio_event_cb_t cb);
  * @return     ESP_OK se comando aceito. ESP_ERR_INVALID_STATE se não iniciado.
  */
 esp_err_t audio_play_file(const char *path);
+
+/**
+ * @brief Inicia reprodução de arquivo PCM raw do SD (sem cabeçalho WAV).
+ *
+ * Assume formato fixo: 16kHz, mono, 16-bit signed little-endian.
+ * Não-bloqueante. Comportamento idêntico a audio_play_file().
+ *
+ * @param path Caminho absoluto no SD (ex: "/sdcard/assets/audio/greet.pcm").
+ * @return     ESP_OK se comando aceito. ESP_ERR_INVALID_STATE se não iniciado.
+ */
+esp_err_t audio_play_pcm_raw(const char *path);
 
 /**
  * @brief Para a reprodução em andamento.
