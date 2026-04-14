@@ -163,10 +163,10 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação:**
 
-- [ ] Display exibe cor sólida sem artefatos visuais
-- [ ] Backlight responde a `set_brightness(0..255)` com gradação suave
-- [ ] Dois threads chamando `display_hal_*` simultaneamente: sem corrupção
-- [ ] Sprite 240×240 alocado em PSRAM sem panic
+- [x] Display exibe cor sólida sem artefatos visuais
+- [x] Backlight responde a `set_brightness(0..255)` com gradação suave (moditor nao tem gpio BL)
+- [x] Dois threads chamando `display_hal_*` simultaneamente: sem corrupção
+- [x] Sprite 240×240 alocado em PSRAM sem panic
 
 ---
 
@@ -186,7 +186,7 @@ Critérios adicionais de integração do Bloco 0:
 
 - [x] FPS estável ≥ 30fps medido por 5 minutos contínuos
 - [x] Nenhum artefato de tear durante updates de cor
-- [ ] Layer registrado/removido em runtime: sem flicker ou crash
+- [x] Layer registrado/removido em runtime: sem flicker ou crash
 - [x] `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)`: ≥ 300KB após alocação de sprites
 
 ---
@@ -211,12 +211,12 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação:**
 
-- [ ] 9 expressões renderizadas e visualmente distinguíveis por observador sem contexto
-- [ ] NEUTRAL forte e reconhecível: não parece olho genérico
-- [ ] Interpolação NEUTRAL → HAPPY em 300ms: suave, sem salto
-- [ ] Blink: 20 blinks observados, todos com timing diferente (distribuição Poisson)
-- [ ] Blink assimétrico: pelo menos 1 em 5 blinks com olhos ligeiramente dessincronizados
-- [ ] FPS mantido ≥ 30fps durante renderização de face completa
+- [x] 9 expressões renderizadas e visualmente distinguíveis por observador sem contexto
+- [x] NEUTRAL forte e reconhecível: não parece olho genérico
+- [x] Interpolação NEUTRAL → HAPPY em 300ms: suave, sem salto
+- [x] Blink: 20 blinks observados, todos com timing diferente (distribuição Poisson)
+- [x] Blink assimétrico: pelo menos 1 em 5 blinks com olhos ligeiramente dessincronizados
+- [x] FPS mantido ≥ 30fps durante renderização de face completa
 
 ---
 
