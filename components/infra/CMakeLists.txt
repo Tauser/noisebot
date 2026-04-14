@@ -22,5 +22,6 @@ idf_component_register(
         expression_service
         led_service
         touch_service
+        audio_service
         motion_service
 )

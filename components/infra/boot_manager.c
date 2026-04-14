@@ -16,6 +16,7 @@
 
 #include "boot_manager.h"
 #include "logger.h"
+#include "esp_timer.h"
 #include "watchdog_service.h"
 #include "error_policy.h"
 #include "config_manager.h"
@@ -28,6 +29,7 @@
 #include "expression_service.h"
 #include "led_service.h"
 #include "touch_service.h"
+#include "audio_service.h"
 #include "servo_hal.h"
 #include "motion_safety.h"
 #include "motion_service.h"
@@ -313,6 +315,24 @@ static esp_err_t phase_storage(void)
  *
  * Task: "nb_led_task"  Core: qualquer  Prioridade: 3  Stack: 2048
  */
+/* ── Relay de eventos de áudio → event bus ──────────────────────────────── */
+
+static void on_audio_event(nb_audio_event_t evt, uint32_t data)
+{
+    nb_event_t bus_evt = {
+        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000LL),
+        .data.u32     = data,
+    };
+    switch (evt) {
+        case NB_AUDIO_EVT_VOICE_START:   bus_evt.type = NB_EVT_VOICE_ACTIVITY_START; break;
+        case NB_AUDIO_EVT_VOICE_END:     bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;   break;
+        case NB_AUDIO_EVT_PLAYBACK_START: bus_evt.type = NB_EVT_AUDIO_STARTED;       break;
+        case NB_AUDIO_EVT_PLAYBACK_END:  bus_evt.type = NB_EVT_AUDIO_ENDED;          break;
+        default: return;
+    }
+    nb_event_publish_async(&bus_evt);
+}
+
 /* ── Relay de eventos de touch → event bus ───────────────────────────────── */
 
 static void on_touch_event(nb_touch_event_t evt)
@@ -506,8 +526,18 @@ static esp_err_t phase_services(void)
     NB_ASSERT(err == ESP_OK, TAG, "expression_service_init falhou: %s",
               esp_err_to_name(err));
 
-    /* audio_service, behavior, conductor: stubs Blocos 4-5 */
-    phase_stub(NB_BOOT_PHASE_SERVICES, "Blocos 4-5 (audio/behavior/conductor)");
+    /* audio_service (Bloco 4) */
+    err = audio_service_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "audio_service_init falhou: %s — audio desativado",
+                esp_err_to_name(err));
+    } else {
+        audio_service_set_event_cb(on_audio_event);
+        audio_set_volume(config_get_volume());
+    }
+
+    /* behavior, conductor: stubs Bloco 5 */
+    phase_stub(NB_BOOT_PHASE_SERVICES, "Bloco 5 (behavior/conductor)");
 
     phase_ok(NB_BOOT_PHASE_SERVICES);
     return ESP_OK;

@@ -461,12 +461,13 @@ Critérios adicionais de integração do Bloco 0:
 **Dependências:** Bloco 0 concluído
 **Hardware necessário:** Sim
 
-**O que entra:**
+**Implementado:**
 
-- `audio_hal` (input): I2S0 RX, 16kHz, 32 bits/sample, DMA double buffer em SRAM.
-- VAD por energia RMS (janela de 256 samples = 16ms).
+- `audio_hal`: I2S0 full-duplex, Philips 32-bit estéreo, 16kHz. Extrai canal L (INMP441).
+- `audio_service`: task "nb_audio_task" Core0 prio6. VAD por RMS sobre janelas de 256 samples (16ms).
+- Threshold ajustável via `audio_service_set_vad_threshold()`. Default: 2000 (escala 24-bit).
 - Eventos: `NB_EVT_VOICE_ACTIVITY_START`, `NB_EVT_VOICE_ACTIVITY_END` (após 300ms de silêncio).
-- Gravação de diagnóstico: 3s de PCM raw para SD via comando.
+- Gravação de diagnóstico: `audio_record_diagnostic(path, duration_s)` → WAV 16-bit mono no SD.
 
 **Critérios de aceitação:**
 
@@ -481,18 +482,20 @@ Critérios adicionais de integração do Bloco 0:
 **Dependências:** 4.1 concluída, SD com assets (Etapa 0.3)
 **Hardware necessário:** Sim
 
-**O que entra:**
+**Implementado:**
 
-- `audio_hal` (output): I2S1 TX, streaming WAV em chunks de 4KB (sem carregar arquivo inteiro).
-- `audio_service`: `audio_play_file(path)`, `audio_play_stop()`, `audio_set_volume(level)`.
-- SD_MODE: HIGH=ativo, LOW=shutdown (zero consumo quando silencioso).
-- Assets iniciais em `assets/audio/`: greet_01–03, idle_01–03, touch_respond_01–03, error_01.
-- Eventos: `NB_EVT_AUDIO_STARTED` (com `duration_ms`), `NB_EVT_AUDIO_ENDED`.
+- `audio_hal` (output): TX em I2S0 (full-duplex com mic). Streaming WAV em chunks de 256 amostras.
+- `audio_service`: `audio_play_file(path)`, `audio_play_stop()`, `audio_set_volume(level)` (0–100).
+- Streaming: lê 512 bytes/chunk do SD, sem carregar arquivo inteiro. Suporta arquivos >1MB.
+- Volume: multiplicador digital aplicado ao PCM (level=0 → silêncio, level=100 → sem atenuação).
+- SD_MODE tied HIGH externamente — sem controle SW (conforme nb_hw_config.h).
+- Assets esperados em `/sdcard/assets/audio/`: greet_01–03, idle_01–03, touch_respond_01–03, error_01.
+- Eventos: `NB_EVT_AUDIO_STARTED` (data.u32 = duration_ms), `NB_EVT_AUDIO_ENDED`.
 
 **Critérios de aceitação:**
 
 - [ ] WAV 16kHz mono 16-bit: playback sem glitch
-- [ ] `audio_set_volume(0)`: silêncio real (SD_MODE LOW ativado)
+- [ ] `audio_set_volume(0)`: silêncio (volume digital zerado)
 - [ ] Streaming de arquivo 1MB: sem OOM, sem glitch
 - [ ] Playback simultâneo com render de face ≥30fps: nenhum artefato em ambos
 
