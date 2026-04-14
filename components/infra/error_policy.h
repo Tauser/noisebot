@@ -51,17 +51,19 @@
 
 /* ── NB_ASSERT_SAFETY — desabilita motion e reinicia ─────────────────────── */
 /*
- * TODO(etapa-3.2): antes do esp_restart(), inserir:
- *     motion_safety_emergency_stop();
- * O stub atual tem o mesmo comportamento de FATAL.
+ * Forward declaration de motion_safety_emergency_stop() — implementada em
+ * motion_safety.c (infra). Seguro chamar antes de motion_safety_init():
+ * retorna imediatamente sem efeito se não inicializado.
+ * Não inclui motion_safety.h para manter error_policy.h leve.
  */
+void motion_safety_emergency_stop(void);
 
 #define NB_ASSERT_SAFETY(cond, tag, fmt, ...)                                   \
     do {                                                                        \
         if (!(cond)) {                                                          \
             ESP_LOGE(tag, "SAFETY VIOLATION (%s:%d): " fmt,                     \
                      __FILE__, __LINE__, ##__VA_ARGS__);                        \
-            ESP_LOGE(tag, "[TODO] motion_safety_emergency_stop() pendente");    \
+            motion_safety_emergency_stop();                                     \
             ESP_LOGE(tag, "Reiniciando em 100ms...");                           \
             vTaskDelay(pdMS_TO_TICKS(100));                                     \
             esp_restart();                                                      \

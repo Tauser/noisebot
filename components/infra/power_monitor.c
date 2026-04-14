@@ -95,11 +95,12 @@ esp_err_t power_monitor_init(void)
     }
 
     /*
-     * Callback de brownout em runtime:
-     * esp_brownout_cb_register() não é API pública no ESP-IDF 5.x/6.x.
-     * TODO(etapa-3.2): investigar hook disponível (esp_register_shutdown_handler
-     * ou acesso interno) para acionar motion_safety_emergency_stop antes do reset.
-     * Por enquanto: detecção reativa via esp_reset_reason() no próximo boot.
+     * Brownout em runtime: o detector de hardware do ESP32-S3 gera reset imediato.
+     * Não há API pública no ESP-IDF 5.x para registrar um callback ISR-safe de
+     * brownout (esp_brownout_cb_register é interno). A proteção de motion é
+     * reativa: na detecção de ESP_RST_BROWNOUT aqui, brn_count é incrementado e,
+     * após threshold, safe_mode=1 é gravado no NVS. No próximo boot, PHASE_MOTION
+     * é pulada, impedindo que servos armem sem intervenção manual.
      */
 
     NB_LOGI(TAG, "Power monitor iniciado — brn_count=%u, brownout_reset=%s, modo=NORMAL",

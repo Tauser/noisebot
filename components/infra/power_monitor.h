@@ -13,10 +13,13 @@
  *   - boot_manager define o modo final com power_monitor_set_mode() em
  *     PHASE_COMPLETE, após conhecer sd_degraded e safe_mode.
  *
- * Callback de brownout:
- *   Chamado em contexto de ISR. Por enquanto apenas loga.
- *   TODO(etapa-3.2): chamar motion_safety_emergency_stop_from_isr().
- *   TODO(etapa-0.5): publicar NB_EVT_POWER_BROWNOUT_WARN no event bus.
+ * Brownout em operação:
+ *   O brownout detector do ESP32-S3 aciona um reset de hardware imediato —
+ *   não há janela de execução para código de usuário. Proteção de motion é
+ *   reativa: power_monitor_init() detecta ESP_RST_BROWNOUT no próximo boot,
+ *   incrementa brn_count e, ao atingir o threshold, ativa safe_mode no NVS.
+ *   No boot seguinte, PHASE_SAFETY e PHASE_MOTION são puladas → servos sem
+ *   torque por design.
  */
 
 #ifndef NB_POWER_MONITOR_H

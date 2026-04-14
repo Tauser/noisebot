@@ -426,20 +426,7 @@ Critérios adicionais de integração do Bloco 0:
 **Dependências:** 3.2 concluída e com TODOS os critérios verificados
 **Hardware necessário:** Sim
 
-**O que entra:**
-
-- `motion_service`:
-  - Interpolação cossenoidal: `pos(t) = start + (end-start) × (1 - cos(π×t)) / 2`
-  - `motion_move_to(id, pos, ms)`: não-bloqueante via motion_task.
-  - `motion_stop(id)`: desacelera suavemente, não corta abruptamente.
-  - `motion_park_all()`: todos os servos para centro em velocidade segura.
-  - `motion_sequence_t`: keyframes para sequências pré-programadas.
-- Primitivos de pescoço:
-  - `motion_neck_pan(deg, ms)`, `motion_neck_tilt(deg, ms)`.
-  - `motion_neck_look_at(pan, tilt, ms)`: coordenadas normalizadas [-1, 1].
-  - `motion_neck_nod()`, `motion_neck_shake()`, `motion_neck_tilt_curious()`.
-
-**O que entra:**
+**Implementado:**
 
 - `motion_service` em `components/services/motion_service/`:
   - Interpolação cossenoidal (`cosine_ease`), motion_task 50Hz (Core 1, prioridade 20).
@@ -451,6 +438,8 @@ Critérios adicionais de integração do Bloco 0:
   - Gestos: `motion_neck_nod`, `motion_neck_shake`, `motion_neck_tilt_curious`.
   - Safety injetada via `nb_motion_safety_iface_t` (sem dependência circular).
 - `boot_manager`: PHASE_MOTION inicializa motion_service, arma servos, faz parking.
+- `motion_safety_emergency_stop()`: API pública; usada por `NB_ASSERT_SAFETY` em
+  error_policy.h para desabilitar torque antes de esp_restart() em violações de safety.
 
 **Teste obrigatório antes de liberar para Bloco 5:**
 

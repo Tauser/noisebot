@@ -429,3 +429,20 @@ bool motion_safety_is_armed(void)
 {
     return (s_state == NB_MOTION_ARMED);
 }
+
+void motion_safety_emergency_stop(void)
+{
+    if (!s_initialized) {
+        return;  /* chamado antes de init — inofensivo */
+    }
+
+    nb_motion_state_t st = s_state;
+    if (st == NB_MOTION_DISABLED || st == NB_MOTION_FAULT) {
+        return;  /* já seguro */
+    }
+
+    NB_LOGW(TAG, "emergency_stop: desabilitando motion antes de reiniciar");
+    s_state            = NB_MOTION_FAULT;
+    s_heartbeat_active = false;
+    park_and_disable();
+}

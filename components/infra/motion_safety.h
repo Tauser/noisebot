@@ -140,6 +140,19 @@ nb_motion_state_t motion_safety_get_state(void);
  */
 bool motion_safety_is_armed(void);
 
+/**
+ * motion_safety_emergency_stop() — Para servos imediatamente antes de reiniciar.
+ *
+ * Projetado para uso em NB_ASSERT_SAFETY, chamado logo antes de esp_restart().
+ * Idempotente e thread-safe. Seguro chamar antes de motion_safety_init()
+ * (retorna imediatamente sem efeito se não inicializado).
+ *
+ * Ação: park_and_disable() + transição para FAULT.
+ * O delay de 100ms em NB_ASSERT_SAFETY permite que o disable de torque
+ * seja processado pelo servo antes do reset.
+ */
+void motion_safety_emergency_stop(void);
+
 #ifdef __cplusplus
 }
 #endif
