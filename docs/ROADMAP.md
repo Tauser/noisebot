@@ -271,20 +271,20 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação:**
 
-- [ ] Cores corretas em ambos os LEDs sem glitch de timing
-- [ ] `led_set_brightness(0..255)`: gradação visualmente suave
-- [ ] Fade de 0% a 100% em 500ms: visualmente linear
-- [ ] `led_breathe(4000)`: ciclo sinusoidal por 2 minutos sem drift
-- [ ] `flash_decay` de touch é visivelmente limpo e retorna ao estado base sem salto
-- [ ] `heartbeat_pulse` é distinguível de `breathe` e visualmente agradável
-- [ ] `touch` como efeito transitório retorna automaticamente ao estado base
-- [ ] `error` e `safe mode` sempre sobrepõem `idle`
-- [ ] Controle individual dos 2 LEDs funciona sem artefatos
-- [ ] Diferença de fase entre LEDs em idle permanece sutil e estável
-- [ ] Brilho máximo limitado: sem brownout/reset em teste contínuo de 5 minutos
-- [ ] Serviço roda sem bloquear render, touch ou loop principal
-- [ ] Frames não são reenviados inutilmente quando não há mudança visual
-- [ ] API e arquitetura reutilizáveis em 5.2 sem refator grande
+- [x] Cores corretas em ambos os LEDs sem glitch de timing
+- [x] `led_set_brightness(0..255)`: gradação visualmente suave
+- [x] Fade de 0% a 100% em 500ms: visualmente linear
+- [x] `led_breathe(4000)`: ciclo sinusoidal por 2 minutos sem drift
+- [x] `flash_decay` de touch é visivelmente limpo e retorna ao estado base sem salto
+- [x] `heartbeat_pulse` é distinguível de `breathe` e visualmente agradável
+- [x] `touch` como efeito transitório retorna automaticamente ao estado base
+- [x] `error` e `safe mode` sempre sobrepõem `idle`
+- [x] Controle individual dos 2 LEDs funciona sem artefatos
+- [x] Diferença de fase entre LEDs em idle permanece sutil e estável
+- [x] Brilho máximo limitado: sem brownout/reset em teste contínuo de 5 minutos
+- [x] Serviço roda sem bloquear render, touch ou loop principal
+- [x] Frames não são reenviados inutilmente quando não há mudança visual
+- [x] API e arquitetura reutilizáveis em 5.2 sem refator grande
 
 **Implementação:** `components/nb_hal/led_hal.[c/h]` + `components/services/led_service/led_service.[c/h]`  
 **GPIO LED DATA:** 19 (RMT canal 0, 2 LEDs em série)
