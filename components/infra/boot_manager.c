@@ -28,6 +28,10 @@
 #include "expression_service.h"
 #include "led_service.h"
 #include "touch_service.h"
+#include "servo_hal.h"
+#include "motion_safety.h"
+#include "motion_service.h"
+#include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
 #define TAG "nb_boot"
@@ -241,6 +245,13 @@ static esp_err_t phase_early(void)
         NB_LOGW(TAG, "╚══════════════════════════════════════╝");
     }
 
+    /* 8. Event bus — inicializado aqui para que qualquer componente subsequente
+     *    (motion_safety em PHASE_SAFETY, power_monitor em PHASE_POWER) possa
+     *    chamar nb_event_subscribe() sem crash por mutex NULL. */
+    esp_err_t bus_err = nb_event_bus_init();
+    NB_ASSERT_FATAL(bus_err == ESP_OK, TAG, "nb_event_bus_init falhou: %s",
+                    esp_err_to_name(bus_err));
+
     /* Alimentar watchdog após operações lentas de NVS. */
     nb_watchdog_feed();
 
@@ -416,8 +427,17 @@ static esp_err_t phase_hal(void)
         }
     }
 
-    /* Servo PING (Etapa 3.1) */
-    phase_stub(NB_BOOT_PHASE_HAL, "Etapa 3.1");
+    /* Servo HAL — inicializa UART apenas. PINGs e verificação acontecem
+     * em motion_safety_arm() durante PHASE_MOTION. Sem servos conectados:
+     * init UART é inofensivo, arm() falha silenciosamente e o sistema
+     * continua operando normalmente sem motion. */
+    if (!s_status.safe_mode) {
+        err = servo_hal_init();
+        if (err != ESP_OK) {
+            NB_LOGW(TAG, "servo_hal_init falhou: %s — servos desativados",
+                    esp_err_to_name(err));
+        }
+    }
 
     phase_ok(NB_BOOT_PHASE_HAL);
     return ESP_OK;
@@ -425,8 +445,10 @@ static esp_err_t phase_hal(void)
 
 /*
  * PHASE_SAFETY — Etapa 3.2
- * Stub: motion_safety init (sem torque ainda).
- * Em safe mode: pulada.
+ *
+ * Inicializa motion_safety (mutex, brownout sub, safety_task).
+ * Não arma os servos aqui — arm() acontece em PHASE_MOTION (Etapa 3.3).
+ * Em safe mode: pulada inteira.
  */
 static esp_err_t phase_safety(void)
 {
@@ -437,7 +459,13 @@ static esp_err_t phase_safety(void)
         return ESP_OK;
     }
 
-    phase_stub(NB_BOOT_PHASE_SAFETY, "Etapa 3.2");
+    esp_err_t err = motion_safety_init();
+    if (err != ESP_OK) {
+        NB_LOGE(TAG, "motion_safety_init falhou: %s", esp_err_to_name(err));
+        /* Falha no safety init é fatal — não podemos operar sem safety */
+        return err;
+    }
+
     phase_ok(NB_BOOT_PHASE_SAFETY);
     return ESP_OK;
 }
@@ -454,10 +482,8 @@ static esp_err_t phase_services(void)
 {
     phase_enter(NB_BOOT_PHASE_SERVICES);
 
-    /* Event bus: sempre inicializado, mesmo em safe mode. */
-    esp_err_t err = nb_event_bus_init();
-    NB_ASSERT_FATAL(err == ESP_OK, TAG, "nb_event_bus_init falhou: %s",
-                    esp_err_to_name(err));
+    /* Event bus já inicializado em PHASE_EARLY — disponível desde o boot. */
+    esp_err_t err;
 
     if (s_status.safe_mode) {
         phase_skip(NB_BOOT_PHASE_SERVICES, "safe mode ativo — servicos de dominio pulados");
@@ -487,9 +513,25 @@ static esp_err_t phase_services(void)
     return ESP_OK;
 }
 
+/* Interface de safety injetada no motion_service */
+static const nb_motion_safety_iface_t k_motion_safety_iface = {
+    .check_position = motion_safety_check_position,
+    .check_velocity = motion_safety_check_velocity,
+    .heartbeat      = motion_safety_heartbeat,
+    .get_min        = config_get_servo_limit_min,
+    .get_max        = config_get_servo_limit_max,
+    .get_center     = config_get_servo_center,
+};
+
 /*
- * PHASE_MOTION — Etapa 3.3+
- * Stub: servos ARMED.
+ * PHASE_MOTION — Etapa 3.3
+ *
+ * 1. Inicializa motion_service com interface de safety.
+ * 2. Arma os servos via motion_safety_arm().
+ * 3. Inicia motion_task (que passa a alimentar o heartbeat).
+ * 4. Parca todos os servos no centro (posição inicial segura).
+ *
+ * Falha no arm é não-fatal — robot opera sem movimento.
  * Em safe mode: pulada.
  */
 static esp_err_t phase_motion(void)
@@ -501,7 +543,32 @@ static esp_err_t phase_motion(void)
         return ESP_OK;
     }
 
-    phase_stub(NB_BOOT_PHASE_MOTION, "Etapa 3.3");
+    /* 1. Inicializa motion_service */
+    esp_err_t err = motion_service_init(&k_motion_safety_iface);
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "motion_service_init falhou: %s — robot sem movimento",
+                esp_err_to_name(err));
+        return ESP_OK;
+    }
+
+    /* 2. Arma os servos */
+    err = motion_safety_arm();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "motion_safety_arm falhou: %s — robot sem movimento",
+                esp_err_to_name(err));
+        return ESP_OK;
+    }
+
+    /* 3. Inicia motion_task (alimenta heartbeat a partir daqui) */
+    err = motion_service_start();
+    if (err != ESP_OK) {
+        NB_LOGE(TAG, "motion_service_start falhou: %s", esp_err_to_name(err));
+        return ESP_OK;
+    }
+
+    /* 4. Parking inicial: servos vão para o centro */
+    motion_park_all();
+
     phase_ok(NB_BOOT_PHASE_MOTION);
     return ESP_OK;
 }

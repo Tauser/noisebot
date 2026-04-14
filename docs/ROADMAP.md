@@ -396,15 +396,18 @@ Critérios adicionais de integração do Bloco 0:
 
 **O que entra:**
 
-- `motion_safety`:
+- `motion_safety` (em `infra/` para evitar dependência circular):
   - Limites físicos por servo (NVS): rejeição de qualquer posição fora do range.
-  - Limite de velocidade máxima.
-  - Monitoramento de load a 20Hz: WARN acima de 40%, disable acima de 70% por >100ms.
+  - Limite de velocidade máxima (300 steps/s).
+  - Monitoramento de load a 20Hz (`nb_safety_task`, Core 1, prioridade 23): WARN >40%, disable >70% por >100ms.
   - Monitoramento de temperatura: WARN ≥ 55°C, disable ≥ 70°C.
-  - Heartbeat: `motion_task` reporta a cada 200ms. Timeout de 600ms → disable.
-  - Disable ao brownout: antes de qualquer outro shutdown.
-  - Posição de parking (centro) enviada antes do disable, se servo ainda responde.
+  - Heartbeat: `motion_task` reporta a cada 200ms. Timeout de 600ms → FAULT.
+  - Disable ao brownout: subscreve `NB_EVT_POWER_BROWNOUT_WARN`, disable imediato.
+  - Posição de parking (centro NVS) + disable de torque antes de qualquer disable.
   - Estados: DISABLED, INITIALIZING, ARMED, FAULT.
+- `servo_hal` (adições): `servo_hal_write_position()`, `servo_hal_disable_torque()`.
+- `boot_manager`: PHASE_SAFETY inicializa `motion_safety`; PHASE_MOTION arma os servos.
+- Heartbeat keepalive temporário (`nb_hb_keep` task) — substituído pelo motion_service na Etapa 3.3.
 
 **Critérios de aceitação (TODOS obrigatórios):**
 
@@ -435,6 +438,19 @@ Critérios adicionais de integração do Bloco 0:
   - `motion_neck_pan(deg, ms)`, `motion_neck_tilt(deg, ms)`.
   - `motion_neck_look_at(pan, tilt, ms)`: coordenadas normalizadas [-1, 1].
   - `motion_neck_nod()`, `motion_neck_shake()`, `motion_neck_tilt_curious()`.
+
+**O que entra:**
+
+- `motion_service` em `components/services/motion_service/`:
+  - Interpolação cossenoidal (`cosine_ease`), motion_task 50Hz (Core 1, prioridade 20).
+  - `motion_move_to(id, pos, ms)`: não-bloqueante via fila de comandos.
+  - `motion_stop(id)`: para suavemente (congela na posição atual).
+  - `motion_park_all()`: ambos os servos para centro em 500ms.
+  - `motion_sequence_t`: player de keyframes com hold_ms.
+  - Primitivos: `motion_neck_pan`, `motion_neck_tilt`, `motion_neck_look_at`.
+  - Gestos: `motion_neck_nod`, `motion_neck_shake`, `motion_neck_tilt_curious`.
+  - Safety injetada via `nb_motion_safety_iface_t` (sem dependência circular).
+- `boot_manager`: PHASE_MOTION inicializa motion_service, arma servos, faz parking.
 
 **Teste obrigatório antes de liberar para Bloco 5:**
 

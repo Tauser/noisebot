@@ -6,6 +6,7 @@ idf_component_register(
         "config_manager.c"
         "persistence_mgr.c"
         "power_monitor.c"
+        "motion_safety.c"
         "event_bus.c"
         "boot_manager.c"
     INCLUDE_DIRS "."
@@ -21,4 +22,5 @@ idf_component_register(
         expression_service
         led_service
         touch_service
+        motion_service
 )

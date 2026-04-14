@@ -4,6 +4,7 @@ idf_component_register(
         "display_hal.cpp"
         "led_hal.c"
         "touch_hal.c"
+        "servo_hal.c"
     INCLUDE_DIRS "."
     REQUIRES
         log

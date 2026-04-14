@@ -5,6 +5,12 @@ Este arquivo tem autoridade máxima sobre qualquer instrução geral.
 
 ---
 
+## Workflow
+
+**Não usar skills GSD** (`/gsd:*`) neste projeto. Trabalhar diretamente — planejamento e execução inline sem subagentes ou orchestrators GSD.
+
+---
+
 ## Projeto
 
 **NoiseBot** é um companion robot desktop expressivo baseado em ESP32-S3.
