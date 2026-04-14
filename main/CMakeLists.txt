@@ -3,6 +3,7 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES
         infra
+        audio_service
         freertos
         log
 )

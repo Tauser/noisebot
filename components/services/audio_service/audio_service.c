@@ -331,8 +331,12 @@ static void audio_task(void *arg)
                 size_t to_write = mic_n < s.rec_samples_remaining
                                   ? mic_n : (size_t)s.rec_samples_remaining;
                 for (size_t i = 0; i < to_write; i++) {
-                    /* Converter int32_t 24-bit → int16_t */
-                    int32_t v = s_mic_buf[i] >> 8;
+                    /*
+                     * s_mic_buf[i]: valor 24-bit (audio_hal já fez >> 8 do raw 32-bit).
+                     * Para 16-bit, apenas clamp — sem shift adicional.
+                     * INMP441: pico típico de voz direta ~400K–800K (24-bit range ±8M).
+                     */
+                    int32_t v = s_mic_buf[i];
                     if (v >  32767) v =  32767;
                     if (v < -32768) v = -32768;
                     s_rec_chunk[i] = (int16_t)v;

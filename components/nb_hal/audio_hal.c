@@ -147,6 +147,7 @@ esp_err_t audio_hal_mic_read(int32_t   *mono_buf,
      * obter valor centrado em zero com magnitude de 24 bits.
      */
     size_t frames = bytes_read / (2U * sizeof(int32_t));
+
     for (size_t i = 0; i < frames; i++) {
         mono_buf[i] = s_rx_stereo[i * 2U] >> 8;   /* canal L, signed 24-bit */
     }
