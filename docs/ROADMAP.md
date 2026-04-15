@@ -545,10 +545,25 @@ Critérios adicionais de integração do Bloco 0:
 **Dependências:** 5.1 concluída, 3.3 concluída
 **Hardware necessário:** Sim
 
-**O que entra:**
+**Implementado:**
 
-- `gaze_service`: saccade model (movimento rápido + overshoot + settle), micro-drift gaussiano, aversive gaze periódico. Gaze reinterpretado no modelo EMO: sem pupila — afeta microdeslocamento do shape do olho (y_l/y_r, x_off) e leve tilt de pescoço. Gaze lidera o pescoço por 100ms.
-- `idle_service`: microbehaviors probabilísticos — blink (Poisson, µ=4s), micro-saccade (5-15s), micro-neck-movement (10-30s), LED breathing (4s), yawn ocasional.
+- `gaze_service` em `components/services/gaze_service/`:
+  - Render layer z=5 (Core 1, ~30fps) — antes do expression layer (z=10).
+  - Saccade: fase rápida 60ms (linear + 10% overshoot) → settle 150ms (ease-out quadrático).
+  - Micro-drift contínuo: passeio gaussiano low-pass, amplitude ≤ 0.06, retorno elástico.
+  - API thread-safe: `gaze_service_set_target(x, y)` pode ser chamada de qualquer task.
+  - Chama `expression_service_set_gaze()` a cada frame — offset aplicado no mesmo frame.
+  - Nota: micro-tilt de pescoço é stub (depende de Etapa 3.3).
+- `expression_service` (adição):
+  - `expression_service_set_gaze(x, y)`: aplica translação bilateral dos olhos (±12px)
+    e offset vertical (y_l/y_r), ambos sem afetar convergência (x_off) nem geometria de expressão.
+- `idle_service` em `components/services/idle_service/`:
+  - Micro-saccade a cada 5–15s (IDLE e ATTENTIVE): posições aleatórias, 20% de chance de retorno ao centro.
+  - Aversive gaze a cada 8–15s (ATTENTIVE somente): desvia para o lado oposto à posição atual.
+  - Yawn a cada 60–180s (IDLE somente): SLEEPY por 2.5s, retorno suave a NEUTRAL.
+  - Gaze retorna ao centro ao sair de IDLE/ATTENTIVE.
+  - Blink (Poisson, µ=4.2s) e LED breathing: gerenciados pelos próprios serviços.
+  - Stub para micro-neck-movement (≤3/min, <5°): ativado na Etapa 3.3.
 
 **Critério subjetivo obrigatório:**
 
@@ -557,7 +572,7 @@ Critérios adicionais de integração do Bloco 0:
 **Critérios mensuráveis:**
 
 - [ ] Intervalo de blinks: nenhum <1.5s, nenhum >10s em observação de 5min
-- [ ] Micro-movements de pescoço: amplitude <5°, frequência ≤ 3/minuto
+- [ ] Micro-movements de pescoço: amplitude <5°, frequência ≤ 3/minuto (stub — pós 3.3)
 - [ ] Aversive gaze: olhar se desvia a cada 8-15s em modo ATTENTIVE
 
 ---

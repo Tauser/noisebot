@@ -112,6 +112,17 @@ static float              s_pending_trans_ms   = 0.0f;
 static nb_blink_eye_t     s_blink[2]          = {};
 static int64_t            s_next_blink_us     = 0;
 
+/*
+ * Gaze offset — escrito pelo gaze_service render layer (z=5, Core 1)
+ * e lido por este callback (z=10, mesmo Core 1, frame seguinte na ordem).
+ * Sem lock: acesso exclusivo de Core 1 render_task.
+ */
+static volatile float     s_gaze_x            = 0.0f;
+static volatile float     s_gaze_y            = 0.0f;
+
+/* Pixels de deslocamento horizontal por unidade de gaze_x (translation bilateral). */
+static constexpr float GAZE_X_TRAVEL_PX = 12.0f;
+
 /* ── 6 Expressões base ───────────────────────────────────────────────────── */
 /*
  * { tl_l, tr_l, bl_l, br_l,   (left eye corners)
@@ -548,9 +559,20 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
     /* Blink (atualiza fase de cada olho) */
     blink_update(now_us);
 
-    /* Centros X dos olhos com x_off aplicado */
-    int16_t left_cx  = BASE_L_CX + (int16_t)(s_current.x_off * X_OFF_TRAVEL + 0.5f);
-    int16_t right_cx = BASE_R_CX - (int16_t)(s_current.x_off * X_OFF_TRAVEL + 0.5f);
+    /* Centros X dos olhos com x_off (convergência) e gaze_x (translation) aplicados */
+    float   gx        = s_gaze_x;
+    float   gy        = s_gaze_y;
+    int16_t gaze_shift = (int16_t)(gx * GAZE_X_TRAVEL_PX + (gx >= 0.0f ? 0.5f : -0.5f));
+    int16_t left_cx   = BASE_L_CX
+                      + (int16_t)(s_current.x_off * X_OFF_TRAVEL + 0.5f)
+                      + gaze_shift;
+    int16_t right_cx  = BASE_R_CX
+                      - (int16_t)(s_current.x_off * X_OFF_TRAVEL + 0.5f)
+                      + gaze_shift;
+
+    /* Offsets Y combinados com gaze_y */
+    float y_l = s_current.y_l + gy;
+    float y_r = s_current.y_r + gy;
 
     /* Canvas já limpo em TFT_BLACK pelo render_service */
 
@@ -564,7 +586,7 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
         s_blink[1].phase > BLINK_BAR_PH_THRESH) {
 
         float   bar_cy_f = (float)EYE_CY_BASE
-                         + (s_current.y_l + s_current.y_r) * 0.5f * Y_TRAVEL_PX;
+                         + (y_l + y_r) * 0.5f * Y_TRAVEL_PX;
         int16_t bar_cy   = (int16_t)(bar_cy_f + 0.5f);
         int16_t bx       = left_cx  - HW_I - BLINK_BAR_EXTRA_HW;
         int16_t bw       = (right_cx + HW_I + BLINK_BAR_EXTRA_HW) - bx;
@@ -577,7 +599,7 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
 
         /* Olho esquerdo */
         draw_emo_eye(spr,
-                     left_cx, s_current.y_l,
+                     left_cx, y_l,
                      s_current.open_l,
                      s_current.tl_l, s_current.tr_l,
                      s_current.bl_l, s_current.br_l,
@@ -589,7 +611,7 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
 
         /* Olho direito — tl_r/bl_r = lados internos, tr_r/br_r = externos. */
         draw_emo_eye(spr,
-                     right_cx, s_current.y_r,
+                     right_cx, y_r,
                      s_current.open_r,
                      s_current.tl_r, s_current.tr_r,
                      s_current.bl_r, s_current.br_r,
@@ -660,6 +682,12 @@ void expression_service_set(nb_expression_t expr, float transition_ms)
 void expression_service_get_current(nb_face_state_t *out)
 {
     if (out) *out = s_current;
+}
+
+void expression_service_set_gaze(float x, float y)
+{
+    s_gaze_x = x;
+    s_gaze_y = y;
 }
 
 void nb_face_state_lerp(const nb_face_state_t *a,

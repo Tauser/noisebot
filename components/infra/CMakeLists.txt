@@ -26,4 +26,6 @@ idf_component_register(
         motion_service
         state_machine
         emotion_model
+        gaze_service
+        idle_service
 )

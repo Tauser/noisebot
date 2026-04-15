@@ -1,0 +1,53 @@
+/*
+ * idle_service.h — Microbehaviors de idle do NoiseBot (Layer 5)
+ *
+ * Gera comportamentos probabilísticos quando o sistema está em IDLE ou ATTENTIVE.
+ * Não possui task própria — atualizado via behavior_task (100ms).
+ *
+ * Behaviors:
+ *   IDLE + ATTENTIVE:
+ *     - Micro-saccade: a cada 5–15s, reposiciona o gaze via gaze_service.
+ *   ATTENTIVE:
+ *     - Aversive gaze: a cada 8–15s, olhar se desvia lateralmente.
+ *   IDLE:
+ *     - Yawn: expressão SLEEPY por ~2.5s a cada 60–180s.
+ *
+ *   Blink e LED breathing são gerenciados pelos próprios serviços (expression
+ *   e led_service). idle_service não duplica esse controle.
+ *
+ *   Nota Etapa 3.3: micro-neck-movement (amplitude <5°) está preparado mas
+ *   sem implementação até motion_service estar liberado.
+ */
+
+#ifndef NB_IDLE_SERVICE_H
+#define NB_IDLE_SERVICE_H
+
+#include "esp_err.h"
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief Inicializa o idle service com timers aleatórios.
+ *
+ * Deve ser chamado após gaze_service_init() e expression_service_init().
+ * @return ESP_OK ou ESP_ERR_INVALID_STATE se já inicializado.
+ */
+esp_err_t idle_service_init(void);
+
+/**
+ * @brief Tick periódico — avança timers e dispara behaviors.
+ *
+ * Chamado pela behavior_task a cada dt_ms ms.
+ *
+ * @param dt_ms  Intervalo desde a última chamada, em ms.
+ */
+void idle_service_update(uint32_t dt_ms);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* NB_IDLE_SERVICE_H */

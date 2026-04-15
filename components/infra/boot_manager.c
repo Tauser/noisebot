@@ -35,6 +35,8 @@
 #include "motion_service.h"
 #include "state_machine.h"
 #include "emotion_model.h"
+#include "gaze_service.h"
+#include "idle_service.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -478,6 +480,7 @@ static void behavior_task(void *arg)
     while (1) {
         state_machine_update(100);
         emotion_model_update(100);
+        idle_service_update(100);
         vTaskDelayUntil(&last_wake, period);
     }
 }
@@ -668,6 +671,16 @@ static esp_err_t phase_services(void)
                                     4096, NULL, 5, NULL);
         NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate nb_behav_task falhou");
     }
+
+    /* gaze_service (Etapa 5.2): render layer z=5, saccade + micro-drift */
+    err = gaze_service_init();
+    NB_ASSERT(err == ESP_OK, TAG, "gaze_service_init falhou: %s",
+              esp_err_to_name(err));
+
+    /* idle_service (Etapa 5.2): micro-saccades, aversive gaze, yawn */
+    err = idle_service_init();
+    NB_ASSERT(err == ESP_OK, TAG, "idle_service_init falhou: %s",
+              esp_err_to_name(err));
 
     /* conductor: stub Bloco 5.4 */
     phase_stub(NB_BOOT_PHASE_SERVICES, "Etapa 5.4 (conductor)");

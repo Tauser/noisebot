@@ -146,6 +146,21 @@ void nb_face_state_lerp(const nb_face_state_t *a,
                         float t,
                         nb_face_state_t *out);
 
+/**
+ * @brief Define o offset de gaze aplicado sobre a expressão atual no render.
+ *
+ * Aplicado aditivamente no render callback (mesmo frame, após gaze_service):
+ *   - Ambos os olhos deslocados na direção x (translation, não convergência).
+ *   - y_l e y_r aumentados por y (positivo = olhos descem).
+ *
+ * Thread-safe somente quando chamado do render_task (Core 1).
+ * Deve ser chamado exclusivamente pelo gaze_service render layer (z=5).
+ *
+ * @param x  [-1, 1]  -1=esquerda, +1=direita
+ * @param y  [-1, 1]  -1=cima,    +1=baixo
+ */
+void expression_service_set_gaze(float x, float y);
+
 #ifdef __cplusplus
 }
 #endif
