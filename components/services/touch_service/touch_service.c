@@ -97,6 +97,12 @@ static const char *TAG = "nb_touch_svc";
 #define RECALIB_ALPHA          0.001f  /* EMA coefficient por tick (τ ≈ 20s, conservador) */
 #define NOISE_WINDOW          12U      /* janela de amostras para ruído                 */
 #define NOISE_SPREAD_PCT       2U      /* spread máx. aceito para recalib (%)           */
+/*
+ * RECALIB_STUCK_MS: se a FSM ficar em SUSTAINED_ACTIVE por mais de este tempo
+ * com sinal estável (NOISE_SPREAD_PCT ok), assume que a baseline inicial foi
+ * capturada muito cedo (drift físico do pad) e força re-baseline + volta a IDLE.
+ */
+#define RECALIB_STUCK_MS   10000U     /* 10s preso em SUSTAINED → re-baseline          */
 
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
@@ -133,6 +139,9 @@ typedef struct {
     bool                    sleeping;
     nb_touch_event_cb_t     event_cb;
     uint32_t                last_raw;
+
+    /* Auto-recalibração de emergência (baseline drift pós-boot) */
+    uint32_t                stuck_ms;   /* ms consecutivos em SUSTAINED_ACTIVE  */
 
     SemaphoreHandle_t       mutex;
 } touch_svc_t;
@@ -193,6 +202,21 @@ static void noise_push(uint32_t raw)
 static void service_tick(uint32_t dt_ms)
 {
     s_svc.uptime_ms += dt_ms;
+
+    /* Log de diagnóstico periódico — 1 linha a cada 5s. Remover após validação. */
+    {
+        static uint32_t s_diag_tick = 0;
+        if (++s_diag_tick >= 250u) {
+            s_diag_tick = 0;
+            ESP_LOGI(TAG, "diag raw=%lu fraw=%lu base=%lu thr_on=%lu thr_off=%lu state=%d",
+                     (unsigned long)s_svc.last_raw,
+                     (unsigned long)s_svc.filtered_raw,
+                     (unsigned long)s_svc.baseline,
+                     (unsigned long)s_svc.threshold_on,
+                     (unsigned long)s_svc.threshold_off,
+                     (int)s_svc.state);
+        }
+    }
 
     /* Período de estabilização pós-boot. */
     if (!s_svc.boot_stable) {
@@ -306,8 +330,24 @@ static void service_tick(uint32_t dt_ms)
         if (confirmed_release) {
             s_svc.state    = NB_TOUCH_STATE_IDLE;
             s_svc.press_ms = 0;
+            s_svc.stuck_ms = 0;
         } else {
             s_svc.press_ms += dt_ms;
+            s_svc.stuck_ms += dt_ms;
+            /* Auto-recalibração: se preso em SUSTAINED por muito tempo com sinal
+             * estável, é drift de baseline (não toque real) — força re-baseline. */
+            if (s_svc.stuck_ms >= RECALIB_STUCK_MS && is_signal_stable()) {
+                s_svc.baseline = (uint32_t)s_svc.filtered_raw;
+                recompute_thresholds();
+                s_svc.state    = NB_TOUCH_STATE_IDLE;
+                s_svc.press_ms = 0;
+                s_svc.stuck_ms = 0;
+                s_svc.debounce_on  = 0;
+                s_svc.debounce_off = 0;
+                ESP_LOGW(TAG, "auto-recalib: baseline drift → novo base=%lu thr_on=%lu",
+                         (unsigned long)s_svc.baseline,
+                         (unsigned long)s_svc.threshold_on);
+            }
         }
         break;
     }

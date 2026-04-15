@@ -272,7 +272,7 @@ static void advance_sequence(uint32_t dt_ms)
 
 /* ── motion_task ─────────────────────────────────────────────────────────── */
 /*
- * Task: "nb_motion_task"  Core: 1  Prioridade: 20  Stack: 4096
+ * Task: "motion_task"  Core: 1  Prioridade: 20  Stack: 4096
  * Roda a 50Hz (20ms). Alimenta heartbeat, processa fila, atualiza servos.
  */
 static void motion_task(void *arg)
@@ -377,19 +377,19 @@ esp_err_t motion_service_start(void)
     }
 
     BaseType_t rc = xTaskCreatePinnedToCore(
-        motion_task, "nb_motion_task",
+        motion_task, "motion_task",
         4096, NULL,
         20,     /* prioridade: abaixo de safety (23), acima de serviços (3–8) */
         NULL,
         1       /* Core 1 — mesmo que safety_task */
     );
     if (rc != pdPASS) {
-        ESP_LOGE(TAG, "falha ao criar nb_motion_task");
+        ESP_LOGE(TAG, "falha ao criar motion_task");
         return ESP_FAIL;
     }
 
     s_started = true;
-    ESP_LOGI(TAG, "nb_motion_task criada — servo motion ativo");
+    ESP_LOGI(TAG, "motion_task criada — servo motion ativo");
     return ESP_OK;
 }
 

@@ -125,7 +125,7 @@
 
 /* ── Touch — fita de cobre ───────────────────────────────────────────────── */
 #define NB_TOUCH_PIN        2       /* GPIO com função touch ESP32-S3        */
-#define NB_TOUCH_PAD_NUM    1       /* TOUCH_PAD_NUM1 (GPIO2 no ESP32-S3)    */
+#define NB_TOUCH_PAD_NUM    2       /* TOUCH_PAD_NUM2 (GPIO2 no ESP32-S3)    */
 
 /* ── Câmera OV2640 (DVP) — ADIADA ────────────────────────────────────────── */
 /*

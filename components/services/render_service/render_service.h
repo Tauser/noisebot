@@ -96,6 +96,14 @@ esp_err_t render_service_register_layer(uint8_t z_order,
                                         void *ctx);
 
 /**
+ * @brief Retorna o último FPS medido pela render_task.
+ *
+ * Atualizado a cada METRICS_LOG_PERIOD_S (5s). Retorna 0.0 antes do primeiro
+ * intervalo completo.
+ */
+float render_service_get_fps(void);
+
+/**
  * @brief Remove uma layer pelo ponteiro de função.
  *
  * No-op silencioso se fn não estiver registrada.

@@ -29,4 +29,5 @@ idf_component_register(
         gaze_service
         idle_service
         conductor
+        long_term_memory
 )

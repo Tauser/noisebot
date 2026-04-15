@@ -182,7 +182,7 @@ esp_err_t nb_event_bus_init(void)
                     "falha ao criar filas do event bus");
 
     BaseType_t ret = xTaskCreate(dispatcher_task,
-                                 "nb_event_task",
+                                 "event_task",
                                  NB_EVENT_BUS_TASK_STACK,
                                  NULL,
                                  NB_EVENT_BUS_TASK_PRIORITY,

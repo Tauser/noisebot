@@ -48,6 +48,7 @@ static int                s_back_idx      = 0;
 static TaskHandle_t       s_task_handle   = NULL;
 static volatile bool      s_running       = false;
 static bool               s_initialized   = false;
+static volatile float     s_last_fps      = 0.0f;
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -130,6 +131,7 @@ static void render_task(void *arg)
             float avg_push_ms  = (frame_count > 0)
                                     ? (float)total_push_us  / (float)frame_count / 1000.0f
                                     : 0.0f;
+            s_last_fps = fps;
             ESP_LOGD(TAG,
                      "fps=%.1f  layer=%.2fms  push=%.2fms  PSRAM_free=%uKB",
                      fps, avg_layer_ms, avg_push_ms,
@@ -234,7 +236,7 @@ esp_err_t render_service_start(void)
 
     BaseType_t ret = xTaskCreatePinnedToCore(
         render_task,
-        "nb_render_task",
+        "render_task",
         RENDER_TASK_STACK_BYTES,
         NULL,
         RENDER_TASK_PRIORITY,
@@ -316,6 +318,11 @@ void render_service_unregister_layer(nb_render_layer_fn_t fn)
 
     xSemaphoreGive(s_layer_mutex);
     ESP_LOGW(TAG, "render_service_unregister_layer: fn=%p não encontrada", (void*)fn);
+}
+
+float render_service_get_fps(void)
+{
+    return s_last_fps;
 }
 
 } /* extern "C" */

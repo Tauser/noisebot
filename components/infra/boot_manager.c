@@ -9,6 +9,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_heap_caps.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_system.h"
@@ -38,6 +39,7 @@
 #include "gaze_service.h"
 #include "idle_service.h"
 #include "conductor.h"
+#include "long_term_memory.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -169,11 +171,6 @@ static void phase_ok(nb_boot_phase_t phase)
 static void phase_skip(nb_boot_phase_t phase, const char *reason)
 {
     NB_LOGW(TAG, "FASE %s: PULADA (%s)", phase_name(phase), reason);
-}
-
-static void phase_stub(nb_boot_phase_t phase, const char *etapa)
-{
-    NB_LOGI(TAG, "FASE %s: stub — implementar na %s", phase_name(phase), etapa);
 }
 
 /* ── Implementação das fases ─────────────────────────────────────────────── */
@@ -318,7 +315,7 @@ static esp_err_t phase_storage(void)
  * Tick a 50Hz (20ms). Prioridade baixa — não interfere com render nem safety.
  * Stack: 2KB — led_service_update usa só stack local + mutex.
  *
- * Task: "nb_led_task"  Core: qualquer  Prioridade: 3  Stack: 2048
+ * Task: "led_task"  Core: qualquer  Prioridade: 3  Stack: 2048
  */
 /* ── Relay de eventos de áudio → event bus ──────────────────────────────── */
 
@@ -333,6 +330,7 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_START;
             state_machine_on_voice_start();
             emotion_model_on_event(NB_EMOT_EVT_VOICE_START);
+            ltm_record(LTM_IACT_VOICE_START);
             break;
         case NB_AUDIO_EVT_VOICE_END:
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;
@@ -343,6 +341,7 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             state_machine_on_audio_started();
             emotion_model_on_event(NB_EMOT_EVT_AUDIO_STARTED);
             conductor_play(NB_ACTION_SPEAK_LOOP);
+            ltm_record(LTM_IACT_AUDIO_PLAYED);
             break;
         case NB_AUDIO_EVT_PLAYBACK_END:
             bus_evt.type = NB_EVT_AUDIO_ENDED;
@@ -377,15 +376,18 @@ static void on_touch_event(nb_touch_event_t evt)
             state_machine_on_touch_tap();
             emotion_model_on_event(NB_EMOT_EVT_TOUCH_TAP);
             conductor_play(NB_ACTION_TOUCH_WARM);
+            ltm_record(LTM_IACT_TOUCH_TAP);
             break;
         case NB_TOUCH_EVT_LONG_PRESS:
             state_machine_on_touch_long_press();
             emotion_model_on_event(NB_EMOT_EVT_TOUCH_LONG);
             conductor_play(NB_ACTION_TOUCH_STARTLE);
+            ltm_record(LTM_IACT_TOUCH_LONG);
             break;
         case NB_TOUCH_EVT_WAKE:
             state_machine_on_touch_wake();
             conductor_play(NB_ACTION_WAKE_UP);
+            ltm_record(LTM_IACT_WAKE);
             break;
         default:
             break;
@@ -407,7 +409,7 @@ static void led_update_task(void *arg)
 
 /* ── Task de update do touch_service ────────────────────────────────────── */
 /*
- * Task: "nb_touch_task"  Core: qualquer  Prioridade: 4  Stack: 2048
+ * Task: "touch_task"  Core: qualquer  Prioridade: 4  Stack: 2048
  * 50Hz para garantir detecção de TAP em <20ms.
  */
 static void touch_update_task(void *arg)
@@ -447,11 +449,14 @@ static void on_state_changed(nb_robot_state_t new_state,
         case NB_STATE_SLEEPING:
             emotion_model_on_event(NB_EMOT_EVT_ENTERING_SLEEP);
             conductor_play(NB_ACTION_SLEEP);
+            ltm_record(LTM_IACT_SLEEP);
+            ltm_flush();
             break;
         case NB_STATE_IDLE:
             if (old_state == NB_STATE_SLEEPING) {
                 emotion_model_on_event(NB_EMOT_EVT_WAKING_UP);
                 conductor_play(NB_ACTION_WAKE_UP);
+                ltm_record(LTM_IACT_WAKE);
             }
             break;
         case NB_STATE_ERROR:
@@ -470,25 +475,85 @@ static void on_emotion_changed(nb_expression_t new_expr)
     config_set_last_emotion((uint8_t)new_expr);
 }
 
+static void stats_dump(void);   /* definida após behavior_task */
+
 /* ── Task de behavior (10 Hz) ───────────────────────────────────────────── */
 /*
  * Tick a 100ms. Avança timers da state machine (idle timeout, touch timeout)
  * e o decaimento emocional.
  *
- * Task: "nb_behav_task"  Core: qualquer  Prioridade: 5  Stack: 4096
+ * Task: "behav_task"  Core: qualquer  Prioridade: 5  Stack: 4096
  * Stack 4096: expression_service_set (C++) usa frame considerável.
  */
 static void behavior_task(void *arg)
 {
     (void)arg;
-    const TickType_t period   = pdMS_TO_TICKS(100);
-    TickType_t       last_wake = xTaskGetTickCount();
+    const TickType_t period     = pdMS_TO_TICKS(100);
+    TickType_t       last_wake  = xTaskGetTickCount();
+    uint32_t         stats_tick = 0;
+    uint32_t         ltm_tick_n = 0;
 
     while (1) {
         state_machine_update(100);
         emotion_model_update(100);
         idle_service_update(100);
+        ltm_tick(100);
+
+        /* Stats dump a cada 60s (600 × 100ms). */
+        if (++stats_tick >= 600u) {
+            stats_dump();
+            stats_tick = 0;
+        }
+
+        /* LTM flush a cada 5min (3000 × 100ms). */
+        if (++ltm_tick_n >= 3000u) {
+            ltm_flush();
+            ltm_tick_n = 0;
+        }
+
         vTaskDelayUntil(&last_wake, period);
+    }
+}
+
+/* ── Dump periódico de stats (Etapa 6.1) ────────────────────────────────── */
+/*
+ * Chamado a cada 60s pelo behavior_task. Loga:
+ *   - Heap livre PSRAM e SRAM
+ *   - FPS atual do render_service
+ *   - Stack high watermark das tasks conhecidas
+ *
+ * Usa xTaskGetHandle() por nome — O(n) mas é diagnóstico, não caminho crítico.
+ * Retorna silenciosamente se a task não existe (subsistema não iniciado).
+ */
+static void stats_dump(void)
+{
+    static const char *const k_tasks[] = {
+        "render_task",
+        "audio_task",
+        "motion_task",
+        "safety_task",
+        "conductor_task",
+        "behav_task",
+        "led_task",
+        "touch_task",
+        "persist_task",
+        "wdog_task",
+    };
+    static const int k_ntasks = (int)(sizeof(k_tasks) / sizeof(k_tasks[0]));
+
+    uint32_t psram_kb = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024u;
+    uint32_t sram_kb  = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024u;
+    float    fps      = render_service_get_fps();
+
+    NB_LOGI(TAG, "--- STATS ---  PSRAM free=%luKB  SRAM free=%luKB  FPS=%.1f",
+            (unsigned long)psram_kb, (unsigned long)sram_kb, fps);
+
+    for (int i = 0; i < k_ntasks; i++) {
+        TaskHandle_t h = xTaskGetHandle(k_tasks[i]);
+        if (!h) continue;
+        UBaseType_t wm = uxTaskGetStackHighWaterMark(h);
+        NB_LOGI(TAG, "  %-26s watermark=%4u words (%4u bytes)",
+                k_tasks[i], (unsigned)wm, (unsigned)(wm * sizeof(StackType_t)));
     }
 }
 
@@ -528,30 +593,29 @@ static esp_err_t phase_hal(void)
     if (err != ESP_OK) {
         NB_LOGW(TAG, "led_service_init falhou: %s — LEDs desativados", esp_err_to_name(err));
     } else {
-        BaseType_t rc = xTaskCreate(led_update_task, "nb_led_task",
+        BaseType_t rc = xTaskCreate(led_update_task, "led_task",
                                     2048, NULL, 3, NULL);
-        NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate nb_led_task falhou");
+        NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate led_task falhou");
     }
 
     /* Touch (Etapa 2.2) */
     {
         /*
-         * CALIBRAÇÃO TEMPORÁRIA — override direto em float.
+         * Threshold = baseline × (1 + sens_factor).
          *
-         * O pad de cobre atual gera ~1% de variação de sinal no toque, mas o
-         * noise floor do sensor oscila até ~0.8% acima do baseline em repouso.
-         * Usando 0.008f (0.8%) como threshold: fica abaixo do pico de toque (~1%)
-         * mas acima da maior parte do ruído. Combinado com DEBOUNCE_ON_COUNT=3
-         * (60ms contínuos acima do threshold), elimina disparos espúrios.
+         * Medições no hardware (GPIO2, pad de cobre):
+         *   baseline calibrado: ~72500–73000
+         *   idle real (drift):  ~73400–73500  (+1.3% acima do baseline)
+         *   toque forte:        ~300000–350000 (+340% acima do baseline)
          *
-         * Referência medida: baseline ~36950, noise peak ~37350 (+1.08%),
-         * toque real provavelmente >37350. Ajustar se toque legítimo não for
-         * detectado ou se falsos positivos persistirem.
+         * sens_factor = 0.5f → threshold = baseline × 1.5 ≈ 109000
+         *   - idle (~73490) fica bem abaixo → sem falsos disparos
+         *   - toque (~320000) fica muito acima → detecção confiável
          *
-         * Não usar NB_CFG_DEFAULT_TOUCH_SENS / 100.0f — daria 0.01f (1%), alto demais.
-         * Migrar para schema sub-percentual quando config_manager suportar migração.
+         * Referência: NodeBot (mesmo hardware) usa mean × 150% com sucesso.
+         * O drift de 1.3% não afeta com threshold de 50%.
          */
-        float sens_factor = 0.008f;
+        float sens_factor = 0.5f;
 
         err = touch_service_init();
         if (err != ESP_OK) {
@@ -560,9 +624,9 @@ static esp_err_t phase_hal(void)
         } else {
             touch_service_set_sensitivity(sens_factor);
             touch_service_set_event_cb(on_touch_event);
-            BaseType_t rc = xTaskCreate(touch_update_task, "nb_touch_task",
+            BaseType_t rc = xTaskCreate(touch_update_task, "touch_task",
                                         4096, NULL, 4, NULL);
-            NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate nb_touch_task falhou");
+            NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate touch_task falhou");
         }
     }
 
@@ -674,9 +738,9 @@ static esp_err_t phase_services(void)
      * Stack 4096: emotion_model_update → expression_service_set (C++) usa frame
      * considerável — 2048 causa overflow. */
     {
-        BaseType_t rc = xTaskCreate(behavior_task, "nb_behav_task",
+        BaseType_t rc = xTaskCreate(behavior_task, "behav_task",
                                     4096, NULL, 5, NULL);
-        NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate nb_behav_task falhou");
+        NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate behav_task falhou");
     }
 
     /* gaze_service (Etapa 5.2): render layer z=5, saccade + micro-drift */
@@ -693,6 +757,13 @@ static esp_err_t phase_services(void)
     err = conductor_init();
     if (err != ESP_OK) {
         NB_LOGW(TAG, "conductor_init falhou: %s — acoes coordenadas desativadas",
+                esp_err_to_name(err));
+    }
+
+    /* long_term_memory (Etapa 6.2): persona_state + histórico de interações */
+    err = ltm_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "ltm_init falhou: %s — LTM desativada",
                 esp_err_to_name(err));
     }
 

@@ -308,7 +308,7 @@ esp_err_t conductor_init(void)
     s_trigger_sem = xSemaphoreCreateBinary();
     if (!s_trigger_sem) return ESP_ERR_NO_MEM;
 
-    BaseType_t rc = xTaskCreate(conductor_task, "nb_conductor_task",
+    BaseType_t rc = xTaskCreate(conductor_task, "conductor_task",
                                 4096, NULL, 6, NULL);
     if (rc != pdPASS) {
         vSemaphoreDelete(s_trigger_sem);

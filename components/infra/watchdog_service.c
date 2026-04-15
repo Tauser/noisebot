@@ -28,13 +28,13 @@ static void wdog_task(void *arg)
     /* Registra esta task no TWDT. */
     esp_err_t err = esp_task_wdt_add(NULL);
     if (err != ESP_OK) {
-        NB_LOGE(TAG, "Falha ao registrar nb_wdog_task no TWDT: %s",
+        NB_LOGE(TAG, "Falha ao registrar wdog_task no TWDT: %s",
                 esp_err_to_name(err));
         /* Task crítica — não pode falhar silenciosamente. */
         esp_restart();
     }
 
-    NB_LOGD(TAG, "nb_wdog_task rodando (Core %d, prio %d)",
+    NB_LOGD(TAG, "wdog_task rodando (Core %d, prio %d)",
             xPortGetCoreID(), NB_WDOG_TASK_PRIORITY);
 
     while (1) {
@@ -67,7 +67,7 @@ esp_err_t nb_watchdog_init(void)
 
     BaseType_t created = xTaskCreatePinnedToCore(
         wdog_task,
-        "nb_wdog_task",
+        "wdog_task",
         NB_WDOG_TASK_STACK_BYTES,
         NULL,
         NB_WDOG_TASK_PRIORITY,

@@ -12,8 +12,8 @@
 
 static const char *TAG = "nb_touch_hal";
 
-#define CALIB_SAMPLES    10
-#define CALIB_DELAY_MS   10
+#define CALIB_SAMPLES    30
+#define CALIB_DELAY_MS   20
 
 static uint32_t s_baseline  = 0;
 static bool     s_initialized = false;
@@ -55,10 +55,12 @@ esp_err_t nb_touch_hal_init(void)
         return err;
     }
 
-    /* Aguarda o periférico estabilizar antes de calibrar. */
-    vTaskDelay(pdMS_TO_TICKS(200));
+    /* Aguarda o periférico estabilizar antes de calibrar.
+     * 500ms é suficiente — o threshold alto (≥30% acima do baseline) absorve
+     * qualquer drift de capacitância sem precisar de settling longo. */
+    vTaskDelay(pdMS_TO_TICKS(500));
 
-    /* Calibração: média de CALIB_SAMPLES leituras brutas. */
+    /* Calibração: média simples de CALIB_SAMPLES leituras. */
     uint64_t sum = 0;
     for (int i = 0; i < CALIB_SAMPLES; i++) {
         uint32_t raw = 0;

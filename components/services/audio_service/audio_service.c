@@ -192,15 +192,22 @@ static void vad_update(const int32_t *mic, size_t n)
     }
 
     int64_t sum_sq = 0;
+    uint32_t zcr_count = 0;
     for (size_t i = 0; i < n; i++) {
         int64_t v = mic[i];
         sum_sq += v * v;
+        if (i > 0 && ((mic[i - 1] >= 0) != (mic[i] >= 0))) zcr_count++;
     }
     int32_t rms = (int32_t)sqrtf((float)(sum_sq / (int64_t)n));
 
+    /* ZCR: taxa de cruzamentos de zero (fala humana ≈ 0.05–0.45).
+     * Filtra ruído DC (ZCR≈0), chiados e fans (ZCR>0.45). */
+    float zcr = (n > 1u) ? ((float)zcr_count / (float)(n - 1u)) : 0.0f;
+    bool is_speech = (rms > s.vad_threshold) && (zcr >= 0.05f) && (zcr <= 0.45f);
+
     int64_t now_us = esp_timer_get_time();
 
-    if (rms > s.vad_threshold) {
+    if (is_speech) {
         if (s.vad_state == VAD_SILENCE) {
             if (++s.vad_enter_count >= VAD_ENTER_CHUNKS) {
                 s.vad_enter_count = 0;
@@ -215,6 +222,7 @@ static void vad_update(const int32_t *mic, size_t n)
         }
     } else {
         s.vad_enter_count = 0;
+        /* RMS alto mas ZCR fora da faixa de fala (ruído, fan, música) — ignora. */
         /* Log periódico do pico de ruído ambiente para calibração. */
         if (s.vad_state == VAD_SILENCE) {
             if (rms > s.vad_noise_peak) s.vad_noise_peak = rms;
@@ -284,7 +292,7 @@ static void audio_task(void *arg)
 
                 wav_file = fopen(path, "rb");
                 if (!wav_file) {
-                    ESP_LOGE(TAG, "fopen falhou: %s", path);
+                    ESP_LOGW(TAG, "asset ausente: %s", path);
                     xSemaphoreTake(s.mutex, portMAX_DELAY);
                     s.play_state = PLAY_IDLE;
                     xSemaphoreGive(s.mutex);
@@ -432,13 +440,13 @@ esp_err_t audio_service_init(void)
     s.rec_state      = REC_IDLE;
 
     BaseType_t rc = xTaskCreatePinnedToCore(
-        audio_task, "nb_audio_task",
+        audio_task, "audio_task",
         AUDIO_TASK_STACK, NULL,
         AUDIO_TASK_PRIORITY, NULL,
         AUDIO_TASK_CORE
     );
     if (rc != pdPASS) {
-        ESP_LOGE(TAG, "xTaskCreatePinnedToCore nb_audio_task falhou");
+        ESP_LOGE(TAG, "xTaskCreatePinnedToCore audio_task falhou");
         vSemaphoreDelete(s.mutex);
         audio_hal_deinit();
         return ESP_ERR_NO_MEM;

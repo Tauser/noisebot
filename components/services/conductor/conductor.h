@@ -8,7 +8,7 @@
  * Interrupt suave: nova ação durante ação em curso → para áudio, para motion
  * suavemente e inicia a nova ação. Não há tearing de expressão facial.
  *
- * Task: "nb_conductor_task"  Core: 0  Prio: 6  Stack: 4096
+ * Task: "conductor_task"  Core: 0  Prio: 6  Stack: 4096
  */
 
 #ifndef NB_CONDUCTOR_H

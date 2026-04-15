@@ -6,7 +6,7 @@
  *
  * Localização em infra/ para evitar dependência circular entre componentes.
  *
- * Task: "nb_safety_task"
+ * Task: "safety_task"
  *   Core: 1   Prioridade: 23   Stack: 4096
  *   Período: 50ms (20Hz) — verifica load, temp e heartbeat.
  */
@@ -144,7 +144,7 @@ static void on_brownout(const nb_event_t *evt, void *ctx)
  * Roda a 20Hz (50ms). Verifica load, temperatura e heartbeat de cada servo.
  * Só age quando estado == ARMED. Em FAULT: permanece no loop mas não lê.
  *
- * Task: "nb_safety_task"  Core: 1  Prioridade: 23  Stack: 4096
+ * Task: "safety_task"  Core: 1  Prioridade: 23  Stack: 4096
  */
 static void safety_task(void *arg)
 {
@@ -258,7 +258,7 @@ esp_err_t motion_safety_init(void)
 
     /* Cria safety task em Core 1, prioridade máxima de safety */
     BaseType_t rc = xTaskCreatePinnedToCore(
-        safety_task, "nb_safety_task",
+        safety_task, "safety_task",
         4096, NULL,
         23,     /* prioridade: mais alta que qualquer task de aplicação */
         NULL,

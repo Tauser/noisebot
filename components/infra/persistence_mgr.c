@@ -14,6 +14,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 #define TAG "nb_persist"
 
@@ -89,18 +92,15 @@ static int nb_log_vprintf(const char *fmt, va_list args)
 
 /*
  * Rotaciona o arquivo de log se ultrapassou o tamanho máximo.
- * Estratégia simples: renomear log.txt → log_old.txt, iniciar novo log.txt.
+ * Usa stat() para evitar fopen/fseek/fclose, que disparam vfs_fat_lseek
+ * internamente e podem acionar logging de debug do VFS durante o fclose.
  */
 static void maybe_rotate_log(void)
 {
-    FILE *f = fopen(LOG_FILE_PATH, "r");
-    if (f == NULL) return;
+    struct stat st;
+    if (stat(LOG_FILE_PATH, &st) != 0) return;
 
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    fclose(f);
-
-    if (size >= (long)LOG_FILE_MAX_BYTES) {
+    if (st.st_size >= (off_t)LOG_FILE_MAX_BYTES) {
         const char *old_path = NB_SD_MOUNT_POINT "/logs/log_old.txt";
         remove(old_path);
         rename(LOG_FILE_PATH, old_path);
@@ -110,13 +110,15 @@ static void maybe_rotate_log(void)
 
 /*
  * Escreve uma linha no arquivo de log do SD.
- * Abre → escreve → fecha por operação (sem arquivo aberto por longo período).
- * Em falha: marca SD como indisponível e loga no UART.
+ * Usa POSIX open/write/close (não stdio) para evitar que a camada stdio
+ * chame vfs_fat_lseek implicitamente no fclose/fflush do modo append.
+ * vfs_fat_lseek dispara ESP_LOGD internamente, que acessa o mutex de log
+ * do ESP-IDF — o que causaria reentrância fatal durante escrita de log.
  */
 static void write_log_line(const char *data, uint16_t len)
 {
-    FILE *f = fopen(LOG_FILE_PATH, "a");
-    if (f == NULL) {
+    int fd = open(LOG_FILE_PATH, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) {
         /* SD removido durante operação. */
         if (s_sd_available) {
             s_sd_available = false;
@@ -125,12 +127,12 @@ static void write_log_line(const char *data, uint16_t len)
         return;
     }
 
-    fwrite(data, 1, len, f);
+    write(fd, data, len);
     /* Garantir newline se ausente. */
     if (len > 0 && data[len - 1] != '\n') {
-        fputc('\n', f);
+        write(fd, "\n", 1);
     }
-    fclose(f);
+    close(fd);
 }
 
 /* ── Task ────────────────────────────────────────────────────────────────── */
@@ -221,7 +223,7 @@ esp_err_t persistence_mgr_init(void)
     /* Criar persistence_task. */
     BaseType_t ret = xTaskCreatePinnedToCore(
         persistence_task,
-        "nb_persist",
+        "persist_task",
         TASK_STACK_SIZE,
         NULL,
         TASK_PRIORITY,

@@ -616,7 +616,7 @@ Critérios adicionais de integração do Bloco 0:
 
 **Implementado:**
 
-- `conductor.c/.h` em `components/services/conductor/`: task "nb_conductor_task" prio 6, Core 0.
+- `conductor.c/.h` em `components/services/conductor/`: task "nb_conductor_t" prio 6, Core 0.
 - 10 ações, até 3 variações cada. Sorteio via `esp_random()`.
 - Partituras com keyframes de expressão + motion + áudio.
 - Interrupt suave: flag `s_interrupt` verificada a cada 20ms no sleep interno.
@@ -645,7 +645,15 @@ Critérios adicionais de integração do Bloco 0:
 - Profiling: CPU usage por task, stack high watermark, heap SRAM e PSRAM.
 - Ajuste de prioridades e tamanhos baseado em dados reais.
 
-**Critérios de aceitação:**
+**Implementado:**
+
+- `render_service_get_fps()`: getter do último FPS medido (atualizado a cada 5s).
+- `stats_dump()` em `boot_manager.c`: chamado a cada 60s pelo `behavior_task`.
+  - Loga PSRAM free (KB), SRAM free (KB), FPS atual.
+  - Watermark de stack por task: usa `xTaskGetHandle()` + `uxTaskGetStackHighWaterMark()`.
+  - Tasks monitoradas: render, audio, motion, safety, conductor, behav, led, touch, persist, wdog.
+
+**Critérios de aceitação (verificação com hardware):**
 
 - [ ] FPS de render nunca abaixo de 25fps com áudio simultâneo
 - [ ] Latência touch → resposta visual <100ms consistentemente em 50 tentativas
@@ -662,12 +670,27 @@ Critérios adicionais de integração do Bloco 0:
 
 **O que entra:**
 
-- `long_term_memory`: `interaction_history` (ring buffer 200 entradas, binário compacto), `persona_state` (JSON pequeno), `event_journal` (1000 entradas rotativas), `usage_stats`.
-- Flush para SD a cada 5min ou ao entrar em SLEEPING.
-- `behavior_engine` consulta LTM nas transições de estado.
+- `long_term_memory`: `interaction_history` (ring buffer 200 entradas, binário compacto), `persona_state` (binário com CRC), `event_journal` (1000 entradas rotativas), `usage_stats`.
+- Flush para SD a cada 5min (behavior_task) ou ao entrar em SLEEPING.
 - API: `ltm_get_total_touch_count()`, `ltm_get_hours_alive()`, `ltm_is_user_familiar()`.
 
-**Critérios de aceitação:**
+**Implementado:**
+
+- `components/persona/long_term_memory/`: ltm.h + ltm.c + CMakeLists.txt
+- Dois arquivos SD (binário + CRC32): `ltm_main.bin` (~1.2KB) e `ltm_journal.bin` (~6KB)
+- `ltm_main_file_t`: magic + version + total_touch_count + total_sessions + cumulative_uptime_s + familiarity_score + ring buffer 200 entradas + crc32
+- `ltm_journal_file_t`: magic + version + ring buffer 1000 entradas + crc32
+- Familiar: `score = 1 − exp(−touches/50)` → familiar (score ≥ 0.5) a partir de ~35 toques
+- Wiring em `boot_manager.c`:
+  - touch TAP/LONG → `ltm_record(LTM_IACT_TOUCH_*)`
+  - touch WAKE → `ltm_record(LTM_IACT_WAKE)`
+  - voice start → `ltm_record(LTM_IACT_VOICE_START)`
+  - playback → `ltm_record(LTM_IACT_AUDIO_PLAYED)`
+  - SLEEPING → `ltm_record(LTM_IACT_SLEEP)` + `ltm_flush()`
+  - IDLE (de SLEEPING) → `ltm_record(LTM_IACT_WAKE)`
+  - behavior_task: `ltm_tick(100)` a cada tick, `ltm_flush()` a cada 5min
+
+**Critérios de aceitação (verificação com hardware):**
 
 - [ ] Após 100 interações simuladas: dados persistidos corretamente no SD
 - [ ] `ltm_is_user_familiar()` muda de false para true após threshold de interações
