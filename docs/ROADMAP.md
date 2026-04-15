@@ -614,7 +614,15 @@ Critérios adicionais de integração do Bloco 0:
 - `conductor`: API de ações de alto nível (`nb_action_t`). Partituras com keyframes temporais. Variações por ação (2-3 por ação). Interrupt suave ao receber nova ação.
 - Ações iniciais: GREET, AGREE, DISAGREE, CURIOUS, TOUCH_WARM, TOUCH_STARTLE, SPEAK_LOOP, SLEEP, WAKE_UP.
 
-**Critério de qualidade:**
+**Implementado:**
+
+- `conductor.c/.h` em `components/services/conductor/`: task "nb_conductor_task" prio 6, Core 0.
+- 10 ações, até 3 variações cada. Sorteio via `esp_random()`.
+- Partituras com keyframes de expressão + motion + áudio.
+- Interrupt suave: flag `s_interrupt` verificada a cada 20ms no sleep interno.
+- Wiring em `boot_manager.c`: touch TAP→TOUCH_WARM, LONG_PRESS→TOUCH_STARTLE, WAKE→WAKE_UP; estado SLEEPING→SLEEP, IDLE(de SLEEPING)→WAKE_UP; playback→SPEAK_LOOP; boot→GREET.
+
+**Critério de qualidade (verificação com hardware):**
 
 - [ ] Ação GREET: observador externo percebe face, motion e áudio como **uma** expressão unificada, não três outputs separados
 - [ ] Ação SLEEP: transição gradual e suave (>2s de fade)

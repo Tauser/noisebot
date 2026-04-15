@@ -342,6 +342,7 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             bus_evt.type = NB_EVT_AUDIO_STARTED;
             state_machine_on_audio_started();
             emotion_model_on_event(NB_EMOT_EVT_AUDIO_STARTED);
+            conductor_play(NB_ACTION_SPEAK_LOOP);
             break;
         case NB_AUDIO_EVT_PLAYBACK_END:
             bus_evt.type = NB_EVT_AUDIO_ENDED;
@@ -375,13 +376,16 @@ static void on_touch_event(nb_touch_event_t evt)
         case NB_TOUCH_EVT_TAP:
             state_machine_on_touch_tap();
             emotion_model_on_event(NB_EMOT_EVT_TOUCH_TAP);
+            conductor_play(NB_ACTION_TOUCH_WARM);
             break;
         case NB_TOUCH_EVT_LONG_PRESS:
             state_machine_on_touch_long_press();
             emotion_model_on_event(NB_EMOT_EVT_TOUCH_LONG);
+            conductor_play(NB_ACTION_TOUCH_STARTLE);
             break;
         case NB_TOUCH_EVT_WAKE:
             state_machine_on_touch_wake();
+            conductor_play(NB_ACTION_WAKE_UP);
             break;
         default:
             break;
@@ -442,10 +446,12 @@ static void on_state_changed(nb_robot_state_t new_state,
     switch (new_state) {
         case NB_STATE_SLEEPING:
             emotion_model_on_event(NB_EMOT_EVT_ENTERING_SLEEP);
+            conductor_play(NB_ACTION_SLEEP);
             break;
         case NB_STATE_IDLE:
             if (old_state == NB_STATE_SLEEPING) {
                 emotion_model_on_event(NB_EMOT_EVT_WAKING_UP);
+                conductor_play(NB_ACTION_WAKE_UP);
             }
             break;
         case NB_STATE_ERROR:
@@ -683,8 +689,12 @@ static esp_err_t phase_services(void)
     NB_ASSERT(err == ESP_OK, TAG, "idle_service_init falhou: %s",
               esp_err_to_name(err));
 
-    /* conductor: stub Bloco 5.4 */
-    phase_stub(NB_BOOT_PHASE_SERVICES, "Etapa 5.4 (conductor)");
+    /* conductor (Etapa 5.4): orquestrador de ações de alto nível */
+    err = conductor_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "conductor_init falhou: %s — acoes coordenadas desativadas",
+                esp_err_to_name(err));
+    }
 
     phase_ok(NB_BOOT_PHASE_SERVICES);
     return ESP_OK;
@@ -781,6 +791,11 @@ static esp_err_t phase_complete(void)
     /* Transição de LED: BOOT → IDLE (breathe quente). */
     led_base_set(NB_LED_BASE_BOOT, false);
     led_base_set(NB_LED_BASE_IDLE, true);
+
+    /* Saudação de boot: coordena face + motion + áudio como primeira expressão. */
+    if (!s_status.safe_mode) {
+        conductor_play(NB_ACTION_GREET);
+    }
 
     phase_ok(NB_BOOT_PHASE_COMPLETE);
     return ESP_OK;

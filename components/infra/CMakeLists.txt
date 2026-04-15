@@ -28,4 +28,5 @@ idf_component_register(
         emotion_model
         gaze_service
         idle_service
+        conductor
 )
