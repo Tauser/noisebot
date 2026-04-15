@@ -37,6 +37,7 @@
 #include "emotion_model.h"
 #include "gaze_service.h"
 #include "idle_service.h"
+#include "conductor.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
