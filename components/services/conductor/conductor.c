@@ -137,9 +137,13 @@ static const score_step_t k_startle_b[] = {
     { 0,   NB_EXPR_SURPRISED, 60.0f, true, 800.0f, CM_SHAKE, 0, NULL },
 };
 
-/* SPEAK_LOOP — expressão FOCUSED enquanto fala */
+/* SPEAK_LOOP — variação A: FOCUSED enquanto fala */
 static const score_step_t k_speak_a[] = {
     { 0, NB_EXPR_FOCUSED, 200.0f, false, 0.0f, CM_NONE, 0, NULL },
+};
+/* SPEAK_LOOP — variação B: CURIOUS enquanto fala (parece mais engajado/pensativo) */
+static const score_step_t k_speak_b[] = {
+    { 0, NB_EXPR_CURIOUS, 250.0f, false, 0.0f, CM_NONE, 0, NULL },
 };
 
 /* SLEEP — transição longa, park servos */
@@ -148,13 +152,19 @@ static const score_step_t k_sleep_a[] = {
     { 600,  NB_EXPR_COUNT,  0.0f,    false, 0.0f, CM_PARK, 0, NULL },
 };
 
-/* WAKE_UP */
+/* WAKE_UP — variação A: acorda neutro + olha curioso */
 static const score_step_t k_wake_a[] = {
-    { 0,   NB_EXPR_NEUTRAL, 800.0f, false, 0.0f, CM_CENTER, 600, NULL },
-    { 900, NB_EXPR_COUNT,   0.0f,   false, 0.0f, CM_TILT_CURIOUS, 0, NULL },
+    { 0,   NB_EXPR_NEUTRAL, 800.0f, false, 0.0f, CM_CENTER,       600, NULL },
+    { 900, NB_EXPR_COUNT,   0.0f,   false, 0.0f, CM_TILT_CURIOUS,   0, NULL },
 };
+/* WAKE_UP — variação B: acorda neutro, centraliza */
 static const score_step_t k_wake_b[] = {
     { 0,   NB_EXPR_NEUTRAL, 800.0f, false, 0.0f, CM_CENTER, 600, NULL },
+};
+/* WAKE_UP — variação C: acorda feliz + nod */
+static const score_step_t k_wake_c[] = {
+    { 0,   NB_EXPR_HAPPY,   600.0f, false, 0.0f, CM_CENTER, 500, NULL },
+    { 700, NB_EXPR_COUNT,   0.0f,   false, 0.0f, CM_NOD,      0, NULL },
 };
 
 /* ── Tabela de variações por ação ────────────────────────────────────────── */
@@ -169,9 +179,9 @@ static const nb_score_t k_scores[NB_ACTION_COUNT][3] = {
     [NB_ACTION_CURIOUS]       = { SCORE(k_curious_a), SCORE(k_curious_b), {NULL,0} },
     [NB_ACTION_TOUCH_WARM]    = { SCORE(k_touch_warm_a), SCORE(k_touch_warm_b), SCORE(k_touch_warm_c) },
     [NB_ACTION_TOUCH_STARTLE] = { SCORE(k_startle_a), SCORE(k_startle_b), {NULL,0} },
-    [NB_ACTION_SPEAK_LOOP]    = { SCORE(k_speak_a), {NULL,0}, {NULL,0} },
+    [NB_ACTION_SPEAK_LOOP]    = { SCORE(k_speak_a), SCORE(k_speak_b), {NULL,0} },
     [NB_ACTION_SLEEP]         = { SCORE(k_sleep_a), {NULL,0}, {NULL,0} },
-    [NB_ACTION_WAKE_UP]       = { SCORE(k_wake_a), SCORE(k_wake_b), {NULL,0} },
+    [NB_ACTION_WAKE_UP]       = { SCORE(k_wake_a), SCORE(k_wake_b), SCORE(k_wake_c) },
 };
 
 /* Número de variações por ação */
@@ -183,9 +193,9 @@ static const int k_num_vars[NB_ACTION_COUNT] = {
     [NB_ACTION_CURIOUS]       = 2,
     [NB_ACTION_TOUCH_WARM]    = 3,
     [NB_ACTION_TOUCH_STARTLE] = 2,
-    [NB_ACTION_SPEAK_LOOP]    = 1,
+    [NB_ACTION_SPEAK_LOOP]    = 2,
     [NB_ACTION_SLEEP]         = 1,
-    [NB_ACTION_WAKE_UP]       = 2,
+    [NB_ACTION_WAKE_UP]       = 3,
 };
 
 /* ── Estado interno ──────────────────────────────────────────────────────── */

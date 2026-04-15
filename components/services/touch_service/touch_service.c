@@ -203,21 +203,6 @@ static void service_tick(uint32_t dt_ms)
 {
     s_svc.uptime_ms += dt_ms;
 
-    /* Log de diagnóstico periódico — 1 linha a cada 5s. Remover após validação. */
-    {
-        static uint32_t s_diag_tick = 0;
-        if (++s_diag_tick >= 250u) {
-            s_diag_tick = 0;
-            ESP_LOGI(TAG, "diag raw=%lu fraw=%lu base=%lu thr_on=%lu thr_off=%lu state=%d",
-                     (unsigned long)s_svc.last_raw,
-                     (unsigned long)s_svc.filtered_raw,
-                     (unsigned long)s_svc.baseline,
-                     (unsigned long)s_svc.threshold_on,
-                     (unsigned long)s_svc.threshold_off,
-                     (int)s_svc.state);
-        }
-    }
-
     /* Período de estabilização pós-boot. */
     if (!s_svc.boot_stable) {
         if (s_svc.uptime_ms >= BOOT_STABLE_MS) {

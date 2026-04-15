@@ -330,6 +330,7 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_START;
             state_machine_on_voice_start();
             emotion_model_on_event(NB_EMOT_EVT_VOICE_START);
+            conductor_play(NB_ACTION_CURIOUS);   /* reação visual ao ouvir voz */
             ltm_record(LTM_IACT_VOICE_START);
             break;
         case NB_AUDIO_EVT_VOICE_END:
@@ -488,16 +489,34 @@ static void stats_dump(void);   /* definida após behavior_task */
 static void behavior_task(void *arg)
 {
     (void)arg;
-    const TickType_t period     = pdMS_TO_TICKS(100);
-    TickType_t       last_wake  = xTaskGetTickCount();
-    uint32_t         stats_tick = 0;
-    uint32_t         ltm_tick_n = 0;
+    const TickType_t period        = pdMS_TO_TICKS(100);
+    TickType_t       last_wake     = xTaskGetTickCount();
+    uint32_t         stats_tick    = 0;
+    uint32_t         ltm_tick_n    = 0;
+    /* Curiosidade espontânea em IDLE: 25–60s, dispara NB_ACTION_CURIOUS. */
+    uint32_t         curious_ms    = 25000u + (esp_random() % 35000u);
 
     while (1) {
         state_machine_update(100);
         emotion_model_update(100);
         idle_service_update(100);
         ltm_tick(100);
+
+        /* Curiosidade espontânea: robô olha de forma curiosa ocasionalmente em IDLE. */
+        {
+            nb_robot_state_t st = state_machine_get_state();
+            if (st == NB_STATE_IDLE) {
+                if (curious_ms <= 100u) {
+                    conductor_play(NB_ACTION_CURIOUS);
+                    curious_ms = 25000u + (esp_random() % 35000u);
+                } else {
+                    curious_ms -= 100u;
+                }
+            } else {
+                /* Fora de IDLE: reseta timer para não disparar logo ao retornar. */
+                curious_ms = 15000u + (esp_random() % 20000u);
+            }
+        }
 
         /* Stats dump a cada 60s (600 × 100ms). */
         if (++stats_tick >= 600u) {
