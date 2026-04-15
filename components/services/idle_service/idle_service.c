@@ -34,9 +34,8 @@
 
 #define YAWN_MIN_MS        60000U    /* intervalo mínimo de yawn              */
 #define YAWN_RANGE_MS     120000U
-#define YAWN_DURATION_MS    2500U    /* tempo em SLEEPY antes de retornar     */
-#define YAWN_TRANS_IN_MS     800.0f  /* transição para SLEEPY                 */
-#define YAWN_TRANS_OUT_MS    600.0f  /* transição de volta para NEUTRAL       */
+#define YAWN_DURATION_MS    2500.0f  /* tempo em SLEEPY antes de retornar     */
+#define YAWN_TRANS_MS        800.0f  /* transição de entrada e saída          */
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -64,7 +63,6 @@ static bool     s_initialized       = false;
 static uint32_t s_saccade_timer_ms  = 0;
 static uint32_t s_aversive_timer_ms = 0;
 static uint32_t s_yawn_timer_ms     = 0;
-static uint32_t s_yawn_hold_ms      = 0;   /* > 0 = yawn em curso     */
 
 static bool     s_was_active        = false; /* estava em IDLE/ATTENTIVE */
 
@@ -115,7 +113,6 @@ esp_err_t idle_service_init(void)
     s_saccade_timer_ms  = rand_interval(SACCADE_MIN_MS,  SACCADE_RANGE_MS);
     s_aversive_timer_ms = rand_interval(AVERSIVE_MIN_MS, AVERSIVE_RANGE_MS);
     s_yawn_timer_ms     = rand_interval(YAWN_MIN_MS,     YAWN_RANGE_MS);
-    s_yawn_hold_ms      = 0;
     s_was_active        = false;
     s_initialized       = true;
 
@@ -135,11 +132,6 @@ void idle_service_update(uint32_t dt_ms)
     /* Transição de IDLE/ATTENTIVE → outro estado: centraliza gaze e reseta timers */
     if (!is_active) {
         if (s_was_active) {
-            if (s_yawn_hold_ms > 0) {
-                /* Cancela yawn em curso */
-                expression_service_set(NB_EXPR_NEUTRAL, YAWN_TRANS_OUT_MS);
-                s_yawn_hold_ms = 0;
-            }
             reset_timers_and_center();
         }
         s_was_active = false;
@@ -147,19 +139,6 @@ void idle_service_update(uint32_t dt_ms)
     }
 
     s_was_active = true;
-
-    /* ── Holddown de yawn ── */
-    if (s_yawn_hold_ms > 0) {
-        if (dt_ms >= s_yawn_hold_ms) {
-            s_yawn_hold_ms = 0;
-            expression_service_set(NB_EXPR_NEUTRAL, YAWN_TRANS_OUT_MS);
-            ESP_LOGD(TAG, "yawn terminou");
-        } else {
-            s_yawn_hold_ms -= dt_ms;
-        }
-        /* Timers pausados durante yawn (não queremos saccade em meio ao bocejo) */
-        return;
-    }
 
     /* ── Micro-saccade (IDLE e ATTENTIVE) ── */
     if (s_saccade_timer_ms <= dt_ms) {
@@ -185,8 +164,7 @@ void idle_service_update(uint32_t dt_ms)
     /* ── Yawn (IDLE somente) ── */
     if (is_idle) {
         if (s_yawn_timer_ms <= dt_ms) {
-            expression_service_set(NB_EXPR_SLEEPY, YAWN_TRANS_IN_MS);
-            s_yawn_hold_ms  = YAWN_DURATION_MS;
+            expression_play(NB_EXPR_SLEEPY, YAWN_DURATION_MS, YAWN_TRANS_MS);
             s_yawn_timer_ms = rand_interval(YAWN_MIN_MS, YAWN_RANGE_MS);
             ESP_LOGI(TAG, "yawn!");
         } else {

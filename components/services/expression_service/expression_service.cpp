@@ -93,6 +93,27 @@ typedef struct {
     int64_t       t0;
 } nb_blink_eye_t;
 
+/* ── Constantes de timing ────────────────────────────────────────────────── */
+
+/** Duração estimada de um frame a 30fps. */
+static constexpr float FRAME_MS = 33.3f;
+
+/* ── Fila de expressões temporárias (play queue) ─────────────────────────── */
+
+#define PLAY_QUEUE_CAP  4
+
+struct play_item_t {
+    nb_expression_t expr;
+    float           duration_ms;
+    float           trans_ms;
+};
+
+typedef enum {
+    PLAY_STATE_IDLE,    /* sem play ativo — base expression vigente */
+    PLAY_STATE_HOLD,    /* contando duração do play                 */
+    PLAY_STATE_OUT,     /* retornando à base após play              */
+} play_state_t;
+
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
 static bool               s_initialized      = false;
@@ -104,9 +125,26 @@ static nb_face_state_t    s_from             = {};
 static float              s_trans_total_ms   = 0.0f;
 static float              s_trans_elapsed_ms = 0.0f;
 
+/* Base expression (última definida por expression_service_set) */
+static nb_expression_t    s_base_expr          = NB_EXPR_NEUTRAL;
+
+/* Pending base update (escrito de qualquer task, consumido no render Core 1) */
 static volatile bool      s_new_target_pending = false;
 static nb_face_state_t    s_pending_target     = {};
 static float              s_pending_trans_ms   = 0.0f;
+static nb_expression_t    s_pending_base_expr  = NB_EXPR_NEUTRAL;
+
+/* Play queue (protegida por s_set_mutex) */
+static play_item_t        s_play_queue[PLAY_QUEUE_CAP];
+static int                s_play_head          = 0;
+static int                s_play_count         = 0;
+
+/* Play state machine (somente render_task Core 1) */
+static play_state_t       s_play_state         = PLAY_STATE_IDLE;
+static float              s_play_elapsed_ms    = 0.0f;  /* elapsed em HOLD   */
+static float              s_play_dur_ms        = 0.0f;  /* duração do play   */
+static float              s_play_tr_ms         = 0.0f;  /* duração trans     */
+static float              s_play_ret_ms        = 0.0f;  /* elapsed em OUT    */
 
 /* Dois olhos independentes para blink assimétrico */
 static nb_blink_eye_t     s_blink[2]          = {};
@@ -347,7 +385,11 @@ static void blink_update_eye(nb_blink_eye_t *eye, int64_t now_us, bool is_left)
 
         case BLINK_CLOSING:
             if (dt < 0) break;   /* t0 no futuro (assimetria) — aguarda */
-            eye->phase = clamp01((float)dt / (float)BLINK_CLOSE_US);
+            {
+                /* Smoothstep: sigmoidal — fechamento natural, acelera no meio */
+                float t = clamp01((float)dt / (float)BLINK_CLOSE_US);
+                eye->phase = t * t * (3.0f - 2.0f * t);
+            }
             if (dt >= BLINK_CLOSE_US) {
                 eye->phase = 1.0f;
                 eye->state = BLINK_CLOSED;
@@ -363,7 +405,11 @@ static void blink_update_eye(nb_blink_eye_t *eye, int64_t now_us, bool is_left)
             break;
 
         case BLINK_OPENING:
-            eye->phase = 1.0f - clamp01((float)dt / (float)BLINK_OPEN_US);
+            {
+                /* Ease-out quadrático: (1-t)^2 — abre rápido, desacelera ao final */
+                float t = clamp01((float)dt / (float)BLINK_OPEN_US);
+                eye->phase = (1.0f - t) * (1.0f - t);
+            }
             if (dt >= BLINK_OPEN_US) {
                 eye->phase = 0.0f;
                 eye->state = BLINK_IDLE;
@@ -532,23 +578,83 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
     LGFX_Sprite *spr  = static_cast<LGFX_Sprite *>(canvas_handle);
     int64_t now_us    = esp_timer_get_time();
 
-    /* Aplicar pedido externo de expressão (trylock — não bloqueia render_task) */
+    /*
+     * ── Resolução de target (prioridade: base update > play queue > sem mudança) ──
+     *
+     * Base update (expression_service_set): maior prioridade — cancela play ativo.
+     * Play queue (expression_play):         só inicia quando PLAY_STATE_IDLE.
+     */
+    bool target_changed = false;
+
     if (s_new_target_pending) {
         if (xSemaphoreTake(s_set_mutex, 0) == pdTRUE) {
             if (s_new_target_pending) {
-                s_from             = s_current;
-                s_target           = s_pending_target;
-                s_trans_total_ms   = s_pending_trans_ms;
-                s_trans_elapsed_ms = 0.0f;
+                s_base_expr          = s_pending_base_expr;
+                s_from               = s_current;
+                s_target             = s_pending_target;
+                s_trans_total_ms     = s_pending_trans_ms;
+                s_trans_elapsed_ms   = 0.0f;
                 s_new_target_pending = false;
+                s_play_state         = PLAY_STATE_IDLE;   /* cancela play ativo */
+                target_changed       = true;
             }
             xSemaphoreGive(s_set_mutex);
         }
     }
 
+    if (!target_changed) {
+        switch (s_play_state) {
+
+            case PLAY_STATE_IDLE: {
+                play_item_t item = {};
+                bool got = false;
+                if (xSemaphoreTake(s_set_mutex, 0) == pdTRUE) {
+                    if (s_play_count > 0 && !s_new_target_pending) {
+                        item          = s_play_queue[s_play_head];
+                        s_play_head   = (s_play_head + 1) % PLAY_QUEUE_CAP;
+                        s_play_count--;
+                        got = true;
+                    }
+                    xSemaphoreGive(s_set_mutex);
+                }
+                if (got) {
+                    s_from             = s_current;
+                    s_target           = NB_EXPRESSIONS[item.expr];
+                    s_trans_total_ms   = item.trans_ms;
+                    s_trans_elapsed_ms = 0.0f;
+                    s_play_state       = PLAY_STATE_HOLD;
+                    s_play_elapsed_ms  = 0.0f;
+                    s_play_dur_ms      = item.duration_ms;
+                    s_play_tr_ms       = item.trans_ms;
+                }
+                break;
+            }
+
+            case PLAY_STATE_HOLD:
+                s_play_elapsed_ms += FRAME_MS;
+                if (s_play_elapsed_ms >= s_play_dur_ms) {
+                    /* Inicia retorno à expressão base */
+                    s_from             = s_current;
+                    s_target           = NB_EXPRESSIONS[s_base_expr];
+                    s_trans_total_ms   = s_play_tr_ms;
+                    s_trans_elapsed_ms = 0.0f;
+                    s_play_state       = PLAY_STATE_OUT;
+                    s_play_ret_ms      = 0.0f;
+                }
+                break;
+
+            case PLAY_STATE_OUT:
+                s_play_ret_ms += FRAME_MS;
+                if (s_play_ret_ms >= s_play_tr_ms) {
+                    s_play_state = PLAY_STATE_IDLE;   /* verifica fila no próximo frame */
+                }
+                break;
+        }
+    }
+
     /* Interpolação de estado */
     if (s_trans_elapsed_ms < s_trans_total_ms && s_trans_total_ms > 0.0f) {
-        s_trans_elapsed_ms += 33.3f;   /* ~1 frame a 30fps */
+        s_trans_elapsed_ms += FRAME_MS;
         float t = s_trans_elapsed_ms / s_trans_total_ms;
         if (t > 1.0f) t = 1.0f;
         nb_face_state_lerp(&s_from, &s_target, t, &s_current);
@@ -671,12 +777,42 @@ void expression_service_set(nb_expression_t expr, float transition_ms)
     }
 
     xSemaphoreTake(s_set_mutex, portMAX_DELAY);
+    s_pending_base_expr  = expr;
     s_pending_target     = NB_EXPRESSIONS[expr];
     s_pending_trans_ms   = transition_ms < 0.0f ? 0.0f : transition_ms;
     s_new_target_pending = true;
     xSemaphoreGive(s_set_mutex);
 
     ESP_LOGD(TAG, "set expr=%d trans=%.0fms", (int)expr, (double)transition_ms);
+}
+
+esp_err_t expression_play(nb_expression_t expr,
+                          float            duration_ms,
+                          float            transition_ms)
+{
+    if ((int)expr < 0 || expr >= NB_EXPR_COUNT) {
+        ESP_LOGW(TAG, "expression_play: expr=%d invalida", (int)expr);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    xSemaphoreTake(s_set_mutex, portMAX_DELAY);
+    if (s_play_count >= PLAY_QUEUE_CAP) {
+        xSemaphoreGive(s_set_mutex);
+        ESP_LOGW(TAG, "expression_play: fila cheia");
+        return ESP_ERR_NO_MEM;
+    }
+    int tail = (s_play_head + s_play_count) % PLAY_QUEUE_CAP;
+    s_play_queue[tail] = {
+        .expr        = expr,
+        .duration_ms = duration_ms < 0.0f ? 0.0f : duration_ms,
+        .trans_ms    = transition_ms < 0.0f ? 0.0f : transition_ms,
+    };
+    s_play_count++;
+    xSemaphoreGive(s_set_mutex);
+
+    ESP_LOGD(TAG, "play expr=%d dur=%.0fms tr=%.0fms (queue=%d)",
+             (int)expr, (double)duration_ms, (double)transition_ms, s_play_count);
+    return ESP_OK;
 }
 
 void expression_service_get_current(nb_face_state_t *out)

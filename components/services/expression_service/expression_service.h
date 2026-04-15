@@ -159,6 +159,23 @@ void nb_face_state_lerp(const nb_face_state_t *a,
  * @param x  [-1, 1]  -1=esquerda, +1=direita
  * @param y  [-1, 1]  -1=cima,    +1=baixo
  */
+/**
+ * @brief Enfileira uma expressão temporária com retorno automático à base.
+ *
+ * Após duration_ms, retorna à última expressão definida por expression_service_set.
+ * Se um play anterior estiver ativo, este é enfileirado (capacidade: 4 itens).
+ * Um novo expression_service_set() cancela o play em curso.
+ * Thread-safe.
+ *
+ * @param expr          Expressão a exibir temporariamente.
+ * @param duration_ms   Tempo em ms até retornar à base.
+ * @param transition_ms Duração da transição de entrada e saída.
+ * @return ESP_OK, ESP_ERR_INVALID_ARG ou ESP_ERR_NO_MEM (fila cheia).
+ */
+esp_err_t expression_play(nb_expression_t expr,
+                          float            duration_ms,
+                          float            transition_ms);
+
 void expression_service_set_gaze(float x, float y);
 
 #ifdef __cplusplus

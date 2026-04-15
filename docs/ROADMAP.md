@@ -582,11 +582,18 @@ Critérios adicionais de integração do Bloco 0:
 **Dependências:** 5.2 concluída
 **Hardware necessário:** Sim
 
-**O que entra:**
+**Implementado:**
 
-- `expression_service`: mantém current/target face_state, interpola a cada frame, `expression_play(expr, ms)`, `expression_set_base(expr)`, fila de expressões.
-- Mapeamento de eventos → expressões (touch, voz, estado).
-- Blink drive com curva de Bezier (fechamento mais rápido que abertura).
+- `expression_play(expr, duration_ms, transition_ms)`: fila circular (cap=4),
+  play temporário com retorno automático à base. `expression_service_set()` cancela
+  play ativo (prioridade maior — emoção sempre vence expressão temporária).
+- Mapeamento de eventos → expressões: touch e voz via emotion_model (direto, sem
+  esperar tick da behavior_task → latência ≤1 frame ~33ms). Estado → expressão
+  via state_machine + emotion_model já wired no boot_manager.
+- Blink com curvas de Bezier: fechamento smoothstep (sigmoidal), abertura ease-out
+  quadrático `(1-t)²` — olho abre rápido e desacelera ao final, mais natural.
+- Idle yawn atualizado para usar `expression_play()` — retorna à emoção base
+  correta (não hardcoded NEUTRAL).
 
 **Critérios de aceitação:**
 
