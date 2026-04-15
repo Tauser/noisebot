@@ -28,8 +28,11 @@
 
 #define TAG "audio_svc"
 
-/* Mínimo de chunks consecutivos acima do threshold para declarar VAD START (3 × 16ms = 48ms). */
-#define VAD_ENTER_CHUNKS 3U
+/* Mínimo de chunks consecutivos acima do threshold para declarar VAD START (5 × 16ms = 80ms). */
+#define VAD_ENTER_CHUNKS 5U
+
+/* Log de ruído ambiente a cada N chunks quando em silêncio (~2s). */
+#define VAD_NOISE_LOG_CHUNKS 125U
 
 /* ── Configuração da task ────────────────────────────────────────────────── */
 
@@ -84,7 +87,10 @@ static struct {
     int32_t              vad_threshold;
     vad_state_t          vad_state;
     int64_t              vad_silence_start_us;
-    uint8_t              vad_enter_count;  /* chunks consecutivos acima do threshold */
+    uint8_t              vad_enter_count;    /* chunks consecutivos acima do threshold */
+    uint32_t             vad_settle_ms;      /* > 0 = settling — não emite eventos VAD */
+    uint32_t             vad_noise_log_ctr;  /* contador para log periódico de ruído */
+    int32_t              vad_noise_peak;     /* pico de RMS em silêncio (janela atual) */
 
     /* Gravação de diagnóstico */
     rec_state_t          rec_state;
@@ -168,9 +174,22 @@ static long wav_parse_header(FILE *f, uint32_t *duration_ms)
 
 /* ── VAD ─────────────────────────────────────────────────────────────────── */
 
+/* Duração aproximada de um chunk em ms (256 samples @ 16kHz = 16ms). */
+#define CHUNK_DURATION_MS  16U
+
 static void vad_update(const int32_t *mic, size_t n)
 {
     if (n == 0) return;
+
+    /* Settling pós-init: consome chunks silenciosamente até o mic estabilizar. */
+    if (s.vad_settle_ms > 0) {
+        s.vad_settle_ms = (s.vad_settle_ms > CHUNK_DURATION_MS)
+                          ? s.vad_settle_ms - CHUNK_DURATION_MS : 0;
+        if (s.vad_settle_ms == 0) {
+            ESP_LOGI(TAG, "VAD settling completo — deteccao ativa");
+        }
+        return;
+    }
 
     int64_t sum_sq = 0;
     for (size_t i = 0; i < n; i++) {
@@ -196,6 +215,16 @@ static void vad_update(const int32_t *mic, size_t n)
         }
     } else {
         s.vad_enter_count = 0;
+        /* Log periódico do pico de ruído ambiente para calibração. */
+        if (s.vad_state == VAD_SILENCE) {
+            if (rms > s.vad_noise_peak) s.vad_noise_peak = rms;
+            if (++s.vad_noise_log_ctr >= VAD_NOISE_LOG_CHUNKS) {
+                ESP_LOGI(TAG, "VAD noise peak=%ld thr=%ld",
+                         (long)s.vad_noise_peak, (long)s.vad_threshold);
+                s.vad_noise_log_ctr = 0;
+                s.vad_noise_peak    = 0;
+            }
+        }
         if (s.vad_state == VAD_ACTIVE) {
             if (s.vad_silence_start_us == 0) {
                 s.vad_silence_start_us = now_us;
@@ -395,11 +424,12 @@ esp_err_t audio_service_init(void)
         return ESP_ERR_NO_MEM;
     }
 
-    s.volume        = 80U;  /* Default; boot_manager ajusta via audio_set_volume */
-    s.vad_threshold = NB_AUDIO_VAD_THRESHOLD_DEFAULT;
-    s.vad_state     = VAD_SILENCE;
-    s.play_state    = PLAY_IDLE;
-    s.rec_state     = REC_IDLE;
+    s.volume         = 80U;  /* Default; boot_manager ajusta via audio_set_volume */
+    s.vad_threshold  = NB_AUDIO_VAD_THRESHOLD_DEFAULT;
+    s.vad_state      = VAD_SILENCE;
+    s.vad_settle_ms  = NB_AUDIO_VAD_SETTLE_MS;
+    s.play_state     = PLAY_IDLE;
+    s.rec_state      = REC_IDLE;
 
     BaseType_t rc = xTaskCreatePinnedToCore(
         audio_task, "nb_audio_task",

@@ -52,6 +52,13 @@ extern "C" {
 /** Silêncio contínuo em ms antes de emitir VOICE_END. */
 #define NB_AUDIO_VAD_SILENCE_MS          300U
 
+/**
+ * Período de settling pós-init: VAD não emite eventos durante este tempo.
+ * O mic pega ruído de boot (PSU, circuitos inicializando) e os primeiros
+ * VAD_STARTs são quase sempre falsos positivos.
+ */
+#define NB_AUDIO_VAD_SETTLE_MS          5000U
+
 /* ── Eventos de áudio ────────────────────────────────────────────────────── */
 
 typedef enum {

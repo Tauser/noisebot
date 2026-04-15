@@ -24,4 +24,6 @@ idf_component_register(
         touch_service
         audio_service
         motion_service
+        state_machine
+        emotion_model
 )

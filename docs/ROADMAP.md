@@ -512,10 +512,24 @@ Critérios adicionais de integração do Bloco 0:
 **Dependências:** Bloco 0 concluído, 1.3 concluída
 **Hardware necessário:** Parcialmente
 
-**O que entra:**
+**Implementado:**
 
-- `emotion_model`: vetor (valência, ativação) em [-1, 1]. Atualização gradual. Decaimento para neutral. Mapeamento para `face_state_t` e parâmetros de movimento.
-- `state_machine`: estados BOOT_UP, IDLE, ATTENTIVE, RESPONDING, TOUCH_REACTING, SLEEPING, ERROR, SAFE_MODE. Transições via eventos.
+- `state_machine` em `components/behavior/state_machine/`:
+  - Estados: BOOT_UP, IDLE, ATTENTIVE, RESPONDING, TOUCH_REACTING, SLEEPING, ERROR, SAFE_MODE.
+  - Idle timeout configurável via NVS (`config_get_idle_timeout_s()`).
+  - TOUCH_REACTING retorna automaticamente a IDLE após 2s.
+  - Todas as transições loggadas com timestamp, estado anterior, novo estado e motivo.
+  - `nb_state_change_cb_t` publica `NB_EVT_STATE_CHANGED` no event bus via boot_manager.
+  - Thread-safe via portMUX spinlock.
+- `emotion_model` em `components/behavior/emotion_model/`:
+  - Vetor (valência, ativação) em [-1, 1].
+  - Decaimento exponencial: após ~60s decai a <5% do pico.
+  - Mapeamento por nearest-neighbor a 9 anchors (um por expressão).
+  - Eventos ajustam o vetor com deltas predefinidos.
+  - Chama `expression_service_set()` quando a expressão discreta muda (transição 400ms).
+  - Emoção persiste no NVS via `config_set_last_emotion()`.
+- `behavior_task` ("nb_behav_task", Core 0, prio 5, 100ms): ticks de state_machine + emotion_model.
+- boot_manager bridges: on_touch_event e on_audio_event chamam state_machine + emotion_model.
 
 **Critérios de aceitação:**
 

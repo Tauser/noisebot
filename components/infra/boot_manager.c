@@ -33,6 +33,8 @@
 #include "servo_hal.h"
 #include "motion_safety.h"
 #include "motion_service.h"
+#include "state_machine.h"
+#include "emotion_model.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -324,16 +326,30 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
         .data.u32     = data,
     };
     switch (evt) {
-        case NB_AUDIO_EVT_VOICE_START:   bus_evt.type = NB_EVT_VOICE_ACTIVITY_START; break;
-        case NB_AUDIO_EVT_VOICE_END:     bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;   break;
-        case NB_AUDIO_EVT_PLAYBACK_START: bus_evt.type = NB_EVT_AUDIO_STARTED;       break;
-        case NB_AUDIO_EVT_PLAYBACK_END:  bus_evt.type = NB_EVT_AUDIO_ENDED;          break;
+        case NB_AUDIO_EVT_VOICE_START:
+            bus_evt.type = NB_EVT_VOICE_ACTIVITY_START;
+            state_machine_on_voice_start();
+            emotion_model_on_event(NB_EMOT_EVT_VOICE_START);
+            break;
+        case NB_AUDIO_EVT_VOICE_END:
+            bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;
+            state_machine_on_voice_end();
+            break;
+        case NB_AUDIO_EVT_PLAYBACK_START:
+            bus_evt.type = NB_EVT_AUDIO_STARTED;
+            state_machine_on_audio_started();
+            emotion_model_on_event(NB_EMOT_EVT_AUDIO_STARTED);
+            break;
+        case NB_AUDIO_EVT_PLAYBACK_END:
+            bus_evt.type = NB_EVT_AUDIO_ENDED;
+            state_machine_on_audio_ended();
+            break;
         default: return;
     }
     nb_event_publish_async(&bus_evt);
 }
 
-/* ── Relay de eventos de touch → event bus ───────────────────────────────── */
+/* ── Relay de eventos de touch → event bus + state machine + emotion ─────── */
 
 static void on_touch_event(nb_touch_event_t evt)
 {
@@ -349,6 +365,23 @@ static void on_touch_event(nb_touch_event_t evt)
     /* Efeito visual imediato no TAP. */
     if (evt == NB_TOUCH_EVT_TAP) {
         led_effect_touch();
+    }
+
+    /* State machine. */
+    switch (evt) {
+        case NB_TOUCH_EVT_TAP:
+            state_machine_on_touch_tap();
+            emotion_model_on_event(NB_EMOT_EVT_TOUCH_TAP);
+            break;
+        case NB_TOUCH_EVT_LONG_PRESS:
+            state_machine_on_touch_long_press();
+            emotion_model_on_event(NB_EMOT_EVT_TOUCH_LONG);
+            break;
+        case NB_TOUCH_EVT_WAKE:
+            state_machine_on_touch_wake();
+            break;
+        default:
+            break;
     }
 }
 
@@ -380,6 +413,82 @@ static void touch_update_task(void *arg)
         touch_service_update(20);
         vTaskDelayUntil(&last_wake, period);
     }
+}
+
+/* ── Callbacks de behavior → event bus / NVS ────────────────────────────── */
+
+/*
+ * Publicado cada vez que a state machine muda de estado.
+ * O payload data.u32 carrega o novo nb_robot_state_t.
+ * Também aciona o emotion model para eventos de estado relevantes.
+ */
+static void on_state_changed(nb_robot_state_t new_state,
+                              nb_robot_state_t old_state,
+                              const char *reason)
+{
+    (void)reason;
+
+    nb_event_t evt = {
+        .type         = NB_EVT_STATE_CHANGED,
+        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000LL),
+        .data.u32     = (uint32_t)new_state,
+    };
+    nb_event_publish_async(&evt);
+
+    /* Ajustar emoção em transições de estado significativas. */
+    switch (new_state) {
+        case NB_STATE_SLEEPING:
+            emotion_model_on_event(NB_EMOT_EVT_ENTERING_SLEEP);
+            break;
+        case NB_STATE_IDLE:
+            if (old_state == NB_STATE_SLEEPING) {
+                emotion_model_on_event(NB_EMOT_EVT_WAKING_UP);
+            }
+            break;
+        case NB_STATE_ERROR:
+            emotion_model_on_event(NB_EMOT_EVT_MOTION_FAULT);
+            break;
+        default:
+            break;
+    }
+}
+
+/*
+ * Persistir a emoção no NVS sempre que a expressão mapeada mudar.
+ */
+static void on_emotion_changed(nb_expression_t new_expr)
+{
+    config_set_last_emotion((uint8_t)new_expr);
+}
+
+/* ── Task de behavior (10 Hz) ───────────────────────────────────────────── */
+/*
+ * Tick a 100ms. Avança timers da state machine (idle timeout, touch timeout)
+ * e o decaimento emocional.
+ *
+ * Task: "nb_behav_task"  Core: qualquer  Prioridade: 5  Stack: 4096
+ * Stack 4096: expression_service_set (C++) usa frame considerável.
+ */
+static void behavior_task(void *arg)
+{
+    (void)arg;
+    const TickType_t period   = pdMS_TO_TICKS(100);
+    TickType_t       last_wake = xTaskGetTickCount();
+
+    while (1) {
+        state_machine_update(100);
+        emotion_model_update(100);
+        vTaskDelayUntil(&last_wake, period);
+    }
+}
+
+/* ── Handler de evento de motion fault → state machine ─────────────────── */
+
+static void on_motion_fault_event(const nb_event_t *evt, void *ctx)
+{
+    (void)evt;
+    (void)ctx;
+    state_machine_on_motion_fault();
 }
 
 /*
@@ -536,8 +645,32 @@ static esp_err_t phase_services(void)
         audio_set_volume(config_get_volume());
     }
 
-    /* behavior, conductor: stubs Bloco 5 */
-    phase_stub(NB_BOOT_PHASE_SERVICES, "Bloco 5 (behavior/conductor)");
+    /* state_machine e emotion_model (Etapa 5.1) */
+    err = state_machine_init(config_get_idle_timeout_s(),
+                              s_status.safe_mode,
+                              on_state_changed);
+    NB_ASSERT(err == ESP_OK, TAG, "state_machine_init falhou: %s",
+              esp_err_to_name(err));
+
+    err = emotion_model_init((nb_expression_t)config_get_last_emotion(),
+                              on_emotion_changed);
+    NB_ASSERT(err == ESP_OK, TAG, "emotion_model_init falhou: %s",
+              esp_err_to_name(err));
+
+    /* Subscrever a motion fault para state machine (async — vem da safety task). */
+    nb_event_subscribe(NB_EVT_MOTION_FAULT, on_motion_fault_event, NULL, NULL);
+
+    /* behavior_task: ticks a 10Hz para idle timeout e decaimento emocional.
+     * Stack 4096: emotion_model_update → expression_service_set (C++) usa frame
+     * considerável — 2048 causa overflow. */
+    {
+        BaseType_t rc = xTaskCreate(behavior_task, "nb_behav_task",
+                                    4096, NULL, 5, NULL);
+        NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate nb_behav_task falhou");
+    }
+
+    /* conductor: stub Bloco 5.4 */
+    phase_stub(NB_BOOT_PHASE_SERVICES, "Etapa 5.4 (conductor)");
 
     phase_ok(NB_BOOT_PHASE_SERVICES);
     return ESP_OK;
@@ -627,6 +760,9 @@ static esp_err_t phase_complete(void)
 
     /* Reportar sucesso (reseta boot_count e brn_count no NVS). */
     boot_manager_report_success();
+
+    /* State machine: BOOT_UP → IDLE (boot concluído). */
+    state_machine_on_boot_complete();
 
     /* Transição de LED: BOOT → IDLE (breathe quente). */
     led_base_set(NB_LED_BASE_BOOT, false);

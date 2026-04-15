@@ -8,6 +8,7 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # subdiretórios de categoria precisam ser declarados aqui.
 list(APPEND EXTRA_COMPONENT_DIRS
     "components/services"
+    "components/behavior"
 )
 
 project(noisebot)
