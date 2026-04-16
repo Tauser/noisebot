@@ -118,7 +118,7 @@ esp_err_t expression_service_init(void);
  * Interpola linearmente do estado atual para o estado alvo ao longo de
  * transition_ms milissegundos. Thread-safe.
  *
- * @param expr          Expressão alvo (NB_EXPR_NEUTRAL … NB_EXPR_SUSPICIOUS).
+ * @param expr          Expressão alvo (NB_EXPR_NEUTRAL … NB_EXPR_ALARMED).
  * @param transition_ms Duração da transição em ms (0 = imediato).
  */
 void expression_service_set(nb_expression_t expr, float transition_ms);

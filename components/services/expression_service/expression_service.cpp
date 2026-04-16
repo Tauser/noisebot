@@ -247,7 +247,6 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
     },
 
     /* SLEEPY — abertura baixa, squint pesado, olhos levemente descidos */
-        /* SLEEPY */
     {
         .tl_l=0.16f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
         .tl_r=0.00f,.tr_r=0.16f,.bl_r=0.00f,.br_r=0.00f,
@@ -300,30 +299,43 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
         .squint_l=0.00f, .squint_r=0.00f,
     },
 
-    /* SAD — placeholder, cópia de SUSPICIOUS. Ajustar. */
+    /* SAD — cantos externos do topo descidos (droopy), olhos abaixados, leve squint */
+    /*
+     * tl_l / tr_r (outer-top) = 0.55 → borda exterior-topo desce em ambos os olhos
+     * br_l / bl_r             = 0.20 → cantos internos do fundo sobem levemente
+     * cv_top negativo          = topo côncavo (olhar pesado)
+     * Resultado: V invertido no topo — inclinação externa-para-baixo = tristeza clássica
+     */
     {
-        .tl_l=0.00f,.tr_l=0.62f,.bl_l=0.00f,.br_l=0.00f,
-        .tl_r=0.62f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
-        .open_l=0.60f, .open_r=0.60f,
-        .y_l=0.10f,    .y_r=0.10f,
+        .tl_l=0.55f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.20f,
+        .tl_r=0.00f,.tr_r=0.55f,.bl_r=0.20f,.br_r=0.00f,
+        .open_l=0.68f, .open_r=0.68f,
+        .y_l=0.20f,    .y_r=0.20f,
         .x_off=0.00f,
-        .rt_top=0.20f, .rb_bot=0.28f,
-        .cv_top=-0.15f,.cv_bot=0.05f,
+        .rt_top=0.28f, .rb_bot=0.32f,
+        .cv_top=-0.10f,.cv_bot=0.08f,
         .color=TFT_WHITE,
-        .squint_l=0.38f, .squint_r=0.38f,
+        .squint_l=0.08f, .squint_r=0.08f,
     },
 
-    /* ALARMED — placeholder, cópia de SUSPICIOUS. Ajustar. */
+    /* ALARMED — olhos largos com V de tensão interno, levantados, sem squint */
+    /*
+     * tr_l / tl_r (inner-top) = 0.28 → cantos internos do topo fecham = tensão
+     * open 0.95                = quase arregalado, distinto de SURPRISED (1.10)
+     * y negativo               = olhos para cima (reação de susto/alerta)
+     * x_off leve               = leve convergência (estado de alerta)
+     * cv_top alto              = topo fortemente convexo (olho aberto com tensão)
+     */
     {
-        .tl_l=0.00f,.tr_l=0.62f,.bl_l=0.00f,.br_l=0.00f,
-        .tl_r=0.62f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
-        .open_l=0.60f, .open_r=0.60f,
-        .y_l=0.10f,    .y_r=0.10f,
-        .x_off=0.00f,
-        .rt_top=0.20f, .rb_bot=0.28f,
-        .cv_top=-0.15f,.cv_bot=0.05f,
+        .tl_l=0.00f,.tr_l=0.28f,.bl_l=0.00f,.br_l=0.00f,
+        .tl_r=0.28f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
+        .open_l=0.95f, .open_r=0.95f,
+        .y_l=-0.18f,   .y_r=-0.18f,
+        .x_off=0.04f,
+        .rt_top=0.42f, .rb_bot=0.35f,
+        .cv_top=0.55f, .cv_bot=0.10f,
         .color=TFT_WHITE,
-        .squint_l=0.38f, .squint_r=0.38f,
+        .squint_l=0.00f, .squint_r=0.00f,
     },
 };
 
