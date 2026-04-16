@@ -80,6 +80,24 @@ static constexpr int64_t  BLINK_ASYM_RANGE  = 80000LL;
 static constexpr float   BLINK_BAR_PH_THRESH = 0.75f;
 static constexpr int16_t BLINK_BAR_EXTRA_HW  = 3;    /* px de padding além das bordas externas dos olhos */
 
+/* ── Dirty rect conservador da área da face ──────────────────────────────── */
+/*
+ * Rect fixo que cobre TODOS os pixels possíveis dos olhos em qualquer frame:
+ *   gaze shift máximo  = GAZE_MAX(0.65) × GAZE_X_TRAVEL_PX(12) ≈ 8px
+ *   x_off máximo       = X_OFF_TRAVEL = 18px
+ *   blink bar padding  = BLINK_BAR_EXTRA_HW = 3px
+ *   y travel + abertura = Y_TRAVEL_PX + MAX_HH_F + 2px de margem
+ *
+ * Ser fixo é essencial: como a posição dos olhos muda a cada frame (gaze
+ * drift), o rect do frame anterior precisa estar contido no rect atual para
+ * que pixels residuais no display sejam apagados pelo canvas limpo.
+ * Cobre ~45% do display (< FULL_PUSH_THRESHOLD 85%) → push parcial row-by-row.
+ */
+static constexpr int FACE_DIRTY_X0 = (int)BASE_L_CX  - (int)HW_I - (int)X_OFF_TRAVEL - 8 - (int)BLINK_BAR_EXTRA_HW;
+static constexpr int FACE_DIRTY_X1 = (int)BASE_R_CX  + (int)HW_I + (int)X_OFF_TRAVEL + 8 + (int)BLINK_BAR_EXTRA_HW;
+static constexpr int FACE_DIRTY_Y0 = (int)EYE_CY_BASE - (int)MAX_HH_F - (int)Y_TRAVEL_PX - (int)MAX_CURVE_PX - 2;
+static constexpr int FACE_DIRTY_Y1 = (int)EYE_CY_BASE + (int)MAX_HH_F + (int)Y_TRAVEL_PX + (int)MAX_CURVE_PX + 2;
+
 typedef enum {
     BLINK_IDLE,
     BLINK_CLOSING,
@@ -271,7 +289,7 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
     {
         .tl_l=0.00f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
         .tl_r=0.00f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
-        .open_l=1.30f, .open_r=1.30f,
+        .open_l=1.10f, .open_r=1.10f,
         .y_l=0.00f,    .y_r=0.00f,
         .x_off=0.00f,
         .rt_top=0.45f, .rb_bot=0.45f,
@@ -727,6 +745,14 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
                      s_blink[1].phase,
                      s_current.color);
     }
+
+    /* Declara região suja. Rect conservador cobre todos os pixels possíveis
+     * dos olhos (gaze shift, x_off, blink bar). Ser fixo garante que pixels
+     * do frame anterior — sempre dentro do mesmo envelope — sejam cobertos
+     * pelo canvas limpo e efetivamente apagados no display. */
+    render_service_mark_dirty(FACE_DIRTY_X0, FACE_DIRTY_Y0,
+                              FACE_DIRTY_X1 - FACE_DIRTY_X0,
+                              FACE_DIRTY_Y1 - FACE_DIRTY_Y0);
 }
 
 /* ── API pública (extern "C") ────────────────────────────────────────────── */
