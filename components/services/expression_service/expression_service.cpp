@@ -247,17 +247,19 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
     },
 
     /* SLEEPY — abertura baixa, squint pesado, olhos levemente descidos */
+        /* SLEEPY */
     {
-        .tl_l=0.00f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
-        .tl_r=0.00f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
-        .open_l=0.28f, .open_r=0.28f,
-        .y_l=0.22f,    .y_r=0.22f,
+        .tl_l=0.16f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
+        .tl_r=0.00f,.tr_r=0.16f,.bl_r=0.00f,.br_r=0.00f,
+        .open_l=0.10f, .open_r=0.10f,
+        .y_l=1.00f,    .y_r=1.00f,
         .x_off=0.00f,
         .rt_top=0.28f, .rb_bot=0.28f,
-        .cv_top=0.10f, .cv_bot=0.05f,
+        .cv_top=0.43f, .cv_bot=-0.25f,
         .color=TFT_WHITE,
-        .squint_l=0.52f, .squint_r=0.52f,
+        .squint_l=0.51f, .squint_r=0.51f,
     },
+
 
     /* FOCUSED — cantos internos do topo descidos, squint leve: olhar concentrado */
     {
