@@ -21,6 +21,8 @@
 #include "gaze_service.h"
 #include "state_machine.h"
 
+#include <string.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -94,6 +96,11 @@ static const score_step_t k_agree_a[] = {
 static const score_step_t k_agree_b[] = {
     { 0,   NB_EXPR_CURIOUS, 200.0f, true, 1200.0f, CM_NOD, 0, NULL },
 };
+/* AGREE — variação C: happy + pausa + nod (mais entusiasmado) */
+static const score_step_t k_agree_c[] = {
+    { 0,   NB_EXPR_HAPPY,  180.0f, true, 1400.0f, CM_NONE, 0, NULL },
+    { 200, NB_EXPR_COUNT,  0.0f,   false, 0.0f,   CM_NOD,  0, NULL },
+};
 
 /* DISAGREE — variação A */
 static const score_step_t k_disagree_a[] = {
@@ -102,6 +109,10 @@ static const score_step_t k_disagree_a[] = {
 /* DISAGREE — variação B */
 static const score_step_t k_disagree_b[] = {
     { 0,   NB_EXPR_FOCUSED, 200.0f, true, 1400.0f, CM_SHAKE, 0, NULL },
+};
+/* DISAGREE — variação C: SAD + shake (discordância resignada/melancólica) */
+static const score_step_t k_disagree_c[] = {
+    { 0,   NB_EXPR_SAD,    300.0f, true, 1600.0f, CM_SHAKE, 0, NULL },
 };
 
 /* CURIOUS — variação A */
@@ -112,6 +123,11 @@ static const score_step_t k_curious_a[] = {
 static const score_step_t k_curious_b[] = {
     { 0,    NB_EXPR_CURIOUS, 250.0f, true, 2000.0f, CM_NONE,         0, NULL },
     { 400,  NB_EXPR_COUNT,   0.0f,   false,0.0f,    CM_TILT_CURIOUS, 0, NULL },
+};
+/* CURIOUS — variação C: foca primeiro, depois vira curioso (transição dupla) */
+static const score_step_t k_curious_c[] = {
+    { 0,   NB_EXPR_FOCUSED, 200.0f, true,  800.0f,  CM_NONE,         0, NULL },
+    { 600, NB_EXPR_CURIOUS, 300.0f, true, 2000.0f,  CM_TILT_CURIOUS, 0, NULL },
 };
 
 /* TOUCH_WARM — variação A */
@@ -135,6 +151,11 @@ static const score_step_t k_startle_a[] = {
 };
 static const score_step_t k_startle_b[] = {
     { 0,   NB_EXPR_SURPRISED, 60.0f, true, 800.0f, CM_SHAKE, 0, NULL },
+};
+/* TOUCH_STARTLE — variação C: ALARMED + shake (mais intenso) */
+static const score_step_t k_startle_c[] = {
+    { 0,   NB_EXPR_ALARMED, 40.0f, true, 700.0f, CM_SHAKE, 0, NULL },
+    { 300, NB_EXPR_COUNT,   0.0f,  false, 0.0f,  CM_NONE,  0, NULL },
 };
 
 /* SPEAK_LOOP — variação A: FOCUSED enquanto fala */
@@ -174,11 +195,11 @@ static const score_step_t k_wake_c[] = {
 static const nb_score_t k_scores[NB_ACTION_COUNT][3] = {
     [NB_ACTION_NONE]          = { SCORE(k_greet_a), {NULL,0}, {NULL,0} },
     [NB_ACTION_GREET]         = { SCORE(k_greet_a), SCORE(k_greet_b), SCORE(k_greet_c) },
-    [NB_ACTION_AGREE]         = { SCORE(k_agree_a), SCORE(k_agree_b), {NULL,0} },
-    [NB_ACTION_DISAGREE]      = { SCORE(k_disagree_a), SCORE(k_disagree_b), {NULL,0} },
-    [NB_ACTION_CURIOUS]       = { SCORE(k_curious_a), SCORE(k_curious_b), {NULL,0} },
+    [NB_ACTION_AGREE]         = { SCORE(k_agree_a), SCORE(k_agree_b), SCORE(k_agree_c) },
+    [NB_ACTION_DISAGREE]      = { SCORE(k_disagree_a), SCORE(k_disagree_b), SCORE(k_disagree_c) },
+    [NB_ACTION_CURIOUS]       = { SCORE(k_curious_a), SCORE(k_curious_b), SCORE(k_curious_c) },
     [NB_ACTION_TOUCH_WARM]    = { SCORE(k_touch_warm_a), SCORE(k_touch_warm_b), SCORE(k_touch_warm_c) },
-    [NB_ACTION_TOUCH_STARTLE] = { SCORE(k_startle_a), SCORE(k_startle_b), {NULL,0} },
+    [NB_ACTION_TOUCH_STARTLE] = { SCORE(k_startle_a), SCORE(k_startle_b), SCORE(k_startle_c) },
     [NB_ACTION_SPEAK_LOOP]    = { SCORE(k_speak_a), SCORE(k_speak_b), {NULL,0} },
     [NB_ACTION_SLEEP]         = { SCORE(k_sleep_a), {NULL,0}, {NULL,0} },
     [NB_ACTION_WAKE_UP]       = { SCORE(k_wake_a), SCORE(k_wake_b), SCORE(k_wake_c) },
@@ -188,11 +209,11 @@ static const nb_score_t k_scores[NB_ACTION_COUNT][3] = {
 static const int k_num_vars[NB_ACTION_COUNT] = {
     [NB_ACTION_NONE]          = 1,
     [NB_ACTION_GREET]         = 3,
-    [NB_ACTION_AGREE]         = 2,
-    [NB_ACTION_DISAGREE]      = 2,
-    [NB_ACTION_CURIOUS]       = 2,
+    [NB_ACTION_AGREE]         = 3,
+    [NB_ACTION_DISAGREE]      = 3,
+    [NB_ACTION_CURIOUS]       = 3,
     [NB_ACTION_TOUCH_WARM]    = 3,
-    [NB_ACTION_TOUCH_STARTLE] = 2,
+    [NB_ACTION_TOUCH_STARTLE] = 3,
     [NB_ACTION_SPEAK_LOOP]    = 2,
     [NB_ACTION_SLEEP]         = 1,
     [NB_ACTION_WAKE_UP]       = 3,
@@ -206,6 +227,9 @@ static volatile nb_action_t s_pending_action = NB_ACTION_NONE;
 static volatile nb_action_t s_current_action = NB_ACTION_NONE;
 static volatile bool        s_interrupt      = false;
 static bool                 s_initialized    = false;
+
+/* Anti-repeat: última variação jogada por ação (-1 = nunca jogou). */
+static int8_t s_last_var[NB_ACTION_COUNT];
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -257,9 +281,18 @@ static void conductor_task(void *arg)
             continue;
         }
 
-        /* Selecionar variação aleatória */
+        /* Selecionar variação — sem repetir a última (anti-repeat) */
         int nvars = k_num_vars[action];
-        int var   = (nvars > 1) ? (int)(esp_random() % (uint32_t)nvars) : 0;
+        int var;
+        if (nvars <= 1) {
+            var = 0;
+        } else {
+            var = (int)(esp_random() % (uint32_t)nvars);
+            if (var == (int)s_last_var[action]) {
+                var = (var + 1) % nvars;   /* avança para próxima */
+            }
+        }
+        s_last_var[action] = (int8_t)var;
         const nb_score_t *score = &k_scores[action][var];
 
         if (!score->steps || score->count == 0) {
@@ -315,6 +348,7 @@ esp_err_t conductor_init(void)
 {
     if (s_initialized) return ESP_ERR_INVALID_STATE;
 
+    memset(s_last_var, -1, sizeof(s_last_var));
     s_trigger_sem = xSemaphoreCreateBinary();
     if (!s_trigger_sem) return ESP_ERR_NO_MEM;
 
