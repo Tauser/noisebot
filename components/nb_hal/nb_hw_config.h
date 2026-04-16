@@ -40,7 +40,7 @@
 #define NB_DISP_PIN_MISO        (-1)    /* ST7789 não usa MISO              */
 #define NB_DISP_PIN_DC          45      /* Data/Command                      */
 #define NB_DISP_SPI_HOST        SPI2_HOST
-#define NB_DISP_SPI_FREQ_KHZ    60000   /* 60MHz — 80MHz falhou (sem display) */
+#define NB_DISP_SPI_FREQ_KHZ    50000   /* 50MHz — 60 e 80MHz falharam (sem display) */
 
 /* ── ST7789 240×240 (painel atual) ──────────────────────────────────────── */
 #define NB_DISP_ST7789_PIN_CS   (-1)    /* CS ligado ao GND — sempre ativo  */
