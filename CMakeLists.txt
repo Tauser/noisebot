@@ -9,7 +9,7 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 list(APPEND EXTRA_COMPONENT_DIRS
     "components/services"
     "components/behavior"
-    "components/persona/long_term_memory"
+    "components/persona"
 )
 
 project(noisebot)
