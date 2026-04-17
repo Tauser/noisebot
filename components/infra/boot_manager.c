@@ -43,6 +43,7 @@
 #include "long_term_memory.h"
 #include "diagnostics_service.h"
 #include "schedule_service.h"
+#include "behavior_engine.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -324,11 +325,15 @@ static esp_err_t phase_storage(void)
 
 static void on_idle_alone(void)
 {
-    emotion_model_on_event(NB_EMOT_EVT_IDLE_LONG);
+    /* Publica NB_EVT_IDLE_ALONE — behavior_engine reage via regra de tabela. */
+    nb_event_t evt = { .type = NB_EVT_IDLE_ALONE };
+    nb_event_publish(&evt);
 }
 
 /* ── Relay de eventos de áudio → event bus ──────────────────────────────── */
 
+/* Relay puro: mapeia eventos do audio_service para o event bus.
+ * Toda lógica comportamental migrou para o behavior_engine (Etapa 9.3). */
 static void on_audio_event(nb_audio_event_t evt, uint32_t data)
 {
     nb_event_t bus_evt = {
@@ -336,29 +341,10 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
         .data.u32     = data,
     };
     switch (evt) {
-        case NB_AUDIO_EVT_VOICE_START:
-            bus_evt.type = NB_EVT_VOICE_ACTIVITY_START;
-            state_machine_on_voice_start();
-            emotion_model_on_event(NB_EMOT_EVT_VOICE_START);
-            idle_service_on_interaction();
-            conductor_play(NB_ACTION_CURIOUS);   /* reação visual ao ouvir voz */
-            ltm_record(LTM_IACT_VOICE_START);
-            break;
-        case NB_AUDIO_EVT_VOICE_END:
-            bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;
-            state_machine_on_voice_end();
-            break;
-        case NB_AUDIO_EVT_PLAYBACK_START:
-            bus_evt.type = NB_EVT_AUDIO_STARTED;
-            state_machine_on_audio_started();
-            emotion_model_on_event(NB_EMOT_EVT_AUDIO_STARTED);
-            conductor_play(NB_ACTION_SPEAK_LOOP);
-            ltm_record(LTM_IACT_AUDIO_PLAYED);
-            break;
-        case NB_AUDIO_EVT_PLAYBACK_END:
-            bus_evt.type = NB_EVT_AUDIO_ENDED;
-            state_machine_on_audio_ended();
-            break;
+        case NB_AUDIO_EVT_VOICE_START:    bus_evt.type = NB_EVT_VOICE_ACTIVITY_START; break;
+        case NB_AUDIO_EVT_VOICE_END:      bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;   break;
+        case NB_AUDIO_EVT_PLAYBACK_START: bus_evt.type = NB_EVT_AUDIO_STARTED;        break;
+        case NB_AUDIO_EVT_PLAYBACK_END:   bus_evt.type = NB_EVT_AUDIO_ENDED;          break;
         default: return;
     }
     nb_event_publish_async(&bus_evt);
@@ -366,6 +352,9 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
 
 /* ── Relay de eventos de touch → event bus + state machine + emotion ─────── */
 
+/* Relay puro: mapeia eventos do touch_service para o event bus.
+ * led_effect_touch() permanece aqui — é efeito imediato de HAL, não comportamento.
+ * Toda lógica comportamental migrou para o behavior_engine (Etapa 9.3). */
 static void on_touch_event(nb_touch_event_t evt)
 {
     static const nb_event_type_t k_map[] = {
@@ -374,37 +363,11 @@ static void on_touch_event(nb_touch_event_t evt)
         NB_EVT_TOUCH_SUSTAINED,
         NB_EVT_TOUCH_WAKE,
     };
+    if (evt == NB_TOUCH_EVT_TAP) {
+        led_effect_touch();   /* feedback LED imediato — não é comportamento */
+    }
     nb_event_t bus_evt = { .type = k_map[evt] };
     nb_event_publish(&bus_evt);
-
-    /* Efeito visual imediato no TAP. */
-    if (evt == NB_TOUCH_EVT_TAP) {
-        led_effect_touch();
-    }
-
-    /* State machine. */
-    switch (evt) {
-        case NB_TOUCH_EVT_TAP:
-            state_machine_on_touch_tap();
-            emotion_model_on_event(NB_EMOT_EVT_TOUCH_TAP);
-            idle_service_on_interaction();
-            conductor_play(NB_ACTION_TOUCH_WARM);
-            ltm_record(LTM_IACT_TOUCH_TAP);
-            break;
-        case NB_TOUCH_EVT_LONG_PRESS:
-            state_machine_on_touch_long_press();
-            emotion_model_on_event(NB_EMOT_EVT_TOUCH_LONG);
-            conductor_play(NB_ACTION_TOUCH_STARTLE);
-            ltm_record(LTM_IACT_TOUCH_LONG);
-            break;
-        case NB_TOUCH_EVT_WAKE:
-            state_machine_on_touch_wake();
-            conductor_play(NB_ACTION_WAKE_UP);
-            ltm_record(LTM_IACT_WAKE);
-            break;
-        default:
-            break;
-    }
 }
 
 /* ── Task de update do led_service ──────────────────────────────────────── */
@@ -444,40 +407,20 @@ static void touch_update_task(void *arg)
  * O payload data.u32 carrega o novo nb_robot_state_t.
  * Também aciona o emotion model para eventos de estado relevantes.
  */
+/* Relay puro: publica NB_EVT_STATE_CHANGED empacotando old+new state.
+ * Encoding: bits[7:0] = new_state, bits[15:8] = old_state.
+ * behavior_engine usa cond_sleeping/cond_waking/cond_error para reagir. */
 static void on_state_changed(nb_robot_state_t new_state,
                               nb_robot_state_t old_state,
                               const char *reason)
 {
     (void)reason;
-
     nb_event_t evt = {
         .type         = NB_EVT_STATE_CHANGED,
         .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000LL),
-        .data.u32     = (uint32_t)new_state,
+        .data.u32     = ((uint32_t)old_state << 8) | (uint32_t)new_state,
     };
     nb_event_publish_async(&evt);
-
-    /* Ajustar emoção em transições de estado significativas. */
-    switch (new_state) {
-        case NB_STATE_SLEEPING:
-            emotion_model_on_event(NB_EMOT_EVT_ENTERING_SLEEP);
-            conductor_play(NB_ACTION_SLEEP);
-            ltm_record(LTM_IACT_SLEEP);
-            ltm_flush();
-            break;
-        case NB_STATE_IDLE:
-            if (old_state == NB_STATE_SLEEPING) {
-                emotion_model_on_event(NB_EMOT_EVT_WAKING_UP);
-                conductor_play(NB_ACTION_WAKE_UP);
-                ltm_record(LTM_IACT_WAKE);
-            }
-            break;
-        case NB_STATE_ERROR:
-            emotion_model_on_event(NB_EMOT_EVT_MOTION_FAULT);
-            break;
-        default:
-            break;
-    }
 }
 
 /*
@@ -542,15 +485,6 @@ static void behavior_task(void *arg)
 
         vTaskDelayUntil(&last_wake, period);
     }
-}
-
-/* ── Handler de evento de motion fault → state machine ─────────────────── */
-
-static void on_motion_fault_event(const nb_event_t *evt, void *ctx)
-{
-    (void)evt;
-    (void)ctx;
-    state_machine_on_motion_fault();
 }
 
 /*
@@ -718,9 +652,6 @@ static esp_err_t phase_services(void)
     NB_ASSERT(err == ESP_OK, TAG, "emotion_model_init falhou: %s",
               esp_err_to_name(err));
 
-    /* Subscrever a motion fault para state machine (async — vem da safety task). */
-    nb_event_subscribe(NB_EVT_MOTION_FAULT, on_motion_fault_event, NULL, NULL);
-
     /* behavior_task: ticks a 10Hz para idle timeout e decaimento emocional.
      * Stack 4096: emotion_model_update → expression_service_set (C++) usa frame
      * considerável — 2048 causa overflow. */
@@ -754,6 +685,11 @@ static esp_err_t phase_services(void)
         NB_LOGW(TAG, "ltm_init falhou: %s — LTM desativada",
                 esp_err_to_name(err));
     }
+
+    /* behavior_engine (Etapa 9.3): tabela de regras — subscreve ao event bus */
+    err = behavior_engine_init();
+    NB_ASSERT(err == ESP_OK, TAG, "behavior_engine_init falhou: %s",
+              esp_err_to_name(err));
 
     /* schedule_service (Etapa 9.2): timers one-shot e recorrentes sem task */
     err = schedule_service_init();

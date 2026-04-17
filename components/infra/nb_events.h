@@ -49,6 +49,9 @@ typedef enum {
     NB_EVT_HEALTH_WARNING,          /* health_score < threshold; data.u32 = score     */
     NB_EVT_HEAP_LOW,                /* PSRAM livre < 300KB;      data.u32 = KB livres */
 
+    /* Behavior (Etapa 9.3) */
+    NB_EVT_IDLE_ALONE,              /* sem interação por ALONE_THRESHOLD_MS           */
+
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
 } nb_event_type_t;
 

@@ -31,5 +31,6 @@ idf_component_register(
         idle_service
         conductor
         schedule_service
+        behavior_engine
         long_term_memory
 )
