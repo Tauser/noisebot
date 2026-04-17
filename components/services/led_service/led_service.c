@@ -278,6 +278,16 @@ static nb_led_color_t compute_base_color(int priority, uint8_t led_idx)
         float f = breathe_factor(phase, period);
         return scale_color(NB_LED_RED, f);
     }
+    case NB_LED_BASE_MEDITATION: {
+        /* Âmbar muito lento, brilho 20–80% */
+        float f = 0.2f + 0.6f * breathe_factor(phase, period);
+        return scale_color(NB_LED_AMBER, f);
+    }
+    case NB_LED_BASE_SILENT_COMPANY: {
+        /* Brasa quase apagada, brilho 10–30% */
+        float f = 0.1f + 0.2f * breathe_factor(phase, period);
+        return scale_color(NB_LED_EMBER, f);
+    }
     default:
         return NB_LED_COLOR_BLACK;
     }
@@ -290,8 +300,10 @@ static uint32_t default_period_for_base(nb_led_base_state_t state)
     case NB_LED_BASE_IDLE:      return 4000U;
     case NB_LED_BASE_BOOT:      return 1200U;
     case NB_LED_BASE_SAFE_MODE: return 2500U;
-    case NB_LED_BASE_ERROR:     return 600U;
-    default:                    return 2000U;
+    case NB_LED_BASE_ERROR:          return 600U;
+    case NB_LED_BASE_MEDITATION:     return 6000U;
+    case NB_LED_BASE_SILENT_COMPANY: return 8000U;
+    default:                         return 2000U;
     }
 }
 

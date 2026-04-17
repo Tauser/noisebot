@@ -65,6 +65,9 @@
 #define NVS_KEY_RESET_REASON    "reset_reason"
 #define NVS_KEY_BOOT_SUCCESS    "boot_ok"
 
+#define NVS_NS_MILESTONE        "nb_ms"
+#define NVS_KEY_MS_H100         "ms_h100"
+
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
 static nb_boot_status_t s_status = {
@@ -75,7 +78,9 @@ static nb_boot_status_t s_status = {
     .reset_reason  = 0,
 };
 
-static bool s_initialized = false;
+static bool     s_initialized       = false;
+static uint32_t s_silence_ms        = 0;    /* ms sem interação — acumula em IDLE/SLEEPING */
+static bool     s_milestone_100h    = false; /* greet especial de 100h pendente ao primeiro IDLE */
 
 /* ── Helpers de NVS (acesso direto, sem config_manager) ──────────────────── */
 
@@ -350,6 +355,7 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
     };
     switch (evt) {
         case NB_AUDIO_EVT_VOICE_START:
+            s_silence_ms = 0;
             state_machine_on_voice_start();
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_START;
             break;
@@ -382,11 +388,13 @@ static void on_touch_event(nb_touch_event_t evt)
      * ou CARESS. LONG_PRESS e WAKE continuam publicados diretamente. */
     switch (evt) {
         case NB_TOUCH_EVT_TAP:
+            s_silence_ms = 0;
             led_effect_touch();           /* feedback LED imediato — não é comportamento */
             state_machine_on_touch_tap();
             touch_semantic_on_tap();      /* delega publicação ao serviço semântico */
             break;
         case NB_TOUCH_EVT_LONG_PRESS: {
+            s_silence_ms = 0;
             state_machine_on_touch_long_press();
             nb_event_t e = { .type = NB_EVT_TOUCH_LONG_PRESS };
             nb_event_publish_async(&e);
@@ -453,6 +461,40 @@ static void on_state_changed(nb_robot_state_t new_state,
                               const char *reason)
 {
     (void)reason;
+
+    /* LED + synth para modos especiais (11.4). */
+    switch (new_state) {
+        case NB_STATE_MEDITATION:
+            led_base_set(NB_LED_BASE_MEDITATION, true);
+            synth_purr(60000, 0.2f);
+            break;
+        case NB_STATE_SILENT_COMPANY:
+            led_base_set(NB_LED_BASE_SILENT_COMPANY, true);
+            break;
+        case NB_STATE_IDLE:
+            if (old_state == NB_STATE_MEDITATION) {
+                led_base_set(NB_LED_BASE_MEDITATION, false);
+                synth_stop();
+                s_silence_ms = 0;
+                /* Marco 100h pendente: dispara ao primeiro IDLE pós-boot. */
+                if (s_milestone_100h) {
+                    s_milestone_100h = false;
+                    nb_event_t me = { .type = NB_EVT_MILESTONE_UPTIME_100H };
+                    nb_event_publish_async(&me);
+                }
+            } else if (old_state == NB_STATE_SILENT_COMPANY) {
+                led_base_set(NB_LED_BASE_SILENT_COMPANY, false);
+                s_silence_ms = 0;
+            } else if (s_milestone_100h &&
+                       (old_state == NB_STATE_BOOT_UP || old_state == NB_STATE_SLEEPING)) {
+                s_milestone_100h = false;
+                nb_event_t me = { .type = NB_EVT_MILESTONE_UPTIME_100H };
+                nb_event_publish_async(&me);
+            }
+            break;
+        default: break;
+    }
+
     nb_event_t evt = {
         .type         = NB_EVT_STATE_CHANGED,
         .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000LL),
@@ -477,6 +519,13 @@ static void on_voice_followup_timeout(const nb_event_t *ev, void *ctx)
     /* Olha para um lado aleatório: simula busca visual da fonte do som */
     float sign = (esp_random() & 1U) ? 1.0f : -1.0f;
     gaze_service_set_target(sign * 0.55f, 0.05f);
+}
+
+/* TOUCH_DEEP em IDLE → entra em meditação (11.4) */
+static void on_touch_deep_for_meditation(const nb_event_t *ev, void *ctx)
+{
+    (void)ev; (void)ctx;
+    state_machine_on_meditation_enter();
 }
 
 /* VOICE_SOFT: gaze inclina levemente para cima (postura curiosa) */
@@ -552,6 +601,20 @@ static void behavior_task(void *arg)
         circadian_tick(100);
         idle_service_update(100);
         ltm_tick(100);
+
+        /* Timer de companhia silenciosa: 2h sem interação → SILENT_COMPANY. */
+        {
+            nb_robot_state_t st2 = state_machine_get_state();
+            if (st2 == NB_STATE_IDLE || st2 == NB_STATE_SLEEPING) {
+                s_silence_ms += 100u;
+                if (s_silence_ms >= 7200000U && st2 == NB_STATE_IDLE) {
+                    s_silence_ms = 0;
+                    state_machine_on_silent_company_enter();
+                }
+            } else if (st2 != NB_STATE_SILENT_COMPANY) {
+                s_silence_ms = 0;
+            }
+        }
 
         /* Curiosidade espontânea: robô olha de forma curiosa ocasionalmente em IDLE. */
         {
@@ -766,8 +829,9 @@ static esp_err_t phase_services(void)
     err = vad_semantic_init();
     NB_ASSERT(err == ESP_OK, TAG, "vad_semantic_init falhou: %s",
               esp_err_to_name(err));
-    nb_event_subscribe(NB_EVT_VOICE_FOLLOWUP_TIMEOUT, on_voice_followup_timeout, NULL, NULL);
-    nb_event_subscribe(NB_EVT_VOICE_SOFT,             on_voice_soft,             NULL, NULL);
+    nb_event_subscribe(NB_EVT_VOICE_FOLLOWUP_TIMEOUT, on_voice_followup_timeout,      NULL, NULL);
+    nb_event_subscribe(NB_EVT_VOICE_SOFT,             on_voice_soft,                  NULL, NULL);
+    nb_event_subscribe(NB_EVT_TOUCH_DEEP,             on_touch_deep_for_meditation,   NULL, NULL);
 
     /* touch_semantic_service (Etapa 10.4): double-tap, DEEP, CARESS, WARM_PULSE */
     err = touch_semantic_init();
@@ -818,6 +882,22 @@ static esp_err_t phase_services(void)
     if (err != ESP_OK) {
         NB_LOGW(TAG, "ltm_init falhou: %s — LTM desativada",
                 esp_err_to_name(err));
+    }
+
+    /* Marco 100h: verifica uma vez por lifetime e agenda para o primeiro IDLE. */
+    if (ltm_get_hours_alive() >= 100U) {
+        nvs_handle_t ms_h;
+        if (nvs_open(NVS_NS_MILESTONE, NVS_READWRITE, &ms_h) == ESP_OK) {
+            uint8_t done = 0;
+            nvs_get_u8(ms_h, NVS_KEY_MS_H100, &done);
+            if (!done) {
+                nvs_set_u8(ms_h, NVS_KEY_MS_H100, 1);
+                nvs_commit(ms_h);
+                s_milestone_100h = true;
+                NB_LOGI(TAG, "milestone: 100h de uptime atingido!");
+            }
+            nvs_close(ms_h);
+        }
     }
 
     /* persona_service (Etapa 11.1): dimensões de personalidade emergente */

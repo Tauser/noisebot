@@ -46,6 +46,8 @@ const char *state_machine_state_name(nb_robot_state_t s)
         case NB_STATE_SLEEPING:       return "SLEEPING";
         case NB_STATE_ERROR:          return "ERROR";
         case NB_STATE_SAFE_MODE:      return "SAFE_MODE";
+        case NB_STATE_MEDITATION:     return "MEDITATION";
+        case NB_STATE_SILENT_COMPANY: return "SILENT_COMPANY";
         default:                      return "UNKNOWN";
     }
 }
@@ -169,6 +171,12 @@ void state_machine_on_touch_tap(void)
         case NB_STATE_SLEEPING:
             do_transition(NB_STATE_IDLE, "tap em SLEEPING");
             break;
+        case NB_STATE_MEDITATION:
+            do_transition(NB_STATE_IDLE, "tap sai de MEDITATION");
+            break;
+        case NB_STATE_SILENT_COMPANY:
+            do_transition(NB_STATE_IDLE, "tap sai de SILENT_COMPANY");
+            break;
         default:
             break;
     }
@@ -182,6 +190,8 @@ void state_machine_on_touch_long_press(void)
         cur == NB_STATE_SLEEPING) {
         s_touch_elapsed_ms = 0;
         do_transition(NB_STATE_TOUCH_REACTING, "long press");
+    } else if (cur == NB_STATE_MEDITATION || cur == NB_STATE_SILENT_COMPANY) {
+        do_transition(NB_STATE_IDLE, "long press sai de modo especial");
     }
 }
 
@@ -197,7 +207,10 @@ void state_machine_on_voice_start(void)
 {
     if (!s_initialized) return;
     nb_robot_state_t cur = state_machine_get_state();
-    if (cur == NB_STATE_IDLE || cur == NB_STATE_SLEEPING) {
+    /* MEDITATION: voz não interrompe — robot ignora durante meditação. */
+    if (cur == NB_STATE_MEDITATION) return;
+    if (cur == NB_STATE_IDLE || cur == NB_STATE_SLEEPING ||
+        cur == NB_STATE_SILENT_COMPANY) {
         do_transition(NB_STATE_ATTENTIVE, "voice start");
     }
 }
@@ -232,4 +245,36 @@ void state_machine_on_motion_fault(void)
 {
     if (!s_initialized) return;
     do_transition(NB_STATE_ERROR, "motion fault");
+}
+
+void state_machine_on_meditation_enter(void)
+{
+    if (!s_initialized) return;
+    if (state_machine_get_state() == NB_STATE_IDLE) {
+        do_transition(NB_STATE_MEDITATION, "toque profundo — meditação");
+    }
+}
+
+void state_machine_on_meditation_exit(void)
+{
+    if (!s_initialized) return;
+    if (state_machine_get_state() == NB_STATE_MEDITATION) {
+        do_transition(NB_STATE_IDLE, "saída de meditação");
+    }
+}
+
+void state_machine_on_silent_company_enter(void)
+{
+    if (!s_initialized) return;
+    if (state_machine_get_state() == NB_STATE_IDLE) {
+        do_transition(NB_STATE_SILENT_COMPANY, "2h sem interação");
+    }
+}
+
+void state_machine_on_silent_company_exit(void)
+{
+    if (!s_initialized) return;
+    if (state_machine_get_state() == NB_STATE_SILENT_COMPANY) {
+        do_transition(NB_STATE_IDLE, "interação retorna companhia");
+    }
 }

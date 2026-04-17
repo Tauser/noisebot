@@ -81,6 +81,10 @@ typedef enum {
     NB_EVT_VOICE_FOLLOWUP_TIMEOUT,  /* 8-12s de silêncio após última voz               */
     NB_EVT_VOICE_REPEATED,          /* 3 interjeições em < 30s                         */
 
+    /* Modos Especiais (Etapa 11.4) */
+    NB_EVT_MILESTONE_TOUCH_50,      /* 50º toque acumulado no LTM                      */
+    NB_EVT_MILESTONE_UPTIME_100H,   /* 100 horas de uptime acumulado                   */
+
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
 } nb_event_type_t;
 

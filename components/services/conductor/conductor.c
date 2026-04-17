@@ -188,6 +188,14 @@ static const score_step_t k_wake_c[] = {
     { 700, NB_EXPR_COUNT,   0.0f,   false, 0.0f, CM_NOD,      0, NULL },
 };
 
+/* CELEBRATE — marco especial: HAPPY prolongado + nod entusiasmado */
+static const score_step_t k_celebrate_a[] = {
+    { 0,    NB_EXPR_SURPRISED, 150.0f, true,  300.0f,  CM_NONE, 0, NULL },
+    { 400,  NB_EXPR_HAPPY,     300.0f, false, 0.0f,    CM_NOD,  0, "/sdcard/assets/audio/greet_01.wav" },
+    { 900,  NB_EXPR_SURPRISED, 150.0f, true,  300.0f,  CM_NONE, 0, NULL },
+    { 1300, NB_EXPR_HAPPY,     400.0f, false, 0.0f,    CM_NOD,  0, NULL },
+};
+
 /* STRETCH — espreguiçar ao sair de DAWN: HAPPY + nod + volta ao neutro */
 static const score_step_t k_stretch_a[] = {
     { 0,    NB_EXPR_HAPPY,   400.0f, true, 1200.0f, CM_NOD,    600, NULL },
@@ -209,7 +217,8 @@ static const nb_score_t k_scores[NB_ACTION_COUNT][3] = {
     [NB_ACTION_SPEAK_LOOP]    = { SCORE(k_speak_a), SCORE(k_speak_b), {NULL,0} },
     [NB_ACTION_SLEEP]         = { SCORE(k_sleep_a), {NULL,0}, {NULL,0} },
     [NB_ACTION_WAKE_UP]       = { SCORE(k_wake_a), SCORE(k_wake_b), SCORE(k_wake_c) },
-    [NB_ACTION_STRETCH]       = { SCORE(k_stretch_a), {NULL,0}, {NULL,0} },
+    [NB_ACTION_STRETCH]       = { SCORE(k_stretch_a),   {NULL,0}, {NULL,0} },
+    [NB_ACTION_CELEBRATE]     = { SCORE(k_celebrate_a), {NULL,0}, {NULL,0} },
 };
 
 /* Número de variações por ação */
@@ -225,6 +234,7 @@ static const int k_num_vars[NB_ACTION_COUNT] = {
     [NB_ACTION_SLEEP]         = 1,
     [NB_ACTION_WAKE_UP]       = 3,
     [NB_ACTION_STRETCH]       = 1,
+    [NB_ACTION_CELEBRATE]     = 1,
 };
 
 /* ── Estado interno ──────────────────────────────────────────────────────── */

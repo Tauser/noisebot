@@ -1314,10 +1314,10 @@ typedef struct {
 
 **Critérios de aceitação:**
 
-- [ ] SUSTAINED > 5s em IDLE: modo meditação ativo em < 500ms
-- [ ] Modo meditação: observador percebe ambiente calmo distinto do IDLE normal
-- [ ] Saída de meditação: só via touch, voz não interrompe
-- [ ] 50º toque: celebração única ocorre — não se repete no 51º
+- [x] SUSTAINED > 5s em IDLE: modo meditação ativo em < 500ms
+- [x] Modo meditação: observador percebe ambiente calmo distinto do IDLE normal
+- [x] Saída de meditação: só via touch, voz não interrompe
+- [x] 50º toque: celebração única ocorre — não se repete no 51º
 
 ---
 

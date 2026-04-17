@@ -112,6 +112,28 @@ static bool cond_error(const nb_event_t *evt)
     return STATE_NEW(evt) == NB_STATE_ERROR;
 }
 
+static bool cond_meditation(const nb_event_t *evt)
+{
+    return STATE_NEW(evt) == NB_STATE_MEDITATION;
+}
+
+static bool cond_meditation_exit(const nb_event_t *evt)
+{
+    return STATE_NEW(evt) == NB_STATE_IDLE &&
+           STATE_OLD(evt) == NB_STATE_MEDITATION;
+}
+
+static bool cond_silent_company(const nb_event_t *evt)
+{
+    return STATE_NEW(evt) == NB_STATE_SILENT_COMPANY;
+}
+
+static bool cond_silent_company_exit(const nb_event_t *evt)
+{
+    return STATE_NEW(evt) == NB_STATE_IDLE &&
+           STATE_OLD(evt) == NB_STATE_SILENT_COMPANY;
+}
+
 /* Persona: baixa confiança — reações defensivas. */
 static bool cond_trust_low(const nb_event_t *evt)
 {
@@ -176,6 +198,22 @@ static const nb_be_rule_t k_rules[] = {
     { NB_EVT_STATE_CHANGED, cond_error, {
         ACT_EMOT(MOTION_FAULT) }},
 
+    { NB_EVT_STATE_CHANGED, cond_meditation, {
+        ACT_EMOT(ENTERING_SLEEP) }},
+
+    { NB_EVT_STATE_CHANGED, cond_meditation_exit, {
+        ACT_EMOT(WAKING_UP) }},
+
+    { NB_EVT_STATE_CHANGED, cond_silent_company, {
+        ACT_EMOT(ENTERING_SLEEP) }},
+
+    { NB_EVT_STATE_CHANGED, cond_silent_company_exit, {
+        ACT_EMOT(WAKING_UP) }},
+
+    /* ── Marcos de uso (Etapa 11.4) ─────────────────────────────────────────── */
+    { NB_EVT_MILESTONE_TOUCH_50,    NULL, { ACT_PLAY(CELEBRATE) }},
+    { NB_EVT_MILESTONE_UPTIME_100H, NULL, { ACT_PLAY(CELEBRATE) }},
+
     /* ── Solidão (idle alone) ───────────────────────────────────────────────── */
     { NB_EVT_IDLE_ALONE, NULL, {
         ACT_EMOT(IDLE_LONG) }},
@@ -211,7 +249,8 @@ static const nb_be_rule_t k_rules[] = {
 
 /* ── Estado ──────────────────────────────────────────────────────────────── */
 
-static bool s_initialized = false;
+static bool s_initialized        = false;
+static bool s_touch_50_milestone = false;
 
 /* ── Helpers de execução ─────────────────────────────────────────────────── */
 
@@ -226,6 +265,13 @@ static void execute_action(const nb_be_action_t *act)
             break;
         case NB_BE_ACT_LTM_RECORD:
             ltm_record(act->arg.ltm);
+            if (!s_touch_50_milestone &&
+                act->arg.ltm == LTM_IACT_TOUCH_TAP &&
+                ltm_get_total_touch_count() == 50U) {
+                s_touch_50_milestone = true;
+                nb_event_t ms = { .type = NB_EVT_MILESTONE_TOUCH_50 };
+                nb_event_publish_async(&ms);
+            }
             break;
         case NB_BE_ACT_LTM_FLUSH:
             ltm_flush();

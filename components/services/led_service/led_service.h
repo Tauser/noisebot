@@ -35,6 +35,8 @@
 #define NB_LED_RED           ((nb_led_color_t){255,  0,   0 })  /* error      */
 #define NB_LED_TOUCH_WARM    ((nb_led_color_t){255, 160,  40})  /* touch flash*/
 #define NB_LED_BEAT_BLUE     ((nb_led_color_t){ 40, 120, 255})  /* beat flash */
+#define NB_LED_AMBER         ((nb_led_color_t){255, 140,  30})  /* meditation */
+#define NB_LED_EMBER         ((nb_led_color_t){ 80,  45,  15})  /* silent company (muito baixo) */
 
 /* ── Tipos públicos ──────────────────────────────────────────────────────── */
 
@@ -44,10 +46,12 @@
  * TOUCH(2.5) é tratado como overlay, não base state.
  */
 typedef enum {
-    NB_LED_BASE_IDLE      = 0,  /**< Breathe quente, brilho baixo            */
-    NB_LED_BASE_BOOT      = 1,  /**< Pulso branco — ativo durante boot        */
-    NB_LED_BASE_SAFE_MODE = 2,  /**< Laranja sólido pulsante                 */
-    NB_LED_BASE_ERROR     = 3,  /**< Vermelho pulsante rápido                */
+    NB_LED_BASE_IDLE           = 0,  /**< Breathe quente, brilho baixo            */
+    NB_LED_BASE_BOOT           = 1,  /**< Pulso branco — ativo durante boot        */
+    NB_LED_BASE_SAFE_MODE      = 2,  /**< Laranja sólido pulsante                 */
+    NB_LED_BASE_ERROR          = 3,  /**< Vermelho pulsante rápido                */
+    NB_LED_BASE_MEDITATION     = 4,  /**< Âmbar muito lento (6s), meditação       */
+    NB_LED_BASE_SILENT_COMPANY = 5,  /**< Brasa quase apagada (8s), companhia     */
     NB_LED_BASE__COUNT,
 } nb_led_base_state_t;
 

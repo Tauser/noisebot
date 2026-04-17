@@ -37,7 +37,9 @@ typedef enum {
     NB_STATE_SLEEPING       = 5,
     NB_STATE_ERROR          = 6,
     NB_STATE_SAFE_MODE      = 7,
-    NB_STATE_COUNT          = 8,
+    NB_STATE_MEDITATION     = 8,  /**< Meditação — IDLE quieto, voz não interrompe  */
+    NB_STATE_SILENT_COMPANY = 9,  /**< Companhia silenciosa — após 2h sem interação */
+    NB_STATE_COUNT          = 10,
 } nb_robot_state_t;
 
 /* ── Callback de transição ───────────────────────────────────────────────── */
@@ -117,5 +119,19 @@ void state_machine_on_voice_end(void);
 void state_machine_on_audio_started(void);
 void state_machine_on_audio_ended(void);
 void state_machine_on_motion_fault(void);
+
+/* ── Estados Especiais (Etapa 11.4) ─────────────────────────────────────── */
+
+/** Entra em MEDITATION a partir de IDLE. Voz não interrompe; só touch sai. */
+void state_machine_on_meditation_enter(void);
+
+/** Sai de MEDITATION, retorna a IDLE. */
+void state_machine_on_meditation_exit(void);
+
+/** Entra em SILENT_COMPANY (companhia silenciosa) a partir de IDLE. */
+void state_machine_on_silent_company_enter(void);
+
+/** Sai de SILENT_COMPANY, retorna a IDLE. */
+void state_machine_on_silent_company_exit(void);
 
 #endif /* NB_STATE_MACHINE_H */
