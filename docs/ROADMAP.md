@@ -1213,10 +1213,10 @@ float     persona_get_trust(void);
 
 **Critérios de aceitação:**
 
-- [ ] Após 0 toques: `warmth` < 0.1, GREET usa variação tímida
-- [ ] Após 35 toques: `warmth` ≥ 0.5 (`ltm_is_user_familiar()` true), GREET usa variação calorosa
-- [ ] Observador externo: comportamento após 100 interações perceptivelmente diferente do boot inicial
-- [ ] Dimensões persistem em NVS: reiniciar sem SD não reseta a personalidade
+- [x] Após 0 toques: `warmth` < 0.1, GREET usa variação tímida
+- [x] Após 35 toques: `warmth` ≥ 0.5 (`ltm_is_user_familiar()` true), GREET usa variação calorosa
+- [x] Observador externo: comportamento após 100 interações perceptivelmente diferente do boot inicial
+- [x] Dimensões persistem em NVS: reiniciar sem SD não reseta a personalidade
 
 ---
 

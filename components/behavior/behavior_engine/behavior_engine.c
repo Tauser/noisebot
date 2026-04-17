@@ -29,6 +29,7 @@
 #include "conductor.h"
 #include "idle_service.h"
 #include "long_term_memory.h"
+#include "persona_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
@@ -90,15 +91,32 @@ static bool cond_sleeping(const nb_event_t *evt)
     return STATE_NEW(evt) == NB_STATE_SLEEPING;
 }
 
+/* Waking normal (warmth ≤ 0.7): saudação discreta. */
 static bool cond_waking(const nb_event_t *evt)
 {
     return STATE_NEW(evt) == NB_STATE_IDLE &&
-           STATE_OLD(evt) == NB_STATE_SLEEPING;
+           STATE_OLD(evt) == NB_STATE_SLEEPING &&
+           persona_get_warmth() <= 0.7f;
+}
+
+/* Waking com alta familiaridade (warmth > 0.7): saudação entusiasmada. */
+static bool cond_waking_warm(const nb_event_t *evt)
+{
+    return STATE_NEW(evt) == NB_STATE_IDLE &&
+           STATE_OLD(evt) == NB_STATE_SLEEPING &&
+           persona_get_warmth() > 0.7f;
 }
 
 static bool cond_error(const nb_event_t *evt)
 {
     return STATE_NEW(evt) == NB_STATE_ERROR;
+}
+
+/* Persona: baixa confiança — reações defensivas. */
+static bool cond_trust_low(const nb_event_t *evt)
+{
+    (void)evt;
+    return persona_get_trust() < 0.3f;
 }
 
 /* ── Tabela de regras ────────────────────────────────────────────────────── */
@@ -111,6 +129,12 @@ static const nb_be_rule_t k_rules[] = {
     /* ── Touch ──────────────────────────────────────────────────────────── */
     /* SM inputs (tap/long/wake) são chamados diretamente no on_touch_event  */
     /* do boot_manager, antes de publicar o evento. Aqui só comportamento.  */
+
+    /* Persona: trust < 0.3 → susto; trust >= 0.3 → calor (unconditional) */
+    { NB_EVT_TOUCH_TAP, cond_trust_low, {
+        ACT_EMOT(TOUCH_TAP), ACT_IDLE,
+        ACT_PLAY(TOUCH_STARTLE), ACT_LTM(TOUCH_TAP) }},
+
     { NB_EVT_TOUCH_TAP, NULL, {
         ACT_EMOT(TOUCH_TAP), ACT_IDLE,
         ACT_PLAY(TOUCH_WARM), ACT_LTM(TOUCH_TAP) }},
@@ -125,6 +149,11 @@ static const nb_be_rule_t k_rules[] = {
     /* ── Voice / Áudio ───────────────────────────────────────────────────── */
     /* SM inputs (voice_start/end, audio_started/ended) chamados no callback */
     /* do audio_service (on_audio_event), antes de publicar. Só comportamento. */
+
+    /* Persona: trust < 0.3 → voz desconhecida dispara ALARMED (não CURIOUS) */
+    { NB_EVT_VOICE_ACTIVITY_START, cond_trust_low, {
+        ACT_EMOT(VOICE_LOUD), ACT_IDLE, ACT_LTM(VOICE_START) }},
+
     { NB_EVT_VOICE_ACTIVITY_START, NULL, {
         ACT_EMOT(VOICE_START), ACT_IDLE,
         ACT_PLAY(CURIOUS), ACT_LTM(VOICE_START) }},
@@ -139,6 +168,10 @@ static const nb_be_rule_t k_rules[] = {
 
     { NB_EVT_STATE_CHANGED, cond_waking, {
         ACT_EMOT(WAKING_UP), ACT_PLAY(WAKE_UP), ACT_LTM(WAKE) }},
+
+    /* Persona: warmth > 0.7 → saudação entusiasmada ao acordar */
+    { NB_EVT_STATE_CHANGED, cond_waking_warm, {
+        ACT_EMOT(WAKING_UP), ACT_PLAY(GREET), ACT_LTM(WAKE) }},
 
     { NB_EVT_STATE_CHANGED, cond_error, {
         ACT_EMOT(MOTION_FAULT) }},
@@ -196,6 +229,9 @@ static void execute_action(const nb_be_action_t *act)
             break;
         case NB_BE_ACT_LTM_FLUSH:
             ltm_flush();
+            persona_service_refresh();
+            idle_service_set_saccade_multiplier(
+                persona_get_curiosity() > 0.6f ? 1.5f : 1.0f);
             break;
         case NB_BE_ACT_IDLE_INTERACT:
             idle_service_on_interaction();

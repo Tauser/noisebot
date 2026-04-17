@@ -11,4 +11,5 @@ idf_component_register(
         conductor
         idle_service
         long_term_memory
+        persona_service
 )

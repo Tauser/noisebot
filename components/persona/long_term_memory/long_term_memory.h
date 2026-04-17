@@ -90,8 +90,19 @@ void ltm_flush(void);
 /** Total de toques TAP acumulados (sessions + atual). */
 uint32_t ltm_get_total_touch_count(void);
 
+/** Número total de sessões (boots) acumuladas. */
+uint32_t ltm_get_total_sessions(void);
+
 /** Tempo total de operação em horas (arredondado para baixo). */
 uint32_t ltm_get_hours_alive(void);
+
+/**
+ * @brief Conta entradas de um tipo no histórico em RAM (últimas 200).
+ *
+ * Thread-safe. O(LTM_HISTORY_SIZE). Usado pelo persona_service para
+ * derivar as dimensões de energia e curiosidade.
+ */
+uint32_t ltm_count_iact(ltm_iact_type_t type);
 
 /**
  * @brief Retorna true quando o usuário é considerado "familiar".

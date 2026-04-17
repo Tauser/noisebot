@@ -63,6 +63,16 @@ typedef void (*nb_idle_alone_cb_t)(void);
 void idle_service_set_alone_cb(nb_idle_alone_cb_t cb);
 
 /**
+ * @brief Ajusta a velocidade dos micro-saccades.
+ *
+ * Chamar após persona_service_init() / persona_service_refresh() com
+ * `curiosity > 0.6 ? 1.5f : 1.0f`. Factor > 1 = saccades mais frequentes.
+ *
+ * @param factor  Multiplicador de frequência (1.0 = padrão, 1.5 = +50%).
+ */
+void idle_service_set_saccade_multiplier(float factor);
+
+/**
  * @brief Notifica o idle_service que houve interação (touch, voz, etc.).
  *
  * Reseta o timer de solidão. Deve ser chamado do boot_manager nos handlers

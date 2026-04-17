@@ -60,6 +60,12 @@ static inline uint32_t rand_interval(uint32_t min_ms, uint32_t range_ms)
     return min_ms + (uint32_t)((float)range_ms * rand01());
 }
 
+static inline uint32_t saccade_interval(void)
+{
+    uint32_t base = rand_interval(SACCADE_MIN_MS, SACCADE_RANGE_MS);
+    return (uint32_t)((float)base / s_saccade_mult);
+}
+
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
 static bool     s_initialized       = false;
@@ -71,6 +77,7 @@ static uint32_t s_alone_timer_ms    = 0;
 
 static bool     s_was_active        = false; /* estava em IDLE/ATTENTIVE */
 static bool     s_was_idle          = false; /* estava em IDLE (para reset do alone timer) */
+static float    s_saccade_mult      = 1.0f;  /* 1.5 quando curiosity > 0.6 */
 
 static nb_idle_alone_cb_t s_alone_cb = NULL;
 
@@ -106,7 +113,7 @@ static void do_aversive_gaze(void)
 
 static void reset_timers_and_center(void)
 {
-    s_saccade_timer_ms  = rand_interval(SACCADE_MIN_MS,  SACCADE_RANGE_MS);
+    s_saccade_timer_ms  = saccade_interval();
     s_aversive_timer_ms = rand_interval(AVERSIVE_MIN_MS, AVERSIVE_RANGE_MS);
     s_yawn_timer_ms     = rand_interval(YAWN_MIN_MS,     YAWN_RANGE_MS);
     gaze_service_set_target(0.0f, 0.0f);
@@ -114,11 +121,16 @@ static void reset_timers_and_center(void)
 
 /* ── API ─────────────────────────────────────────────────────────────────── */
 
+void idle_service_set_saccade_multiplier(float factor)
+{
+    s_saccade_mult = (factor < 0.1f) ? 0.1f : factor;
+}
+
 esp_err_t idle_service_init(void)
 {
     if (s_initialized) return ESP_ERR_INVALID_STATE;
 
-    s_saccade_timer_ms  = rand_interval(SACCADE_MIN_MS,  SACCADE_RANGE_MS);
+    s_saccade_timer_ms  = saccade_interval();
     s_aversive_timer_ms = rand_interval(AVERSIVE_MIN_MS, AVERSIVE_RANGE_MS);
     s_yawn_timer_ms     = rand_interval(YAWN_MIN_MS,     YAWN_RANGE_MS);
     s_alone_timer_ms    = 0;

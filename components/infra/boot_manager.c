@@ -50,6 +50,7 @@
 #include "rhythm_service.h"
 #include "vad_semantic_service.h"
 #include "touch_semantic_service.h"
+#include "persona_service.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -514,7 +515,8 @@ static void behavior_task(void *arg)
 
     while (1) {
         state_machine_update(100);
-        emotion_model_update(100);
+        /* energy > 0.7: transições emocionais 30% mais rápidas (persona 11.1) */
+        emotion_model_update(persona_get_energy() > 0.7f ? 130u : 100u);
         attention_service_tick(100);
         rhythm_service_tick(100);
         vad_semantic_tick(100);
@@ -544,9 +546,12 @@ static void behavior_task(void *arg)
             stats_tick = 0;
         }
 
-        /* LTM flush a cada 5min (3000 × 100ms). */
+        /* LTM flush a cada 5min (3000 × 100ms) + refresh de persona. */
         if (++ltm_tick_n >= 3000u) {
             ltm_flush();
+            persona_service_refresh();
+            idle_service_set_saccade_multiplier(
+                persona_get_curiosity() > 0.6f ? 1.5f : 1.0f);
             ltm_tick_n = 0;
         }
 
@@ -786,6 +791,15 @@ static esp_err_t phase_services(void)
         NB_LOGW(TAG, "ltm_init falhou: %s — LTM desativada",
                 esp_err_to_name(err));
     }
+
+    /* persona_service (Etapa 11.1): dimensões de personalidade emergente */
+    err = persona_service_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "persona_service_init falhou: %s — persona em defaults",
+                esp_err_to_name(err));
+    }
+    idle_service_set_saccade_multiplier(
+        persona_get_curiosity() > 0.6f ? 1.5f : 1.0f);
 
     /* behavior_engine (Etapa 9.3): tabela de regras — subscreve ao event bus */
     err = behavior_engine_init();

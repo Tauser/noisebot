@@ -320,6 +320,23 @@ uint32_t ltm_get_total_touch_count(void)
     return s_initialized ? s_main.total_touch_count : 0u;
 }
 
+uint32_t ltm_get_total_sessions(void)
+{
+    return s_initialized ? s_main.total_sessions : 0u;
+}
+
+uint32_t ltm_count_iact(ltm_iact_type_t type)
+{
+    if (!s_initialized) return 0u;
+    uint32_t count = 0u;
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    for (uint16_t i = 0; i < s_main.hist_len; i++) {
+        if ((ltm_iact_type_t)s_main.hist[i].type == type) count++;
+    }
+    xSemaphoreGive(s_mutex);
+    return count;
+}
+
 uint32_t ltm_get_hours_alive(void)
 {
     if (!s_initialized) return 0u;
