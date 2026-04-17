@@ -34,7 +34,8 @@ typedef enum {
     NB_ACTION_SPEAK_LOOP    = 7,   /**< Modo de fala ativa (durante playback)     */
     NB_ACTION_SLEEP         = 8,   /**< Entrar em modo dormindo                   */
     NB_ACTION_WAKE_UP       = 9,   /**< Despertar                                 */
-    NB_ACTION_COUNT         = 10,
+    NB_ACTION_STRETCH       = 10,  /**< Espreguiçar ao sair de DAWN (circadiano)  */
+    NB_ACTION_COUNT         = 11,
 } nb_action_t;
 
 /* ── API ─────────────────────────────────────────────────────────────────── */

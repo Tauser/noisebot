@@ -111,6 +111,13 @@ nb_robot_state_t state_machine_get_state(void)
     return s;
 }
 
+void state_machine_set_idle_timeout_s(uint32_t s)
+{
+    taskENTER_CRITICAL(&s_mux);
+    s_idle_timeout_ms = s * 1000U;
+    taskEXIT_CRITICAL(&s_mux);
+}
+
 void state_machine_update(uint32_t dt_ms)
 {
     if (!s_initialized) return;

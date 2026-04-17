@@ -70,6 +70,9 @@ typedef enum {
     NB_EVT_TOUCH_CARESS,            /* toque sustentado > 15s                         */
     NB_EVT_TOUCH_WARM_PULSE,        /* pulso emocional a cada 1s durante 3-8s         */
 
+    /* Circadiano (Etapa 11.2) */
+    NB_EVT_CIRCADIAN_PHASE_CHANGED,  /* data.u32 = nb_circadian_phase_t         */
+
     /* VAD Semântico (Etapa 10.3) */
     NB_EVT_VOICE_SHORT,             /* interjeição < 500ms                             */
     NB_EVT_VOICE_LONG,              /* discurso > 4s                                   */

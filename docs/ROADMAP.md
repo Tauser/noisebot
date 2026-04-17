@@ -1244,10 +1244,10 @@ Extensão de `idle_service` + `schedule_service` para ciclo de uptime:
 
 **Critérios de aceitação:**
 
-- [ ] 0–30min de uptime: yawns ocorrem com menor frequência e menor intensidade
-- [ ] > 4h de uptime: yawn a cada ≤ 60s; idle_timeout claramente mais curto
-- [ ] Transição DAY: "stretch" visível uma vez ao sair de DAWN
-- [ ] LTM registra fases: uptime por sessão loggado e usado na sessão seguinte
+- [x] 0–30min de uptime: yawns ocorrem com menor frequência e menor intensidade
+- [x] > 4h de uptime: yawn a cada ≤ 60s; idle_timeout claramente mais curto
+- [x] Transição DAY: "stretch" visível uma vez ao sair de DAWN
+- [x] LTM registra fases: uptime por sessão loggado e usado na sessão seguinte
 
 ---
 

@@ -84,6 +84,14 @@ nb_robot_state_t state_machine_get_state(void);
 const char *state_machine_state_name(nb_robot_state_t s);
 
 /**
+ * @brief Atualiza o idle timeout dinamicamente (sem reiniciar o timer atual).
+ *
+ * Usado pelo circadian_service para reduzir o timeout em fase DUSK.
+ * Thread-safe.
+ */
+void state_machine_set_idle_timeout_s(uint32_t s);
+
+/**
  * @brief Tick periódico — avança timers internos (idle timeout, touch timeout).
  *
  * Deve ser chamado a cada dt_ms ms pela behavior_task.

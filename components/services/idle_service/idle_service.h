@@ -73,6 +73,16 @@ void idle_service_set_alone_cb(nb_idle_alone_cb_t cb);
 void idle_service_set_saccade_multiplier(float factor);
 
 /**
+ * @brief Ajusta a frequência dos yawns.
+ *
+ * factor < 1 = yawns mais frequentes (DUSK), factor > 1 = menos frequentes (DAWN).
+ * Combinado com o scale de atenção já existente.
+ *
+ * @param factor  Multiplicador de intervalo (1.0 = padrão).
+ */
+void idle_service_set_yawn_multiplier(float factor);
+
+/**
  * @brief Notifica o idle_service que houve interação (touch, voz, etc.).
  *
  * Reseta o timer de solidão. Deve ser chamado do boot_manager nos handlers

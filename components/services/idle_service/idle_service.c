@@ -72,6 +72,7 @@ static uint32_t s_alone_timer_ms    = 0;
 static bool     s_was_active        = false; /* estava em IDLE/ATTENTIVE */
 static bool     s_was_idle          = false; /* estava em IDLE (para reset do alone timer) */
 static float    s_saccade_mult      = 1.0f;  /* 1.5 quando curiosity > 0.6 */
+static float    s_yawn_mult         = 1.0f;  /* < 1 = DUSK (mais frequente), > 1 = DAWN */
 
 static nb_idle_alone_cb_t s_alone_cb = NULL;
 
@@ -124,6 +125,11 @@ static void reset_timers_and_center(void)
 void idle_service_set_saccade_multiplier(float factor)
 {
     s_saccade_mult = (factor < 0.1f) ? 0.1f : factor;
+}
+
+void idle_service_set_yawn_multiplier(float factor)
+{
+    s_yawn_mult = (factor < 0.1f) ? 0.1f : factor;
 }
 
 esp_err_t idle_service_init(void)
@@ -210,7 +216,7 @@ void idle_service_update(uint32_t dt_ms)
             expression_play(NB_EXPR_SLEEPY, YAWN_DURATION_MS, YAWN_TRANS_MS);
             /* Atenção alta suprime yawn: intervalo × (1 + attention × 2) */
             float attn = attention_service_get_level();
-            float scale = 1.0f + attn * 2.0f;
+            float scale = (1.0f + attn * 2.0f) * s_yawn_mult;
             s_yawn_timer_ms = (uint32_t)((float)rand_interval(YAWN_MIN_MS, YAWN_RANGE_MS) * scale);
             ESP_LOGI(TAG, "yawn! (próximo em %lums, attn=%.2f)", (unsigned long)s_yawn_timer_ms, attn);
         } else {

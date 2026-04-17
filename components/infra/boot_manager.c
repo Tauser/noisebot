@@ -51,6 +51,7 @@
 #include "vad_semantic_service.h"
 #include "touch_semantic_service.h"
 #include "persona_service.h"
+#include "circadian_service.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -485,6 +486,33 @@ static void on_voice_soft(const nb_event_t *ev, void *ctx)
     gaze_service_set_target(0.0f, -0.15f);
 }
 
+/* Aplica multiplicadores de idle_service combinando persona + circadiano. */
+static void apply_idle_modifiers(nb_circadian_phase_t phase)
+{
+    float circ_saccade = (phase == NB_CIRCADIAN_DAWN) ? 0.6f :
+                         (phase == NB_CIRCADIAN_DUSK) ? 0.8f : 1.0f;
+    float persona_saccade = (persona_get_curiosity() > 0.6f) ? 1.5f : 1.0f;
+    idle_service_set_saccade_multiplier(persona_saccade * circ_saccade);
+
+    float yawn_mult = (phase == NB_CIRCADIAN_DAWN) ? 1.5f :
+                      (phase == NB_CIRCADIAN_DUSK) ? 0.4f : 1.0f;
+    idle_service_set_yawn_multiplier(yawn_mult);
+
+    uint32_t base_s = config_get_idle_timeout_s();
+    if (phase == NB_CIRCADIAN_DUSK) {
+        float factor = (ltm_get_total_sessions() >= 20u) ? 0.5f : 0.7f;
+        state_machine_set_idle_timeout_s((uint32_t)((float)base_s * factor));
+    } else {
+        state_machine_set_idle_timeout_s(base_s);
+    }
+}
+
+static void on_circadian_phase(const nb_event_t *ev, void *ctx)
+{
+    (void)ctx;
+    apply_idle_modifiers((nb_circadian_phase_t)ev->data.u32);
+}
+
 
 
 /*
@@ -521,6 +549,7 @@ static void behavior_task(void *arg)
         rhythm_service_tick(100);
         vad_semantic_tick(100);
         touch_semantic_tick(100);
+        circadian_tick(100);
         idle_service_update(100);
         ltm_tick(100);
 
@@ -550,8 +579,7 @@ static void behavior_task(void *arg)
         if (++ltm_tick_n >= 3000u) {
             ltm_flush();
             persona_service_refresh();
-            idle_service_set_saccade_multiplier(
-                persona_get_curiosity() > 0.6f ? 1.5f : 1.0f);
+            apply_idle_modifiers(circadian_get_phase());
             ltm_tick_n = 0;
         }
 
@@ -798,8 +826,12 @@ static esp_err_t phase_services(void)
         NB_LOGW(TAG, "persona_service_init falhou: %s — persona em defaults",
                 esp_err_to_name(err));
     }
-    idle_service_set_saccade_multiplier(
-        persona_get_curiosity() > 0.6f ? 1.5f : 1.0f);
+    /* circadian_service (Etapa 11.2): fases DAWN/DAY/DUSK por uptime de sessão */
+    err = circadian_service_init();
+    NB_ASSERT(err == ESP_OK, TAG, "circadian_service_init falhou: %s",
+              esp_err_to_name(err));
+    nb_event_subscribe(NB_EVT_CIRCADIAN_PHASE_CHANGED, on_circadian_phase, NULL, NULL);
+    apply_idle_modifiers(circadian_get_phase());   /* aplica DAWN no boot */
 
     /* behavior_engine (Etapa 9.3): tabela de regras — subscreve ao event bus */
     err = behavior_engine_init();

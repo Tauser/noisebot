@@ -188,6 +188,12 @@ static const score_step_t k_wake_c[] = {
     { 700, NB_EXPR_COUNT,   0.0f,   false, 0.0f, CM_NOD,      0, NULL },
 };
 
+/* STRETCH — espreguiçar ao sair de DAWN: HAPPY + nod + volta ao neutro */
+static const score_step_t k_stretch_a[] = {
+    { 0,    NB_EXPR_HAPPY,   400.0f, true, 1200.0f, CM_NOD,    600, NULL },
+    { 1400, NB_EXPR_NEUTRAL, 600.0f, false,   0.0f, CM_CENTER, 500, NULL },
+};
+
 /* ── Tabela de variações por ação ────────────────────────────────────────── */
 
 #define SCORE(arr) { .steps=(arr), .count=(int)(sizeof(arr)/sizeof((arr)[0])) }
@@ -203,6 +209,7 @@ static const nb_score_t k_scores[NB_ACTION_COUNT][3] = {
     [NB_ACTION_SPEAK_LOOP]    = { SCORE(k_speak_a), SCORE(k_speak_b), {NULL,0} },
     [NB_ACTION_SLEEP]         = { SCORE(k_sleep_a), {NULL,0}, {NULL,0} },
     [NB_ACTION_WAKE_UP]       = { SCORE(k_wake_a), SCORE(k_wake_b), SCORE(k_wake_c) },
+    [NB_ACTION_STRETCH]       = { SCORE(k_stretch_a), {NULL,0}, {NULL,0} },
 };
 
 /* Número de variações por ação */
@@ -217,6 +224,7 @@ static const int k_num_vars[NB_ACTION_COUNT] = {
     [NB_ACTION_SPEAK_LOOP]    = 2,
     [NB_ACTION_SLEEP]         = 1,
     [NB_ACTION_WAKE_UP]       = 3,
+    [NB_ACTION_STRETCH]       = 1,
 };
 
 /* ── Estado interno ──────────────────────────────────────────────────────── */
