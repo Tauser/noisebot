@@ -20,6 +20,7 @@
 #include "event_bus.h"
 #include "nb_events.h"
 #include "sound_analysis_service.h"
+#include "audio_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
@@ -60,18 +61,29 @@ static bool s_initialized;
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
-/* Lê amostra lógica i (0 = mais antiga) do buffer circular. */
+/* Lê amostra lógica i (0 = mais antiga) do buffer circular.
+ *
+ * IMPORTANTE: o % RMS_BUF_SIZE é obrigatório.
+ * A aritmética uint8 dá o resultado correto módulo 256, mas s_buf tem só 64
+ * elementos. Sem % 64, o índice pode chegar a 255 → acesso fora dos limites →
+ * lixo de memória adjacente na autocorrelação → lock espúrio com sinal zero.
+ * (uint8_t wrap funciona apenas quando BUF_SIZE == 256.)
+ */
 static inline float read_at(uint8_t i)
 {
-    /* oldest = head - filled; newest = head - 1 */
-    return s_buf[(uint8_t)(s_head - s_filled + i)];  /* wrap via uint8 overflow */
+    return s_buf[(uint8_t)(s_head - s_filled + i) % RMS_BUF_SIZE];
 }
 
 /*
- * Autocorrelação normalizada R[k] = (Σ x[i]*x[i+k]) / (Σ x[i]^2).
- * Retorna 0 se energia total for negligível.
+ * Autocorrelação centrada (mean-subtracted):
+ *   R[k] = Σ (x[i]-μ)·(x[i+k]-μ) / Σ (x[i]-μ)²
+ *
+ * Subtrair a média é essencial: sinal constante (ruído de fundo → RMS fixo)
+ * tem desvio ≈ 0 → r0 < 1e-6 → retorna 0, sem lock falso.
+ * Sem subtração, R[k] ≈ 1.0 para todo k em sinal constante → lock imediato
+ * no ruído ambiente.
  */
-static float autocorr(uint8_t lag)
+static float autocorr(uint8_t lag, float mean)
 {
     if (s_filled <= lag) return 0.0f;
 
@@ -80,9 +92,10 @@ static float autocorr(uint8_t lag)
     uint8_t count = s_filled - lag;
 
     for (uint8_t i = 0; i < count; i++) {
-        float xi = read_at(i);
+        float xi = read_at(i)               - mean;
+        float xk = read_at((uint8_t)(i + lag)) - mean;
         r0 += xi * xi;
-        rk += xi * read_at((uint8_t)(i + lag));
+        rk += xi * xk;
     }
 
     if (r0 < 1e-6f) return 0.0f;
@@ -91,16 +104,23 @@ static float autocorr(uint8_t lag)
 }
 
 /*
- * Acha o lag k em [LAG_MIN, LAG_MAX] com maior autocorrelação.
+ * Acha o lag k em [LAG_MIN, LAG_MAX] com maior autocorrelação centrada.
  * Retorna o lag e escreve o valor em *out_conf.
  */
 static uint8_t find_best_lag(float *out_conf)
 {
+    /* Média do buffer — necessária para a autocorrelação centrada. */
+    float sum = 0.0f;
+    for (uint8_t i = 0; i < s_filled; i++) {
+        sum += read_at(i);
+    }
+    float mean = (s_filled > 0) ? (sum / (float)s_filled) : 0.0f;
+
     uint8_t best_k    = LAG_MIN;
     float   best_conf = 0.0f;
 
     for (uint8_t k = LAG_MIN; k <= LAG_MAX; k++) {
-        float c = autocorr(k);
+        float c = autocorr(k, mean);
         if (c > best_conf) {
             best_conf = c;
             best_k    = k;
@@ -148,9 +168,11 @@ void rhythm_service_tick(uint32_t dt_ms)
 {
     if (!s_initialized) return;
 
-    /* 1. Amostrar RMS — zeros durante silêncio e voz (evita lock em fala) */
+    /* 1. Amostrar RMS — zeros durante silêncio, voz e playback do próprio robô.
+     * Sem o gate de playback, synth_purr e WAVs do conductor são captados pelo
+     * mic e travam o rhythm_service (lock espúrio no sono/acorda/touch_deep). */
     nb_sound_class_t cls = sound_analysis_get_class();
-    float rms = (cls == NB_SOUND_SILENCE || cls == NB_SOUND_VOICE)
+    float rms = (cls == NB_SOUND_SILENCE || cls == NB_SOUND_VOICE || audio_is_playing())
                 ? 0.0f
                 : sound_analysis_get_rms();
 

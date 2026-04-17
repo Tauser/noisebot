@@ -7,4 +7,5 @@ idf_component_register(
         log
         infra
         sound_analysis_service
+        audio_service
 )
