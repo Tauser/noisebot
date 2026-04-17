@@ -40,17 +40,17 @@
 /* ── Tasks monitoradas ───────────────────────────────────────────────────── */
 
 static const char *const k_task_names[] = {
-    "nb_render_task",
-    "nb_push_task",
-    "nb_audio_task",
-    "nb_motion_task",
-    "nb_safety_task",
-    "nb_conductor_t",
-    "nb_behav_task",
-    "led_task",
-    "touch_task",
-    "nb_persist_task",
-    "nb_wdog_task",
+    "nb_render_task",   /* render_service.cpp  */
+    "nb_push_task",     /* render_service.cpp  */
+    "audio_task",       /* audio_service.c     */
+    "motion_task",      /* motion_service.c    */
+    "safety_task",      /* motion_safety.c     */
+    "conductor_task",   /* conductor.c         */
+    "behav_task",       /* boot_manager.c      */
+    "led_task",         /* boot_manager.c      */
+    "touch_task",       /* boot_manager.c      */
+    "persist_task",     /* persistence_mgr.c   */
+    "wdog_task",        /* watchdog_service.c  */
 };
 
 #define K_NTASKS  ((int)(sizeof(k_task_names) / sizeof(k_task_names[0])))
@@ -175,9 +175,8 @@ void diagnostics_collect(void)
 
     for (int i = 0; i < K_NTASKS; i++) {
         if (tasks[i].watermark_words == 0U) continue;
-        NB_LOGI(TAG, "  %-24s watermark=%4lu words (%4lu bytes)",
+        NB_LOGI(TAG, "  %-24s watermark=%4lu bytes",
                 tasks[i].name,
-                (unsigned long)tasks[i].watermark_words,
                 (unsigned long)(tasks[i].watermark_words * sizeof(StackType_t)));
     }
 
@@ -245,9 +244,8 @@ void diagnostics_dump_to_sd(void)
     fprintf(f, "\nTask stack watermarks:\n");
     for (int i = 0; i < K_NTASKS; i++) {
         if (tasks[i].watermark_words == 0U) continue;
-        fprintf(f, "  %-24s %4lu words  (%4lu bytes)\n",
+        fprintf(f, "  %-24s %4lu bytes\n",
                 tasks[i].name,
-                (unsigned long)tasks[i].watermark_words,
                 (unsigned long)(tasks[i].watermark_words * sizeof(StackType_t)));
     }
 
