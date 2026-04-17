@@ -20,6 +20,7 @@
 #include "state_machine.h"
 #include "attention_service.h"
 #include "rhythm_service.h"
+#include "emotion_model.h"
 
 #include "esp_log.h"
 #include "esp_random.h"
@@ -40,6 +41,10 @@
 #define YAWN_TRANS_MS        800.0f  /* transição de entrada e saída          */
 
 #define ALONE_THRESHOLD_MS 300000U   /* 5 min sem interação → solidão         */
+
+#define INVOLUNTARY_MIN_MS  15000U   /* intervalo mínimo entre janelas involuntárias */
+#define INVOLUNTARY_RANGE_MS 20000U  /* variação adicional (sorteada)               */
+#define INVOLUNTARY_PROB      0.05f  /* probabilidade de disparo por janela         */
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -73,6 +78,7 @@ static bool     s_was_active        = false; /* estava em IDLE/ATTENTIVE */
 static bool     s_was_idle          = false; /* estava em IDLE (para reset do alone timer) */
 static float    s_saccade_mult      = 1.0f;  /* 1.5 quando curiosity > 0.6 */
 static float    s_yawn_mult         = 1.0f;  /* < 1 = DUSK (mais frequente), > 1 = DAWN */
+static uint32_t s_involuntary_ms    = 30000U; /* próxima janela de expressão involuntária */
 
 static nb_idle_alone_cb_t s_alone_cb = NULL;
 
@@ -140,6 +146,7 @@ esp_err_t idle_service_init(void)
     s_aversive_timer_ms = rand_interval(AVERSIVE_MIN_MS, AVERSIVE_RANGE_MS);
     s_yawn_timer_ms     = rand_interval(YAWN_MIN_MS,     YAWN_RANGE_MS);
     s_alone_timer_ms    = 0;
+    s_involuntary_ms    = rand_interval(INVOLUNTARY_MIN_MS, INVOLUNTARY_RANGE_MS);
     s_was_active        = false;
     s_was_idle          = false;
     s_initialized       = true;
@@ -238,6 +245,29 @@ void idle_service_update(uint32_t dt_ms)
         }
     } else {
         s_alone_timer_ms = 0;
+    }
+
+    /* ── Expressões involuntárias (IDLE somente, 5% por janela) ── */
+    if (is_idle) {
+        if (s_involuntary_ms <= dt_ms) {
+            if (rand01() < INVOLUNTARY_PROB) {
+                nb_expression_t cur = emotion_model_get_expression();
+                if (cur == NB_EXPR_HAPPY) {
+                    /* Piscar satisfeito: olho semicerrando brevemente */
+                    expression_play(NB_EXPR_SLEEPY, 80.0f, 40.0f);
+                    ESP_LOGD(TAG, "involuntary: satisfied blink");
+                } else if (cur == NB_EXPR_FOCUSED) {
+                    /* Micro-squint de concentração */
+                    expression_play(NB_EXPR_SUSPICIOUS, 100.0f, 40.0f);
+                    ESP_LOGD(TAG, "involuntary: micro-squint");
+                }
+            }
+            s_involuntary_ms = rand_interval(INVOLUNTARY_MIN_MS, INVOLUNTARY_RANGE_MS);
+        } else {
+            s_involuntary_ms -= dt_ms;
+        }
+    } else {
+        s_involuntary_ms = rand_interval(INVOLUNTARY_MIN_MS, INVOLUNTARY_RANGE_MS);
     }
 
     /* ── Stub: micro-neck-movement ── */

@@ -1280,9 +1280,9 @@ typedef struct {
 
 **Critérios de aceitação:**
 
-- [ ] TAP: micro-SURPRISED visível (< 100ms) antes de HAPPY — observador percebe diferença vs sem micro-expressão
-- [ ] 20 touch events observados: pelo menos 3 micro-expressões distintas (não sempre a mesma)
-- [ ] `expression_combo_play` de 3 frames: sequência executada sem saltos
+- [x] TAP: micro-SURPRISED visível (< 100ms) antes de HAPPY — observador percebe diferença vs sem micro-expressão
+- [x] 20 touch events observados: pelo menos 3 micro-expressões distintas (não sempre a mesma)
+- [x] `expression_combo_play` de 3 frames: sequência executada sem saltos
 
 ---
 

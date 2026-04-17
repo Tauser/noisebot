@@ -310,6 +310,21 @@ static void conductor_task(void *arg)
 
         ESP_LOGI(TAG, "play action=%d var=%d steps=%d", (int)action, var, score->count);
 
+        /* Micro-expressão: flash emocional breve antes da expressão principal */
+        switch (action) {
+            case NB_ACTION_TOUCH_WARM:
+                expression_play(NB_EXPR_SURPRISED, 80.0f, 40.0f);
+                break;
+            case NB_ACTION_TOUCH_STARTLE:
+            case NB_ACTION_GREET:
+                expression_play(NB_EXPR_SURPRISED, 100.0f, 40.0f);
+                break;
+            case NB_ACTION_SPEAK_LOOP:
+                expression_play(NB_EXPR_ALARMED, 120.0f, 40.0f);
+                break;
+            default: break;
+        }
+
         uint32_t t0_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
 
         for (int i = 0; i < score->count && !s_interrupt; i++) {

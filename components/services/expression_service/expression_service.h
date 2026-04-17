@@ -176,6 +176,26 @@ esp_err_t expression_play(nb_expression_t expr,
                           float            duration_ms,
                           float            transition_ms);
 
+/**
+ * @brief Frame de uma sequência composta.
+ */
+typedef struct {
+    nb_expression_t expr;
+    float           duration_ms;
+    float           transition_ms;
+} nb_expr_frame_t;
+
+/**
+ * @brief Enfileira uma sequência de expressões.
+ *
+ * Equivalente a chamar expression_play() para cada frame em ordem.
+ * Limitado a 4 frames (capacidade da fila interna).
+ *
+ * @param frames  Array de frames.
+ * @param count   Número de frames (máx 4).
+ */
+void expression_combo_play(const nb_expr_frame_t *frames, uint8_t count);
+
 void expression_service_set_gaze(float x, float y);
 
 #ifdef __cplusplus

@@ -897,4 +897,13 @@ void nb_face_state_lerp(const nb_face_state_t *a,
     out->color   = (t < 0.5f) ? a->color : b->color;
 }
 
+void expression_combo_play(const nb_expr_frame_t *frames, uint8_t count)
+{
+    if (!frames) return;
+    uint8_t n = (count > 4u) ? 4u : count;
+    for (uint8_t i = 0; i < n; i++) {
+        expression_play(frames[i].expr, frames[i].duration_ms, frames[i].transition_ms);
+    }
+}
+
 } /* extern "C" */
