@@ -876,7 +876,7 @@ void            schedule_cancel(schedule_handle_t h);
 
 ---
 
-### Etapa 9.3 — behavior_engine (Layer 6)
+### Etapa 9.3 — behavior_engine (Layer 6) ✅
 
 **Dependências:** 9.2 concluída, persona_service (11.1) pode ser adicionado depois
 **Hardware necessário:** Não
@@ -905,10 +905,10 @@ void            schedule_cancel(schedule_handle_t h);
 
 **Critérios de aceitação:**
 
-- [ ] Todos os comportamentos do boot_manager replicados via regras
-- [ ] boot_manager.c reduzido: sem switch/case de comportamento — só HAL callbacks e init
-- [ ] Regra com condition vs fallback: condition avaliada corretamente
-- [ ] 20 regras simultâneas: sem overhead mensurável no tick
+- [x] Todos os comportamentos do boot_manager replicados via regras
+- [x] boot_manager.c reduzido: sem switch/case de comportamento — só HAL callbacks e init
+- [x] Regra com condition vs fallback: condition avaliada corretamente
+- [x] 20 regras simultâneas: sem overhead mensurável no tick
 
 ---
 
