@@ -10,4 +10,5 @@ idf_component_register(
         expression_service
         state_machine
         attention_service
+        rhythm_service
 )

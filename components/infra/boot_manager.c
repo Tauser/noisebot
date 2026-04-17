@@ -47,6 +47,7 @@
 #include "sound_analysis_service.h"
 #include "synth_service.h"
 #include "attention_service.h"
+#include "rhythm_service.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -463,6 +464,20 @@ static void on_motion_fault_event(const nb_event_t *evt, void *ctx)
     state_machine_on_motion_fault();
 }
 
+/* Beat tick: flash LED + head-bob sutil em IDLE */
+static void on_beat_tick(const nb_event_t *ev, void *ctx)
+{
+    (void)ev; (void)ctx;
+    led_effect_beat();
+
+    /* Head-bob: pequeno movimento vertical alternado no gaze */
+    if (state_machine_get_state() == NB_STATE_IDLE) {
+        static bool s_bob_up = false;
+        s_bob_up = !s_bob_up;
+        gaze_service_set_target(0.0f, s_bob_up ? -0.10f : 0.10f);
+    }
+}
+
 /*
  * Persistir a emoção no NVS sempre que a expressão mapeada mudar.
  */
@@ -493,6 +508,7 @@ static void behavior_task(void *arg)
         state_machine_update(100);
         emotion_model_update(100);
         attention_service_tick(100);
+        rhythm_service_tick(100);
         idle_service_update(100);
         ltm_tick(100);
 
@@ -696,6 +712,12 @@ static esp_err_t phase_services(void)
     err = attention_service_init();
     NB_ASSERT(err == ESP_OK, TAG, "attention_service_init falhou: %s",
               esp_err_to_name(err));
+
+    /* rhythm_service (Etapa 10.2): detecção de BPM por autocorrelação */
+    err = rhythm_service_init();
+    NB_ASSERT(err == ESP_OK, TAG, "rhythm_service_init falhou: %s",
+              esp_err_to_name(err));
+    nb_event_subscribe(NB_EVT_BEAT_TICK, on_beat_tick, NULL, NULL);
 
     /* state_machine e emotion_model (Etapa 5.1) */
     err = state_machine_init(config_get_idle_timeout_s(),

@@ -1077,10 +1077,10 @@ bool      rhythm_service_is_locked(void);
 
 **Critérios de aceitação:**
 
-- [ ] Música a 120 BPM: BPM detectado dentro de ±5 após 5s
-- [ ] LEDs pulsam visivelmente no ritmo por observador sem contexto
-- [ ] Música parada: `RHYTHM_LOST` em < 3s
-- [ ] Fala humana: `NO_RHYTHM` (não confunde fala com ritmo)
+- [x] Música a 120 BPM: BPM detectado dentro de ±5 após 5s
+- [x] LEDs pulsam visivelmente no ritmo por observador sem contexto
+- [x] Música parada: `RHYTHM_LOST` em < 3s
+- [x] Fala humana: `NO_RHYTHM` (não confunde fala com ritmo)
 
 ---
 

@@ -36,4 +36,5 @@ idf_component_register(
         sound_analysis_service
         synth_service
         attention_service
+        rhythm_service
 )

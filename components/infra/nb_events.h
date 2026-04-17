@@ -59,6 +59,11 @@ typedef enum {
     NB_EVT_SOUND_MUSIC_END,         /* música parou (>2s de silêncio relativo)        */
     NB_EVT_SOUND_CLASS_CHANGED,     /* transição de classe; data.u32 = nb_sound_class_t */
 
+    /* Rhythm (Etapa 10.2) */
+    NB_EVT_RHYTHM_LOCKED,           /* BPM estabilizou; data.f32 = bpm                */
+    NB_EVT_BEAT_TICK,               /* batida detectada enquanto RHYTHM_LOCKED         */
+    NB_EVT_RHYTHM_LOST,             /* confiança caiu por > 2s                         */
+
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
 } nb_event_type_t;
 

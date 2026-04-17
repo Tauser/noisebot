@@ -34,6 +34,7 @@
 #define NB_LED_ORANGE        ((nb_led_color_t){255, 80,   0 })  /* safe mode  */
 #define NB_LED_RED           ((nb_led_color_t){255,  0,   0 })  /* error      */
 #define NB_LED_TOUCH_WARM    ((nb_led_color_t){255, 160,  40})  /* touch flash*/
+#define NB_LED_BEAT_BLUE     ((nb_led_color_t){ 40, 120, 255})  /* beat flash */
 
 /* ── Tipos públicos ──────────────────────────────────────────────────────── */
 
@@ -159,6 +160,14 @@ void led_effect_touch(void);
  * Overlay temporário com 1 ciclo completo (~900ms) e retorno ao base.
  */
 void led_effect_heartbeat(void);
+
+/**
+ * @brief Flash suave sincronizado com beat de ritmo detectado.
+ *
+ * Overlay curto (~150ms) em azul frio, para pulsar no ritmo da música.
+ * Não ativa se ERROR ou SAFE_MODE estiver ativo.
+ */
+void led_effect_beat(void);
 
 /**
  * @brief Ativa modo noturno (brilho máximo reduzido por fator configurável).

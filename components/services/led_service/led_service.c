@@ -643,6 +643,23 @@ void led_effect_heartbeat(void)
     xSemaphoreGive(s_svc.mutex);
 }
 
+void led_effect_beat(void)
+{
+    if (!s_svc.initialized) return;
+    if (xSemaphoreTake(s_svc.mutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+
+    int p = active_base_priority();
+    if (p < (int)NB_OVERLAY_BLOCK_PRIORITY) {
+        s_svc.overlay.type             = OVERLAY_FLASH_DECAY;
+        s_svc.overlay.decay_color      = NB_LED_BEAT_BLUE;
+        s_svc.overlay.decay_peak       = 0.55f;
+        s_svc.overlay.decay_elapsed_ms = 0;
+        s_svc.overlay.decay_total_ms   = 150U;
+    }
+
+    xSemaphoreGive(s_svc.mutex);
+}
+
 void led_set_night_mode(bool enable)
 {
     if (!s_svc.initialized) return;

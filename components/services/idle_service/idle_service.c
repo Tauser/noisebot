@@ -19,6 +19,7 @@
 #include "expression_service.h"
 #include "state_machine.h"
 #include "attention_service.h"
+#include "rhythm_service.h"
 
 #include "esp_log.h"
 #include "esp_random.h"
@@ -190,7 +191,10 @@ void idle_service_update(uint32_t dt_ms)
 
     /* ── Yawn (IDLE somente) ── */
     if (is_idle) {
-        if (s_yawn_timer_ms <= dt_ms) {
+        /* Nunca boceja durante música com ritmo detectado */
+        if (rhythm_service_is_locked()) {
+            s_yawn_timer_ms = rand_interval(YAWN_MIN_MS, YAWN_RANGE_MS);
+        } else if (s_yawn_timer_ms <= dt_ms) {
             expression_play(NB_EXPR_SLEEPY, YAWN_DURATION_MS, YAWN_TRANS_MS);
             /* Atenção alta suprime yawn: intervalo × (1 + attention × 2) */
             float attn = attention_service_get_level();
