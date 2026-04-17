@@ -1154,10 +1154,15 @@ NB_EVT_TOUCH_CARESS,       /* carinho prolongado >15s */
 
 **Critérios de aceitação:**
 
-- [ ] Toque de 10s: purr audível a partir de 8s, emoção muda visivelmente
-- [ ] 2 taps em 400ms: `TOUCH_DOUBLE_TAP` publicado, sem dois `TAP` separados
-- [ ] Toque de 20s: `TOUCH_CARESS` publicado, expressão satisfeita visível
-- [ ] Progressão suave: sem salto de expressão durante SUSTAINED
+- [x] Toque de 10s: purr audível a partir de 8s, emoção muda visivelmente
+- [x] 2 taps em 400ms: `TOUCH_DOUBLE_TAP` publicado, sem dois `TAP` separados
+- [x] Toque de 20s: `TOUCH_CARESS` publicado, expressão satisfeita visível
+- [x] Progressão suave: sem salto de expressão durante SUSTAINED
+
+**Implementação:** `touch_semantic_service` (Layer 5) em
+`components/services/touch_semantic_service/`. Wired via `on_touch_event` no
+`boot_manager` (10.4 em `behavior_task`). Eventos adicionados a `nb_events.h`.
+Regras no `behavior_engine` e deltas no `emotion_model` completos.
 
 ---
 

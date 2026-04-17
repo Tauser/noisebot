@@ -49,6 +49,7 @@
 #include "attention_service.h"
 #include "rhythm_service.h"
 #include "vad_semantic_service.h"
+#include "touch_semantic_service.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -374,30 +375,32 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
  * led_effect_touch() permanece aqui — é efeito imediato de HAL. */
 static void on_touch_event(nb_touch_event_t evt)
 {
-    static const nb_event_type_t k_map[] = {
-        NB_EVT_TOUCH_TAP,
-        NB_EVT_TOUCH_LONG_PRESS,
-        NB_EVT_TOUCH_SUSTAINED,
-        NB_EVT_TOUCH_WAKE,
-    };
-    /* SM inputs + synth: chamados diretamente aqui, fora do dispatcher.
-     * Synth toca imediatamente (≤16ms); se conductor também disparar WAV,
-     * o WAV tem prioridade e o synth aguarda — toca logo após o WAV acabar. */
+    /* TAP e SUSTAINED passam pelo touch_semantic_service (Etapa 10.4), que
+     * decide se publica TAP simples, DOUBLE_TAP, SUSTAINED, WARM_PULSE, DEEP
+     * ou CARESS. LONG_PRESS e WAKE continuam publicados diretamente. */
     switch (evt) {
         case NB_TOUCH_EVT_TAP:
-            led_effect_touch();   /* feedback LED imediato — não é comportamento */
+            led_effect_touch();           /* feedback LED imediato — não é comportamento */
             state_machine_on_touch_tap();
+            touch_semantic_on_tap();      /* delega publicação ao serviço semântico */
             break;
-        case NB_TOUCH_EVT_LONG_PRESS:
+        case NB_TOUCH_EVT_LONG_PRESS: {
             state_machine_on_touch_long_press();
+            nb_event_t e = { .type = NB_EVT_TOUCH_LONG_PRESS };
+            nb_event_publish_async(&e);
             break;
-        case NB_TOUCH_EVT_WAKE:
+        }
+        case NB_TOUCH_EVT_SUSTAINED:
+            touch_semantic_on_sustained(); /* delega progressão SUSTAINED ao serviço */
+            break;
+        case NB_TOUCH_EVT_WAKE: {
             state_machine_on_touch_wake();
+            nb_event_t e = { .type = NB_EVT_TOUCH_WAKE };
+            nb_event_publish_async(&e);
             break;
+        }
         default: break;
     }
-    nb_event_t bus_evt = { .type = k_map[evt] };
-    nb_event_publish_async(&bus_evt);
 }
 
 /* ── Task de update do led_service ──────────────────────────────────────── */
@@ -481,19 +484,7 @@ static void on_voice_soft(const nb_event_t *ev, void *ctx)
     gaze_service_set_target(0.0f, -0.15f);
 }
 
-/* Beat tick: flash LED + head-bob sutil em IDLE */
-static void on_beat_tick(const nb_event_t *ev, void *ctx)
-{
-    (void)ev; (void)ctx;
-    led_effect_beat();
 
-    /* Head-bob: pequeno movimento vertical alternado no gaze */
-    if (state_machine_get_state() == NB_STATE_IDLE) {
-        static bool s_bob_up = false;
-        s_bob_up = !s_bob_up;
-        gaze_service_set_target(0.0f, s_bob_up ? -0.10f : 0.10f);
-    }
-}
 
 /*
  * Persistir a emoção no NVS sempre que a expressão mapeada mudar.
@@ -527,6 +518,7 @@ static void behavior_task(void *arg)
         attention_service_tick(100);
         rhythm_service_tick(100);
         vad_semantic_tick(100);
+        touch_semantic_tick(100);
         idle_service_update(100);
         ltm_tick(100);
 
@@ -735,7 +727,7 @@ static esp_err_t phase_services(void)
     err = rhythm_service_init();
     NB_ASSERT(err == ESP_OK, TAG, "rhythm_service_init falhou: %s",
               esp_err_to_name(err));
-    nb_event_subscribe(NB_EVT_BEAT_TICK, on_beat_tick, NULL, NULL);
+
 
     /* vad_semantic_service (Etapa 10.3): análise semântica de sessões de voz */
     err = vad_semantic_init();
@@ -743,6 +735,11 @@ static esp_err_t phase_services(void)
               esp_err_to_name(err));
     nb_event_subscribe(NB_EVT_VOICE_FOLLOWUP_TIMEOUT, on_voice_followup_timeout, NULL, NULL);
     nb_event_subscribe(NB_EVT_VOICE_SOFT,             on_voice_soft,             NULL, NULL);
+
+    /* touch_semantic_service (Etapa 10.4): double-tap, DEEP, CARESS, WARM_PULSE */
+    err = touch_semantic_init();
+    NB_ASSERT(err == ESP_OK, TAG, "touch_semantic_init falhou: %s",
+              esp_err_to_name(err));
 
     /* state_machine e emotion_model (Etapa 5.1) */
     err = state_machine_init(config_get_idle_timeout_s(),

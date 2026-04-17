@@ -64,6 +64,12 @@ typedef enum {
     NB_EVT_BEAT_TICK,               /* batida detectada enquanto RHYTHM_LOCKED         */
     NB_EVT_RHYTHM_LOST,             /* confiança caiu por > 2s                         */
 
+    /* Touch Semântico (Etapa 10.4) */
+    NB_EVT_TOUCH_DOUBLE_TAP,        /* dois taps em < 400ms                           */
+    NB_EVT_TOUCH_DEEP,              /* toque sustentado > 8s                          */
+    NB_EVT_TOUCH_CARESS,            /* toque sustentado > 15s                         */
+    NB_EVT_TOUCH_WARM_PULSE,        /* pulso emocional a cada 1s durante 3-8s         */
+
     /* VAD Semântico (Etapa 10.3) */
     NB_EVT_VOICE_SHORT,             /* interjeição < 500ms                             */
     NB_EVT_VOICE_LONG,              /* discurso > 4s                                   */

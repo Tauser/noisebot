@@ -147,6 +147,19 @@ static const nb_be_rule_t k_rules[] = {
     { NB_EVT_IDLE_ALONE, NULL, {
         ACT_EMOT(IDLE_LONG) }},
 
+    /* ── Touch Semântico (Etapa 10.4) ───────────────────────────────────────── */
+    { NB_EVT_TOUCH_DOUBLE_TAP, NULL, {
+        ACT_EMOT(TOUCH_LONG), ACT_PLAY(TOUCH_STARTLE) }},  /* susto/surpresa   */
+
+    { NB_EVT_TOUCH_WARM_PULSE, NULL, {
+        ACT_EMOT(TOUCH_WARM_PULSE) }},                      /* calor acumulando */
+
+    { NB_EVT_TOUCH_DEEP, NULL, {
+        ACT_EMOT(TOUCH_DEEP) }},                            /* calor intenso    */
+
+    { NB_EVT_TOUCH_CARESS, NULL, {
+        ACT_EMOT(TOUCH_CARESS) }},                          /* satisfação       */
+
     /* ── VAD Semântico (Etapa 10.3) ─────────────────────────────────────────── */
     { NB_EVT_VOICE_LONG, NULL, {
         ACT_PLAY(AGREE) }},                          /* nod de concordância       */

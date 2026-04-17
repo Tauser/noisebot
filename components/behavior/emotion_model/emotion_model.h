@@ -50,7 +50,10 @@ typedef enum {
     NB_EMOT_EVT_IDLE_LONG       = 7,  /**< Sozinho por muito tempo → tristeza suave        */
     NB_EMOT_EVT_VOICE_LOUD      = 8,  /**< Fala em tom alto → alarme/surpresa              */
     NB_EMOT_EVT_VOICE_SOFT      = 9,  /**< Fala suave → curiosidade atenta                 */
-    NB_EMOT_EVT_COUNT           = 10,
+    NB_EMOT_EVT_TOUCH_WARM_PULSE= 10, /**< Pulso de calor durante SUSTAINED (3-8s)         */
+    NB_EMOT_EVT_TOUCH_DEEP      = 11, /**< Toque longo >8s → calor intenso                 */
+    NB_EMOT_EVT_TOUCH_CARESS    = 12, /**< Carinho prolongado >15s → satisfação máxima     */
+    NB_EMOT_EVT_COUNT           = 13,
 } nb_emotion_event_t;
 
 /* ── Callback ────────────────────────────────────────────────────────────── */

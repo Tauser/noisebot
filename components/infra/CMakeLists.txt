@@ -38,4 +38,5 @@ idf_component_register(
         attention_service
         rhythm_service
         vad_semantic_service
+        touch_semantic_service
 )
