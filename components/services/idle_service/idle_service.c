@@ -60,12 +60,6 @@ static inline uint32_t rand_interval(uint32_t min_ms, uint32_t range_ms)
     return min_ms + (uint32_t)((float)range_ms * rand01());
 }
 
-static inline uint32_t saccade_interval(void)
-{
-    uint32_t base = rand_interval(SACCADE_MIN_MS, SACCADE_RANGE_MS);
-    return (uint32_t)((float)base / s_saccade_mult);
-}
-
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
 static bool     s_initialized       = false;
@@ -80,6 +74,12 @@ static bool     s_was_idle          = false; /* estava em IDLE (para reset do al
 static float    s_saccade_mult      = 1.0f;  /* 1.5 quando curiosity > 0.6 */
 
 static nb_idle_alone_cb_t s_alone_cb = NULL;
+
+static inline uint32_t saccade_interval(void)
+{
+    uint32_t base = rand_interval(SACCADE_MIN_MS, SACCADE_RANGE_MS);
+    return (uint32_t)((float)base / s_saccade_mult);
+}
 
 /* ── Behaviors ───────────────────────────────────────────────────────────── */
 
