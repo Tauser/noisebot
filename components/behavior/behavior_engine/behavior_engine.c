@@ -51,19 +51,7 @@ typedef enum {
     NB_BE_ACT_LTM_RECORD,        /**< ltm_record(arg.ltm)                    */
     NB_BE_ACT_LTM_FLUSH,         /**< ltm_flush()                            */
     NB_BE_ACT_IDLE_INTERACT,     /**< idle_service_on_interaction()           */
-    NB_BE_ACT_SM_INPUT,          /**< state_machine_on_xxx(arg.sm_input)     */
 } nb_be_act_type_t;
-
-typedef enum {
-    NB_SM_INPUT_TOUCH_TAP      = 0,
-    NB_SM_INPUT_TOUCH_LONG     = 1,
-    NB_SM_INPUT_TOUCH_WAKE     = 2,
-    NB_SM_INPUT_VOICE_START    = 3,
-    NB_SM_INPUT_VOICE_END      = 4,
-    NB_SM_INPUT_AUDIO_STARTED  = 5,
-    NB_SM_INPUT_AUDIO_ENDED    = 6,
-    NB_SM_INPUT_MOTION_FAULT   = 7,
-} nb_sm_input_t;
 
 typedef struct {
     nb_be_act_type_t type;
@@ -71,7 +59,6 @@ typedef struct {
         nb_emotion_event_t  emotion;
         nb_action_t         conductor;
         ltm_iact_type_t     ltm;
-        nb_sm_input_t       sm_input;
     } arg;
 } nb_be_action_t;
 
@@ -86,12 +73,11 @@ typedef struct {
 
 /* ── Helpers de construção de regras ─────────────────────────────────────── */
 
-#define ACT_SM(s)   { .type = NB_BE_ACT_SM_INPUT,       .arg = { .sm_input  = NB_SM_INPUT_##s           } }
-#define ACT_EMOT(e) { .type = NB_BE_ACT_EMIT_EMOTION,   .arg = { .emotion   = NB_EMOT_EVT_##e           } }
-#define ACT_PLAY(a) { .type = NB_BE_ACT_PLAY_CONDUCTOR, .arg = { .conductor = NB_ACTION_##a             } }
-#define ACT_LTM(l)  { .type = NB_BE_ACT_LTM_RECORD,     .arg = { .ltm       = LTM_IACT_##l              } }
-#define ACT_FLUSH   { .type = NB_BE_ACT_LTM_FLUSH,      .arg = { .sm_input  = 0 } }
-#define ACT_IDLE    { .type = NB_BE_ACT_IDLE_INTERACT,  .arg = { .sm_input  = 0 } }
+#define ACT_EMOT(e) { .type = NB_BE_ACT_EMIT_EMOTION,   .arg = { .emotion   = NB_EMOT_EVT_##e } }
+#define ACT_PLAY(a) { .type = NB_BE_ACT_PLAY_CONDUCTOR, .arg = { .conductor = NB_ACTION_##a   } }
+#define ACT_LTM(l)  { .type = NB_BE_ACT_LTM_RECORD,     .arg = { .ltm       = LTM_IACT_##l   } }
+#define ACT_FLUSH   { .type = NB_BE_ACT_LTM_FLUSH,      .arg = { .emotion   = 0              } }
+#define ACT_IDLE    { .type = NB_BE_ACT_IDLE_INTERACT,  .arg = { .emotion   = 0              } }
 
 /* ── Condition functions ─────────────────────────────────────────────────── */
 
@@ -123,31 +109,29 @@ static bool cond_error(const nb_event_t *evt)
 static const nb_be_rule_t k_rules[] = {
 
     /* ── Touch ──────────────────────────────────────────────────────────── */
+    /* SM inputs (tap/long/wake) são chamados diretamente no on_touch_event  */
+    /* do boot_manager, antes de publicar o evento. Aqui só comportamento.  */
     { NB_EVT_TOUCH_TAP, NULL, {
-        ACT_SM(TOUCH_TAP), ACT_EMOT(TOUCH_TAP), ACT_IDLE,
+        ACT_EMOT(TOUCH_TAP), ACT_IDLE,
         ACT_PLAY(TOUCH_WARM), ACT_LTM(TOUCH_TAP) }},
 
     { NB_EVT_TOUCH_LONG_PRESS, NULL, {
-        ACT_SM(TOUCH_LONG), ACT_EMOT(TOUCH_LONG),
+        ACT_EMOT(TOUCH_LONG),
         ACT_PLAY(TOUCH_STARTLE), ACT_LTM(TOUCH_LONG) }},
 
     { NB_EVT_TOUCH_WAKE, NULL, {
-        ACT_SM(TOUCH_WAKE), ACT_PLAY(WAKE_UP), ACT_LTM(WAKE) }},
+        ACT_PLAY(WAKE_UP), ACT_LTM(WAKE) }},
 
     /* ── Voice / Áudio ───────────────────────────────────────────────────── */
+    /* SM inputs (voice_start/end, audio_started/ended) chamados no callback */
+    /* do audio_service (on_audio_event), antes de publicar. Só comportamento. */
     { NB_EVT_VOICE_ACTIVITY_START, NULL, {
-        ACT_SM(VOICE_START), ACT_EMOT(VOICE_START), ACT_IDLE,
+        ACT_EMOT(VOICE_START), ACT_IDLE,
         ACT_PLAY(CURIOUS), ACT_LTM(VOICE_START) }},
 
-    { NB_EVT_VOICE_ACTIVITY_END, NULL, {
-        ACT_SM(VOICE_END) }},
-
     { NB_EVT_AUDIO_STARTED, NULL, {
-        ACT_SM(AUDIO_STARTED), ACT_EMOT(AUDIO_STARTED),
+        ACT_EMOT(AUDIO_STARTED),
         ACT_PLAY(SPEAK_LOOP), ACT_LTM(AUDIO_PLAYED) }},
-
-    { NB_EVT_AUDIO_ENDED, NULL, {
-        ACT_SM(AUDIO_ENDED) }},
 
     /* ── State transitions (condicionadas — mutuamente exclusivas) ────────── */
     { NB_EVT_STATE_CHANGED, cond_sleeping, {
@@ -158,10 +142,6 @@ static const nb_be_rule_t k_rules[] = {
 
     { NB_EVT_STATE_CHANGED, cond_error, {
         ACT_EMOT(MOTION_FAULT) }},
-
-    /* ── Motion / Safety ─────────────────────────────────────────────────── */
-    { NB_EVT_MOTION_FAULT, NULL, {
-        ACT_SM(MOTION_FAULT) }},
 
     /* ── Solidão (idlealone) ─────────────────────────────────────────────── */
     { NB_EVT_IDLE_ALONE, NULL, {
@@ -175,21 +155,6 @@ static const nb_be_rule_t k_rules[] = {
 static bool s_initialized = false;
 
 /* ── Helpers de execução ─────────────────────────────────────────────────── */
-
-static void dispatch_sm_input(nb_sm_input_t input)
-{
-    switch (input) {
-        case NB_SM_INPUT_TOUCH_TAP:     state_machine_on_touch_tap();       break;
-        case NB_SM_INPUT_TOUCH_LONG:    state_machine_on_touch_long_press(); break;
-        case NB_SM_INPUT_TOUCH_WAKE:    state_machine_on_touch_wake();      break;
-        case NB_SM_INPUT_VOICE_START:   state_machine_on_voice_start();     break;
-        case NB_SM_INPUT_VOICE_END:     state_machine_on_voice_end();       break;
-        case NB_SM_INPUT_AUDIO_STARTED: state_machine_on_audio_started();   break;
-        case NB_SM_INPUT_AUDIO_ENDED:   state_machine_on_audio_ended();     break;
-        case NB_SM_INPUT_MOTION_FAULT:  state_machine_on_motion_fault();    break;
-        default: break;
-    }
-}
 
 static void execute_action(const nb_be_action_t *act)
 {
@@ -208,9 +173,6 @@ static void execute_action(const nb_be_action_t *act)
             break;
         case NB_BE_ACT_IDLE_INTERACT:
             idle_service_on_interaction();
-            break;
-        case NB_BE_ACT_SM_INPUT:
-            dispatch_sm_input(act->arg.sm_input);
             break;
         case NB_BE_ACT_NONE:
         default:

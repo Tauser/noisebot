@@ -35,7 +35,7 @@
 #define NB_EVENT_BUS_QUEUE_SIZE          16U  /**< Capacidade da fila normal    */
 #define NB_EVENT_BUS_SAFETY_QUEUE_SIZE    8U  /**< Capacidade da fila safety    */
 #define NB_EVENT_BUS_MAX_SUBS_PER_TYPE    4U  /**< Subscribers por tipo         */
-#define NB_EVENT_BUS_TASK_STACK        2048U  /**< Stack da dispatcher task     */
+#define NB_EVENT_BUS_TASK_STACK        4096U  /**< Stack da dispatcher task     */
 #define NB_EVENT_BUS_TASK_PRIORITY        8U  /**< Prioridade dispatcher (> 5)  */
 
 /* ── Tipos ───────────────────────────────────────────────────────────────── */

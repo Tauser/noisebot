@@ -332,8 +332,8 @@ static void on_idle_alone(void)
 
 /* ── Relay de eventos de áudio → event bus ──────────────────────────────── */
 
-/* Relay puro: mapeia eventos do audio_service para o event bus.
- * Toda lógica comportamental migrou para o behavior_engine (Etapa 9.3). */
+/* Relay de áudio: chama SM diretamente (contexto da audio task, não dispatcher)
+ * e depois publica no bus para o behavior_engine reagir. */
 static void on_audio_event(nb_audio_event_t evt, uint32_t data)
 {
     nb_event_t bus_evt = {
@@ -341,10 +341,22 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
         .data.u32     = data,
     };
     switch (evt) {
-        case NB_AUDIO_EVT_VOICE_START:    bus_evt.type = NB_EVT_VOICE_ACTIVITY_START; break;
-        case NB_AUDIO_EVT_VOICE_END:      bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;   break;
-        case NB_AUDIO_EVT_PLAYBACK_START: bus_evt.type = NB_EVT_AUDIO_STARTED;        break;
-        case NB_AUDIO_EVT_PLAYBACK_END:   bus_evt.type = NB_EVT_AUDIO_ENDED;          break;
+        case NB_AUDIO_EVT_VOICE_START:
+            state_machine_on_voice_start();
+            bus_evt.type = NB_EVT_VOICE_ACTIVITY_START;
+            break;
+        case NB_AUDIO_EVT_VOICE_END:
+            state_machine_on_voice_end();
+            bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;
+            break;
+        case NB_AUDIO_EVT_PLAYBACK_START:
+            state_machine_on_audio_started();
+            bus_evt.type = NB_EVT_AUDIO_STARTED;
+            break;
+        case NB_AUDIO_EVT_PLAYBACK_END:
+            state_machine_on_audio_ended();
+            bus_evt.type = NB_EVT_AUDIO_ENDED;
+            break;
         default: return;
     }
     nb_event_publish_async(&bus_evt);
@@ -352,9 +364,9 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
 
 /* ── Relay de eventos de touch → event bus + state machine + emotion ─────── */
 
-/* Relay puro: mapeia eventos do touch_service para o event bus.
- * led_effect_touch() permanece aqui — é efeito imediato de HAL, não comportamento.
- * Toda lógica comportamental migrou para o behavior_engine (Etapa 9.3). */
+/* Relay de touch: chama SM diretamente (contexto da touch task, não dispatcher)
+ * e depois publica no bus para o behavior_engine reagir.
+ * led_effect_touch() permanece aqui — é efeito imediato de HAL. */
 static void on_touch_event(nb_touch_event_t evt)
 {
     static const nb_event_type_t k_map[] = {
@@ -363,11 +375,22 @@ static void on_touch_event(nb_touch_event_t evt)
         NB_EVT_TOUCH_SUSTAINED,
         NB_EVT_TOUCH_WAKE,
     };
-    if (evt == NB_TOUCH_EVT_TAP) {
-        led_effect_touch();   /* feedback LED imediato — não é comportamento */
+    /* SM inputs: chamados diretamente aqui, fora do dispatcher. */
+    switch (evt) {
+        case NB_TOUCH_EVT_TAP:
+            led_effect_touch();   /* feedback LED imediato — não é comportamento */
+            state_machine_on_touch_tap();
+            break;
+        case NB_TOUCH_EVT_LONG_PRESS:
+            state_machine_on_touch_long_press();
+            break;
+        case NB_TOUCH_EVT_WAKE:
+            state_machine_on_touch_wake();
+            break;
+        default: break;
     }
     nb_event_t bus_evt = { .type = k_map[evt] };
-    nb_event_publish(&bus_evt);
+    nb_event_publish_async(&bus_evt);
 }
 
 /* ── Task de update do led_service ──────────────────────────────────────── */
@@ -407,9 +430,12 @@ static void touch_update_task(void *arg)
  * O payload data.u32 carrega o novo nb_robot_state_t.
  * Também aciona o emotion model para eventos de estado relevantes.
  */
-/* Relay puro: publica NB_EVT_STATE_CHANGED empacotando old+new state.
+/* Publica NB_EVT_STATE_CHANGED de forma SÍNCRONA.
  * Encoding: bits[7:0] = new_state, bits[15:8] = old_state.
- * behavior_engine usa cond_sleeping/cond_waking/cond_error para reagir. */
+ * Síncrono porque on_state_changed é chamado de dentro de state_machine_on_xxx,
+ * que por sua vez é chamado dos callbacks de HAL (audio/touch tasks) — nunca
+ * do dispatcher. Usar publish_async daqui causaria re-entrância se o dispatcher
+ * chamasse SM inputs (o que não faz mais, mas publish sync é mais seguro). */
 static void on_state_changed(nb_robot_state_t new_state,
                               nb_robot_state_t old_state,
                               const char *reason)
@@ -420,7 +446,16 @@ static void on_state_changed(nb_robot_state_t new_state,
         .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000LL),
         .data.u32     = ((uint32_t)old_state << 8) | (uint32_t)new_state,
     };
-    nb_event_publish_async(&evt);
+    nb_event_publish(&evt);
+}
+
+/* motion_safety publica NB_EVT_MOTION_FAULT diretamente no bus (Layer 3).
+ * Este subscriber chama SM para registrar o fault. Chamado pelo dispatcher —
+ * state_machine_on_motion_fault() não publica eventos, então é seguro. */
+static void on_motion_fault_event(const nb_event_t *evt, void *ctx)
+{
+    (void)evt; (void)ctx;
+    state_machine_on_motion_fault();
 }
 
 /*
@@ -690,6 +725,10 @@ static esp_err_t phase_services(void)
     err = behavior_engine_init();
     NB_ASSERT(err == ESP_OK, TAG, "behavior_engine_init falhou: %s",
               esp_err_to_name(err));
+
+    /* motion_safety fault → SM: subscriber direto (não via behavior_engine,
+     * pois state_machine_on_motion_fault é SM input, não comportamento). */
+    nb_event_subscribe(NB_EVT_MOTION_FAULT, on_motion_fault_event, NULL, NULL);
 
     /* schedule_service (Etapa 9.2): timers one-shot e recorrentes sem task */
     err = schedule_service_init();
