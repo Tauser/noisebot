@@ -52,6 +52,13 @@ typedef enum {
     /* Behavior (Etapa 9.3) */
     NB_EVT_IDLE_ALONE,              /* sem interação por ALONE_THRESHOLD_MS           */
 
+    /* Sound analysis (Etapa 9.4) */
+    NB_EVT_SOUND_CLAP,              /* palmas detectadas (segundo pico em 400ms)      */
+    NB_EVT_SOUND_WHISTLE,           /* assobio detectado (narrowband 1-3kHz, >300ms) */
+    NB_EVT_SOUND_MUSIC_START,       /* música ambiente detectada (>3s)                */
+    NB_EVT_SOUND_MUSIC_END,         /* música parou (>2s de silêncio relativo)        */
+    NB_EVT_SOUND_CLASS_CHANGED,     /* transição de classe; data.u32 = nb_sound_class_t */
+
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
 } nb_event_type_t;
 

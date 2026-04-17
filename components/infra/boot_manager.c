@@ -44,6 +44,7 @@
 #include "diagnostics_service.h"
 #include "schedule_service.h"
 #include "behavior_engine.h"
+#include "sound_analysis_service.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -674,6 +675,11 @@ static esp_err_t phase_services(void)
         audio_service_set_event_cb(on_audio_event);
         audio_set_volume(config_get_volume());
     }
+
+    /* sound_analysis_service (Etapa 9.4): FFT 256pt + classificação */
+    err = sound_analysis_init();
+    NB_ASSERT(err == ESP_OK, TAG, "sound_analysis_init falhou: %s",
+              esp_err_to_name(err));
 
     /* state_machine e emotion_model (Etapa 5.1) */
     err = state_machine_init(config_get_idle_timeout_s(),

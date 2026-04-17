@@ -14,6 +14,7 @@
 
 #include "audio_service.h"
 #include "audio_hal.h"
+#include "sound_analysis_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -103,6 +104,7 @@ static struct {
 static int32_t  s_mic_buf  [NB_AUDIO_CHUNK_FRAMES];
 static int16_t  s_wav_chunk[WAV_SAMPLES_PER_CHUNK];
 static int16_t  s_rec_chunk[NB_AUDIO_CHUNK_FRAMES];
+static int16_t  s_sa_buf   [NB_AUDIO_CHUNK_FRAMES]; /* buffer para sound_analysis_tick */
 
 /* ── Helpers WAV ─────────────────────────────────────────────────────────── */
 
@@ -371,7 +373,17 @@ static void audio_task(void *arg)
         /* ── 3. VAD ─────────────────────────────────────────────────────── */
         vad_update(s_mic_buf, mic_n);
 
-        /* ── 4. Diagnóstico ─────────────────────────────────────────────── */
+        /* ── 4. Sound analysis ──────────────────────────────────────────── */
+        /* Converte int32 (24-bit) → int16 sem ganho extra (nível calibrado). */
+        for (size_t i = 0; i < mic_n; i++) {
+            int32_t v = s_mic_buf[i] >> 8;
+            if (v >  32767) v =  32767;
+            if (v < -32768) v = -32768;
+            s_sa_buf[i] = (int16_t)v;
+        }
+        sound_analysis_tick(s_sa_buf, mic_n);
+
+        /* ── 5. Diagnóstico ─────────────────────────────────────────────── */
         if (s.rec_state == REC_ACTIVE) {
             if (!rec_file) {
                 rec_file = fopen(s.rec_path, "wb");

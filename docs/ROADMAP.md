@@ -912,7 +912,7 @@ void            schedule_cancel(schedule_handle_t h);
 
 ---
 
-### Etapa 9.4 — sound_analysis_service (Layer 4)
+### Etapa 9.4 — sound_analysis_service (Layer 4) ✅
 
 **Dependências:** audio_service ativo (Etapa 4.1)
 **Hardware necessário:** Não (mic já funcionando)
@@ -946,11 +946,11 @@ float             sound_analysis_get_dominant_freq(void);
 
 **Critérios de aceitação:**
 
-- [ ] Silêncio por 30s: classe `SILENCE` estável, zero falsos positivos
-- [ ] Palmas 3x: `NB_EVT_SOUND_CLAP` publicado em cada evento, <100ms de latência
-- [ ] Assobio de 1s: `NB_EVT_SOUND_WHISTLE` detectado
-- [ ] Música tocando no ambiente: `MUSIC` dentro de 3s, `MUSIC_END` após parar
-- [ ] FFT + classificação: ≤ 200µs por janela de 256 samples (medido com esp_timer)
+- [x] Silêncio por 30s: classe `SILENCE` estável, zero falsos positivos
+- [x] Palmas 3x: `NB_EVT_SOUND_CLAP` publicado em cada evento, <100ms de latência
+- [x] Assobio de 1s: `NB_EVT_SOUND_WHISTLE` detectado
+- [x] Música tocando no ambiente: `MUSIC` dentro de 3s, `MUSIC_END` após parar
+- [x] FFT + classificação: ≤ 200µs por janela de 256 samples (medido com esp_timer)
 
 ---
 

@@ -33,4 +33,5 @@ idf_component_register(
         schedule_service
         behavior_engine
         long_term_memory
+        sound_analysis_service
 )
