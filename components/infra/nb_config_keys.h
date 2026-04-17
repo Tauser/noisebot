@@ -29,7 +29,7 @@
  * força re-aplicação dos defaults no próximo boot.
  */
 #define NB_CFG_KEY_VERSION    "cfg_ver"         /* u8 */
-#define NB_CFG_SCHEMA_VERSION  2U
+#define NB_CFG_SCHEMA_VERSION  3U
 
 /* ── Chaves nb_cfg — Servo pan (ID 1) ────────────────────────────────────── */
 /*
@@ -68,7 +68,7 @@
 #define NB_CFG_DEFAULT_SRV_MIN          410     /* centro − 102 steps (≈−30°) */
 #define NB_CFG_DEFAULT_SRV_MAX          614     /* centro + 102 steps (≈+30°) */
 
-#define NB_CFG_DEFAULT_VOLUME            70     /* % — audível mas não alto */
+#define NB_CFG_DEFAULT_VOLUME            25     /* % — audível mas não alto */
 #define NB_CFG_DEFAULT_BRIGHTNESS       180     /* ~70% — confortável em ambiente escuro */
 #define NB_CFG_DEFAULT_TOUCH_SENS         1     /* 1% acima do baseline (copper pad, ESP32-S3) */
 #define NB_CFG_DEFAULT_IDLE_TIMEOUT_S   120     /* 2 minutos */
