@@ -48,7 +48,9 @@ typedef enum {
     NB_EMOT_EVT_WAKING_UP       = 5,  /**< Acordando       → leve despertar               */
     NB_EMOT_EVT_MOTION_FAULT    = 6,  /**< Falha de motion → alarme                       */
     NB_EMOT_EVT_IDLE_LONG       = 7,  /**< Sozinho por muito tempo → tristeza suave        */
-    NB_EMOT_EVT_COUNT           = 8,
+    NB_EMOT_EVT_VOICE_LOUD      = 8,  /**< Fala em tom alto → alarme/surpresa              */
+    NB_EMOT_EVT_VOICE_SOFT      = 9,  /**< Fala suave → curiosidade atenta                 */
+    NB_EMOT_EVT_COUNT           = 10,
 } nb_emotion_event_t;
 
 /* ── Callback ────────────────────────────────────────────────────────────── */

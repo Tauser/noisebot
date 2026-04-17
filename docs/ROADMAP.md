@@ -1117,11 +1117,11 @@ NB_EVT_VOICE_REPEATED,           /* interjeições repetidas */
 
 **Critérios de aceitação:**
 
-- [ ] Fala de 5s: `VOICE_LONG` publicado ao final
-- [ ] 3 interjeições em 25s: `VOICE_REPEATED` publicado
-- [ ] 10s após voz parar: `VOICE_FOLLOWUP_TIMEOUT` publicado, gaze sweep visível
-- [ ] Fala em tom alto: expressão muda para ALARMED/SURPRISED por ≤ 2s
-- [ ] Fala suave: CURIOUS ativado
+- [x] Fala de 5s: `VOICE_LONG` publicado ao final
+- [x] 3 interjeições em 25s: `VOICE_REPEATED` publicado
+- [x] 10s após voz parar: `VOICE_FOLLOWUP_TIMEOUT` publicado, gaze sweep visível
+- [x] Fala em tom alto: expressão muda para ALARMED/SURPRISED por ≤ 2s
+- [x] Fala suave: CURIOUS ativado
 
 ---
 

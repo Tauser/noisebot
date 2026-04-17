@@ -64,6 +64,14 @@ typedef enum {
     NB_EVT_BEAT_TICK,               /* batida detectada enquanto RHYTHM_LOCKED         */
     NB_EVT_RHYTHM_LOST,             /* confiança caiu por > 2s                         */
 
+    /* VAD Semântico (Etapa 10.3) */
+    NB_EVT_VOICE_SHORT,             /* interjeição < 500ms                             */
+    NB_EVT_VOICE_LONG,              /* discurso > 4s                                   */
+    NB_EVT_VOICE_LOUD,              /* RMS médio > 2× baseline durante voz             */
+    NB_EVT_VOICE_SOFT,              /* RMS médio < 0.5× baseline durante voz           */
+    NB_EVT_VOICE_FOLLOWUP_TIMEOUT,  /* 8-12s de silêncio após última voz               */
+    NB_EVT_VOICE_REPEATED,          /* 3 interjeições em < 30s                         */
+
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
 } nb_event_type_t;
 

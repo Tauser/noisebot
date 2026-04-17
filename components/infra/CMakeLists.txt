@@ -37,4 +37,5 @@ idf_component_register(
         synth_service
         attention_service
         rhythm_service
+        vad_semantic_service
 )

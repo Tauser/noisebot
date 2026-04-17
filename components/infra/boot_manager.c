@@ -48,6 +48,7 @@
 #include "synth_service.h"
 #include "attention_service.h"
 #include "rhythm_service.h"
+#include "vad_semantic_service.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -464,6 +465,22 @@ static void on_motion_fault_event(const nb_event_t *evt, void *ctx)
     state_machine_on_motion_fault();
 }
 
+/* VOICE_FOLLOWUP_TIMEOUT: gaze sweep lateral — "cadê você?" */
+static void on_voice_followup_timeout(const nb_event_t *ev, void *ctx)
+{
+    (void)ev; (void)ctx;
+    /* Olha para um lado aleatório: simula busca visual da fonte do som */
+    float sign = (esp_random() & 1U) ? 1.0f : -1.0f;
+    gaze_service_set_target(sign * 0.55f, 0.05f);
+}
+
+/* VOICE_SOFT: gaze inclina levemente para cima (postura curiosa) */
+static void on_voice_soft(const nb_event_t *ev, void *ctx)
+{
+    (void)ev; (void)ctx;
+    gaze_service_set_target(0.0f, -0.15f);
+}
+
 /* Beat tick: flash LED + head-bob sutil em IDLE */
 static void on_beat_tick(const nb_event_t *ev, void *ctx)
 {
@@ -509,6 +526,7 @@ static void behavior_task(void *arg)
         emotion_model_update(100);
         attention_service_tick(100);
         rhythm_service_tick(100);
+        vad_semantic_tick(100);
         idle_service_update(100);
         ltm_tick(100);
 
@@ -718,6 +736,13 @@ static esp_err_t phase_services(void)
     NB_ASSERT(err == ESP_OK, TAG, "rhythm_service_init falhou: %s",
               esp_err_to_name(err));
     nb_event_subscribe(NB_EVT_BEAT_TICK, on_beat_tick, NULL, NULL);
+
+    /* vad_semantic_service (Etapa 10.3): análise semântica de sessões de voz */
+    err = vad_semantic_init();
+    NB_ASSERT(err == ESP_OK, TAG, "vad_semantic_init falhou: %s",
+              esp_err_to_name(err));
+    nb_event_subscribe(NB_EVT_VOICE_FOLLOWUP_TIMEOUT, on_voice_followup_timeout, NULL, NULL);
+    nb_event_subscribe(NB_EVT_VOICE_SOFT,             on_voice_soft,             NULL, NULL);
 
     /* state_machine e emotion_model (Etapa 5.1) */
     err = state_machine_init(config_get_idle_timeout_s(),

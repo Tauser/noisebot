@@ -143,9 +143,22 @@ static const nb_be_rule_t k_rules[] = {
     { NB_EVT_STATE_CHANGED, cond_error, {
         ACT_EMOT(MOTION_FAULT) }},
 
-    /* ── Solidão (idlealone) ─────────────────────────────────────────────── */
+    /* ── Solidão (idle alone) ───────────────────────────────────────────────── */
     { NB_EVT_IDLE_ALONE, NULL, {
         ACT_EMOT(IDLE_LONG) }},
+
+    /* ── VAD Semântico (Etapa 10.3) ─────────────────────────────────────────── */
+    { NB_EVT_VOICE_LONG, NULL, {
+        ACT_PLAY(AGREE) }},                          /* nod de concordância       */
+
+    { NB_EVT_VOICE_LOUD, NULL, {
+        ACT_EMOT(VOICE_LOUD) }},                     /* alarme/surpresa momentâneo */
+
+    { NB_EVT_VOICE_SOFT, NULL, {
+        ACT_EMOT(VOICE_SOFT), ACT_PLAY(CURIOUS) }}, /* curiosidade + inclinação   */
+
+    { NB_EVT_VOICE_REPEATED, NULL, {
+        ACT_PLAY(CURIOUS) }},                        /* "não entendi, pode repetir?" */
 };
 
 #define K_NRULES  ((uint8_t)(sizeof(k_rules) / sizeof(k_rules[0])))
