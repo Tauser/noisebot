@@ -19,6 +19,7 @@
 #include "gaze_service.h"
 #include "expression_service.h"
 #include "render_service.h"
+#include "attention_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
@@ -154,7 +155,10 @@ static void gaze_render_cb(nb_display_sprite_t canvas, void *ctx)
     switch (s_phase) {
 
         case GAZE_FAST: {
-            float t = s_phase_ms / SACCADE_FAST_MS;
+            /* Velocidade proporcional à atenção: [attention=0 → 1.5×lento, attention=1 → 0.5×rápido] */
+            float attn    = attention_service_get_level();
+            float fast_ms = SACCADE_FAST_MS * (1.5f - attn);
+            float t = s_phase_ms / fast_ms;
             if (t >= 1.0f) {
                 t = 1.0f;
                 /* Inicia settle a partir do overshoot */

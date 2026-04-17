@@ -1040,10 +1040,10 @@ void      attention_service_tick(uint32_t dt_ms);
 
 **Critérios de aceitação:**
 
-- [ ] Sem estímulo por 60s: nível decai de 1.0 para < 0.1
-- [ ] `VOICE_START`: nível sobe para ≥ 0.7 imediatamente
-- [ ] Nível 0.1 vs 0.9: diferença visual percebida em velocidade de gaze e pálpebra
-- [ ] Atenção não altera transições de estado da state_machine
+- [x] Sem estímulo por 60s: nível decai de 1.0 para < 0.1
+- [x] `VOICE_START`: nível sobe para ≥ 0.7 imediatamente
+- [x] Nível 0.1 vs 0.9: diferença visual percebida em velocidade de gaze e pálpebra
+- [x] Atenção não altera transições de estado da state_machine
 
 ---
 

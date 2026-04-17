@@ -35,4 +35,5 @@ idf_component_register(
         long_term_memory
         sound_analysis_service
         synth_service
+        attention_service
 )

@@ -18,6 +18,7 @@
 #include "gaze_service.h"
 #include "expression_service.h"
 #include "state_machine.h"
+#include "attention_service.h"
 
 #include "esp_log.h"
 #include "esp_random.h"
@@ -191,8 +192,11 @@ void idle_service_update(uint32_t dt_ms)
     if (is_idle) {
         if (s_yawn_timer_ms <= dt_ms) {
             expression_play(NB_EXPR_SLEEPY, YAWN_DURATION_MS, YAWN_TRANS_MS);
-            s_yawn_timer_ms = rand_interval(YAWN_MIN_MS, YAWN_RANGE_MS);
-            ESP_LOGI(TAG, "yawn!");
+            /* Atenção alta suprime yawn: intervalo × (1 + attention × 2) */
+            float attn = attention_service_get_level();
+            float scale = 1.0f + attn * 2.0f;
+            s_yawn_timer_ms = (uint32_t)((float)rand_interval(YAWN_MIN_MS, YAWN_RANGE_MS) * scale);
+            ESP_LOGI(TAG, "yawn! (próximo em %lums, attn=%.2f)", (unsigned long)s_yawn_timer_ms, attn);
         } else {
             s_yawn_timer_ms -= dt_ms;
         }

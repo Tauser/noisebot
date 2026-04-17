@@ -46,6 +46,7 @@
 #include "behavior_engine.h"
 #include "sound_analysis_service.h"
 #include "synth_service.h"
+#include "attention_service.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -384,15 +385,12 @@ static void on_touch_event(nb_touch_event_t evt)
         case NB_TOUCH_EVT_TAP:
             led_effect_touch();   /* feedback LED imediato — não é comportamento */
             state_machine_on_touch_tap();
-            synth_play_for_emotion(NB_SYNTH_HAPPY);
             break;
         case NB_TOUCH_EVT_LONG_PRESS:
             state_machine_on_touch_long_press();
-            synth_play_for_emotion(NB_SYNTH_CURIOUS);
             break;
         case NB_TOUCH_EVT_WAKE:
             state_machine_on_touch_wake();
-            synth_play_for_emotion(NB_SYNTH_SURPRISED);
             break;
         default: break;
     }
@@ -494,6 +492,7 @@ static void behavior_task(void *arg)
     while (1) {
         state_machine_update(100);
         emotion_model_update(100);
+        attention_service_tick(100);
         idle_service_update(100);
         ltm_tick(100);
 
@@ -692,9 +691,11 @@ static esp_err_t phase_services(void)
     err = synth_init();
     NB_ASSERT(err == ESP_OK, TAG, "synth_init falhou: %s",
               esp_err_to_name(err));
-    /* Boot sound — robot sinaliza que está pronto.
-     * audio_task já está rodando; o chirp sai no próximo ciclo (≤16ms). */
-    synth_chirp(400.0f, 800.0f, 350);
+
+    /* attention_service (Etapa 10.1): modelo contínuo de atenção */
+    err = attention_service_init();
+    NB_ASSERT(err == ESP_OK, TAG, "attention_service_init falhou: %s",
+              esp_err_to_name(err));
 
     /* state_machine e emotion_model (Etapa 5.1) */
     err = state_machine_init(config_get_idle_timeout_s(),

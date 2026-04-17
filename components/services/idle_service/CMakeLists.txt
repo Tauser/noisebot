@@ -9,4 +9,5 @@ idf_component_register(
         gaze_service
         expression_service
         state_machine
+        attention_service
 )
