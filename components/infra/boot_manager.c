@@ -680,6 +680,7 @@ static esp_err_t phase_services(void)
     } else {
         audio_service_set_event_cb(on_audio_event);
         audio_set_volume(config_get_volume());
+        synth_set_volume(config_get_volume());
     }
 
     /* sound_analysis_service (Etapa 9.4): FFT 256pt + classificação */

@@ -43,6 +43,9 @@ static SemaphoreHandle_t s_mutex;
 static struct {
     bool initialized;
 
+    /* Volume: 0–100, aplica o mesmo escalonamento que o audio_service usa no WAV */
+    uint8_t volume;
+
     /* Default timbre (changed by synth_set_timbre) */
     nb_synth_timbre_t timbre_default;
 
@@ -252,6 +255,7 @@ esp_err_t synth_init(void)
     }
 
     s.timbre_default = NB_SYNTH_TIMBRE_SINE;
+    s.volume         = 30U;
     s.lfsr           = esp_random();
     if (s.lfsr == 0) s.lfsr = 0xDEADBEEFU; /* xorshift requires non-zero state */
     s.initialized    = true;
@@ -290,8 +294,9 @@ bool synth_fill_chunk(int16_t *out_buf, size_t samples)
         float sample = generate_sample(s.done_samp) * env;
         s.done_samp++;
 
-        /* Scale to int16: amplitude 0.85 headroom to avoid clipping */
+        /* Scale to int16 com volume (mesmo escalonamento do WAV: vol*256/100) */
         int32_t v = (int32_t)(sample * 0.85f * 32767.0f);
+        v = (v * (int32_t)(((uint32_t)s.volume * 256U) / 100U)) >> 8;
         if (v >  32767) v =  32767;
         if (v < -32768) v = -32768;
         out_buf[i++] = (int16_t)v;
@@ -459,4 +464,13 @@ void synth_stop(void)
 bool synth_is_active(void)
 {
     return s.active;
+}
+
+void synth_set_volume(uint8_t level)
+{
+    if (!s.initialized) return;
+    if (level > 100U) level = 100U;
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    s.volume = level;
+    xSemaphoreGive(s_mutex);
 }

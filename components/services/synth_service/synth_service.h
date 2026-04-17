@@ -153,6 +153,13 @@ void synth_set_timbre(nb_synth_timbre_t t);
 void synth_play_for_emotion(nb_synth_emotion_hint_t hint);
 
 /**
+ * @brief Define o volume do synth (0–100, mesmo range que audio_set_volume).
+ *
+ * Default: 80. Thread-safe.
+ */
+void synth_set_volume(uint8_t level);
+
+/**
  * @brief Para o som atual imediatamente (sem fade-out).
  */
 void synth_stop(void);
