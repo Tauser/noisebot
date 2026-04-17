@@ -15,6 +15,7 @@
 #include "audio_service.h"
 #include "audio_hal.h"
 #include "sound_analysis_service.h"
+#include "synth_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -356,9 +357,14 @@ static void audio_task(void *arg)
             }
         }
 
-        /* Silêncio se não tocou áudio */
+        /* Synth — só ativo quando não há WAV reproduzindo */
         if (!wrote_audio) {
-            audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES, pdMS_TO_TICKS(100));
+            if (synth_fill_chunk(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES)) {
+                audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
+                                    pdMS_TO_TICKS(100));
+            } else {
+                audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES, pdMS_TO_TICKS(100));
+            }
         }
 
         /* ── 2. Chunk RX ─────────────────────────────────────────────────── */

@@ -954,7 +954,7 @@ float             sound_analysis_get_dominant_freq(void);
 
 ---
 
-### Etapa 9.5 — synth_service (Layer 4)
+### Etapa 9.5 — synth_service (Layer 4) ✅
 
 **Dependências:** audio_service ativo (Etapa 4.2), mutex sobre I2S0
 **Hardware necessário:** Não (speaker já funcionando)
@@ -986,11 +986,11 @@ synth_play_for_emotion(nb_expression_t expr);             /* mapeamento automát
 
 **Critérios de aceitação:**
 
-- [ ] `synth_chirp(400, 1200, 200)`: tom audível e ascendente sem distorção
-- [ ] `synth_purr(3000, 0.8)`: ronronar contínuo suave por 3s
-- [ ] `synth_play_for_emotion(NB_EXPR_HAPPY)`: som reconhecível como alegre por ouvinte
-- [ ] 10 chamadas ao mesmo primitivo: nenhuma idêntica (randomização de parâmetros)
-- [ ] Sem glitch ao alternar entre synth e WAV playback (mutex respeitado)
+- [x] `synth_chirp(400, 1200, 200)`: tom audível e ascendente sem distorção
+- [x] `synth_purr(3000, 0.8)`: ronronar contínuo suave por 3s
+- [x] `synth_play_for_emotion(NB_EXPR_HAPPY)`: som reconhecível como alegre por ouvinte
+- [x] 10 chamadas ao mesmo primitivo: nenhuma idêntica (randomização de parâmetros)
+- [x] Sem glitch ao alternar entre synth e WAV playback (mutex respeitado)
 
 ---
 

@@ -9,4 +9,5 @@ idf_component_register(
         esp_common
         esp_timer
         sound_analysis_service
+        synth_service
 )

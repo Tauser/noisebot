@@ -34,4 +34,5 @@ idf_component_register(
         behavior_engine
         long_term_memory
         sound_analysis_service
+        synth_service
 )
