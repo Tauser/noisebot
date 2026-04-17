@@ -255,7 +255,7 @@ esp_err_t synth_init(void)
     }
 
     s.timbre_default = NB_SYNTH_TIMBRE_SINE;
-    s.volume         = 30U;
+    s.volume         = 80U;
     s.lfsr           = esp_random();
     if (s.lfsr == 0) s.lfsr = 0xDEADBEEFU; /* xorshift requires non-zero state */
     s.initialized    = true;
@@ -294,7 +294,7 @@ bool synth_fill_chunk(int16_t *out_buf, size_t samples)
         float sample = generate_sample(s.done_samp) * env;
         s.done_samp++;
 
-        /* Scale to int16 com volume (mesmo escalonamento do WAV: vol*256/100) */
+        /* Scale to int16 with volume (0-100) applied */
         int32_t v = (int32_t)(sample * 0.85f * 32767.0f);
         v = (v * (int32_t)(((uint32_t)s.volume * 256U) / 100U)) >> 8;
         if (v >  32767) v =  32767;
@@ -461,11 +461,6 @@ void synth_stop(void)
     xSemaphoreGive(s_mutex);
 }
 
-bool synth_is_active(void)
-{
-    return s.active;
-}
-
 void synth_set_volume(uint8_t level)
 {
     if (!s.initialized) return;
@@ -473,4 +468,9 @@ void synth_set_volume(uint8_t level)
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     s.volume = level;
     xSemaphoreGive(s_mutex);
+}
+
+bool synth_is_active(void)
+{
+    return s.active;
 }
