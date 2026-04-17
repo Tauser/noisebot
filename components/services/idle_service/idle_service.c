@@ -37,6 +37,8 @@
 #define YAWN_DURATION_MS    2500.0f  /* tempo em SLEEPY antes de retornar     */
 #define YAWN_TRANS_MS        800.0f  /* transição de entrada e saída          */
 
+#define ALONE_THRESHOLD_MS 300000U   /* 5 min sem interação → solidão         */
+
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
 /* Número aleatório em [0, 1) usando hardware RNG */
@@ -63,8 +65,12 @@ static bool     s_initialized       = false;
 static uint32_t s_saccade_timer_ms  = 0;
 static uint32_t s_aversive_timer_ms = 0;
 static uint32_t s_yawn_timer_ms     = 0;
+static uint32_t s_alone_timer_ms    = 0;
 
 static bool     s_was_active        = false; /* estava em IDLE/ATTENTIVE */
+static bool     s_was_idle          = false; /* estava em IDLE (para reset do alone timer) */
+
+static nb_idle_alone_cb_t s_alone_cb = NULL;
 
 /* ── Behaviors ───────────────────────────────────────────────────────────── */
 
@@ -113,11 +119,23 @@ esp_err_t idle_service_init(void)
     s_saccade_timer_ms  = rand_interval(SACCADE_MIN_MS,  SACCADE_RANGE_MS);
     s_aversive_timer_ms = rand_interval(AVERSIVE_MIN_MS, AVERSIVE_RANGE_MS);
     s_yawn_timer_ms     = rand_interval(YAWN_MIN_MS,     YAWN_RANGE_MS);
+    s_alone_timer_ms    = 0;
     s_was_active        = false;
+    s_was_idle          = false;
     s_initialized       = true;
 
     ESP_LOGI(TAG, "idle_service inicializado");
     return ESP_OK;
+}
+
+void idle_service_set_alone_cb(nb_idle_alone_cb_t cb)
+{
+    s_alone_cb = cb;
+}
+
+void idle_service_on_interaction(void)
+{
+    s_alone_timer_ms = 0;
 }
 
 void idle_service_update(uint32_t dt_ms)
@@ -133,12 +151,20 @@ void idle_service_update(uint32_t dt_ms)
     if (!is_active) {
         if (s_was_active) {
             reset_timers_and_center();
+            s_alone_timer_ms = 0;
         }
         s_was_active = false;
+        s_was_idle   = false;
         return;
     }
 
+    /* Transição de entrada/saída de IDLE: reseta timer de solidão */
+    if (is_idle != s_was_idle) {
+        s_alone_timer_ms = 0;
+    }
+
     s_was_active = true;
+    s_was_idle   = is_idle;
 
     /* ── Micro-saccade (IDLE e ATTENTIVE) ── */
     if (s_saccade_timer_ms <= dt_ms) {
@@ -172,6 +198,20 @@ void idle_service_update(uint32_t dt_ms)
         }
     } else {
         s_yawn_timer_ms = rand_interval(YAWN_MIN_MS, YAWN_RANGE_MS);
+    }
+
+    /* ── Alone timer (IDLE somente) ── */
+    if (is_idle) {
+        s_alone_timer_ms += dt_ms;
+        if (s_alone_timer_ms >= ALONE_THRESHOLD_MS) {
+            s_alone_timer_ms = 0;
+            ESP_LOGI(TAG, "alone threshold reached");
+            if (s_alone_cb) {
+                s_alone_cb();
+            }
+        }
+    } else {
+        s_alone_timer_ms = 0;
     }
 
     /* ── Stub: micro-neck-movement ── */

@@ -65,6 +65,7 @@ static const nb_emotion_delta_t k_event_deltas[NB_EMOT_EVT_COUNT] = {
     [NB_EMOT_EVT_ENTERING_SLEEP] = {  0.00f, -0.80f },
     [NB_EMOT_EVT_WAKING_UP     ] = {  0.10f,  0.30f },
     [NB_EMOT_EVT_MOTION_FAULT  ] = { -0.80f,  0.90f },
+    [NB_EMOT_EVT_IDLE_LONG     ] = { -0.35f, -0.30f },
 };
 
 /* ── Estado interno ──────────────────────────────────────────────────────── */

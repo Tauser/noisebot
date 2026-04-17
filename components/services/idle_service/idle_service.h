@@ -46,6 +46,30 @@ esp_err_t idle_service_init(void);
  */
 void idle_service_update(uint32_t dt_ms);
 
+/* ── Timer de solidão ────────────────────────────────────────────────────── */
+
+/**
+ * Chamado quando o robot fica sozinho (sem interação) por ALONE_THRESHOLD_MS.
+ * Registrado pelo boot_manager via idle_service_set_alone_cb().
+ */
+typedef void (*nb_idle_alone_cb_t)(void);
+
+/**
+ * @brief Registra callback de solidão.
+ *
+ * O callback é invocado uma vez ao atingir o threshold.
+ * O timer é resetado automaticamente após o disparo.
+ */
+void idle_service_set_alone_cb(nb_idle_alone_cb_t cb);
+
+/**
+ * @brief Notifica o idle_service que houve interação (touch, voz, etc.).
+ *
+ * Reseta o timer de solidão. Deve ser chamado do boot_manager nos handlers
+ * de TAP e VOICE_START.
+ */
+void idle_service_on_interaction(void);
+
 #ifdef __cplusplus
 }
 #endif
