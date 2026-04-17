@@ -8,6 +8,7 @@ idf_component_register(
         "power_monitor.c"
         "motion_safety.c"
         "event_bus.c"
+        "diagnostics_service.c"
         "boot_manager.c"
     INCLUDE_DIRS "."
     REQUIRES
@@ -29,5 +30,6 @@ idf_component_register(
         gaze_service
         idle_service
         conductor
+        schedule_service
         long_term_memory
 )

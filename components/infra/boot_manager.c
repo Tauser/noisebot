@@ -41,6 +41,8 @@
 #include "idle_service.h"
 #include "conductor.h"
 #include "long_term_memory.h"
+#include "diagnostics_service.h"
+#include "schedule_service.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -318,6 +320,13 @@ static esp_err_t phase_storage(void)
  *
  * Task: "led_task"  Core: qualquer  Prioridade: 3  Stack: 2048
  */
+/* ── Callback de solidão → emotion model ────────────────────────────────── */
+
+static void on_idle_alone(void)
+{
+    emotion_model_on_event(NB_EMOT_EVT_IDLE_LONG);
+}
+
 /* ── Relay de eventos de áudio → event bus ──────────────────────────────── */
 
 static void on_audio_event(nb_audio_event_t evt, uint32_t data)
@@ -331,6 +340,7 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_START;
             state_machine_on_voice_start();
             emotion_model_on_event(NB_EMOT_EVT_VOICE_START);
+            idle_service_on_interaction();
             conductor_play(NB_ACTION_CURIOUS);   /* reação visual ao ouvir voz */
             ltm_record(LTM_IACT_VOICE_START);
             break;
@@ -377,6 +387,7 @@ static void on_touch_event(nb_touch_event_t evt)
         case NB_TOUCH_EVT_TAP:
             state_machine_on_touch_tap();
             emotion_model_on_event(NB_EMOT_EVT_TOUCH_TAP);
+            idle_service_on_interaction();
             conductor_play(NB_ACTION_TOUCH_WARM);
             ltm_record(LTM_IACT_TOUCH_TAP);
             break;
@@ -477,8 +488,6 @@ static void on_emotion_changed(nb_expression_t new_expr)
     config_set_last_emotion((uint8_t)new_expr);
 }
 
-static void stats_dump(void);   /* definida após behavior_task */
-
 /* ── Task de behavior (10 Hz) ───────────────────────────────────────────── */
 /*
  * Tick a 100ms. Avança timers da state machine (idle timeout, touch timeout)
@@ -519,9 +528,9 @@ static void behavior_task(void *arg)
             }
         }
 
-        /* Stats dump a cada 60s (600 × 100ms). */
+        /* Diagnostics a cada 60s (600 x 100ms). */
         if (++stats_tick >= 600u) {
-            stats_dump();
+            diagnostics_collect();
             stats_tick = 0;
         }
 
@@ -532,48 +541,6 @@ static void behavior_task(void *arg)
         }
 
         vTaskDelayUntil(&last_wake, period);
-    }
-}
-
-/* ── Dump periódico de stats (Etapa 6.1) ────────────────────────────────── */
-/*
- * Chamado a cada 60s pelo behavior_task. Loga:
- *   - Heap livre PSRAM e SRAM
- *   - FPS atual do render_service
- *   - Stack high watermark das tasks conhecidas
- *
- * Usa xTaskGetHandle() por nome — O(n) mas é diagnóstico, não caminho crítico.
- * Retorna silenciosamente se a task não existe (subsistema não iniciado).
- */
-static void stats_dump(void)
-{
-    static const char *const k_tasks[] = {
-        "render_task",
-        "audio_task",
-        "motion_task",
-        "safety_task",
-        "conductor_task",
-        "behav_task",
-        "led_task",
-        "touch_task",
-        "persist_task",
-        "wdog_task",
-    };
-    static const int k_ntasks = (int)(sizeof(k_tasks) / sizeof(k_tasks[0]));
-
-    uint32_t psram_kb = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024u;
-    uint32_t sram_kb  = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024u;
-    float    fps      = render_service_get_fps();
-
-    NB_LOGI(TAG, "--- STATS ---  PSRAM free=%luKB  SRAM free=%luKB  FPS=%.1f",
-            (unsigned long)psram_kb, (unsigned long)sram_kb, fps);
-
-    for (int i = 0; i < k_ntasks; i++) {
-        TaskHandle_t h = xTaskGetHandle(k_tasks[i]);
-        if (!h) continue;
-        UBaseType_t wm = uxTaskGetStackHighWaterMark(h);
-        NB_LOGI(TAG, "  %-26s watermark=%4u words (%4u bytes)",
-                k_tasks[i], (unsigned)wm, (unsigned)(wm * sizeof(StackType_t)));
     }
 }
 
@@ -772,6 +739,7 @@ static esp_err_t phase_services(void)
     err = idle_service_init();
     NB_ASSERT(err == ESP_OK, TAG, "idle_service_init falhou: %s",
               esp_err_to_name(err));
+    idle_service_set_alone_cb(on_idle_alone);
 
     /* conductor (Etapa 5.4): orquestrador de ações de alto nível */
     err = conductor_init();
@@ -785,6 +753,21 @@ static esp_err_t phase_services(void)
     if (err != ESP_OK) {
         NB_LOGW(TAG, "ltm_init falhou: %s — LTM desativada",
                 esp_err_to_name(err));
+    }
+
+    /* schedule_service (Etapa 9.2): timers one-shot e recorrentes sem task */
+    err = schedule_service_init();
+    NB_ASSERT(err == ESP_OK, TAG, "schedule_service_init falhou: %s",
+              esp_err_to_name(err));
+
+    /* diagnostics_service (Etapa 9.1): observabilidade e health score */
+    {
+        const nb_diagnostics_config_t diag_cfg = {
+            .get_fps = render_service_get_fps,
+        };
+        err = diagnostics_init(&diag_cfg);
+        NB_ASSERT(err == ESP_OK, TAG, "diagnostics_init falhou: %s",
+                  esp_err_to_name(err));
     }
 
     phase_ok(NB_BOOT_PHASE_SERVICES);
