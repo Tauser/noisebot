@@ -23,6 +23,7 @@
 #include "event_bus.h"
 #include "nb_events.h"
 #include "logger.h"
+#include "bridge_service.h"
 
 #include "state_machine.h"
 #include "emotion_model.h"
@@ -30,9 +31,15 @@
 #include "idle_service.h"
 #include "long_term_memory.h"
 #include "persona_service.h"
+#include "expression_service.h"
+#include "gaze_service.h"
+#include "audio_service.h"
+#include "attention_service.h"
+#include "diagnostics_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -296,6 +303,115 @@ static void execute_rule(const nb_be_rule_t *rule)
     }
 }
 
+/* ── Bridge — mapeamento de ação ─────────────────────────────────────────── */
+
+static const nb_action_t k_bridge_action_map[] = {
+    [NB_BRIDGE_ACTION_GREET]      = NB_ACTION_GREET,
+    [NB_BRIDGE_ACTION_NOD]        = NB_ACTION_AGREE,
+    [NB_BRIDGE_ACTION_SHAKE]      = NB_ACTION_DISAGREE,
+    [NB_BRIDGE_ACTION_LOOK_UP]    = NB_ACTION_CURIOUS,
+    [NB_BRIDGE_ACTION_LOOK_DOWN]  = NB_ACTION_CURIOUS,
+};
+
+/* ── Bridge — timer de resposta (8s após VOICE_END) ─────────────────────── */
+
+static esp_timer_handle_t s_bridge_resp_timer;
+static bool               s_bridge_say_started;
+
+static void bridge_resp_timeout_cb(void *arg)
+{
+    (void)arg;
+    nb_event_t evt = {
+        .type         = NB_EVT_BRIDGE_RESPONSE_TIMEOUT,
+        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+    };
+    nb_event_publish_async(&evt);
+}
+
+static void bridge_on_event(const nb_event_t *evt)
+{
+    switch (evt->type) {
+
+    case NB_EVT_VOICE_ACTIVITY_END:
+        if (bridge_service_is_connected()) {
+            s_bridge_say_started = false;
+            esp_timer_start_once(s_bridge_resp_timer, 8000000LL);
+        }
+        break;
+
+    case NB_EVT_BRIDGE_SAY: {
+        if (!s_bridge_say_started) {
+            s_bridge_say_started = true;
+            esp_timer_stop(s_bridge_resp_timer);
+        }
+        const nb_bridge_say_chunk_t *chunk = (const nb_bridge_say_chunk_t *)evt->data.ptr;
+        if (chunk) {
+            audio_service_bridge_say_chunk(chunk->samples, chunk->count);
+        }
+        break;
+    }
+
+    case NB_EVT_BRIDGE_EXPR: {
+        const nb_bridge_expr_cmd_t *cmd = (const nb_bridge_expr_cmd_t *)evt->data.ptr;
+        if (cmd && cmd->expression_id < NB_EXPR_COUNT) {
+            expression_service_set((nb_expression_t)cmd->expression_id,
+                                   (float)cmd->duration_ms);
+        }
+        break;
+    }
+
+    case NB_EVT_BRIDGE_ACTION: {
+        nb_bridge_action_t ba = (nb_bridge_action_t)evt->data.u32;
+        if (ba < NB_BRIDGE_ACTION_COUNT) {
+            conductor_play(k_bridge_action_map[ba]);
+        }
+        break;
+    }
+
+    case NB_EVT_BRIDGE_EMOT_EVENT:
+        if (evt->data.u32 < NB_EMOT_EVT_COUNT) {
+            emotion_model_on_event((nb_emotion_event_t)evt->data.u32);
+        }
+        break;
+
+    case NB_EVT_BRIDGE_GAZE: {
+        float x, y;
+        memcpy(&x, &evt->data.bytes[0], sizeof(float));
+        memcpy(&y, &evt->data.bytes[4], sizeof(float));
+        gaze_service_set_target(x, y);
+        break;
+    }
+
+    case NB_EVT_BRIDGE_DISCONNECTED:
+        esp_timer_stop(s_bridge_resp_timer);
+        conductor_play(NB_ACTION_CURIOUS);
+        break;
+
+    case NB_EVT_BRIDGE_RESPONSE_TIMEOUT:
+        expression_service_set(NB_EXPR_CURIOUS, 500.0f);
+        conductor_play(NB_ACTION_CURIOUS);
+        NB_LOGW(TAG, "bridge sem resposta em 8s — retornando a idle");
+        break;
+
+    case NB_EVT_STATE_CHANGED:
+    case NB_EVT_WIFI_IP_ACQUIRED: {
+        /* Atualiza status no bridge sempre que o estado do sistema muda */
+        nb_bridge_status_t st = {
+            .state        = (uint8_t)state_machine_get_state(),
+            .valence      = emotion_model_get_vec().valence,
+            .activation   = emotion_model_get_vec().activation,
+            .attention    = attention_service_get_level(),
+            .health_score = diagnostics_get_health_score(),
+        };
+        bridge_service_update_status(&st);
+        break;
+    }
+
+    default:
+        break;
+    }
+}
+
 /* ── Handler do event bus ────────────────────────────────────────────────── */
 
 static void on_bus_event(const nb_event_t *evt, void *ctx)
@@ -321,6 +437,9 @@ static void on_bus_event(const nb_event_t *evt, void *ctx)
             execute_rule(&k_rules[i]);
         }
     }
+
+    /* Passa 3: wiring do bridge (Etapa 12.2) — independente das regras. */
+    bridge_on_event(evt);
 }
 
 /* ── API ─────────────────────────────────────────────────────────────────── */
@@ -347,6 +466,34 @@ esp_err_t behavior_engine_init(void)
         }
         subscribed[t] = true;
     }
+
+    /* Subscreve eventos de bridge que não estão na tabela de regras */
+    static const nb_event_type_t k_bridge_evts[] = {
+        NB_EVT_VOICE_ACTIVITY_END,
+        NB_EVT_BRIDGE_SAY,
+        NB_EVT_BRIDGE_EXPR,
+        NB_EVT_BRIDGE_ACTION,
+        NB_EVT_BRIDGE_EMOT_EVENT,
+        NB_EVT_BRIDGE_GAZE,
+        NB_EVT_BRIDGE_DISCONNECTED,
+        NB_EVT_BRIDGE_RESPONSE_TIMEOUT,
+        NB_EVT_STATE_CHANGED,
+        NB_EVT_WIFI_IP_ACQUIRED,
+    };
+    for (size_t i = 0; i < sizeof(k_bridge_evts) / sizeof(k_bridge_evts[0]); i++) {
+        nb_event_type_t t = k_bridge_evts[i];
+        if (!subscribed[t]) {
+            nb_event_subscribe(t, on_bus_event, NULL, NULL);
+            subscribed[t] = true;
+        }
+    }
+
+    /* Timer one-shot para timeout de resposta do bridge (8s) */
+    const esp_timer_create_args_t timer_args = {
+        .callback = bridge_resp_timeout_cb,
+        .name     = "bridge_resp",
+    };
+    esp_timer_create(&timer_args, &s_bridge_resp_timer);
 
     s_initialized = true;
     NB_LOGI(TAG, "behavior_engine inicializado (%u regras)", (unsigned)K_NRULES);

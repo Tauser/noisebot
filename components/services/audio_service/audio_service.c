@@ -16,13 +16,16 @@
 #include "audio_hal.h"
 #include "sound_analysis_service.h"
 #include "synth_service.h"
+#include "bridge_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "freertos/queue.h"
 
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "nb_events.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -57,9 +60,10 @@
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
 typedef enum {
-    PLAY_IDLE   = 0,
+    PLAY_IDLE        = 0,
     PLAY_ACTIVE,
     PLAY_STOP,
+    PLAY_BRIDGE_SAY, /* reproduzindo chunks PCM vindos do bridge */
 } play_state_t;
 
 typedef enum {
@@ -98,7 +102,25 @@ static struct {
     rec_state_t          rec_state;
     char                 rec_path[128];
     uint32_t             rec_samples_remaining;
+
+    /* Bridge (Etapa 12.2) */
+    bool                 bridge_tx_active;   /* true = streaming mic para bridge */
+    QueueHandle_t        bridge_say_q;       /* chunks SAY vindos do bridge      */
+    bool                 bridge_say_playing; /* true = play_state == PLAY_BRIDGE_SAY */
 } s;
+
+/* ── Fila estática de SAY chunks (sem malloc) ─────────────────────────────── */
+
+#define BRIDGE_SAY_QUEUE_DEPTH  4U
+
+typedef struct {
+    int16_t  samples[NB_BRIDGE_AUDIO_CHUNK_SAMPLES];
+    uint16_t count;
+} bridge_say_item_t;
+
+static uint8_t          s_bridge_say_q_storage[BRIDGE_SAY_QUEUE_DEPTH * sizeof(bridge_say_item_t)];
+static StaticQueue_t    s_bridge_say_q_static;
+static bridge_say_item_t s_bridge_say_chunk; /* buffer de saída para o speaker */
 
 /* ── Buffers estáticos da task (SRAM) ────────────────────────────────────── */
 
@@ -216,8 +238,10 @@ static void vad_update(const int32_t *mic, size_t n)
                 s.vad_enter_count = 0;
                 s.vad_state = VAD_ACTIVE;
                 s.vad_silence_start_us = 0;
+                s.bridge_tx_active = bridge_service_is_connected();
                 if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
-                ESP_LOGI(TAG, "VAD START rms=%ld", (long)rms);
+                ESP_LOGI(TAG, "VAD START rms=%ld bridge_tx=%d",
+                         (long)rms, (int)s.bridge_tx_active);
             }
         } else {
             s.vad_enter_count = 0;
@@ -243,7 +267,16 @@ static void vad_update(const int32_t *mic, size_t n)
                 int64_t silence_ms = (now_us - s.vad_silence_start_us) / 1000LL;
                 if (silence_ms >= (int64_t)NB_AUDIO_VAD_SILENCE_MS) {
                     s.vad_state = VAD_SILENCE;
+                    s.bridge_tx_active = false;
                     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
+                    /* Envia marcador de fim de fala ao bridge */
+                    if (bridge_service_is_connected()) {
+                        nb_event_t marker = {
+                            .type         = NB_EVT_VOICE_ACTIVITY_END,
+                            .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+                        };
+                        bridge_service_send_event(&marker);
+                    }
                     ESP_LOGI(TAG, "VAD END silence=%lldms", (long long)silence_ms);
                 }
             }
@@ -357,6 +390,34 @@ static void audio_task(void *arg)
             }
         }
 
+        /* ── Bridge SAY playback ─────────────────────────────────────────── */
+        else if (play_state == PLAY_BRIDGE_SAY) {
+            if (xQueueReceive(s.bridge_say_q, &s_bridge_say_chunk, 0) == pdTRUE) {
+                uint16_t n = s_bridge_say_chunk.count;
+                if (n > NB_BRIDGE_AUDIO_CHUNK_SAMPLES) n = NB_BRIDGE_AUDIO_CHUNK_SAMPLES;
+                uint32_t mult = ((uint32_t)s.volume * 256U) / 100U;
+                for (uint16_t i = 0; i < n; i++) {
+                    int32_t v = ((int32_t)s_bridge_say_chunk.samples[i] * (int32_t)mult) >> 8;
+                    if (v >  32767) v =  32767;
+                    if (v < -32768) v = -32768;
+                    s_bridge_say_chunk.samples[i] = (int16_t)v;
+                }
+                audio_hal_spk_write(s_bridge_say_chunk.samples, n, pdMS_TO_TICKS(100));
+                wrote_audio = true;
+            } else {
+                /* Fila vazia — bridge pode ter terminado; verificar após dois ticks */
+                static uint8_t s_empty_ticks = 0;
+                if (++s_empty_ticks >= 2u) {
+                    s_empty_ticks = 0;
+                    xSemaphoreTake(s.mutex, portMAX_DELAY);
+                    s.play_state      = PLAY_IDLE;
+                    s.bridge_say_playing = false;
+                    xSemaphoreGive(s.mutex);
+                    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
+                }
+            }
+        }
+
         /* Synth — só ativo quando não há WAV reproduzindo */
         if (!wrote_audio) {
             if (synth_fill_chunk(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES)) {
@@ -388,6 +449,11 @@ static void audio_task(void *arg)
             s_sa_buf[i] = (int16_t)v;
         }
         sound_analysis_tick(s_sa_buf, mic_n);
+
+        /* ── 4b. Bridge mic streaming ────────────────────────────────────── */
+        if (s.bridge_tx_active && mic_n > 0) {
+            bridge_service_send_audio_chunk(s_sa_buf, (uint16_t)mic_n);
+        }
 
         /* ── 5. Diagnóstico ─────────────────────────────────────────────── */
         if (s.rec_state == REC_ACTIVE) {
@@ -456,6 +522,12 @@ esp_err_t audio_service_init(void)
     s.vad_settle_ms  = NB_AUDIO_VAD_SETTLE_MS;
     s.play_state     = PLAY_IDLE;
     s.rec_state      = REC_IDLE;
+    s.bridge_tx_active   = false;
+    s.bridge_say_playing = false;
+    s.bridge_say_q = xQueueCreateStatic(BRIDGE_SAY_QUEUE_DEPTH,
+                                         sizeof(bridge_say_item_t),
+                                         s_bridge_say_q_storage,
+                                         &s_bridge_say_q_static);
 
     BaseType_t rc = xTaskCreatePinnedToCore(
         audio_task, "audio_task",
@@ -546,4 +618,23 @@ esp_err_t audio_record_diagnostic(const char *path, uint32_t duration_s)
 
     ESP_LOGI(TAG, "gravacao agendada: %s (%us)", path, (unsigned)duration_s);
     return ESP_OK;
+}
+
+void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
+{
+    if (!s.initialized || !samples || count == 0) return;
+    if (count > NB_BRIDGE_AUDIO_CHUNK_SAMPLES) count = NB_BRIDGE_AUDIO_CHUNK_SAMPLES;
+
+    bridge_say_item_t item;
+    item.count = count;
+    memcpy(item.samples, samples, count * sizeof(int16_t));
+
+    if (!s.bridge_say_playing) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s.play_state      = PLAY_BRIDGE_SAY;
+        s.bridge_say_playing = true;
+        xSemaphoreGive(s.mutex);
+        if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, 0);
+    }
+    xQueueSend(s.bridge_say_q, &item, 0);
 }

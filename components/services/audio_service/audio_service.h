@@ -152,6 +152,20 @@ esp_err_t audio_set_volume(uint8_t level);
  */
 uint8_t audio_get_volume(void);
 
+/* ── Bridge SAY (Etapa 12.2) ───────────────────────────────────────────���─── */
+
+/**
+ * @brief Enfileira chunk de áudio PCM vindo do bridge para reprodução.
+ *
+ * Chamado pelo behavior_engine quando NB_EVT_BRIDGE_SAY chega (bridge_task ctx).
+ * Non-blocking: descarta silenciosamente se fila cheia.
+ * Inicia PLAYBACK_START no primeiro chunk; PLAYBACK_END quando fila esvaziar.
+ *
+ * @param samples  Buffer PCM int16 (até 512 samples).
+ * @param count    Número de samples.
+ */
+void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count);
+
 /* ── VAD ──────────────────────────────────────────────────────────────────── */
 
 /**

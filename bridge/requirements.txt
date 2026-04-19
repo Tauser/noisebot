@@ -1,0 +1,6 @@
+openai-whisper
+google-generativeai
+piper-tts
+numpy
+pyserial
+zeroconf

@@ -5,6 +5,7 @@ idf_component_register(
     REQUIRES
         freertos
         log
+        esp_timer
         infra
         state_machine
         emotion_model
@@ -12,4 +13,8 @@ idf_component_register(
         idle_service
         long_term_memory
         persona_service
+        expression_service
+        gaze_service
+        audio_service
+        attention_service
 )
