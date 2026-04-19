@@ -1453,12 +1453,12 @@ TEXT_SCROLL   payload: string (para futuro display de texto)
 
 **Critérios de aceitação:**
 
-- [ ] Boot sem bridge e sem WiFi: sistema opera normalmente, sem bloqueio visível
-- [ ] Bridge TCP conecta: handshake em < 300ms, modo TCP loggado
-- [ ] Bridge UART conecta (WiFi off): handshake em < 200ms, modo UART loggado
-- [ ] AUDIO_CHUNK stream via TCP: jitter < 10ms entre chunks em rede local
-- [ ] TCP cai durante conversa: sistema detecta em < 10s, retorna offline
-- [ ] CRC8 com erro: frame descartado, contabilizado, sem crash
+- [x] Boot sem bridge e sem WiFi: sistema opera normalmente, sem bloqueio visível
+- [x] Bridge TCP conecta: handshake em < 300ms, modo TCP loggado
+- [x] Bridge UART conecta (WiFi off): handshake em < 200ms, modo UART loggado
+- [ ] AUDIO_CHUNK stream via TCP: jitter < 10ms entre chunks em rede local  ← validar em HW
+- [x] TCP cai durante conversa: sistema detecta em < 10s, retorna offline
+- [x] CRC8 com erro: frame descartado, contabilizado, sem crash
 
 ---
 

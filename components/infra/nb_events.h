@@ -90,6 +90,16 @@ typedef enum {
     NB_EVT_WIFI_IP_ACQUIRED,        /* IP obtido via DHCP — serviços web podem iniciar */
     NB_EVT_WIFI_DISCONNECTED,       /* conexão perdida — reconexão em andamento        */
 
+    /* Bridge LLM (Etapa 12.1) */
+    NB_EVT_BRIDGE_CONNECTED,        /* bridge conectado; data.u32 = nb_bridge_transport_t */
+    NB_EVT_BRIDGE_DISCONNECTED,     /* bridge desconectado (TCP caiu ou UART perdida)     */
+    NB_EVT_BRIDGE_SAY,              /* chunk PCM do bridge; data.ptr = nb_bridge_say_chunk_t* */
+    NB_EVT_BRIDGE_EXPR,             /* expressão do bridge; data.ptr = nb_bridge_expr_cmd_t*  */
+    NB_EVT_BRIDGE_ACTION,           /* ação do bridge; data.u32 = nb_bridge_action_t          */
+    NB_EVT_BRIDGE_EMOT_EVENT,       /* evento emocional; data.u32 = nb_emotion_event_t        */
+    NB_EVT_BRIDGE_GAZE,             /* gaze override; data.bytes[0..3]=x f32, [4..7]=y f32   */
+    NB_EVT_BRIDGE_TEXT_SCROLL,      /* texto para scroll; data.ptr = static string (≤128B)   */
+
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
 } nb_event_type_t;
 

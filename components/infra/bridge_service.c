@@ -1,0 +1,793 @@
+/*
+ * bridge_service.c — Bridge LLM Protocol Service (Etapa 12.1)
+ */
+
+#include "bridge_service.h"
+#include "logger.h"
+#include "event_bus.h"
+#include "wifi_service.h"
+#include "nb_events.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "freertos/queue.h"
+
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "driver/usb_serial_jtag.h"
+
+#include "lwip/sockets.h"
+#include "lwip/netdb.h"
+#include "lwip/err.h"
+
+#include <string.h>
+#include <stdint.h>
+
+#define TAG "nb_bridge"
+
+/* ── Frame ────────────────────────────────────────────────────────────────── */
+
+#define FRAME_SOF        0xABu
+#define FRAME_SOF_OFF    0
+#define FRAME_LEN_LO_OFF 1
+#define FRAME_LEN_HI_OFF 2
+#define FRAME_TYPE_OFF   3
+#define FRAME_DATA_OFF   4
+/* CRC segue imediatamente após DATA */
+
+/* overhead fixo: SOF(1) + LEN(2) + TYPE(1) + CRC(1) = 5 bytes */
+#define FRAME_OVERHEAD   5u
+
+/* tamanho máximo de frame: maior payload é AUDIO_CHUNK = 512×2 = 1024 bytes */
+#define FRAME_MAX_PAYLOAD  (NB_BRIDGE_AUDIO_CHUNK_SAMPLES * 2u)
+#define FRAME_MAX_SIZE     (FRAME_OVERHEAD + FRAME_MAX_PAYLOAD)
+
+/* ── TX queue ─────────────────────────────────────────────────────────────── */
+
+/* Cada item na fila é um frame serializado completo precedido por tamanho */
+#define TX_QUEUE_DEPTH  8u
+#define TX_ITEM_SIZE    (sizeof(uint16_t) + FRAME_MAX_SIZE)
+
+typedef struct {
+    uint16_t len;
+    uint8_t  data[FRAME_MAX_SIZE];
+} tx_item_t;
+
+/* ── Estado interno ──────────────────────────────────────────────────────── */
+
+typedef enum {
+    BS_STATE_INIT        = 0,
+    BS_STATE_SELECTING,
+    BS_STATE_TCP_WAIT,
+    BS_STATE_CONNECTED,
+    BS_STATE_RECONNECTING,
+    BS_STATE_OFFLINE,
+} bridge_state_t;
+
+static struct {
+    bridge_state_t          state;
+    nb_bridge_transport_t   transport;
+    nb_bridge_status_t      status;
+    SemaphoreHandle_t       mutex;
+    QueueHandle_t           tx_queue;
+
+    /* TCP */
+    int                     server_fd;
+    int                     client_fd;
+
+    /* UART (USB CDC) */
+    bool                    uart_installed;
+
+    /* Reconexão */
+    int64_t                 disconnect_time_us;
+} s;
+
+/* ── CRC-8/SMBUS (poly 0x07, init 0x00) ──────────────────────────────────── */
+
+static uint8_t crc8(const uint8_t *data, size_t len)
+{
+    uint8_t crc = 0x00u;
+    for (size_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (int b = 0; b < 8; b++) {
+            crc = (crc & 0x80u) ? (uint8_t)((crc << 1u) ^ 0x07u) : (uint8_t)(crc << 1u);
+        }
+    }
+    return crc;
+}
+
+/* ── Frame encode ─────────────────────────────────────────────────────────── */
+
+/* Serializa mensagem em buf. Retorna tamanho total ou 0 se payload > máximo. */
+static uint16_t frame_encode(uint8_t *buf, nb_bridge_msg_type_t type,
+                              const void *payload, uint16_t payload_len)
+{
+    if (payload_len > FRAME_MAX_PAYLOAD) {
+        return 0;
+    }
+
+    buf[FRAME_SOF_OFF]    = FRAME_SOF;
+    buf[FRAME_LEN_LO_OFF] = (uint8_t)(payload_len & 0xFFu);
+    buf[FRAME_LEN_HI_OFF] = (uint8_t)((payload_len >> 8u) & 0xFFu);
+    buf[FRAME_TYPE_OFF]   = (uint8_t)type;
+
+    if (payload_len > 0u && payload != NULL) {
+        memcpy(&buf[FRAME_DATA_OFF], payload, payload_len);
+    }
+
+    /* CRC cobre TYPE + DATA */
+    uint8_t crc_src[1u + FRAME_MAX_PAYLOAD];
+    crc_src[0] = (uint8_t)type;
+    if (payload_len > 0u && payload != NULL) {
+        memcpy(&crc_src[1], payload, payload_len);
+    }
+    buf[FRAME_DATA_OFF + payload_len] = crc8(crc_src, 1u + payload_len);
+
+    return (uint16_t)(FRAME_OVERHEAD + payload_len);
+}
+
+/* ── Frame decode result ──────────────────────────────────────────────────── */
+
+typedef enum {
+    DECODE_OK        = 0,
+    DECODE_SOF_ERR,
+    DECODE_CRC_ERR,
+    DECODE_LEN_ERR,
+} decode_result_t;
+
+static decode_result_t frame_decode(const uint8_t *buf, uint16_t buf_len,
+                                    nb_bridge_msg_type_t *out_type,
+                                    const uint8_t **out_data,
+                                    uint16_t *out_data_len)
+{
+    if (buf_len < FRAME_OVERHEAD) return DECODE_LEN_ERR;
+    if (buf[FRAME_SOF_OFF] != FRAME_SOF) return DECODE_SOF_ERR;
+
+    uint16_t data_len = (uint16_t)(buf[FRAME_LEN_LO_OFF]) |
+                        (uint16_t)(buf[FRAME_LEN_HI_OFF] << 8u);
+
+    if ((uint16_t)(FRAME_OVERHEAD + data_len) > buf_len) return DECODE_LEN_ERR;
+    if (data_len > FRAME_MAX_PAYLOAD) return DECODE_LEN_ERR;
+
+    uint8_t crc_src[1u + FRAME_MAX_PAYLOAD];
+    crc_src[0] = buf[FRAME_TYPE_OFF];
+    if (data_len > 0u) {
+        memcpy(&crc_src[1], &buf[FRAME_DATA_OFF], data_len);
+    }
+    uint8_t expected_crc = crc8(crc_src, 1u + data_len);
+    uint8_t received_crc = buf[FRAME_DATA_OFF + data_len];
+
+    if (expected_crc != received_crc) return DECODE_CRC_ERR;
+
+    *out_type     = (nb_bridge_msg_type_t)buf[FRAME_TYPE_OFF];
+    *out_data     = &buf[FRAME_DATA_OFF];
+    *out_data_len = data_len;
+    return DECODE_OK;
+}
+
+/* ── Buffers estáticos para eventos publicados ─────────────────────────────
+ * Usados com nb_event_publish (síncrono): lifetime cobre a chamada. */
+
+static nb_bridge_say_chunk_t  s_say_buf;
+static nb_bridge_expr_cmd_t   s_expr_buf;
+static char                   s_text_buf[NB_BRIDGE_TEXT_MAX_LEN + 1u];
+
+/* ── Dispatch mensagem recebida do bridge ─────────────────────────────────── */
+
+static void dispatch_incoming(nb_bridge_msg_type_t type,
+                               const uint8_t *data, uint16_t data_len)
+{
+    nb_event_t evt = { .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000) };
+
+    switch (type) {
+
+    case NB_BRIDGE_MSG_HELLO:
+        /* handshake reply — já processado na seleção de transporte, ignorar aqui */
+        break;
+
+    case NB_BRIDGE_MSG_SAY:
+        if (data_len < 2u || data_len > sizeof(s_say_buf.samples)) break;
+        s_say_buf.count = (uint16_t)(data_len / 2u);
+        memcpy(s_say_buf.samples, data, data_len);
+        evt.type    = NB_EVT_BRIDGE_SAY;
+        evt.data.ptr = &s_say_buf;
+        nb_event_publish(&evt);
+        break;
+
+    case NB_BRIDGE_MSG_EXPR:
+        if (data_len < 5u) break;
+        s_expr_buf.expression_id = data[0];
+        s_expr_buf.duration_ms   = (uint32_t)data[1]
+                                 | ((uint32_t)data[2] << 8u)
+                                 | ((uint32_t)data[3] << 16u)
+                                 | ((uint32_t)data[4] << 24u);
+        evt.type     = NB_EVT_BRIDGE_EXPR;
+        evt.data.ptr = &s_expr_buf;
+        nb_event_publish(&evt);
+        break;
+
+    case NB_BRIDGE_MSG_ACTION:
+        if (data_len < 4u) break;
+        evt.type    = NB_EVT_BRIDGE_ACTION;
+        evt.data.u32 = (uint32_t)data[0]
+                     | ((uint32_t)data[1] << 8u)
+                     | ((uint32_t)data[2] << 16u)
+                     | ((uint32_t)data[3] << 24u);
+        nb_event_publish(&evt);
+        break;
+
+    case NB_BRIDGE_MSG_EMOT_EVENT:
+        if (data_len < 1u) break;
+        evt.type     = NB_EVT_BRIDGE_EMOT_EVENT;
+        evt.data.u32 = data[0];
+        nb_event_publish(&evt);
+        break;
+
+    case NB_BRIDGE_MSG_GAZE:
+        if (data_len < 8u) break;
+        evt.type = NB_EVT_BRIDGE_GAZE;
+        memcpy(evt.data.bytes, data, 8u);   /* float x then float y */
+        nb_event_publish(&evt);
+        break;
+
+    case NB_BRIDGE_MSG_TEXT_SCROLL:
+        if (data_len == 0u) break;
+        {
+            uint16_t copy_len = (data_len < NB_BRIDGE_TEXT_MAX_LEN)
+                                ? data_len : NB_BRIDGE_TEXT_MAX_LEN;
+            memcpy(s_text_buf, data, copy_len);
+            s_text_buf[copy_len] = '\0';
+            evt.type     = NB_EVT_BRIDGE_TEXT_SCROLL;
+            evt.data.ptr = s_text_buf;
+            nb_event_publish(&evt);
+        }
+        break;
+
+    default:
+        NB_LOGW(TAG, "msg type 0x%02X desconhecida (len=%u)", (unsigned)type, data_len);
+        break;
+    }
+}
+
+/* ── Envio genérico via TX queue ──────────────────────────────────────────── */
+
+static esp_err_t enqueue_frame(nb_bridge_msg_type_t type,
+                                const void *payload, uint16_t payload_len)
+{
+    tx_item_t item;
+    item.len = frame_encode(item.data, type, payload, payload_len);
+    if (item.len == 0u) return ESP_ERR_INVALID_SIZE;
+
+    if (xQueueSend(s.tx_queue, &item, 0) != pdTRUE) {
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
+}
+
+/* ── TCP helpers ──────────────────────────────────────────────────────────── */
+
+static int tcp_create_server(void)
+{
+    int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (fd < 0) return -1;
+
+    int opt = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    /* TCP keep-alive: detecta queda em < 10s */
+    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
+    int ka_idle = NB_BRIDGE_KEEPALIVE_IDLE_S;
+    int ka_int  = NB_BRIDGE_KEEPALIVE_INT_S;
+    int ka_cnt  = NB_BRIDGE_KEEPALIVE_CNT;
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE,  &ka_idle, sizeof(ka_idle));
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &ka_int,  sizeof(ka_int));
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT,   &ka_cnt,  sizeof(ka_cnt));
+
+    struct sockaddr_in addr = {
+        .sin_family      = AF_INET,
+        .sin_addr.s_addr = htonl(INADDR_ANY),
+        .sin_port        = htons(NB_BRIDGE_TCP_PORT),
+    };
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0 ||
+        listen(fd, 1) != 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+/* Aceita cliente com timeout_ms. Retorna fd do cliente ou -1. */
+static int tcp_accept_timeout(int server_fd, uint32_t timeout_ms)
+{
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(server_fd, &rfds);
+    struct timeval tv = {
+        .tv_sec  = (long)(timeout_ms / 1000u),
+        .tv_usec = (long)((timeout_ms % 1000u) * 1000u),
+    };
+    int ret = select(server_fd + 1, &rfds, NULL, NULL, &tv);
+    if (ret <= 0) return -1;
+
+    struct sockaddr_in client_addr;
+    socklen_t addr_len = sizeof(client_addr);
+    return accept(server_fd, (struct sockaddr *)&client_addr, &addr_len);
+}
+
+/* Envia buffer via TCP. Retorna false em erro. */
+static bool tcp_send(int fd, const uint8_t *data, uint16_t len)
+{
+    int sent = send(fd, data, len, 0);
+    return (sent == (int)len);
+}
+
+/* Recebe até max_len bytes com timeout. Retorna bytes lidos ou -1 em erro. */
+static int tcp_recv_timeout(int fd, uint8_t *buf, int max_len, uint32_t timeout_ms)
+{
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(fd, &rfds);
+    struct timeval tv = {
+        .tv_sec  = (long)(timeout_ms / 1000u),
+        .tv_usec = (long)((timeout_ms % 1000u) * 1000u),
+    };
+    int ret = select(fd + 1, &rfds, NULL, NULL, &tv);
+    if (ret <= 0) return (ret == 0) ? 0 : -1;
+    return recv(fd, buf, max_len, 0);
+}
+
+/* ── UART (USB CDC) helpers ───────────────────────────────────────────────── */
+
+static esp_err_t uart_install(void)
+{
+    usb_serial_jtag_driver_config_t cfg = {
+        .rx_buffer_size = FRAME_MAX_SIZE * 2u,
+        .tx_buffer_size = FRAME_MAX_SIZE * 2u,
+    };
+    esp_err_t err = usb_serial_jtag_driver_install(&cfg);
+    if (err == ESP_OK) {
+        s.uart_installed = true;
+    }
+    return err;
+}
+
+static bool uart_send(const uint8_t *data, uint16_t len)
+{
+    int written = usb_serial_jtag_write_bytes(data, len, pdMS_TO_TICKS(100));
+    return (written == (int)len);
+}
+
+static int uart_recv(uint8_t *buf, uint32_t max_len, uint32_t timeout_ms)
+{
+    return usb_serial_jtag_read_bytes(buf, max_len, pdMS_TO_TICKS(timeout_ms));
+}
+
+/* ── Handshake genérico ───────────────────────────────────────────────────── */
+
+/* Envia HELLO e aguarda HELLO de volta. Retorna true se handshake OK. */
+static bool do_handshake_tcp(int client_fd, uint32_t timeout_ms)
+{
+    uint8_t frame[FRAME_OVERHEAD];
+    uint16_t len = frame_encode(frame, NB_BRIDGE_MSG_HELLO, NULL, 0u);
+    if (!tcp_send(client_fd, frame, len)) return false;
+
+    uint8_t rx[FRAME_OVERHEAD];
+    int n = 0;
+    int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000LL;
+    while (n < (int)FRAME_OVERHEAD) {
+        int64_t remaining_ms = (deadline - esp_timer_get_time()) / 1000LL;
+        if (remaining_ms <= 0) break;
+        int r = tcp_recv_timeout(client_fd, rx + n, (int)FRAME_OVERHEAD - n,
+                                 (uint32_t)remaining_ms + 1u);
+        if (r <= 0) return false;
+        n += r;
+    }
+    if (n < (int)FRAME_OVERHEAD) return false;
+
+    nb_bridge_msg_type_t t;
+    const uint8_t *d;
+    uint16_t dl;
+    return (frame_decode(rx, (uint16_t)n, &t, &d, &dl) == DECODE_OK &&
+            t == NB_BRIDGE_MSG_HELLO);
+}
+
+static bool do_handshake_uart(uint32_t timeout_ms)
+{
+    uint8_t frame[FRAME_OVERHEAD];
+    uint16_t len = frame_encode(frame, NB_BRIDGE_MSG_HELLO, NULL, 0u);
+    if (!uart_send(frame, len)) return false;
+
+    uint8_t rx[FRAME_OVERHEAD];
+    int n = uart_recv(rx, (uint32_t)FRAME_OVERHEAD, timeout_ms);
+    if (n < (int)FRAME_OVERHEAD) return false;
+
+    nb_bridge_msg_type_t t;
+    const uint8_t *d;
+    uint16_t dl;
+    return (frame_decode(rx, (uint16_t)n, &t, &d, &dl) == DECODE_OK &&
+            t == NB_BRIDGE_MSG_HELLO);
+}
+
+/* ── Publicar evento de conexão ───────────────────────────────────────────── */
+
+static void publish_connected(nb_bridge_transport_t transport)
+{
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s.transport = transport;
+    xSemaphoreGive(s.mutex);
+
+    nb_event_t evt = {
+        .type         = NB_EVT_BRIDGE_CONNECTED,
+        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+        .data.u32     = (uint32_t)transport,
+    };
+    nb_event_publish_async(&evt);
+
+    const char *tname = (transport == NB_BRIDGE_TRANSPORT_TCP) ? "TCP" : "UART";
+    NB_LOGI(TAG, "bridge conectado via %s", tname);
+}
+
+static void publish_disconnected(void)
+{
+    nb_event_t evt = {
+        .type         = NB_EVT_BRIDGE_DISCONNECTED,
+        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+    };
+    nb_event_publish_async(&evt);
+    NB_LOGW(TAG, "bridge desconectado — tentando reconectar");
+}
+
+/* ── Loop de I/O TCP ──────────────────────────────────────────────────────── */
+
+/* RX ring buffer para remontar frames fragmentados */
+static uint8_t s_rx_buf[FRAME_MAX_SIZE * 2u];
+static uint16_t s_rx_head = 0u;
+
+static void tcp_io_loop(void)
+{
+    s_rx_head = 0u;
+    tx_item_t tx_item;
+
+    /* STATUS periódico a cada 5s */
+    int64_t next_status_us = esp_timer_get_time() + 5000000LL;
+
+    while (true) {
+        /* TX: drenar fila */
+        while (xQueueReceive(s.tx_queue, &tx_item, 0) == pdTRUE) {
+            if (!tcp_send(s.client_fd, tx_item.data, tx_item.len)) {
+                NB_LOGD(TAG, "TCP send falhou — desconectando");
+                goto tcp_disconnect;
+            }
+        }
+
+        /* STATUS periódico */
+        if (esp_timer_get_time() >= next_status_us) {
+            xSemaphoreTake(s.mutex, portMAX_DELAY);
+            nb_bridge_status_t status_snap = s.status;
+            xSemaphoreGive(s.mutex);
+
+            uint8_t payload[14];
+            payload[0] = status_snap.state;
+            memcpy(&payload[1],  &status_snap.valence,     4u);
+            memcpy(&payload[5],  &status_snap.activation,  4u);
+            memcpy(&payload[9],  &status_snap.attention,   4u);
+            payload[13] = status_snap.health_score;
+
+            uint8_t frame[FRAME_OVERHEAD + 14u];
+            uint16_t flen = frame_encode(frame, NB_BRIDGE_MSG_STATUS, payload, 14u);
+            tcp_send(s.client_fd, frame, flen);   /* falha silenciosa no status */
+            next_status_us = esp_timer_get_time() + 5000000LL;
+        }
+
+        /* RX: lê dados disponíveis */
+        int n = tcp_recv_timeout(s.client_fd,
+                                 s_rx_buf + s_rx_head,
+                                 (int)(sizeof(s_rx_buf) - s_rx_head),
+                                 50u);
+        if (n < 0) {
+            NB_LOGD(TAG, "TCP recv erro — desconectando");
+            goto tcp_disconnect;
+        }
+        if (n > 0) {
+            s_rx_head = (uint16_t)(s_rx_head + (uint16_t)n);
+        }
+
+        /* Parse frames completos do RX buffer */
+        uint16_t consumed = 0u;
+        while (consumed + FRAME_OVERHEAD <= s_rx_head) {
+            uint8_t *p = s_rx_buf + consumed;
+
+            /* Buscar SOF */
+            if (p[FRAME_SOF_OFF] != FRAME_SOF) {
+                consumed++;
+                continue;
+            }
+
+            uint16_t data_len = (uint16_t)p[FRAME_LEN_LO_OFF] |
+                                 (uint16_t)(p[FRAME_LEN_HI_OFF] << 8u);
+            uint16_t total    = (uint16_t)(FRAME_OVERHEAD + data_len);
+
+            if (consumed + total > s_rx_head) break;   /* frame incompleto */
+
+            nb_bridge_msg_type_t type;
+            const uint8_t *fdata;
+            uint16_t fdata_len;
+            decode_result_t res = frame_decode(p, total, &type, &fdata, &fdata_len);
+            if (res == DECODE_OK) {
+                dispatch_incoming(type, fdata, fdata_len);
+            } else if (res == DECODE_CRC_ERR) {
+                NB_LOGW(TAG, "CRC error (type=0x%02X len=%u) — frame descartado",
+                        (unsigned)p[FRAME_TYPE_OFF], data_len);
+            }
+            consumed = (uint16_t)(consumed + total);
+        }
+
+        /* Compact RX buffer */
+        if (consumed > 0u && consumed <= s_rx_head) {
+            s_rx_head = (uint16_t)(s_rx_head - consumed);
+            if (s_rx_head > 0u) {
+                memmove(s_rx_buf, s_rx_buf + consumed, s_rx_head);
+            }
+        }
+    }
+
+tcp_disconnect:
+    close(s.client_fd);
+    s.client_fd = -1;
+}
+
+/* ── Loop de I/O UART ─────────────────────────────────────────────────────── */
+
+static void uart_io_loop(void)
+{
+    s_rx_head = 0u;
+    tx_item_t tx_item;
+    int64_t next_status_us = esp_timer_get_time() + 5000000LL;
+
+    while (true) {
+        /* TX */
+        while (xQueueReceive(s.tx_queue, &tx_item, 0) == pdTRUE) {
+            uart_send(tx_item.data, tx_item.len);
+        }
+
+        /* STATUS periódico */
+        if (esp_timer_get_time() >= next_status_us) {
+            xSemaphoreTake(s.mutex, portMAX_DELAY);
+            nb_bridge_status_t status_snap = s.status;
+            xSemaphoreGive(s.mutex);
+
+            uint8_t payload[14];
+            payload[0] = status_snap.state;
+            memcpy(&payload[1],  &status_snap.valence,    4u);
+            memcpy(&payload[5],  &status_snap.activation, 4u);
+            memcpy(&payload[9],  &status_snap.attention,  4u);
+            payload[13] = status_snap.health_score;
+
+            uint8_t frame[FRAME_OVERHEAD + 14u];
+            uint16_t flen = frame_encode(frame, NB_BRIDGE_MSG_STATUS, payload, 14u);
+            uart_send(frame, flen);
+            next_status_us = esp_timer_get_time() + 5000000LL;
+        }
+
+        /* RX */
+        int n = uart_recv(s_rx_buf + s_rx_head,
+                          (uint32_t)(sizeof(s_rx_buf) - s_rx_head),
+                          50u);
+        if (n > 0) {
+            s_rx_head = (uint16_t)(s_rx_head + (uint16_t)n);
+        }
+
+        /* Parse frames */
+        uint16_t consumed = 0u;
+        while (consumed + FRAME_OVERHEAD <= s_rx_head) {
+            uint8_t *p = s_rx_buf + consumed;
+            if (p[FRAME_SOF_OFF] != FRAME_SOF) { consumed++; continue; }
+
+            uint16_t data_len = (uint16_t)p[FRAME_LEN_LO_OFF] |
+                                 (uint16_t)(p[FRAME_LEN_HI_OFF] << 8u);
+            uint16_t total    = (uint16_t)(FRAME_OVERHEAD + data_len);
+            if (consumed + total > s_rx_head) break;
+
+            nb_bridge_msg_type_t type;
+            const uint8_t *fdata;
+            uint16_t fdata_len;
+            decode_result_t res = frame_decode(p, total, &type, &fdata, &fdata_len);
+            if (res == DECODE_OK) {
+                dispatch_incoming(type, fdata, fdata_len);
+            } else if (res == DECODE_CRC_ERR) {
+                NB_LOGW(TAG, "UART CRC error — frame descartado");
+            }
+            consumed = (uint16_t)(consumed + total);
+        }
+
+        if (consumed > 0u && consumed <= s_rx_head) {
+            s_rx_head = (uint16_t)(s_rx_head - consumed);
+            if (s_rx_head > 0u) {
+                memmove(s_rx_buf, s_rx_buf + consumed, s_rx_head);
+            }
+        }
+    }
+}
+
+/* ── Task principal ───────────────────────────────────────────────────────── */
+
+static void nb_bridge_task(void *arg)
+{
+    (void)arg;
+
+    /* ── Seleção de transporte no boot ────────────────────────────────────── */
+
+    bool wifi_up = wifi_service_is_connected();
+    bool tcp_ok  = false;
+    bool uart_ok = false;
+
+    /* Instalar UART (USB CDC) independente do resultado */
+    if (uart_install() != ESP_OK) {
+        NB_LOGW(TAG, "USB CDC não disponível — UART fallback desabilitado");
+    }
+
+    if (wifi_up) {
+        NB_LOGI(TAG, "WiFi ativo — abrindo servidor TCP porta %d", NB_BRIDGE_TCP_PORT);
+        s.server_fd = tcp_create_server();
+        if (s.server_fd >= 0) {
+            s.client_fd = tcp_accept_timeout(s.server_fd, NB_BRIDGE_TCP_LISTEN_MS);
+            if (s.client_fd >= 0) {
+                tcp_ok = do_handshake_tcp(s.client_fd, 300u);
+                if (!tcp_ok) {
+                    close(s.client_fd);
+                    s.client_fd = -1;
+                    NB_LOGD(TAG, "TCP handshake falhou");
+                }
+            } else {
+                NB_LOGD(TAG, "TCP timeout — nenhum cliente em %dms", NB_BRIDGE_TCP_LISTEN_MS);
+            }
+        }
+    }
+
+    if (!tcp_ok && s.uart_installed) {
+        NB_LOGI(TAG, "Tentando handshake UART (USB CDC)...");
+        uart_ok = do_handshake_uart(NB_BRIDGE_UART_HANDSHAKE_MS);
+        if (!uart_ok) {
+            NB_LOGD(TAG, "UART handshake sem resposta");
+        }
+    }
+
+    if (!tcp_ok && !uart_ok) {
+        NB_LOGI(TAG, "Bridge não encontrado — modo OFFLINE");
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s.transport = NB_BRIDGE_TRANSPORT_OFFLINE;
+        s.state     = BS_STATE_OFFLINE;
+        xSemaphoreGive(s.mutex);
+
+        /* Em OFFLINE, a task dorme para sempre — não há custo de CPU */
+        vTaskDelete(NULL);
+        return;
+    }
+
+    if (tcp_ok) {
+        publish_connected(NB_BRIDGE_TRANSPORT_TCP);
+        s.state = BS_STATE_CONNECTED;
+
+        tcp_io_loop();   /* bloqueia até desconexão */
+
+        publish_disconnected();
+
+        /* ── Reconexão TCP ──────────────────────────────────────────────── */
+        s.disconnect_time_us = esp_timer_get_time();
+        s.state = BS_STATE_RECONNECTING;
+
+        NB_LOGI(TAG, "Reconexão TCP: tentando por %ds", NB_BRIDGE_RECONNECT_TIMEOUT_MS / 1000);
+        while (true) {
+            int64_t elapsed_ms = (esp_timer_get_time() - s.disconnect_time_us) / 1000LL;
+            if (elapsed_ms >= (int64_t)NB_BRIDGE_RECONNECT_TIMEOUT_MS) {
+                NB_LOGW(TAG, "Reconexão TCP expirou — modo OFFLINE");
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(NB_BRIDGE_RECONNECT_INTVL_MS));
+
+            if (s.server_fd < 0) {
+                s.server_fd = tcp_create_server();
+                if (s.server_fd < 0) continue;
+            }
+            s.client_fd = tcp_accept_timeout(s.server_fd, 500u);
+            if (s.client_fd < 0) continue;
+
+            if (!do_handshake_tcp(s.client_fd, 300u)) {
+                close(s.client_fd);
+                s.client_fd = -1;
+                continue;
+            }
+            publish_connected(NB_BRIDGE_TRANSPORT_TCP);
+            s.state = BS_STATE_CONNECTED;
+            tcp_io_loop();
+            publish_disconnected();
+            s.disconnect_time_us = esp_timer_get_time();
+            s.state = BS_STATE_RECONNECTING;
+        }
+    } else {
+        /* UART */
+        publish_connected(NB_BRIDGE_TRANSPORT_UART);
+        s.state = BS_STATE_CONNECTED;
+        uart_io_loop();   /* UART não tem reconexão — USB CDC sempre presente */
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s.transport = NB_BRIDGE_TRANSPORT_OFFLINE;
+    s.state     = BS_STATE_OFFLINE;
+    xSemaphoreGive(s.mutex);
+
+    NB_LOGI(TAG, "bridge_task encerrada — modo OFFLINE");
+    vTaskDelete(NULL);
+}
+
+/* ── API pública ──────────────────────────────────────────────────────────── */
+
+esp_err_t bridge_service_init(void)
+{
+    s.mutex = xSemaphoreCreateMutex();
+    if (!s.mutex) return ESP_ERR_NO_MEM;
+
+    s.tx_queue = xQueueCreate(TX_QUEUE_DEPTH, sizeof(tx_item_t));
+    if (!s.tx_queue) return ESP_ERR_NO_MEM;
+
+    s.server_fd  = -1;
+    s.client_fd  = -1;
+    s.transport  = NB_BRIDGE_TRANSPORT_OFFLINE;
+    s.state      = BS_STATE_INIT;
+    s.uart_installed = false;
+
+    BaseType_t ret = xTaskCreatePinnedToCore(
+        nb_bridge_task, "nb_bridge_task",
+        NB_BRIDGE_TASK_STACK, NULL,
+        NB_BRIDGE_TASK_PRIORITY, NULL,
+        NB_BRIDGE_TASK_CORE);
+
+    if (ret != pdPASS) {
+        NB_LOGE(TAG, "xTaskCreatePinnedToCore falhou");
+        return ESP_ERR_NO_MEM;
+    }
+
+    NB_LOGI(TAG, "bridge_service iniciado");
+    return ESP_OK;
+}
+
+nb_bridge_transport_t bridge_service_get_transport(void)
+{
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    nb_bridge_transport_t t = s.transport;
+    xSemaphoreGive(s.mutex);
+    return t;
+}
+
+bool bridge_service_is_connected(void)
+{
+    return bridge_service_get_transport() != NB_BRIDGE_TRANSPORT_OFFLINE;
+}
+
+esp_err_t bridge_service_send_audio_chunk(const int16_t *samples, uint16_t count)
+{
+    if (!bridge_service_is_connected()) return ESP_ERR_INVALID_STATE;
+    if (count > NB_BRIDGE_AUDIO_CHUNK_SAMPLES) count = NB_BRIDGE_AUDIO_CHUNK_SAMPLES;
+    return enqueue_frame(NB_BRIDGE_MSG_AUDIO_CHUNK, samples, (uint16_t)(count * 2u));
+}
+
+esp_err_t bridge_service_send_event(const nb_event_t *evt)
+{
+    if (!evt) return ESP_ERR_INVALID_ARG;
+    if (!bridge_service_is_connected()) return ESP_ERR_INVALID_STATE;
+
+    uint8_t payload[12];
+    uint32_t type_u = (uint32_t)evt->type;
+    memcpy(&payload[0], &type_u, 4u);
+    memcpy(&payload[4], evt->data.bytes, 8u);
+    return enqueue_frame(NB_BRIDGE_MSG_EVENT, payload, 12u);
+}
+
+void bridge_service_update_status(const nb_bridge_status_t *status)
+{
+    if (!status) return;
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s.status = *status;
+    xSemaphoreGive(s.mutex);
+}

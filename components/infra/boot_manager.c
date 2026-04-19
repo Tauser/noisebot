@@ -54,6 +54,7 @@
 #include "circadian_service.h"
 #include "wifi_service.h"
 #include "web_service.h"
+#include "bridge_service.h"
 #include "esp_ota_ops.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
@@ -948,6 +949,12 @@ static esp_err_t phase_services(void)
 
     /* web_service (Etapa 15.1): HTTP+WS dashboard, inicia após IP adquirido */
     web_service_init();
+
+    /* bridge_service (Etapa 12.1): bridge LLM via TCP/UART, offline-first */
+    err = bridge_service_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "bridge_service_init falhou: %s", esp_err_to_name(err));
+    }
 
     phase_ok(NB_BOOT_PHASE_SERVICES);
     return ESP_OK;

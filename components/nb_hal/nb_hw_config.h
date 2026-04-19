@@ -161,6 +161,12 @@
 #define NB_CAM_PIN_RESET    (-1)    /* Tied 3.3V na placa */
 #define NB_CAM_PIN_PWDN     (-1)    /* Tied GND na placa */
 
+/* ── Bridge LLM (Etapa 12.1) ─────────────────────────────────────────────── */
+#define NB_BRIDGE_TCP_PORT      9000    /* ESP32 serve como TCP server       */
+/* UART fallback: USB CDC nativo do ESP32-S3 (usb_serial_jtag driver).
+ * Requer CONFIG_ESP_CONSOLE_UART_DEFAULT=UART0 em menuconfig para separar
+ * o console de debug da interface bridge (porta USB nativa). */
+
 /* ── GPIOs Livres / Reserva ───────────────────────────────────────────────── */
 /*
  * GPIO 3  (T3): spare — touch futuro ou periférico adicional

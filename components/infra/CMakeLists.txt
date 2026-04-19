@@ -11,6 +11,7 @@ idf_component_register(
         "diagnostics_service.c"
         "wifi_service.c"
         "web_service.c"
+        "bridge_service.c"
         "boot_manager.c"
     INCLUDE_DIRS "."
     REQUIRES
@@ -28,6 +29,8 @@ idf_component_register(
         esp_http_client
         app_update
         json
+        lwip
+        esp_driver_usb_serial_jtag
         nb_hal
         render_service
         expression_service
