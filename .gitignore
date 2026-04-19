@@ -41,3 +41,6 @@ docs/_build/
 
 # microSD content (assets não versionados)
 assets/
+
+# Credenciais locais de dev — nunca commitar
+components/infra/wifi_creds.h

@@ -14,5 +14,10 @@ list(APPEND EXTRA_COMPONENT_DIRS
 
 project(noisebot)
 
+# Workaround: ICE do GCC (segfault interno) em esp_lcd_panel_rgb.c com -O2.
+# Bug conhecido no toolchain Xtensa ao otimizar rgb_panel_draw_bitmap.
+# -fno-ipa-sra desabilita a otimização IPA SRA que dispara o ICE.
+idf_build_set_property(COMPILE_OPTIONS "-fno-ipa-sra" APPEND)
+
 # Componentes do projeto (ordem não importa — CMake resolve dependências)
 # Cada componente declara seus próprios REQUIRES em seu CMakeLists.txt

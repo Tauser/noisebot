@@ -52,6 +52,9 @@
 #include "touch_semantic_service.h"
 #include "persona_service.h"
 #include "circadian_service.h"
+#include "wifi_service.h"
+#include "web_service.h"
+#include "esp_ota_ops.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
 
@@ -937,6 +940,15 @@ static esp_err_t phase_services(void)
                   esp_err_to_name(err));
     }
 
+    /* wifi_service (Etapa 9.6): conecta ao AP em background, mDNS noisebot.local */
+    err = wifi_service_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "wifi_service_init falhou: %s — sem WiFi", esp_err_to_name(err));
+    }
+
+    /* web_service (Etapa 15.1): HTTP+WS dashboard, inicia após IP adquirido */
+    web_service_init();
+
     phase_ok(NB_BOOT_PHASE_SERVICES);
     return ESP_OK;
 }
@@ -1113,4 +1125,6 @@ void boot_manager_report_success(void)
     s_status.boot_count = 0;
     s_status.safe_mode  = false;
     NB_LOGI(TAG, "boot_count resetado — sistema reportou sucesso");
+    /* Confirma firmware OTA como válido — cancela rollback automático. */
+    esp_ota_mark_app_valid_cancel_rollback();
 }

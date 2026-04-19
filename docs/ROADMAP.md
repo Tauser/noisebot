@@ -823,6 +823,7 @@ Critérios adicionais de integração do Bloco 0:
   - Chamado pela behavior_task a cada 60s — substitui o stats_dump() atual.
 
 **API:**
+
 ```c
 esp_err_t diagnostics_init(void);
 uint8_t   diagnostics_get_health_score(void);
@@ -858,6 +859,7 @@ void      diagnostics_dump_to_sd(void);
   - Migrar `s_alone_timer_ms` do idle_service para schedule_service após implementação.
 
 **API:**
+
 ```c
 esp_err_t       schedule_service_init(void);
 void            schedule_service_tick(uint32_t dt_ms);
@@ -893,6 +895,7 @@ void            schedule_cancel(schedule_handle_t h);
   - boot_manager mantém apenas init e wiring de HAL callbacks — toda lógica migra para aqui.
 
 **Exemplo de regra:**
+
 ```c
 { .trigger  = NB_EVT_TOUCH_TAP,
   .cond     = cond_trust_high,      /* persona_get_trust() > 0.6 */
@@ -927,6 +930,7 @@ void            schedule_cancel(schedule_handle_t h);
   - API de query para serviços de Layer 5+ que precisam de nível e classe atual.
 
 **Eventos adicionados em `nb_events.h`:**
+
 ```c
 NB_EVT_SOUND_CLAP,          /* palmas detectadas */
 NB_EVT_SOUND_WHISTLE,       /* assobio detectado */
@@ -936,6 +940,7 @@ NB_EVT_SOUND_CLASS_CHANGED, /* transição de classe (data: nova classe) */
 ```
 
 **API:**
+
 ```c
 esp_err_t         sound_analysis_init(void);
 void              sound_analysis_tick(const int16_t *pcm, size_t samples);
@@ -969,6 +974,7 @@ float             sound_analysis_get_dominant_freq(void);
   - Timbres emocionais mapeados às expressões do emotion_model.
 
 **Primitivos:**
+
 ```c
 synth_chirp(float freq_start, float freq_end, uint32_t duration_ms);
 synth_purr(uint32_t duration_ms, float intensity);        /* noise filtrado com LFO */
@@ -979,6 +985,7 @@ synth_play_for_emotion(nb_expression_t expr);             /* mapeamento automát
 ```
 
 **Mapeamento emoção → timbre:**
+
 - `HAPPY/CURIOUS` → chirps ascendentes, freq 600–1200Hz
 - `SAD` → tons descendentes, freq 200–400Hz, decay longo
 - `ALARMED` → burst de noise + freq alta rápida
@@ -991,6 +998,46 @@ synth_play_for_emotion(nb_expression_t expr);             /* mapeamento automát
 - [x] `synth_play_for_emotion(NB_EXPR_HAPPY)`: som reconhecível como alegre por ouvinte
 - [x] 10 chamadas ao mesmo primitivo: nenhuma idêntica (randomização de parâmetros)
 - [x] Sem glitch ao alternar entre synth e WAV playback (mutex respeitado)
+
+---
+
+### Etapa 9.6 — WiFi Service (Layer 2)
+
+**Dependências:** 9.1 concluída (diagnostics_service)
+**Hardware necessário:** Não (WiFi nativo do ESP32-S3)
+
+**O que entra:**
+
+- `wifi_service` em `components/infra/wifi_service/`:
+  - Conecta ao AP configurado em NVS (`nb.wifi.ssid`, `nb.wifi.pass`) durante o boot.
+  - Inicialização **não-bloqueante**: `wifi_service_init()` retorna imediatamente; associação ocorre em background via eventos `esp_wifi`.
+  - Sem credenciais em NVS: loga WARN e permanece desconectado — sistema opera normalmente offline.
+  - Reconexão automática com backoff exponencial (1s → 2s → 4s → max 60s).
+  - mDNS: hostname `noisebot.local` registrado após IP adquirido.
+  - Eventos publicados no bus:
+    ```c
+    NB_EVT_WIFI_CONNECTED,       /* associou ao AP */
+    NB_EVT_WIFI_IP_ACQUIRED,     /* IP obtido via DHCP — serviços podem iniciar */
+    NB_EVT_WIFI_DISCONNECTED,    /* conexão perdida */
+    ```
+  - `wifi_service_get_ip()`: retorna IP atual como string (ou vazio se desconectado).
+  - `wifi_service_is_connected()`: query síncrona thread-safe.
+
+**NVS keys:**
+
+| Chave             | Tipo   | Default |
+| ----------------- | ------ | ------- |
+| `nb.wifi.ssid`    | string | (vazio) |
+| `nb.wifi.pass`    | string | (vazio) |
+| `nb.wifi.enabled` | bool   | true    |
+
+**Critérios de aceitação:**
+
+- [ ] Sem credenciais: boot completo normalmente, log "WiFi sem credenciais — offline"
+- [ ] Com credenciais: `NB_EVT_WIFI_IP_ACQUIRED` publicado, `noisebot.local` resolve no browser
+- [ ] AP cai durante operação: `NB_EVT_WIFI_DISCONNECTED` publicado, reconexão automática em < 70s
+- [ ] FPS de render mantido ≥ 25fps durante associação inicial ao WiFi
+- [ ] SRAM livre após init: ≥ 80 KB confirmado via `diagnostics_dump`
 
 ---
 
@@ -1016,6 +1063,7 @@ synth_play_for_emotion(nb_expression_t expr);             /* mapeamento automát
   - Decaimento exponencial por ausência de estímulo (τ = 30s).
 
 **Fontes e pesos default:**
+
 ```
 VOICE_START   → +0.70  (máxima atenção)
 TOUCH_TAP     → +0.50
@@ -1025,12 +1073,14 @@ SOUND_MUSIC   → +0.15  (presença ambiental suave)
 ```
 
 **Consumidores:**
+
 - `gaze_service`: velocidade de saccade proporcional a `attention_level`.
 - `idle_service`: yawn threshold proporcional a `1.0 - attention_level`.
 - `expression_service`: duração de transição inversamente proporcional a attention.
 - `state_machine`: ainda controla transições de estado (atenção é camada ortogonal).
 
 **API:**
+
 ```c
 esp_err_t attention_service_init(void);
 void      attention_service_on_stimulus(nb_attention_source_t src, float intensity);
@@ -1062,11 +1112,13 @@ void      attention_service_tick(uint32_t dt_ms);
   - `NB_EVT_RHYTHM_LOST`: quando confiança cai abaixo de 0.3 por > 2s.
 
 **Consumidores:**
+
 - `led_service`: `BEAT_TICK` → flash suave nos LEDs no ritmo.
 - `conductor`: quando `RHYTHM_LOCKED` e estado IDLE → head-bob sutil a cada beat.
 - `idle_service`: música detectada → suspende yawn (não boceja durante música).
 
 **API:**
+
 ```c
 esp_err_t rhythm_service_init(void);
 void      rhythm_service_tick(uint32_t dt_ms);
@@ -1099,6 +1151,7 @@ Extensão do `audio_service` + wiring no `boot_manager`/`behavior_engine`:
 - **Reação por padrão**: `VOICE_SHORT` repetido 3× em < 30s → `NB_EVT_VOICE_REPEATED` (impaciência detectada).
 
 **Eventos adicionados:**
+
 ```c
 NB_EVT_VOICE_SHORT,              /* interjeição < 500ms */
 NB_EVT_VOICE_LONG,               /* discurso > 4s */
@@ -1109,6 +1162,7 @@ NB_EVT_VOICE_REPEATED,           /* interjeições repetidas */
 ```
 
 **Comportamentos via behavior_engine:**
+
 - `VOICE_LONG` → nod de concordância (conductor: `NB_ACTION_AGREE`).
 - `VOICE_SHORT` × 3 → head-tilt confuso (nova ação no conductor).
 - `VOICE_FOLLOWUP_TIMEOUT` → gaze busca origem do som (gaze sweep lateral).
@@ -1141,6 +1195,7 @@ Extensão do `touch_service` + novas regras no `behavior_engine`:
 - **Detecção de carinho**: SUSTAINED por > 15s contínuos → `NB_EVT_TOUCH_CARESS`.
 
 **Eventos adicionados:**
+
 ```c
 NB_EVT_TOUCH_DEEP,         /* toque sustentado longo (>8s) */
 NB_EVT_TOUCH_DOUBLE_TAP,   /* dois taps rápidos */
@@ -1148,6 +1203,7 @@ NB_EVT_TOUCH_CARESS,       /* carinho prolongado >15s */
 ```
 
 **Comportamentos:**
+
 - `TOUCH_DEEP` → purr via synth_service + emoção máxima de calor.
 - `TOUCH_DOUBLE_TAP` → SURPRISED + ação de susto leve (nova partitura conductor).
 - `TOUCH_CARESS` → expressão especial (HAPPY fechado, satisfeito) + ronronar longo.
@@ -1187,6 +1243,7 @@ Regras no `behavior_engine` e deltas no `emotion_model` completos.
   - Expõe API de query para behavior_engine, conductor, idle_service, emotion_model.
 
 **Dimensões e fórmulas:**
+
 ```
 warmth    = 1 − exp(−touch_count/50)        /* familiar = caloroso */
 energy    = clamp(voice_sessions/total × 2)  /* mais voz = mais energético */
@@ -1195,6 +1252,7 @@ trust     = min(warmth, sessions/20)         /* combina familiaridade + tempo */
 ```
 
 **Consumidores (via behavior_engine conditions):**
+
 - `trust > 0.6`: TAP → `TOUCH_WARM` (não mais `TOUCH_STARTLE` como padrão).
 - `warmth > 0.7`: GREET → variação entusiasmada (partitura diferente no conductor).
 - `curiosity > 0.6`: idle_service aumenta frequência de micro-saccades em 50%.
@@ -1202,6 +1260,7 @@ trust     = min(warmth, sessions/20)         /* combina familiaridade + tempo */
 - `trust < 0.3`: novos sons → ALARMED em vez de CURIOUS.
 
 **API:**
+
 ```c
 esp_err_t persona_service_init(void);
 void      persona_service_refresh(void);     /* recalcular a partir do LTM */
@@ -1238,6 +1297,7 @@ Extensão de `idle_service` + `schedule_service` para ciclo de uptime:
 - Fase persiste via LTM: sessões curtas frequentes vs sessões longas raras modulam energia inicial.
 
 **Comportamentos:**
+
 - DAWN: GREET mais suave e lento (nova variação de partitura).
 - DUSK: yawn a cada 30–60s (vs 60–180s normal), micro-saccades mais lentos.
 - Transição DAWN → DAY: stretch (nova ação no conductor — nod + expressão HAPPY).
@@ -1268,6 +1328,7 @@ Extensão de `idle_service` + `schedule_service` para ciclo de uptime:
   - Em FOCUSED → micro-squint (concentração extra).
 
 **API:**
+
 ```c
 void expression_combo_play(const nb_expr_frame_t *frames, uint8_t count);
 
@@ -1323,7 +1384,7 @@ typedef struct {
 
 ## BLOCO 12 — Bridge LLM
 
-> Objetivo: Conectar o robot a LLMs externos via bridge local (RPi/PC),
+> Objetivo: Conectar o robot a LLMs externos via bridge local (RPi/PC na mesma rede),
 > preservando o princípio offline-first — o robot funciona completamente
 > sem o bridge; com ele, ganha capacidade conversacional.
 
@@ -1331,18 +1392,48 @@ typedef struct {
 
 ### Etapa 12.1 — Protocolo Bridge (Layer 2)
 
-**Dependências:** Bloco 9 concluído
-**Hardware necessário:** Não (protocolo sobre UART0/USB CDC)
+**Dependências:** Bloco 9 concluído, **9.6 concluída** (wifi_service ativo)
+**Hardware necessário:** Não
+
+**Transporte:** TCP primário, UART fallback automático.
+
+O bridge roda em RPi ou PC na mesma rede local — sem cabo USB obrigatório.
 
 **O que entra:**
 
 - `bridge_service` em `components/infra/bridge_service/`:
-  - Protocolo binário compacto sobre UART0 (USB CDC, separado do log serial).
-  - Detecção de bridge: handshake de 200ms no boot; se não responder, continua offline.
-  - Framing: `[0xAB][len_16][type_8][payload][crc8]`.
-  - Task "nb_bridge_task": Core 0, prio 4, 3KB stack.
+  - Task "nb_bridge_task": Core 0, prio 4, 4KB stack.
+  - Framing idêntico nos dois transportes: `[0xAB][len_16][type_8][payload][crc8]`.
+  - Seleção de transporte automática no boot (ver lógica abaixo).
+
+**Seleção de transporte:**
+
+```
+boot
+ └─ WiFi IP adquirido?
+     ├─ SIM → aguarda conexão TCP na porta 9000 por 2s
+     │         ├─ cliente conectou → modo TCP (loggado)
+     │         └─ timeout         → tenta handshake UART (200ms)
+     │                              ├─ bridge responde → modo UART
+     │                              └─ sem resposta   → offline
+     └─ NÃO → tenta handshake UART imediatamente (200ms)
+               ├─ bridge responde → modo UART
+               └─ sem resposta   → offline
+```
+
+- Reconexão: se TCP cair durante operação, tenta reconectar a cada 5s por 60s; após isso, permanece offline até próximo boot.
+- Apenas um transporte ativo por vez.
+
+**TCP:**
+- Servidor no ESP32, porta 9000.
+- Keep-alive TCP: detecta queda em < 10s.
+
+**UART (fallback de desenvolvimento):**
+- UART0/USB CDC, 921600 baud, separado do log serial.
+- Útil durante desenvolvimento sem AP configurado.
 
 **Mensagens ESP32 → Bridge:**
+
 ```
 AUDIO_CHUNK   payload: pcm_raw int16[], 512 samples (32ms)
 EVENT         payload: nb_event_type_t + data
@@ -1350,6 +1441,7 @@ STATUS        payload: state, emotion vec, attention level, health score
 ```
 
 **Mensagens Bridge → ESP32:**
+
 ```
 SAY           payload: wav_chunk int16[] (streaming em chunks de 512)
 EXPR          payload: nb_expression_t + duration_ms
@@ -1361,10 +1453,11 @@ TEXT_SCROLL   payload: string (para futuro display de texto)
 
 **Critérios de aceitação:**
 
-- [ ] Boot sem bridge conectado: sistema opera normalmente, zero timeout perceptível
-- [ ] Bridge conectado: handshake em < 200ms, loggado
-- [ ] AUDIO_CHUNK stream: jitter < 5ms entre chunks
-- [ ] Bridge desconectado durante operação: sistema detecta em < 500ms, retorna a offline
+- [ ] Boot sem bridge e sem WiFi: sistema opera normalmente, sem bloqueio visível
+- [ ] Bridge TCP conecta: handshake em < 300ms, modo TCP loggado
+- [ ] Bridge UART conecta (WiFi off): handshake em < 200ms, modo UART loggado
+- [ ] AUDIO_CHUNK stream via TCP: jitter < 10ms entre chunks em rede local
+- [ ] TCP cai durante conversa: sistema detecta em < 10s, retorna offline
 - [ ] CRC8 com erro: frame descartado, contabilizado, sem crash
 
 ---
@@ -1372,18 +1465,21 @@ TEXT_SCROLL   payload: string (para futuro display de texto)
 ### Etapa 12.2 — Pipeline LLM via Bridge
 
 **Dependências:** 12.1 concluída, bridge (RPi/PC) com Whisper + Gemini + Piper instalados
-**Hardware necessário:** Raspberry Pi 4 ou PC como bridge
+**Hardware necessário:** Raspberry Pi 4 ou PC na mesma rede local
 
 **O que entra:**
 
 No ESP32:
+
 - Wiring no behavior_engine: `VOICE_START` → inicia stream de AUDIO_CHUNK para bridge.
 - `VOICE_END` → envia marcador de fim de fala.
 - Recebe `SAY` → toca via audio_service (streaming de chunks).
 - Recebe `EXPR`/`ACTION`/`EMOT_EVENT` → injeta nos serviços correspondentes.
-- Timeout: se bridge não responde em 8s após VOICE_END → retorna comportamento offline.
+- Timeout: se bridge não responde em 8s após `VOICE_END` → retorna comportamento offline.
 
 No bridge (fora do firmware, script Python/Node):
+
+- Descobre ESP32 via mDNS (`noisebot.local:9000`) — sem IP hardcoded.
 - Recebe chunks de áudio → buffer até `VOICE_END`.
 - Whisper (local, small model) → transcrição.
 - Gemini Flash free tier com system prompt de persona do NoiseBot.
@@ -1392,6 +1488,7 @@ No bridge (fora do firmware, script Python/Node):
 - Envia `EXPR` e `ACTION` conforme intenção da resposta.
 
 **System prompt do NoiseBot (base):**
+
 - Personalidade do robot conforme persona_service (warmth/trust/energy).
 - Contexto de estado atual (estado, emoção, uptime, familiaridade).
 - Respostas curtas (< 10s de fala), nunca explicativas — sempre expressivas.
@@ -1406,94 +1503,7 @@ No bridge (fora do firmware, script Python/Node):
 
 ---
 
-## BLOCO 13 — Hardware Opcional de Expansão
-
-> Objetivo: Sensores de baixo custo conectados via I2C0 e GPIO spare que
-> enriquecem o contexto ambiental sem impacto no hardware existente.
-> Todos opcionais — sistema opera sem eles.
-
----
-
-### Etapa 13.1 — IR Receiver (RMT, GPIO 3)
-
-**Dependências:** Bloco 9 concluído
-**Hardware necessário:** TSOP4838 ou similar (< R$5), GPIO 3 (spare, touch T3)
-
-**O que entra:**
-
-- `ir_hal` em `components/nb_hal/ir_hal.[c/h]`: RMT canal 1 em modo RX, protocolo NEC.
-- `ir_service` em `components/services/ir_service/`: mapeamento de códigos → ações.
-- Comandos mapeáveis via NVS (configurável sem recompilar).
-
-**Comandos default (controle remoto de TV genérico):**
-```
-POWER → NB_ACTION_WAKE_UP ou SLEEP (toggle)
-VOL+  → audio_service_set_volume(+10)
-VOL-  → audio_service_set_volume(-10)
-1     → conductor_play(NB_ACTION_GREET)
-2     → conductor_play(NB_ACTION_CURIOUS)
-OK    → ativar modo meditação
-```
-
-**Critérios de aceitação:**
-
-- [ ] Botão do controle: ação correta em < 50ms
-- [ ] Código desconhecido: ignorado silenciosamente
-- [ ] GPIO 3 em uso como IR: touch T3 sacrificado (documentado)
-- [ ] 50 comandos consecutivos: zero drop
-
----
-
-### Etapa 13.2 — Sensor de Luz Ambiente (I2C0)
-
-**Dependências:** 8.1 concluída (I2C0 iniciado pela câmera)
-**Hardware necessário:** BH1750 (0x23, < R$3) ou LDR + resistor no ADC
-
-**O que entra:**
-
-- `light_hal` em `components/nb_hal/light_hal.[c/h]`: leitura BH1750 a 1Hz.
-- Publicação de `NB_EVT_LIGHT_CHANGED` ao cruzar thresholds.
-- Thresholds em NVS: `DARK` (< 10 lux), `DIM` (10–100 lux), `BRIGHT` (> 100 lux).
-
-**Comportamentos via behavior_engine:**
-- `DARK`: robot vai dormir gradualmente se já em IDLE há > 10min.
-- `DARK` → `BRIGHT`: `NB_EVT_LIGHT_ON` → SURPRISED + GREET (alguém acendeu a luz).
-- `BRIGHT` sustentado: brilho do display e LEDs auto-ajustado via `render_service_set_brightness()`.
-
-**Critérios de aceitação:**
-
-- [ ] Cobrir sensor com mão: `DARK` detectado em < 2s
-- [ ] Ambiente claro → escuro: brilho do display reduz automaticamente
-- [ ] "Luzes acesas": SURPRISED + GREET visível
-- [ ] I2C compartilhado com câmera: sem colisão (endereços distintos)
-
----
-
-### Etapa 13.3 — Sensor Ambiental (I2C0)
-
-**Dependências:** 13.2 concluída (I2C0 já em uso)
-**Hardware necessário:** SHT30 (0x44, < R$10)
-
-**O que entra:**
-
-- `env_hal` em `components/nb_hal/env_hal.[c/h]`: leitura SHT30 a 0.1Hz (a cada 10s).
-- Temperatura e umidade relativa. Dados logados no SD via LTM.
-- Thresholds em NVS.
-
-**Comportamentos:**
-- Temperatura > 35°C: expressão de desconforto (ALARMED suave), LED mais frio.
-- Temperatura < 10°C: expressão de frio (SLEEPY + tremor suave via motion).
-- Dados históricos no journal do LTM: temperatura/umidade por sessão.
-
-**Critérios de aceitação:**
-
-- [ ] Leitura de temperatura: ±1°C vs termômetro de referência
-- [ ] > 35°C simulado: expressão de desconforto visível em < 30s
-- [ ] Dados no LTM journal: temperatura registrada a cada flush
-
----
-
-## BLOCO 14 — Visão por Computador
+## BLOCO 13 — Visão por Computador
 
 > Objetivo: Usar a câmera (8.1) para detecção de presença, face tracking e
 > gestos simples. Sem ML pesado — algoritmos clássicos dentro dos limites
@@ -1501,7 +1511,7 @@ OK    → ativar modo meditação
 
 ---
 
-### Etapa 14.1 — Detecção de Presença (Layer 4)
+### Etapa 13.1 — Detecção de Presença (Layer 4)
 
 **Dependências:** 8.1 (câmera), 10.1 (attention_service)
 **Hardware necessário:** Câmera OV2640
@@ -1515,6 +1525,7 @@ OK    → ativar modo meditação
   - Frame de referência atualizado a cada 30s de ausência.
 
 **Integração:**
+
 - Substitui o timer cego do `NB_EMOT_EVT_IDLE_LONG` por confirmação visual de ausência.
 - `PRESENCE_DETECTED` após `PRESENCE_LOST` → greet mais entusiasmado (via persona + behavior_engine).
 - `attention_service_on_stimulus(VISION_PRESENCE, intensity)`.
@@ -1528,9 +1539,9 @@ OK    → ativar modo meditação
 
 ---
 
-### Etapa 14.2 — Face Tracking (Layer 4/5)
+### Etapa 13.2 — Face Tracking (Layer 4/5)
 
-**Dependências:** 14.1 concluída
+**Dependências:** 13.1 concluída
 **Hardware necessário:** Câmera OV2640
 
 **O que entra:**
@@ -1543,6 +1554,7 @@ OK    → ativar modo meditação
   - `NB_EVT_FACE_DETECTED` (data: posição), `NB_EVT_FACE_LOST`.
 
 **Integração:**
+
 - `gaze_service`: quando `FACE_DETECTED` com confiança > 0.5, gaze segue o rosto suavemente.
 - `attention_service`: `FACE_DETECTED` → máxima atenção (1.0).
 - `idle_service`: sem face detectada + IDLE_LONG → solidão confirmada (SAD mais rápido).
@@ -1556,9 +1568,9 @@ OK    → ativar modo meditação
 
 ---
 
-### Etapa 14.3 — Detecção de Gestos Simples (Layer 4/5)
+### Etapa 13.3 — Detecção de Gestos Simples (Layer 4/5)
 
-**Dependências:** 14.2 concluída
+**Dependências:** 13.2 concluída
 **Hardware necessário:** Câmera OV2640
 
 **O que entra:**
@@ -1569,6 +1581,7 @@ OK    → ativar modo meditação
   - `NB_EVT_GESTURE_WAVE`, `NB_EVT_GESTURE_OPEN_HAND`.
 
 **Comportamentos:**
+
 - `GESTURE_WAVE` → GREET (como se a pessoa acenasse).
 - `GESTURE_OPEN_HAND` parado por > 2s → robot fica parado esperando (FOCUSED).
 
@@ -1582,76 +1595,342 @@ OK    → ativar modo meditação
 
 ## BLOCO 15 — Conectividade
 
-> Objetivo: Canais de comunicação externos opcionais. O robot permanece
-> totalmente funcional offline. Conectividade adiciona configuração remota
-> e backup de personalidade.
+> Objetivo: O robot expõe uma interface web local para configuração, monitoramento
+> e controle remoto. WiFi já está ativo desde a Etapa 9.6 — este bloco constrói
+> os serviços de aplicação sobre essa infraestrutura.
+
+**Restrições de hardware para este bloco (ESP32-S3):**
+- TLS/HTTPS: mbedTLS consome ~250 KB SRAM adicionais — inviável. HTTP na LAN apenas.
+- Máximo 1 cliente WebSocket simultâneo.
+- Sem streaming de áudio ou vídeo via WiFi (jitter e banda insuficientes).
+
+**Orçamento de SRAM incremental (além do wifi_service da 9.6):**
+
+| Componente             | SRAM estimada |
+| ---------------------- | ------------- |
+| esp_http_server (4 cx) | ~20 KB        |
+| WebSocket (1 cliente)  | ~10 KB        |
+| **Total incremental**  | **~30 KB**    |
 
 ---
 
-### Etapa 15.1 — BLE Companion Interface
+### Etapa 15.1 — Web Dashboard e Companion API (Layer 2)
 
-**Dependências:** Bloco 11 concluído (persona_service ativo)
-**Hardware necessário:** Não (BLE nativo do ESP32-S3)
+**Dependências:** 9.6 concluída (IP adquirido)
+**Hardware necessário:** Não
 
 **O que entra:**
 
-- `ble_service` em `components/infra/ble_service/`:
-  - BLE desativado por default — ativado via toque duplo (TOUCH_DOUBLE_TAP) ou NVS flag.
-  - GATT server com 3 characteristics:
-    - `STATUS` (notify): estado, emoção, atenção, saúde, uptime.
-    - `PERSONA` (read): dimensões da personalidade (warmth, energy, curiosity, trust).
-    - `COMMAND` (write): injetar ACTION, EMOT_EVENT, ajustar config.
-  - Advertising com nome "NoiseBot-XXXX" (sufixo MAC).
-  - Sem autenticação no protótipo (adicionar PIN se necessário).
+- `web_service` em `components/infra/web_service/`:
+  - `esp_http_server` com máximo 4 conexões HTTP simultâneas.
+  - Arquivos estáticos servidos do SD (`/sdcard/www/`): `index.html`, `app.js`, `style.css`.
+    - Se `/sdcard/www/` ausente: endpoint `/` retorna página mínima embutida no firmware.
+  - WebSocket em `/ws`: 1 cliente simultâneo; novo cliente desconecta o anterior.
+  - Iniciado somente após `NB_EVT_WIFI_IP_ACQUIRED` — nunca bloqueia o boot.
+
+**REST API:**
+
+| Endpoint              | Método | Descrição                                          |
+| --------------------- | ------ | -------------------------------------------------- |
+| `GET /`               | HTTP   | Dashboard (HTML do SD ou fallback embutido)         |
+| `GET /api/status`     | HTTP   | JSON: state, expression, attention, health, uptime, fps |
+| `GET /api/persona`    | HTTP   | JSON: warmth, energy, curiosity, trust             |
+| `GET /api/config`     | HTTP   | JSON com todas as chaves NVS relevantes            |
+| `POST /api/config`    | HTTP   | Atualiza chave NVS (body: `{"key":"val","value":x}`) |
+| `POST /api/command`   | HTTP   | Injeta ação (body: `{"type":"ACTION","value":"GREET"}`) |
+| `WS /ws`              | WS     | Push de status a cada mudança; aceita comandos     |
+
+**WebSocket (push do robot):**
+
+```json
+{ "type": "status", "state": "IDLE", "expression": "NEUTRAL",
+  "attention": 0.3, "health": 87, "uptime_s": 3612, "fps": 45 }
+```
+
+**WebSocket (comando do cliente):**
+
+```json
+{ "type": "command", "action": "GREET" }
+{ "type": "emot_event", "event": "TOUCH_TAP" }
+```
+
+**Sem autenticação no protótipo** (LAN local, sem exposição externa).
 
 **Critérios de aceitação:**
 
-- [ ] App BLE genérico (nRF Connect): conecta e lê characteristics
-- [ ] STATUS notify: atualizado a cada mudança de estado ou emoção
-- [ ] COMMAND GREET: conductor_play(GREET) executado em < 200ms
-- [ ] BLE ativo: FPS de render mantido ≥ 25fps
+- [x] Browser em `http://noisebot.local`: dashboard carrega em < 3s
+- [x] `GET /api/status`: JSON válido retornado em < 100ms
+- [x] WebSocket: status push recebido em < 200ms após mudança de estado no robot
+- [x] `POST /api/command` GREET: `conductor_play(GREET)` executado em < 300ms
+- [x] `POST /api/config` volume: `config_set_volume()` persistido e efetivo sem reiniciar
+- [x] FPS de render ≥ 25fps com cliente WS conectado e recebendo updates
+- [x] Cliente WS desconecta abruptamente: sem crash, nova conexão aceita normalmente
 
 ---
 
 ### Etapa 15.2 — OTA e Backup de Personalidade
 
 **Dependências:** 15.1 concluída
-**Hardware necessário:** Não (WiFi nativo)
+**Hardware necessário:** Não
 
 **O que entra:**
 
-- OTA via HTTPS (já previsto no Bloco 7, aqui detalhado):
-  - WiFi ativado apenas durante OTA — desabilitado no restante.
-  - Validação de assinatura de firmware antes de aplicar.
-  - Robot fica em estado seguro (SLEEPING, motion off) durante OTA.
-- **Backup/restore de personalidade**:
-  - `persona_export()`: serializa LTM + NVS persona para JSON.
-  - Upload para endpoint configurável (auto-hospedado ou S3).
-  - `persona_import()`: restaura de backup — permite "migrar" personalidade para novo hardware.
+- **OTA via HTTP** usando WiFi já ativo da Etapa 9.6:
+  - Endpoint `POST /api/ota` recebe URL de firmware `.bin` (servidor local ou S3).
+  - `esp_ota` com validação de magic bytes antes de aplicar.
+  - Robot entra em `NB_STATE_OTA` durante update: motion off, LEDs laranja pulsante, WS push de progresso.
+  - Rollback automático se firmware não confirmar boot em 30s (`esp_ota_mark_app_valid_cancel_rollback()`).
+  - Sem TLS: URL deve ser HTTP (limitação de RAM — ver nota no cabeçalho do bloco).
+
+- **Backup/restore de personalidade via web**:
+  - `GET /api/persona/export`: JSON com LTM snapshot + dimensões NVS (warmth/energy/curiosity/trust).
+  - `POST /api/persona/import`: restaura a partir do JSON — permite migrar personalidade para novo hardware.
+  - Mesmo formato exportável via cópia direta do SD (`/sdcard/memory/ltm_main.bin`).
 
 **Critérios de aceitação:**
 
-- [ ] OTA de firmware: update aplicado sem perda de NVS
-- [ ] OTA com falha de energia: rollback automático para firmware anterior
-- [ ] Export/import de personalidade: após import, comportamento idêntico ao original
-- [ ] WiFi desabilitado após OTA: confirmado por scan de redes (sem beacon do robot)
+- [x] OTA aplicado via `POST /api/ota`: firmware atualizado, NVS preservado
+- [x] OTA com firmware corrompido: rollback ocorre, firmware anterior ativo no próximo boot
+- [x] Durante OTA: FPS de render cai para 0 (estado OTA suspende render), LEDs indicam progresso
+- [x] Export JSON: arquivo válido, importável em outro hardware com comportamento idêntico
+- [x] WiFi permanece ativo após OTA (não desliga mais após update)
+
+
+---
+
+## BLOCO 16 — Voz e Expressividade Avançada
+
+> Objetivo: Robot fala, exibe emoções visuais ricas e executa sequências coreografadas. Inspirado em features do StackChan (wake word, TTS, blush/coração, dança).
+
+---
+
+### Etapa 16.1 — Wake Word Service (Layer 4)
+
+**Dependências:** 10.3 (VAD Semântico) concluída
+**Hardware necessário:** INMP441 já conectado
+
+**O que entra:**
+
+- `wake_word_service` (Layer 4): detecta keyword configurável usando `esp_afe` (Audio Front End) + `esp_mn` (MultiNet) do ESP-SR.
+  - Keyword padrão: "Noise Bot" (customizável via NVS).
+  - Pipeline: INMP441 → `esp_afe` (beamforming + noise suppression) → `esp_mn` (keyword spotting).
+  - Roda em task dedicada (prioridade 8), consome ~80KB PSRAM para modelos.
+- Publica `NB_EVT_WAKE_WORD` no event bus ao detectar keyword com confiança ≥ threshold configurável.
+- `boot_manager` registra handler: `NB_EVT_WAKE_WORD` → `conductor_play(NB_ACTION_WAKE_UP)` se em SLEEPING, senão `GREET`.
+- NVS: `nb_svc/ww_enabled` (u8), `nb_svc/ww_threshold` (u8, 0–100).
+- Integrado ao web dashboard: enable/disable, threshold slider.
+
+**Critérios de aceitação:**
+
+- [ ] Dizer "Noise Bot" com robot em SLEEPING → acorda e cumprimenta em <1.5s
+- [ ] Dizer "Noise Bot" em IDLE → plays GREET
+- [ ] Ruído ambiente sem keyword: zero false positives em 5 minutos
+- [ ] `ww_enabled=0` em NVS: keyword não detectada, VAD continua normal
+- [ ] Threshold ajustável pelo dashboard sem reflash
+
+---
+
+### Etapa 16.2 — TTS Service (Layer 4)
+
+**Dependências:** 4.2 (audio playback), 9.6 (WiFi), 12.1 (bridge HTTP) concluídas
+**Hardware necessário:** MAX98357A já conectado
+
+**O que entra:**
+
+- `tts_service` (Layer 4): sintetiza texto em fala via servidor TTS local HTTP.
+  - Protocolo: `POST http://<host>:<port>/tts` com body `{"text":"...","speaker_id":0}`, resposta WAV/PCM streaming.
+  - Servidores suportados (mesma API): VOICEVOX, Coqui TTS, AquesTalk.
+  - Streaming: `esp_http_client` + pipe de chunks para `audio_service` → sem buffer completo em RAM.
+  - Task dedicada (prioridade 6), stack 6KB.
+- API pública: `tts_service_speak(const char *text, uint8_t priority)`.
+  - Prioridade 0 = interruptível, prioridade 1 = completa antes de aceitar novo pedido.
+  - Publica `NB_EVT_AUDIO_STARTED` / `NB_EVT_AUDIO_ENDED` compatíveis com pipeline existente.
+- NVS: `nb_tts/host`, `nb_tts/port`, `nb_tts/speaker_id`, `nb_tts/enabled`.
+- Web dashboard: seção TTS — host/porta/speaker, botão de teste com campo de texto.
+- Conductor: novo action `NB_ACTION_SPEAK_GREETING` usa TTS se disponível, senão synth_service.
+
+**Critérios de aceitação:**
+
+- [ ] `tts_service_speak("olá, mundo", 0)` → robot fala via speaker em <2s (WiFi local)
+- [ ] TTS durante expressão: face continua animada enquanto fala
+- [ ] TTS sem WiFi ou servidor offline: fallback para synth_service sem panic
+- [ ] Dois pedidos simultâneos: segundo aguarda fila, não sobrescreve
+- [ ] Volume do TTS responde ao `config_get_volume()` existente
+
+---
+
+### Etapa 16.3 — Overlays de Expressão: Blush, Coração e Breath (Layer 5)
+
+**Dependências:** 5.3 (expression_service), 10.4 (touch semântico) concluídas
+**Hardware necessário:** Não
+
+**O que entra:**
+
+- **Blush overlay**: manchas rosadas semi-transparentes nas bochechas, desenhadas sobre qualquer expressão base.
+  - `expression_service_overlay_blush(uint8_t intensity, uint32_t duration_ms)` — intensity 0–255, fade-out automático.
+  - Ativado automaticamente: CARESS → blush máximo, TOUCH_DEEP → blush médio, TOUCH_WARM_PULSE → blush leve.
+  - Renderizado como dois círculos com alpha blending no sprite PSRAM.
+
+- **Heart overlay**: ❤️ animado temporário no centro da tela.
+  - `expression_service_overlay_heart(uint32_t duration_ms)` — escala in/out suave.
+  - Ativado por: duplo toque CARESS consecutivo (>15s), ou `NB_ACTION_CELEBRATE`.
+  - Desenhado como shape paramétrico (dois arcos + triângulo), sem assets externos.
+
+- **Breath animation** (idle): pulsação sutil de abertura dos olhos imitando respiração.
+  - `idle_service` aplica senoide lenta (período 4–6s, amplitude ±4% de `open_l/r`) quando em IDLE/ATTENTIVE.
+  - Sincronizado ao circadiano: DAWN = mais lento (6s), DAY = normal (5s), DUSK = mais lento (6s).
+  - Desabilitável via NVS `nb_svc/breath_enabled`.
+
+**Critérios de aceitação:**
+
+- [ ] CARESS 15s → blush aparece, dura 5s, faz fade-out sem cortar expressão base
+- [ ] `NB_ACTION_CELEBRATE` → heart overlay visível por 2s
+- [ ] Breath animation: ciclo visível a olho nu, não interfere com blink automático
+- [ ] Blush + expressão HAPPY simultaneamente: ambos visíveis no display
+- [ ] Desativar breath via NVS: idle sem pulsação de olhos
+
+---
+
+### Etapa 16.4 — Choreography Player (Layer 5/6)
+
+**Dependências:** 5.4 (conductor), 16.3 concluídas
+**Hardware necessário:** Não (servos opcionais para coreografias completas)
+
+**O que entra:**
+
+- `nb_choreo_t`: struct `{nb_action_t action; uint16_t delay_ms; uint8_t flags}`.
+  - Flag `NB_CHOREO_PARALLEL`: executa próximo step sem aguardar o atual terminar.
+  - Flag `NB_CHOREO_WAIT_AUDIO`: aguarda fim do TTS/synth antes de avançar.
+- `conductor_play_choreo(const nb_choreo_t *steps, uint8_t count)`: executa sequência, publicando eventos de progresso.
+- `conductor_stop_choreo()`: interrompe sequência em andamento.
+- Coreografias built-in (constantes):
+  - `NB_CHOREO_DANCE`: sequência de 8 ações com timing rítmico.
+  - `NB_CHOREO_WAKE_UP_RITUAL`: STRETCH → YAWN → HAPPY → blush leve (integra 16.3).
+  - `NB_CHOREO_GREETING_ELABORATE`: GREET → CURIOUS → AGREE → heart (>5s de interação).
+- Web dashboard: seção "Choreography" com 3 botões de play + campo de sequência custom em JSON.
+- API `/api/choreo` (POST): `{"steps":[{"action":"GREET","delay_ms":500},...]}`
+
+**Critérios de aceitação:**
+
+- [ ] `NB_CHOREO_DANCE` executada: 8 ações na ordem correta, timing dentro de ±50ms
+- [ ] Choreo interrompível: `conductor_stop_choreo()` para no step atual sem travar conductor
+- [ ] Choreo via web dashboard: POST JSON → sequência executa no robot
+- [ ] `NB_CHOREO_FLAG_PARALLEL`: dois steps sem delay visível entre eles
+- [ ] Choreo com TTS pendente + `WAIT_AUDIO`: step seguinte aguarda fim da fala
+
+---
+
+## BLOCO 17 — LLM com Ação Física
+
+> Objetivo: O LLM passa de "gerador de texto" para "agente com corpo" — pode expressar, mover, acender LEDs e falar enquanto responde.
+
+---
+
+### Etapa 17.1 — LLM Function Calling (Layer 6/7)
+
+**Dependências:** 12.2 (LLM Bridge), 16.2 (TTS), 16.4 (Choreo) concluídas
+**Hardware necessário:** Não
+
+**O que entra:**
+
+- Extensão do `llm_bridge` (Etapa 12.2) com suporte a tool use / function calling.
+- Schema de tools enviado ao LLM no system prompt (formato compatível com OpenAI/Ollama tool_calls):
+  - `play_expression(expression: string)` → `expression_service_set()`
+  - `play_action(action: string)` → `conductor_play()`
+  - `play_choreo(name: string)` → `conductor_play_choreo()`
+  - `set_led(r, g, b)` → `led_set_all()`
+  - `speak(text: string)` → `tts_service_speak()`
+  - `get_status()` → retorna JSON de estado atual
+- Parser de `tool_calls` no response do LLM: extrai chamadas, executa via dispatcher interno, retorna resultado ao LLM para continuar a resposta.
+- Execução paralela texto + ação: LLM pode gerar texto de resposta e simultâneamente acionar expressão.
+- Timeout de tool execution: 3s por tool, fallback silencioso se falhar.
+- NVS: `nb_llm/tools_enabled` (u8, default 1).
+
+**Critérios de aceitação:**
+
+- [ ] LLM recebe pergunta → responde texto + executa `play_expression(HAPPY)` simultaneamente
+- [ ] LLM invoca `speak()` → robot fala a frase gerada via TTS
+- [ ] LLM invoca `play_choreo(dance)` → coreografia executa durante resposta textual
+- [ ] Tool call com parâmetro inválido: logged, ignorado, resposta textual continua
+- [ ] `tools_enabled=0`: LLM responde normalmente sem tools
+
+---
+
+## BLOCO 18 — Modos de Tela
+
+> Objetivo: Além da face expressiva, o display pode mostrar fotos e transmitir câmera ao vivo. Depende do Bloco 8 (câmera e hardware expandido).
+
+---
+
+### Etapa 18.1 — Photo Frame Mode (Layer 5/6)
+
+**Dependências:** 8.1 (câmera opcionalmente), 0.3 (microSD) concluídas
+**Hardware necessário:** microSD com fotos em `/sdcard/photos/`
+
+**O que entra:**
+
+- Novo estado `NB_STATE_PHOTO_FRAME` no `state_machine`.
+- `photo_frame_service` (Layer 6): carrega arquivos JPEG do SD via FATFS, decodifica com LovyanGFX `drawJpgFile()`, exibe em loop com transição suave (fade via overlay PSRAM).
+  - Intervalo configurável: NVS `nb_svc/photo_interval_s` (default 30s).
+  - Suporta até 256 arquivos indexados no boot.
+  - Retorna automaticamente para IDLE após toque ou voz detectada.
+- Ativação: toque longo (>3s) em modo SLEEPING → entra em PHOTO_FRAME.
+- `NB_ACTION_PHOTO_FRAME` adicionado ao conductor.
+- Web dashboard: botão "Photo Frame" + upload de JPEG via `POST /api/photos`.
+
+**Critérios de aceitação:**
+
+- [ ] 10 fotos no SD → exibidas em loop, intervalo correto
+- [ ] Toque durante slideshow → retorna para IDLE em <500ms
+- [ ] JPEG inválido ou corrompido → skipped, próxima foto sem panic
+- [ ] `photo_interval_s` alterado via dashboard sem reflash
+- [ ] Upload de foto via `/api/photos` → aparece no próximo ciclo do slideshow
+
+---
+
+### Etapa 18.2 — Camera MJPEG Stream (Layer 2/4)
+
+**Dependências:** 8.1 (câmera OV2640), 15.1 (web_service) concluídas
+**Hardware necessário:** câmera OV2640 conectada no DVP
+
+**O que entra:**
+
+- Endpoint `GET /stream` no `web_service`: MJPEG multipart stream (Content-Type: `multipart/x-mixed-replace`).
+  - Frame rate: até 15fps QVGA (320×240), limitado por WiFi throughput.
+  - Resolução configurável: QVGA (default) ou QQVGA via query param `?res=qqvga`.
+  - 1 cliente simultâneo (igual ao WS); novo cliente desconecta o anterior.
+- `GET /api/camera/snapshot`: JPEG único, útil para polling de baixa frequência.
+- `POST /api/camera/config`: `{"resolution":"QVGA","quality":10}` — ajusta encoder JPEG.
+- Integração com `face_tracking_service` (Etapa 13.2): quando ativo, stream inclui overlay de bounding box da face detectada (via header HTTP custom `X-Face-Detected: 1`).
+- Web dashboard: seção "Camera" com tag `<img src="/stream">` e botão snapshot.
+
+**Critérios de aceitação:**
+
+- [ ] `http://noisebot.local/stream` exibe vídeo ao vivo no browser sem plugin
+- [ ] 15fps sustentado por 60s sem OOM ou watchdog
+- [ ] Snapshot: JPEG válido retornado em <500ms
+- [ ] Stream ativo não degrada FPS do display (render_service isolado)
+- [ ] Segundo cliente: primeiro é desconectado em <1s
 
 ---
 
 ## Resumo de Marcos
 
-| Marco                | Bloco          | Indicador                                                         |
-| -------------------- | -------------- | ----------------------------------------------------------------- |
-| BASE SÓLIDA          | Fim do Bloco 0 | Boot determinístico, watchdog, NVS, SD, event bus                 |
-| DISPLAY PRONTO       | Etapa 1.3      | Face EMO com 9 expressões, blink assimétrico, FPS ≥ 30            |
-| MOTION SAFE          | Etapa 3.2      | Todos os critérios de safety verificados                          |
-| ROBOT EXPRESSIVO     | Etapa 5.4      | Conductor funcionando, outputs coordenados                        |
-| PRODUTO INICIAL      | Etapa 6.1      | 1h sem panic, latência OK, temperatura OK                         |
-| PRODUTO MADURO       | Etapa 7.3      | 8h contínuas, 100 power cycles, testes de produto                 |
-| HARDWARE EXPANDIDO   | Etapa 8.3      | Câmera, IMU e bateria ativos e integrados                         |
-| STACK COMPLETA       | Etapa 9.5      | Todos os serviços da arquitetura existem e se comunicam           |
-| OUVIDOS INTELIGENTES | Etapa 10.4     | Robot distingue tipo, tom e padrão de estímulos                   |
-| PERSONALIDADE VIVA   | Etapa 11.4     | Comportamento perceptivelmente diferente após 1 semana de uso     |
-| ROBOT CONVERSADOR    | Etapa 12.2     | Conversa completa com LLM: fala → entende → responde → expressa   |
-| ROBOT VIDENTE        | Etapa 14.3     | Olha para quem está na frente, reage a gestos                     |
-| ROBOT CONECTADO      | Etapa 15.2     | Configurável remotamente, personalidade portável                  |
+| Marco                | Bloco          | Indicador                                                       |
+| -------------------- | -------------- | --------------------------------------------------------------- |
+| BASE SÓLIDA          | Fim do Bloco 0 | Boot determinístico, watchdog, NVS, SD, event bus               |
+| DISPLAY PRONTO       | Etapa 1.3      | Face EMO com 9 expressões, blink assimétrico, FPS ≥ 30          |
+| MOTION SAFE          | Etapa 3.2      | Todos os critérios de safety verificados                        |
+| ROBOT EXPRESSIVO     | Etapa 5.4      | Conductor funcionando, outputs coordenados                      |
+| PRODUTO INICIAL      | Etapa 6.1      | 1h sem panic, latência OK, temperatura OK                       |
+| PRODUTO MADURO       | Etapa 7.3      | 8h contínuas, 100 power cycles, testes de produto               |
+| HARDWARE EXPANDIDO   | Etapa 8.3      | Câmera, IMU e bateria ativos e integrados                       |
+| STACK COMPLETA       | Etapa 9.6      | Todos os serviços da arquitetura existem, WiFi ativo            |
+| OUVIDOS INTELIGENTES | Etapa 10.4     | Robot distingue tipo, tom e padrão de estímulos                 |
+| PERSONALIDADE VIVA   | Etapa 11.4     | Comportamento perceptivelmente diferente após 1 semana de uso   |
+| ROBOT CONVERSADOR    | Etapa 12.2     | Conversa completa com LLM: fala → entende → responde → expressa |
+| ROBOT VIDENTE        | Etapa 13.3     | Olha para quem está na frente, reage a gestos                   |
+| ROBOT CONECTADO      | Etapa 15.2     | Dashboard web ativo, OTA funcional, personalidade portável      |
+| ROBOT EXPRESSIVO+    | Etapa 16.4     | Fala, ruboriza, dança — expressividade completa                 |
+| ROBOT AGENTE         | Etapa 17.1     | LLM aciona hardware durante resposta — age enquanto pensa       |
+| ROBOT VISUAL         | Etapa 18.2     | Câmera ao vivo no browser, fotos no display                     |

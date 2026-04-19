@@ -85,6 +85,11 @@ typedef enum {
     NB_EVT_MILESTONE_TOUCH_50,      /* 50º toque acumulado no LTM                      */
     NB_EVT_MILESTONE_UPTIME_100H,   /* 100 horas de uptime acumulado                   */
 
+    /* WiFi (Etapa 9.6) */
+    NB_EVT_WIFI_CONNECTED,          /* associou ao AP (IP ainda pendente)              */
+    NB_EVT_WIFI_IP_ACQUIRED,        /* IP obtido via DHCP — serviços web podem iniciar */
+    NB_EVT_WIFI_DISCONNECTED,       /* conexão perdida — reconexão em andamento        */
+
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
 } nb_event_type_t;
 

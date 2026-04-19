@@ -21,6 +21,13 @@
 
 #define NB_CFG_NS          "nb_cfg"
 #define NB_SVC_NS          "nb_svc"
+#define NB_WIFI_NS         "nb_wifi"    /* credenciais WiFi (Etapa 9.6) */
+
+/* ── Chaves nb_wifi — nomes das chaves NVS (Etapa 9.6) ──────────────────── */
+#define NB_WIFI_KEY_SSID   "ssid"       /* NVS key — string, máx 32 chars */
+#define NB_WIFI_KEY_PASS   "pass"       /* NVS key — string, máx 64 chars */
+#define NB_WIFI_KEY_EN     "enabled"    /* NVS key — u8: 1=ativo, 0=desabilitado */
+
 
 /* ── Marcador de versão de configuração ──────────────────────────────────── */
 /*

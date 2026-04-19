@@ -9,6 +9,8 @@ idf_component_register(
         "motion_safety.c"
         "event_bus.c"
         "diagnostics_service.c"
+        "wifi_service.c"
+        "web_service.c"
         "boot_manager.c"
     INCLUDE_DIRS "."
     REQUIRES
@@ -18,6 +20,14 @@ idf_component_register(
         esp_hw_support
         esp_timer
         freertos
+        esp_wifi
+        esp_netif
+        esp_event
+        mdns
+        esp_http_server
+        esp_http_client
+        app_update
+        json
         nb_hal
         render_service
         expression_service
@@ -41,4 +51,9 @@ idf_component_register(
         touch_semantic_service
         persona_service
         circadian_service
+        rhythm_service
+        sound_analysis_service
+        idle_service
+    EMBED_TXTFILES
+        "dashboard.html"
 )

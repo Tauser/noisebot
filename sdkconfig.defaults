@@ -65,11 +65,19 @@ CONFIG_FATFS_MAX_LFN=255
 # LovyanGFX controla o SPI diretamente via driver de baixo nível.
 # Não usar CONFIG_SPI_MASTER_IN_ISR — LovyanGFX gerencia DMA.
 
-# ── WiFi / BT — DESABILITADOS (offline-first) ─────────────────────────────────
-# WiFi e BT não são desabilitados via sdkconfig.defaults — no ESP-IDF 5.x
-# eles são controlados pela inclusão (ou não) do componente esp_wifi/bt nos
-# REQUIRES do CMakeLists. Nenhum componente do projeto inclui esp_wifi.
-# WiFi será incluído somente no Bloco 7 (OTA).
+# ── WiFi — ATIVO desde Etapa 9.6 ─────────────────────────────────────────────
+# WiFi é controlado pela inclusão do componente esp_wifi nos REQUIRES do
+# CMakeLists (infra). BT permanece excluído — não há uso planejado.
+# Credenciais em NVS namespace "nb_wifi" (ssid, pass, enabled).
+# Sem credenciais: sistema opera offline sem erro.
+
+# ── HTTP Server + WebSocket (Etapa 15.1) ─────────────────────────────────────
+CONFIG_HTTPD_WS_SUPPORT=y
+
+# ── OTA com rollback automático (Etapa 15.2) ──────────────────────────────────
+# Rollback ativo: firmware OTA deve chamar esp_ota_mark_app_valid_cancel_rollback()
+# em boot_manager_report_success() ou reverte ao factory no próximo boot.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # ── Stack mínimo de tasks ─────────────────────────────────────────────────────
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
