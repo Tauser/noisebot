@@ -79,6 +79,9 @@
 
 #define WAV_SAMPLES_PER_CHUNK  NB_AUDIO_CHUNK_FRAMES
 
+/* Pre-roll: 20 chunks × 16ms = 320ms. Cobre latência do toque + primeira sílaba. */
+#define PREROLL_CHUNKS         20U
+
 /* ── Cabeçalho WAV ───────────────────────────────────────────────────────── */
 
 #define WAV_HDR_AUDIO_FORMAT_OFFSET  20U
@@ -159,6 +162,12 @@ typedef struct {
 static uint8_t          s_bridge_say_q_storage[BRIDGE_SAY_QUEUE_DEPTH * sizeof(bridge_say_item_t)];
 static StaticQueue_t    s_bridge_say_q_static;
 static bridge_say_item_t s_bridge_say_chunk; /* buffer de saída para o speaker */
+
+/* ── Pre-roll ring buffer (SRAM, 10 KB) ──────────────────────────────────── */
+
+static int16_t  s_preroll_buf[PREROLL_CHUNKS][NB_AUDIO_CHUNK_FRAMES];
+static uint8_t  s_preroll_head;   /* próxima posição de escrita */
+static uint8_t  s_preroll_count;  /* chunks válidos (0..PREROLL_CHUNKS) */
 
 /* ── Buffers estáticos da task (SRAM) ────────────────────────────────────── */
 
@@ -625,13 +634,20 @@ static void audio_task(void *arg)
         /* ── 4. VAD ─────────────────────────────────────────────────────── */
         vad_update(s_mic_proc, mic_n, wrote_audio);
 
-        /* ── 4b. Bridge mic streaming ────────────────────────────────────── */
+        /* ── 4b. Alimentar pre-roll ring buffer ─────────────────────────── */
+        if (mic_n > 0U) {
+            memcpy(s_preroll_buf[s_preroll_head], s_sa_buf, mic_n * sizeof(int16_t));
+            s_preroll_head = (uint8_t)((s_preroll_head + 1U) % PREROLL_CHUNKS);
+            if (s_preroll_count < PREROLL_CHUNKS) s_preroll_count++;
+        }
+
+        /* ── 4c. Bridge mic streaming ────────────────────────────────────── */
         if (s.listen_session_active && s.bridge_tx_active && mic_n > 0) {
             bridge_service_send_audio_chunk(s_sa_buf, (uint16_t)mic_n);
             s.bridge_audio_sent = true;
         }
 
-        /* ── 4c. Session timeout (8s sem áudio enviado) ──────────────────── */
+        /* ── 4d. Session timeout (8s sem áudio enviado) ──────────────────── */
         if (s.listen_session_active && !s.bridge_audio_sent
                 && s.listen_timeout_remaining_ms > 0) {
             if (s.listen_timeout_remaining_ms <= CHUNK_DURATION_MS) {
@@ -832,25 +848,39 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
     s.bridge_start_sent           = false;
     s.bridge_audio_sent           = false;
     s.listen_timeout_remaining_ms = 8000U;
+    s.bridge_tx_active            = false;  /* mantido false até após flush do pre-roll */
 
     /* VAD_ACTIVE é gerenciado independentemente por vad_update().
      * Não forçar aqui: usuário tocou mas ainda não falou. */
 
     if (bridge_service_is_connected()) {
-        s.bridge_tx_active = true;
+        /* 1. Envia marcador de início antes do pre-roll */
         nb_event_t marker = {
             .type         = NB_EVT_VOICE_ACTIVITY_START,
             .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
         };
         bridge_service_send_event(&marker);
         s.bridge_start_sent = true;
-    } else {
-        s.bridge_tx_active = false;
+
+        /* 2. Flush pre-roll: mais antigo → mais novo, antes do streaming live.
+         *    bridge_tx_active ainda é false, evitando envio concorrente da audio_task.
+         *    Não seta bridge_audio_sent: só chunks live contam para o invariante VOICE_END. */
+        uint8_t pr_count = s_preroll_count;
+        if (pr_count > 0U) {
+            uint8_t start = (uint8_t)((s_preroll_head + PREROLL_CHUNKS - pr_count) % PREROLL_CHUNKS);
+            for (uint8_t i = 0; i < pr_count; i++) {
+                uint8_t idx = (uint8_t)((start + i) % PREROLL_CHUNKS);
+                bridge_service_send_audio_chunk(s_preroll_buf[idx], NB_AUDIO_CHUNK_FRAMES);
+            }
+        }
+
+        /* 3. Habilita streaming live — audio_task começa a enviar novos chunks */
+        s.bridge_tx_active = true;
     }
 
     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
-    ESP_LOGI(TAG, "sessao listen aberta source=%d bridge_start=%d",
-             (int)source, (int)s.bridge_start_sent);
+    ESP_LOGI(TAG, "sessao listen aberta source=%d bridge_start=%d preroll=%u",
+             (int)source, (int)s.bridge_start_sent, (unsigned)s_preroll_count);
     return ESP_OK;
 }
 

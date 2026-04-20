@@ -23,6 +23,12 @@
  * Eventos são reportados via callback (nb_audio_event_cb_t) para desacoplar
  * Layer 4 do event bus em infra. O boot_manager registra a ponte.
  *
+ * Pre-roll (Etapa 12.5):
+ *   Ring buffer circular de 20 chunks × 256 samples = 320ms de áudio.
+ *   Alimentado continuamente pela audio_task independente de sessão.
+ *   Flushed para a bridge em begin_listen_session() antes do streaming live,
+ *   cobrindo a primeira sílaba perdida no intervalo toque→captura.
+ *
  * Task: "nb_audio_task"  Core: 0  Prioridade: 6  Stack: 4096
  *
  * Dependência de inicialização:
