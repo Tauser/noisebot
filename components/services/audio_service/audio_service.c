@@ -370,28 +370,14 @@ static void vad_update(const int32_t *mic, size_t n, bool local_output_active)
                 s.vad_enter_count = 0;
                 s.vad_state = VAD_ACTIVE;
                 s.vad_silence_start_us = 0;
-                /* Abre sessão de escuta via contrato 12.3 */
-                s.listen_session_active       = true;
-                s.bridge_start_sent           = false;
-                s.bridge_audio_sent           = false;
-                s.listen_timeout_remaining_ms = 8000U;
-                if (bridge_service_is_connected()) {
-                    s.bridge_tx_active = true;
-                    nb_event_t marker = {
-                        .type         = NB_EVT_VOICE_ACTIVITY_START,
-                        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
-                    };
-                    bridge_service_send_event(&marker);
-                    s.bridge_start_sent = true;
-                } else {
-                    s.bridge_tx_active = false;
-                }
+                /* 12.4: VAD não abre sessão — sessão abre via touch/wake-word.
+                 * Emite apenas o callback local para vad_semantic_service. */
                 if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
                 ESP_LOGI(TAG,
-                         "VAD START rms=%ld zcr=%.2f vr=%.2f vl=%.2f vm=%.2f lo=%.2f hi=%.2f dom=%.0f eng=%d bridge_start=%d",
+                         "VAD START rms=%ld zcr=%.2f vr=%.2f vl=%.2f vm=%.2f lo=%.2f hi=%.2f dom=%.0f eng=%d session=%d",
                          (long)rms, zcr, (double)voice_ratio, (double)voice_low_ratio,
                          (double)voice_mid_ratio, (double)low_ratio, (double)high_ratio,
-                         (double)dom_freq, (int)engine_like, (int)s.bridge_start_sent);
+                         (double)dom_freq, (int)engine_like, (int)s.listen_session_active);
             }
         } else {
             s.vad_enter_count = 0;
@@ -657,7 +643,8 @@ static void audio_task(void *arg)
                 s.vad_state                   = VAD_SILENCE;
                 s.vad_enter_count             = 0;
                 s.vad_silence_start_us        = 0;
-                ESP_LOGI(TAG, "sessao listen timeout 8s — VOICE_END suprimido");
+                if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
+                ESP_LOGI(TAG, "sessao listen timeout 8s — VOICE_END suprimido na bridge");
             } else {
                 s.listen_timeout_remaining_ms -= CHUNK_DURATION_MS;
             }
@@ -846,12 +833,8 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
     s.bridge_audio_sent           = false;
     s.listen_timeout_remaining_ms = 8000U;
 
-    /* Força VAD_ACTIVE para que o streaming comece imediatamente. */
-    if (s.vad_state == VAD_SILENCE) {
-        s.vad_state            = VAD_ACTIVE;
-        s.vad_silence_start_us = 0;
-        s.vad_enter_count      = 0;
-    }
+    /* VAD_ACTIVE é gerenciado independentemente por vad_update().
+     * Não forçar aqui: usuário tocou mas ainda não falou. */
 
     if (bridge_service_is_connected()) {
         s.bridge_tx_active = true;

@@ -466,8 +466,13 @@ static void on_state_changed(nb_robot_state_t new_state,
 {
     (void)reason;
 
-    /* LED + synth para modos especiais (11.4). */
+    /* LED + sessão de escuta + synth para transições de estado. */
     switch (new_state) {
+        case NB_STATE_ATTENTIVE:
+            /* Touch-to-Listen (12.4): abre sessão e sinaliza escuta com LED cyan. */
+            audio_service_begin_listen_session(NB_LISTEN_SOURCE_TOUCH);
+            led_base_set(NB_LED_BASE_ATTENTIVE, true);
+            break;
         case NB_STATE_MEDITATION:
             led_base_set(NB_LED_BASE_MEDITATION, true);
             synth_purr(60000, 0.2f);
@@ -476,7 +481,14 @@ static void on_state_changed(nb_robot_state_t new_state,
             led_base_set(NB_LED_BASE_SILENT_COMPANY, true);
             break;
         case NB_STATE_IDLE:
-            if (old_state == NB_STATE_MEDITATION) {
+            if (old_state == NB_STATE_ATTENTIVE) {
+                led_base_set(NB_LED_BASE_ATTENTIVE, false);
+                /* Encerra sessão se ainda ativa (fallback — normalmente VOICE_END
+                 * já a fechou antes desta transição). */
+                if (audio_service_is_listening()) {
+                    audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
+                }
+            } else if (old_state == NB_STATE_MEDITATION) {
                 led_base_set(NB_LED_BASE_MEDITATION, false);
                 synth_stop();
                 s_silence_ms = 0;

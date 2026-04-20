@@ -37,6 +37,7 @@
 #define NB_LED_BEAT_BLUE     ((nb_led_color_t){ 40, 120, 255})  /* beat flash */
 #define NB_LED_AMBER         ((nb_led_color_t){255, 140,  30})  /* meditation */
 #define NB_LED_EMBER         ((nb_led_color_t){ 80,  45,  15})  /* silent company (muito baixo) */
+#define NB_LED_CYAN_SOFT     ((nb_led_color_t){ 20, 180, 200})  /* attentive/listening          */
 
 /* ── Tipos públicos ──────────────────────────────────────────────────────── */
 
@@ -52,6 +53,7 @@ typedef enum {
     NB_LED_BASE_ERROR          = 3,  /**< Vermelho pulsante rápido                */
     NB_LED_BASE_MEDITATION     = 4,  /**< Âmbar muito lento (6s), meditação       */
     NB_LED_BASE_SILENT_COMPANY = 5,  /**< Brasa quase apagada (8s), companhia     */
+    NB_LED_BASE_ATTENTIVE      = 6,  /**< Cyan pulsante médio — escutando         */
     NB_LED_BASE__COUNT,
 } nb_led_base_state_t;
 

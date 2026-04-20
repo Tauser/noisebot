@@ -700,10 +700,10 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação (verificação com hardware):**
 
-- [ ] Após 100 interações simuladas: dados persistidos corretamente no SD
-- [ ] `ltm_is_user_familiar()` muda de false para true após threshold de interações
-- [ ] Corrupção simulada de arquivo de memória: sistema re-inicializa arquivo, não para
-- [ ] Flush assíncrono: não bloqueia tasks de prioridade ≥ 10
+- [x] Após 100 interações simuladas: dados persistidos corretamente no SD
+- [x] `ltm_is_user_familiar()` muda de false para true após threshold de interações
+- [x] Corrupção simulada de arquivo de memória: sistema re-inicializa arquivo, não para
+- [x] Flush assíncrono: não bloqueia tasks de prioridade ≥ 10
 
 ---
 
@@ -1566,10 +1566,11 @@ No `bridge.py`:
 
 ---
 
-### Etapa 12.4 — Touch-to-Listen
+### Etapa 12.4 — Touch-to-Listen ✓
 
 **Dependências:** 12.3 concluída, 2.2 (touch_service) concluída
 **Hardware necessário:** Sensor de toque conectado
+**Status:** Implementado — aguardando validação em hardware
 
 **Contexto:** Em ambiente com ruído externo (carros, TV, motos), o VAD heurístico não é confiável como ativador de sessão. O toque é a forma mais direta e robusta de sinalizar intenção de falar com o bot. Esta etapa transforma o fluxo de sessão: **Touch → ATTENTIVE → streaming → VAD fecha → bridge processa**.
 

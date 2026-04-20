@@ -7,6 +7,7 @@
  */
 
 #include "state_machine.h"
+#include "audio_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
@@ -20,18 +21,19 @@
 /** Duração do estado TOUCH_REACTING antes de retornar a IDLE. */
 #define TOUCH_REACT_DURATION_MS  2000U
 
-/** Duração do estado TOUCH_REACTING antes de retornar a IDLE. */
-/* (mantido acima) */
+/** Timer de inatividade em ATTENTIVE: sem sessão de escuta ativa → IDLE. */
+#define ATTENTIVE_IDLE_TIMEOUT_MS  8000U
 
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
-static nb_robot_state_t      s_state              = NB_STATE_BOOT_UP;
-static uint32_t              s_idle_elapsed_ms    = 0;
-static uint32_t              s_idle_timeout_ms    = 120000U; /* default 2 min */
-static uint32_t              s_touch_elapsed_ms   = 0;
-static nb_state_change_cb_t  s_change_cb          = NULL;
-static portMUX_TYPE          s_mux                = portMUX_INITIALIZER_UNLOCKED;
-static bool                  s_initialized        = false;
+static nb_robot_state_t      s_state                  = NB_STATE_BOOT_UP;
+static uint32_t              s_idle_elapsed_ms         = 0;
+static uint32_t              s_idle_timeout_ms         = 120000U; /* default 2 min */
+static uint32_t              s_touch_elapsed_ms        = 0;
+static uint32_t              s_attentive_elapsed_ms    = 0;
+static nb_state_change_cb_t  s_change_cb               = NULL;
+static portMUX_TYPE          s_mux                     = portMUX_INITIALIZER_UNLOCKED;
+static bool                  s_initialized             = false;
 
 /* ── Helpers internos ────────────────────────────────────────────────────── */
 
@@ -147,6 +149,22 @@ void state_machine_update(uint32_t dt_ms)
     } else {
         s_touch_elapsed_ms = 0;
     }
+
+    /* Timer de inatividade em ATTENTIVE: conta enquanto não há sessão de escuta.
+     * Fallback para quando a sessão encerrou sem emitir VOICE_END para SM. */
+    if (cur == NB_STATE_ATTENTIVE) {
+        if (!audio_service_is_listening()) {
+            s_attentive_elapsed_ms += dt_ms;
+            if (s_attentive_elapsed_ms >= ATTENTIVE_IDLE_TIMEOUT_MS) {
+                s_attentive_elapsed_ms = 0;
+                do_transition(NB_STATE_IDLE, "attentive timeout");
+            }
+        } else {
+            s_attentive_elapsed_ms = 0;
+        }
+    } else {
+        s_attentive_elapsed_ms = 0;
+    }
 }
 
 void state_machine_on_boot_complete(void)
@@ -163,8 +181,12 @@ void state_machine_on_touch_tap(void)
     nb_robot_state_t cur = state_machine_get_state();
     switch (cur) {
         case NB_STATE_IDLE:
+            /* Touch-to-Listen (12.4): tap em IDLE abre sessão de escuta. */
+            do_transition(NB_STATE_ATTENTIVE, "tap");
+            break;
         case NB_STATE_ATTENTIVE:
         case NB_STATE_RESPONDING:
+            /* Tap durante ATTENTIVE/RESPONDING: reação de toque breve. */
             s_touch_elapsed_ms = 0;
             do_transition(NB_STATE_TOUCH_REACTING, "tap");
             break;
@@ -205,14 +227,10 @@ void state_machine_on_touch_wake(void)
 
 void state_machine_on_voice_start(void)
 {
-    if (!s_initialized) return;
-    nb_robot_state_t cur = state_machine_get_state();
-    /* MEDITATION: voz não interrompe — robot ignora durante meditação. */
-    if (cur == NB_STATE_MEDITATION) return;
-    if (cur == NB_STATE_IDLE || cur == NB_STATE_SLEEPING ||
-        cur == NB_STATE_SILENT_COMPANY) {
-        do_transition(NB_STATE_ATTENTIVE, "voice start");
-    }
+    /* 12.4: VAD não ativa ATTENTIVE. Sessão só abre via touch (ou wake-word no
+     * futuro). Esta função mantida para vad_semantic_service e outros consumidores
+     * do evento, mas não gera transição de estado. */
+    (void)s_initialized;
 }
 
 void state_machine_on_voice_end(void)

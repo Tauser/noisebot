@@ -288,6 +288,11 @@ static nb_led_color_t compute_base_color(int priority, uint8_t led_idx)
         float f = 0.1f + 0.2f * breathe_factor(phase, period);
         return scale_color(NB_LED_EMBER, f);
     }
+    case NB_LED_BASE_ATTENTIVE: {
+        /* Cyan pulsante médio, brilho 30–100% — "estou ouvindo" */
+        float f = 0.3f + 0.7f * breathe_factor(phase, period);
+        return scale_color(NB_LED_CYAN_SOFT, f);
+    }
     default:
         return NB_LED_COLOR_BLACK;
     }
@@ -303,6 +308,7 @@ static uint32_t default_period_for_base(nb_led_base_state_t state)
     case NB_LED_BASE_ERROR:          return 600U;
     case NB_LED_BASE_MEDITATION:     return 6000U;
     case NB_LED_BASE_SILENT_COMPANY: return 8000U;
+    case NB_LED_BASE_ATTENTIVE:      return 1800U;
     default:                         return 2000U;
     }
 }
