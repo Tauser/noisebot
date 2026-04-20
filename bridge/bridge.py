@@ -42,8 +42,9 @@ MSG_EMOT_EVENT   = 0x13
 MSG_GAZE         = 0x14
 MSG_TEXT_SCROLL  = 0x15
 
-# nb_event_type_t values (subset needed by bridge)
-NB_EVT_VOICE_ACTIVITY_END = 7   # must match firmware enum
+# nb_event_type_t values — deve coincidir com nb_events.h
+NB_EVT_VOICE_ACTIVITY_START = 9
+NB_EVT_VOICE_ACTIVITY_END   = 10
 
 def crc8(data: bytes) -> int:
     crc = 0
@@ -165,12 +166,26 @@ def discover_mdns(timeout=5.0) -> str | None:
 
 # ── LLM pipeline ─────────────────────────────────────────────────────────────
 
-def transcribe_whisper(pcm_int16: np.ndarray) -> str:
+def transcribe_whisper(pcm_int16: np.ndarray) -> dict:
     import whisper
     model = transcribe_whisper._model
     audio = pcm_int16.astype(np.float32) / 32768.0
     result = model.transcribe(audio, language="pt", fp16=False)
-    return result["text"].strip()
+    segs = result.get("segments", [])
+    if segs:
+        no_speech = max(float(s.get("no_speech_prob", 0.0)) for s in segs)
+        avg_logprob = float(np.mean([float(s.get("avg_logprob", -10.0)) for s in segs]))
+        compression = max(float(s.get("compression_ratio", 0.0)) for s in segs)
+    else:
+        no_speech = 1.0
+        avg_logprob = -10.0
+        compression = 999.0
+    return {
+        "text": result.get("text", "").strip(),
+        "no_speech_prob": no_speech,
+        "avg_logprob": avg_logprob,
+        "compression_ratio": compression,
+    }
 
 transcribe_whisper._model = None
 
@@ -182,7 +197,7 @@ def init_whisper():
 
 def ask_gemini(text: str, status: dict) -> dict:
     """Retorna dict com keys: reply, expression_id, action, emot_event."""
-    import google.generativeai as genai
+    import google.genai as genai
     model = ask_gemini._model
     state_desc = f"estado={status.get('state',0)} valence={status.get('valence',0):.2f}"
     prompt = (
@@ -196,24 +211,32 @@ def ask_gemini(text: str, status: dict) -> dict:
         "emot_event: 2=voice_start,3=audio_started (use 2 ao começar resposta)\n"
         "Responda SOMENTE com o JSON, sem markdown."
     )
-    response = model.generate_content(prompt)
-    import json, re
-    text_resp = response.text.strip()
-    m = re.search(r'\{.*\}', text_resp, re.DOTALL)
-    if m:
-        return json.loads(m.group())
-    return {"reply": text_resp, "expression_id": 0, "action": 0, "emot_event": 2}
+    for attempt in range(3):
+        try:
+            response = model.models.generate_content(model="gemini-2.0-flash-lite", contents=prompt)
+            import json, re
+            text_resp = response.text.strip()
+            m = re.search(r'\{.*\}', text_resp, re.DOTALL)
+            if m:
+                return json.loads(m.group())
+            return {"reply": text_resp, "expression_id": 0, "action": 0, "emot_event": 2}
+        except Exception as e:
+            if "429" in str(e):
+                log.warning("Gemini 429 — cota excedida, fale novamente em alguns segundos")
+                return {"reply": "", "expression_id": 0, "action": 0, "emot_event": 2}
+            raise
+    return {"reply": "", "expression_id": 0, "action": 0, "emot_event": 2}
 
 ask_gemini._model = None
 
 def init_gemini():
-    import google.generativeai as genai
+    import google.genai as genai
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
         log.warning("GEMINI_API_KEY não definida — LLM desabilitado")
         return
-    genai.configure(api_key=api_key)
-    ask_gemini._model = genai.GenerativeModel("gemini-1.5-flash")
+    client = genai.Client(api_key=api_key)
+    ask_gemini._model = client
     log.info("Gemini Flash pronto")
 
 def tts_piper(text: str) -> np.ndarray:
@@ -227,16 +250,24 @@ def tts_piper(text: str) -> np.ndarray:
 
 # ── Bridge session ────────────────────────────────────────────────────────────
 
-CHUNK_SAMPLES = 512
+CHUNK_SAMPLES    = 512
+VOICE_TIMEOUT_S  = 8.0  # forçar VOICE_END se nenhum sinal chegar em X segundos
+MIN_UTTERANCE_SAMPLES = 16000  # 1.0s: evita disparos curtos de porta/carro/TV
+MIN_UTTERANCE_RMS     = 80.0   # PCM int16 pós-filtro no firmware
+MAX_NO_SPEECH_PROB    = 0.55
+MIN_AVG_LOGPROB       = -1.10
+MAX_COMPRESSION_RATIO = 2.60
 
 class BridgeSession:
-    def __init__(self, transport):
-        self.transport = transport
-        self.rx_buf    = bytearray()
-        self.audio_buf = []          # chunks PCM acumulados durante VOICE_ACTIVE
-        self.streaming = False
-        self.last_status = {}
-        self._lock = threading.Lock()
+    def __init__(self, transport, dry_run: bool = False):
+        self.transport      = transport
+        self.rx_buf         = bytearray()
+        self.audio_buf      = []          # chunks PCM acumulados durante VOICE_ACTIVE
+        self.streaming      = False
+        self.last_status    = {}
+        self._lock          = threading.Lock()
+        self._voice_timer   = None
+        self.dry_run        = dry_run
 
     def send_msg(self, msg_type: int, payload: bytes = b""):
         self.transport.send(encode_frame(msg_type, payload))
@@ -250,21 +281,70 @@ class BridgeSession:
             self.send_msg(MSG_SAY, chunk.astype(np.int16).tobytes())
             time.sleep(0.028)  # ~28ms por chunk (512/16000 ≈ 32ms, com margem)
 
+    def _cancel_voice_timer(self):
+        if self._voice_timer is not None:
+            self._voice_timer.cancel()
+            self._voice_timer = None
+
+    def _arm_voice_timer(self):
+        self._cancel_voice_timer()
+        self._voice_timer = threading.Timer(VOICE_TIMEOUT_S, self._on_voice_timeout)
+        self._voice_timer.daemon = True
+        self._voice_timer.start()
+
+    def _on_voice_timeout(self):
+        if self.streaming:
+            log.warning("VOICE timeout — forçando VOICE_END após %.0fs", VOICE_TIMEOUT_S)
+            self.streaming = False
+            threading.Thread(target=self.handle_voice_end, daemon=True).start()
+
     def handle_voice_end(self):
-        if not self.audio_buf:
-            return
-        pcm = np.concatenate(self.audio_buf).astype(np.int16)
-        self.audio_buf.clear()
-        self.streaming = False
-
-        if transcribe_whisper._model is None or ask_gemini._model is None:
-            log.warning("Whisper ou Gemini não prontos — ignorando")
-            return
-
+        self._cancel_voice_timer()
         try:
-            text = transcribe_whisper(pcm)
-            log.info("Transcrição: %s", text)
+            if not self.audio_buf:
+                log.info("VOICE_END — audio_buf vazio, ignorando")
+                return
+            pcm = np.concatenate(self.audio_buf).astype(np.int16)
+            self.audio_buf.clear()
+            self.streaming = False
+
+            if transcribe_whisper._model is None:
+                log.warning("Whisper não pronto — ignorando")
+                return
+            if not self.dry_run and ask_gemini._model is None:
+                log.warning("Gemini não pronto — ignorando")
+                return
+
+            if len(pcm) < MIN_UTTERANCE_SAMPLES:
+                log.info("Áudio muito curto (%d samples) — ignorando", len(pcm))
+                return
+
+            pcm_f = pcm.astype(np.float32)
+            rms = float(np.sqrt(np.mean(pcm_f * pcm_f)))
+            peak = int(np.max(np.abs(pcm.astype(np.int32))))
+            log.info("Áudio capturado: %.2fs rms=%.1f peak=%d",
+                     len(pcm) / 16000.0, rms, peak)
+            if rms < MIN_UTTERANCE_RMS:
+                if self.dry_run:
+                    log.info("DRY-RUN: áudio abaixo do RMS mínimo, transcrevendo mesmo assim")
+                else:
+                    log.info("Áudio fraco demais para fala próxima — ignorando")
+                    return
+
+            log.info("Iniciando pipeline LLM (%d samples)", len(pcm))
+            tr = transcribe_whisper(pcm)
+            text = tr["text"]
+            log.info("Transcrição: %s (no_speech=%.2f avg_logprob=%.2f comp=%.2f)",
+                     text, tr["no_speech_prob"], tr["avg_logprob"], tr["compression_ratio"])
             if not text:
+                return
+            if (tr["no_speech_prob"] > MAX_NO_SPEECH_PROB or
+                    tr["avg_logprob"] < MIN_AVG_LOGPROB or
+                    tr["compression_ratio"] > MAX_COMPRESSION_RATIO):
+                log.info("Transcrição baixa confiança — ignorando")
+                return
+            if self.dry_run:
+                log.info("DRY-RUN: transcrição aceita, Gemini/TTS não chamados")
                 return
 
             response = ask_gemini(text, self.last_status)
@@ -273,18 +353,16 @@ class BridgeSession:
             action   = int(response.get("action", 0))
             emot_ev  = int(response.get("emot_event", 2))
 
-            # Envia EMOT_EVENT e EXPR antes de falar
             self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", emot_ev))
             self.send_msg(MSG_EXPR,       struct.pack("<BI", expr_id, 4000))
 
-            # TTS → SAY streaming
             tts_pcm = tts_piper(reply)
-            self.send_msg(MSG_ACTION, struct.pack("<I", 0))  # NB_BRIDGE_ACTION_GREET
+            self.send_msg(MSG_ACTION, struct.pack("<I", 0))
             self.send_say_pcm(tts_pcm)
 
             log.info("Resposta enviada (%d samples)", len(tts_pcm))
         except Exception as e:
-            log.error("Pipeline LLM falhou: %s", e)
+            log.error("Pipeline LLM falhou: %s", e, exc_info=True)
 
     def process_msg(self, msg_type: int, payload: bytes):
         if msg_type == MSG_AUDIO_CHUNK:
@@ -295,12 +373,17 @@ class BridgeSession:
         elif msg_type == MSG_EVENT:
             if len(payload) >= 4:
                 evt_type = struct.unpack_from("<I", payload)[0]
+                log.info("EVENT evt_type=%d", evt_type)
                 if evt_type == NB_EVT_VOICE_ACTIVITY_END:
                     log.info("VOICE_END recebido — processando")
                     self.streaming = False
                     threading.Thread(target=self.handle_voice_end, daemon=True).start()
+                elif evt_type == NB_EVT_VOICE_ACTIVITY_START:
+                    log.info("VOICE_START recebido")
+                    self.streaming = True
+                    self._arm_voice_timer()
                 else:
-                    self.streaming = True  # qualquer outro evento de voz = ativo
+                    log.debug("EVENT ignorado evt_type=%d", evt_type)
 
         elif msg_type == MSG_STATUS:
             if len(payload) >= 14:
@@ -313,13 +396,19 @@ class BridgeSession:
 
     def run(self):
         log.info("Sessão bridge ativa")
+        total_bytes = 0
         while True:
             try:
                 data = self.transport.recv(4096)
                 if data:
+                    total_bytes += len(data)
+                    log.debug("RX %d bytes (total=%d) tipo=0x%02X",
+                              len(data), total_bytes, data[0])
                     self.rx_buf.extend(data)
                 frames = decode_frames(self.rx_buf)
                 for msg_type, payload in frames:
+                    log.debug("FRAME type=0x%02X payload=%d bytes",
+                              msg_type, len(payload))
                     self.process_msg(msg_type, payload)
             except Exception as e:
                 log.error("Erro de I/O: %s", e)
@@ -333,10 +422,15 @@ def main():
     parser.add_argument("--host", default=None, help="IP ou hostname do ESP32")
     parser.add_argument("--port", type=int, default=9000)
     parser.add_argument("--uart", default=None, metavar="PORT", help="Porta serial USB CDC")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Transcreve com Whisper e não chama Gemini/Piper")
     args = parser.parse_args()
 
     init_whisper()
-    init_gemini()
+    if args.dry_run:
+        log.info("DRY-RUN ativo — Gemini/Piper desabilitados")
+    else:
+        init_gemini()
 
     while True:
         if args.uart:
@@ -358,7 +452,7 @@ def main():
             continue
 
         log.info("Handshake OK")
-        session = BridgeSession(transport)
+        session = BridgeSession(transport, dry_run=args.dry_run)
         session.run()
         transport.close()
         log.info("Reconectando em 5s...")

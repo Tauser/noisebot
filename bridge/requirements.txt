@@ -1,5 +1,5 @@
 openai-whisper
-google-generativeai
+google-genai
 piper-tts
 numpy
 pyserial
