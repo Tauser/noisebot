@@ -616,107 +616,78 @@ static void nb_bridge_task(void *arg)
 {
     (void)arg;
 
-    /* ── Seleção de transporte no boot ────────────────────────────────────── */
-
-    bool wifi_up = wifi_service_is_connected();
-    bool tcp_ok  = false;
-    bool uart_ok = false;
-
-    /* Instalar UART (USB CDC) independente do resultado */
+    /* Instalar UART (USB CDC) independente do transporte escolhido */
     if (uart_install() != ESP_OK) {
         NB_LOGW(TAG, "USB CDC não disponível — UART fallback desabilitado");
     }
 
-    if (wifi_up) {
-        NB_LOGI(TAG, "WiFi ativo — abrindo servidor TCP porta %d", NB_BRIDGE_TCP_PORT);
-        s.server_fd = tcp_create_server();
-        if (s.server_fd >= 0) {
-            s.client_fd = tcp_accept_timeout(s.server_fd, NB_BRIDGE_TCP_LISTEN_MS);
-            if (s.client_fd >= 0) {
-                tcp_ok = do_handshake_tcp(s.client_fd, 300u);
-                if (!tcp_ok) {
-                    close(s.client_fd);
-                    s.client_fd = -1;
-                    NB_LOGD(TAG, "TCP handshake falhou");
-                }
-            } else {
-                NB_LOGD(TAG, "TCP timeout — nenhum cliente em %dms", NB_BRIDGE_TCP_LISTEN_MS);
-            }
-        }
+    /* ── Aguardar WiFi (até 30s) antes de abrir servidor TCP ─────────────── */
+    for (int i = 0; i < 60 && !wifi_service_is_connected(); i++) {
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 
-    if (!tcp_ok && s.uart_installed) {
-        NB_LOGI(TAG, "Tentando handshake UART (USB CDC)...");
-        uart_ok = do_handshake_uart(NB_BRIDGE_UART_HANDSHAKE_MS);
-        if (!uart_ok) {
-            NB_LOGD(TAG, "UART handshake sem resposta");
-        }
-    }
+    bool wifi_up = wifi_service_is_connected();
 
-    if (!tcp_ok && !uart_ok) {
-        NB_LOGI(TAG, "Bridge não encontrado — modo OFFLINE");
-        xSemaphoreTake(s.mutex, portMAX_DELAY);
-        s.transport = NB_BRIDGE_TRANSPORT_OFFLINE;
-        s.state     = BS_STATE_OFFLINE;
-        xSemaphoreGive(s.mutex);
-
-        /* Em OFFLINE, a task dorme para sempre — não há custo de CPU */
-        vTaskDelete(NULL);
-        return;
-    }
-
-    if (tcp_ok) {
-        publish_connected(NB_BRIDGE_TRANSPORT_TCP);
-        s.state = BS_STATE_CONNECTED;
-
-        tcp_io_loop();   /* bloqueia até desconexão */
-
-        publish_disconnected();
-
-        /* ── Reconexão TCP ──────────────────────────────────────────────── */
-        s.disconnect_time_us = esp_timer_get_time();
-        s.state = BS_STATE_RECONNECTING;
-
-        NB_LOGI(TAG, "Reconexão TCP: tentando por %ds", NB_BRIDGE_RECONNECT_TIMEOUT_MS / 1000);
-        while (true) {
-            int64_t elapsed_ms = (esp_timer_get_time() - s.disconnect_time_us) / 1000LL;
-            if (elapsed_ms >= (int64_t)NB_BRIDGE_RECONNECT_TIMEOUT_MS) {
-                NB_LOGW(TAG, "Reconexão TCP expirou — modo OFFLINE");
-                break;
-            }
-            vTaskDelay(pdMS_TO_TICKS(NB_BRIDGE_RECONNECT_INTVL_MS));
-
-            if (s.server_fd < 0) {
-                s.server_fd = tcp_create_server();
-                if (s.server_fd < 0) continue;
-            }
-            s.client_fd = tcp_accept_timeout(s.server_fd, 500u);
-            if (s.client_fd < 0) continue;
-
-            if (!do_handshake_tcp(s.client_fd, 300u)) {
-                close(s.client_fd);
-                s.client_fd = -1;
-                continue;
-            }
-            publish_connected(NB_BRIDGE_TRANSPORT_TCP);
+    /* ── Tentar UART primeiro enquanto WiFi não está disponível ──────────── */
+    if (!wifi_up && s.uart_installed) {
+        NB_LOGI(TAG, "Sem WiFi — tentando handshake UART (USB CDC)...");
+        if (do_handshake_uart(NB_BRIDGE_UART_HANDSHAKE_MS)) {
+            publish_connected(NB_BRIDGE_TRANSPORT_UART);
             s.state = BS_STATE_CONNECTED;
-            tcp_io_loop();
-            publish_disconnected();
-            s.disconnect_time_us = esp_timer_get_time();
-            s.state = BS_STATE_RECONNECTING;
+            uart_io_loop();
+            goto offline;
+        }
+    }
+
+    /* ── Servidor TCP: fica ativo indefinidamente aceitando conexões ─────── */
+    if (wifi_up) {
+        NB_LOGI(TAG, "Servidor TCP porta %d aguardando bridge...", NB_BRIDGE_TCP_PORT);
+        s.server_fd = tcp_create_server();
+        if (s.server_fd < 0) {
+            NB_LOGE(TAG, "tcp_create_server falhou");
+            goto offline;
         }
     } else {
-        /* UART */
-        publish_connected(NB_BRIDGE_TRANSPORT_UART);
-        s.state = BS_STATE_CONNECTED;
-        uart_io_loop();   /* UART não tem reconexão — USB CDC sempre presente */
+        NB_LOGI(TAG, "Sem WiFi e sem UART — modo OFFLINE");
+        goto offline;
     }
 
+    /* Loop principal: aceita, conecta, reconecta indefinidamente */
+    while (true) {
+        s.state = BS_STATE_TCP_WAIT;
+        NB_LOGD(TAG, "Aguardando cliente TCP...");
+
+        /* Aceita com poll de 1s para não bloquear indefinidamente */
+        s.client_fd = -1;
+        while (s.client_fd < 0) {
+            s.client_fd = tcp_accept_timeout(s.server_fd, 1000u);
+            /* Se WiFi caiu, aguarda reconexão */
+            if (!wifi_service_is_connected()) {
+                vTaskDelay(pdMS_TO_TICKS(2000));
+            }
+        }
+
+        if (!do_handshake_tcp(s.client_fd, 300u)) {
+            NB_LOGD(TAG, "TCP handshake falhou — aguardando próximo cliente");
+            close(s.client_fd);
+            s.client_fd = -1;
+            continue;
+        }
+
+        publish_connected(NB_BRIDGE_TRANSPORT_TCP);
+        s.state = BS_STATE_CONNECTED;
+        tcp_io_loop();   /* bloqueia até desconexão */
+        publish_disconnected();
+
+        /* Após desconexão: volta a aguardar novo cliente imediatamente */
+        NB_LOGI(TAG, "Bridge desconectado — aguardando reconexão");
+    }
+
+offline:
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     s.transport = NB_BRIDGE_TRANSPORT_OFFLINE;
     s.state     = BS_STATE_OFFLINE;
     xSemaphoreGive(s.mutex);
-
     NB_LOGI(TAG, "bridge_task encerrada — modo OFFLINE");
     vTaskDelete(NULL);
 }

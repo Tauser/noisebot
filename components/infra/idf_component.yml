@@ -1,0 +1,3 @@
+## IDF Component Manager — infra
+dependencies:
+  espressif/mdns: ">=1.0.0"
