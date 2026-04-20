@@ -9,9 +9,9 @@
  *   - Gravação de diagnóstico: N segundos de PCM salvo como WAV no SD.
  *
  * VAD:
- *   RMS calculado sobre janelas de NB_AUDIO_CHUNK_FRAMES (256 @ 16kHz = 16ms).
- *   Threshold = NB_AUDIO_VAD_THRESHOLD_DEFAULT (ajustável via setter).
- *   VOICE_START: quando RMS > threshold.
+ *   RMS + ZCR + assinatura espectral via sound_analysis_service.
+ *   Threshold é adaptativo ao ruído de fundo e conservador para fala próxima.
+ *   VOICE_START: somente após chunks consecutivos que pareçam fala humana.
  *   VOICE_END: após NB_AUDIO_VAD_SILENCE_MS contínuos de silêncio.
  *
  * Playback:
@@ -47,10 +47,10 @@ extern "C" {
  * Unidade: valor int32_t signed, 24-bit centrado em zero (pós-shift do INMP441).
  * Default calibrado para ambiente de escritório silencioso.
  */
-#define NB_AUDIO_VAD_THRESHOLD_DEFAULT   80000
+#define NB_AUDIO_VAD_THRESHOLD_DEFAULT   150000
 
 /** Silêncio contínuo em ms antes de emitir VOICE_END. */
-#define NB_AUDIO_VAD_SILENCE_MS          300U
+#define NB_AUDIO_VAD_SILENCE_MS          1000U
 
 /**
  * Período de settling pós-init: VAD não emite eventos durante este tempo.

@@ -47,8 +47,12 @@ static float s_window[FFT_N];   /* Hann window coefficients           */
 
 /* ── Band bin indices (bin k → frequency k × 62.5 Hz) ───────────────────── */
 
-#define BIN_LO_VOICE    2U   /* 125 Hz  */
+#define BIN_LO_RUMBLE   1U   /* 62.5 Hz */
+#define BIN_HI_RUMBLE   4U   /* 250 Hz  */
+#define BIN_LO_VOICE    5U   /* 312 Hz  */
 #define BIN_HI_VOICE   54U   /* 3375 Hz */
+#define BIN_HI_VOICE_LOW 11U /* 687 Hz  */
+#define BIN_LO_VOICE_MID 12U /* 750 Hz  */
 #define BIN_LO_WHISTLE 16U   /* 1000 Hz */
 #define BIN_HI_WHISTLE 48U   /* 3000 Hz */
 #define BIN_LO_HIGH    54U   /* 3375 Hz */
@@ -56,8 +60,9 @@ static float s_window[FFT_N];   /* Hann window coefficients           */
 
 /* ── Thresholds (TUNEABLE) ───────────────────────────────────────────────── */
 
-/* Silence: normalized RMS below this → class SILENCE */
-#define RMS_SILENCE      0.0005f   /* ≈ int16 value ~16 */
+/* Silence: normalized RMS below this → class SILENCE.
+ * Depois do high-pass no audio_service, o piso útil cai bastante. */
+#define RMS_SILENCE      0.006f    /* ≈ int16 value ~197 */
 
 /* Clap: broadband transient */
 #define CLAP_RMS_MIN     0.04f     /* minimum RMS for clap candidate */
@@ -67,18 +72,18 @@ static float s_window[FFT_N];   /* Hann window coefficients           */
 #define CLAP_MIN_GAP_CH  5U        /* 80ms minimum between two clap peaks */
 
 /* Whistle: narrowband 1-3kHz, sustained */
-#define WHISTLE_RMS_MIN     0.003f /* minimum RMS for whistle candidate */
+#define WHISTLE_RMS_MIN     0.018f /* minimum RMS for whistle candidate */
 #define WHISTLE_BAND_FRAC   0.35f  /* E_whistle / E_total threshold */
 #define WHISTLE_ONSET_CH   19U     /* 300ms = 19 chunks to declare WHISTLE */
 #define WHISTLE_OFFSET_CH   6U     /* 100ms of non-whistle before reset */
 
 /* Voice: spectral energy in voice band */
-#define VOICE_RMS_MIN    0.001f
-#define VOICE_BAND_FRAC  0.40f     /* E_voice / E_total threshold */
+#define VOICE_RMS_MIN    0.010f
+#define VOICE_BAND_FRAC  0.48f     /* E_voice / E_total threshold */
 
 /* Music: sustained broadband above silence */
-#define MUSIC_RMS_MIN    0.002f
-#define MUSIC_BROAD_FRAC 0.10f     /* E_high / E_total threshold */
+#define MUSIC_RMS_MIN    0.020f
+#define MUSIC_BROAD_FRAC 0.14f     /* E_high / E_total threshold */
 #define MUSIC_ONSET_CH   188U      /* 3s = 188 chunks */
 #define MUSIC_OFFSET_CH  125U      /* 2s = 125 chunks */
 
@@ -94,6 +99,11 @@ static struct {
     volatile nb_sound_class_t class_cur;
     volatile float rms;
     volatile float dominant_freq;
+    volatile float voice_ratio;
+    volatile float voice_low_ratio;
+    volatile float voice_mid_ratio;
+    volatile float high_ratio;
+    volatile float low_ratio;
 
     /* Class debounce */
     nb_sound_class_t class_pending;
@@ -266,16 +276,27 @@ void sound_analysis_tick(const int16_t *pcm, size_t samples)
                    : 0.0f;
 
     /* ── 4. Band energy fractions ────────────────────────────────────── */
-    float e_voice   = band_energy(BIN_LO_VOICE,   BIN_HI_VOICE);
-    float e_whistle = band_energy(BIN_LO_WHISTLE, BIN_HI_WHISTLE);
-    float e_high    = band_energy(BIN_LO_HIGH,    BIN_HI_HIGH);
-    float e_frac_v  = (e_total > 0.0f) ? (e_voice   / e_total) : 0.0f;
-    float e_frac_w  = (e_total > 0.0f) ? (e_whistle / e_total) : 0.0f;
-    float e_frac_h  = (e_total > 0.0f) ? (e_high    / e_total) : 0.0f;
+    float e_voice     = band_energy(BIN_LO_VOICE,     BIN_HI_VOICE);
+    float e_voice_low = band_energy(BIN_LO_VOICE,     BIN_HI_VOICE_LOW);
+    float e_voice_mid = band_energy(BIN_LO_VOICE_MID, BIN_HI_VOICE);
+    float e_low       = band_energy(BIN_LO_RUMBLE,    BIN_HI_RUMBLE);
+    float e_whistle   = band_energy(BIN_LO_WHISTLE,   BIN_HI_WHISTLE);
+    float e_high      = band_energy(BIN_LO_HIGH,      BIN_HI_HIGH);
+    float e_frac_v    = (e_total > 0.0f) ? (e_voice     / e_total) : 0.0f;
+    float e_frac_vl   = (e_total > 0.0f) ? (e_voice_low / e_total) : 0.0f;
+    float e_frac_vm   = (e_total > 0.0f) ? (e_voice_mid / e_total) : 0.0f;
+    float e_frac_l    = (e_total > 0.0f) ? (e_low       / e_total) : 0.0f;
+    float e_frac_w    = (e_total > 0.0f) ? (e_whistle   / e_total) : 0.0f;
+    float e_frac_h    = (e_total > 0.0f) ? (e_high      / e_total) : 0.0f;
 
     /* ── 5. Update public query fields ───────────────────────────────── */
     s.rms           = rms_cur;
     s.dominant_freq = dom_freq;
+    s.voice_ratio   = e_frac_v;
+    s.voice_low_ratio = e_frac_vl;
+    s.voice_mid_ratio = e_frac_vm;
+    s.high_ratio    = e_frac_h;
+    s.low_ratio     = e_frac_l;
 
     /* ── 6. Instantaneous classification ────────────────────────────── */
 
@@ -381,6 +402,31 @@ nb_sound_class_t sound_analysis_get_class(void)
 float sound_analysis_get_rms(void)
 {
     return s.rms;
+}
+
+float sound_analysis_get_voice_ratio(void)
+{
+    return s.voice_ratio;
+}
+
+float sound_analysis_get_voice_low_ratio(void)
+{
+    return s.voice_low_ratio;
+}
+
+float sound_analysis_get_voice_mid_ratio(void)
+{
+    return s.voice_mid_ratio;
+}
+
+float sound_analysis_get_high_ratio(void)
+{
+    return s.high_ratio;
+}
+
+float sound_analysis_get_low_ratio(void)
+{
+    return s.low_ratio;
 }
 
 float sound_analysis_get_dominant_freq(void)

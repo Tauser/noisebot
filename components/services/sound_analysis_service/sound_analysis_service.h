@@ -43,7 +43,7 @@ extern "C" {
  */
 typedef enum {
     NB_SOUND_SILENCE  = 0, /**< Nível abaixo do threshold de atividade         */
-    NB_SOUND_VOICE    = 1, /**< Energia concentrada na faixa de voz (125-3375Hz) */
+    NB_SOUND_VOICE    = 1, /**< Energia concentrada na faixa de voz (312-3375Hz) */
     NB_SOUND_MUSIC    = 2, /**< Energia broadband sustentada (>3s)              */
     NB_SOUND_NOISE    = 3, /**< Ruído genérico acima do threshold               */
     NB_SOUND_CLAP     = 4, /**< Transiente broadband (palmas) — evento pontual  */
@@ -85,6 +85,43 @@ nb_sound_class_t sound_analysis_get_class(void);
  * Thread-safe. 0.0 indica silêncio.
  */
 float sound_analysis_get_rms(void);
+
+/**
+ * @brief Retorna a fração de energia na banda de voz (312-3375Hz).
+ *
+ * Útil para gates de VAD que precisam distinguir fala de ruído amplo.
+ */
+float sound_analysis_get_voice_ratio(void);
+
+/**
+ * @brief Retorna a fração de energia na voz baixa (312-688Hz).
+ *
+ * Útil para rejeitar motores que parecem voz por concentrarem energia
+ * quase toda nos primeiros harmônicos graves.
+ */
+float sound_analysis_get_voice_low_ratio(void);
+
+/**
+ * @brief Retorna a fração de energia na voz média (750-3375Hz).
+ *
+ * Fala próxima tende a manter energia nessa região de formantes/consoantes;
+ * motor distante costuma ficar concentrado abaixo dela.
+ */
+float sound_analysis_get_voice_mid_ratio(void);
+
+/**
+ * @brief Retorna a fração de energia na banda alta (>3375Hz).
+ *
+ * Útil para rejeitar chiado, tráfego, vento e sons broadband.
+ */
+float sound_analysis_get_high_ratio(void);
+
+/**
+ * @brief Retorna a fração de energia em baixa frequência/rumble (<312Hz).
+ *
+ * Útil para rejeitar carros, motos, vento e vibração mecânica.
+ */
+float sound_analysis_get_low_ratio(void);
 
 /**
  * @brief Retorna a frequência dominante do último chunk em Hz.

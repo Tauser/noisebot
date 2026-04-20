@@ -33,11 +33,41 @@
 
 #define TAG "audio_svc"
 
-/* Mínimo de chunks consecutivos acima do threshold para declarar VAD START (5 × 16ms = 80ms). */
-#define VAD_ENTER_CHUNKS 5U
+/* Pontuação de entrada para declarar VAD START. Frames fortes somam mais,
+ * frames vocais baixos somam pouco, e ruído desconta aos poucos. Isso evita
+ * zerar o gatilho entre sílabas fracas sem voltar a aceitar picos isolados. */
+#define VAD_ENTER_SCORE_START      10U
+#define VAD_ENTER_SCORE_STRONG_INC  2U
+#define VAD_ENTER_SCORE_SOFT_INC    1U
+#define VAD_ENTER_SCORE_DEC         1U
 
-/* Log de ruído ambiente a cada N chunks quando em silêncio (~2s). */
-#define VAD_NOISE_LOG_CHUNKS 125U
+/* Log de ruído ambiente a cada N chunks quando em silêncio (~8s). */
+#define VAD_NOISE_LOG_CHUNKS 500U
+
+/* Gate near-field: só abre VAD quando a energia parece fala próxima, não
+ * ambiente distante. Valores conservadores; ajustar pelo log "VAD dbg". */
+#define VAD_MIN_RMS_ABS           24000.0f
+#define VAD_MIN_RMS_SOFT          18000.0f
+#define VAD_NOISE_MULT_ENTER          1.35f
+#define VAD_NOISE_MULT_SOFT           1.05f
+#define VAD_NOISE_MULT_ACTIVE         1.6f
+#define VAD_ZCR_MIN                  0.04f
+#define VAD_ZCR_MAX                  0.26f
+#define VAD_VOICE_RATIO_MIN          0.55f
+#define VAD_VOICE_MID_RATIO_MIN      0.14f
+#define VAD_HIGH_RATIO_MAX           0.34f
+#define VAD_LOW_RATIO_MAX            0.48f
+#define VAD_DOM_FREQ_MIN_HZ        250.0f
+#define VAD_ENGINE_DOM_MAX_HZ      625.0f
+#define VAD_ENGINE_ZCR_MAX           0.14f
+#define VAD_ENGINE_HIGH_RATIO_MAX    0.03f
+#define VAD_ENGINE_LOW_DOMINANCE     1.35f
+#define VAD_ENGINE_RMS_MIN       55000.0f
+#define VAD_PLAYBACK_MUTE_MS       600U
+
+/* High-pass one-pole para tirar rumble/engine abaixo de ~180 Hz antes do VAD.
+ * alpha = RC / (RC + dt), fs=16kHz, fc≈180Hz. */
+#define MIC_HPF_ALPHA             0.934f
 
 /* ── Configuração da task ────────────────────────────────────────────────── */
 
@@ -93,10 +123,12 @@ static struct {
     int32_t              vad_threshold;
     vad_state_t          vad_state;
     int64_t              vad_silence_start_us;
-    uint8_t              vad_enter_count;    /* chunks consecutivos acima do threshold */
+    uint8_t              vad_enter_count;    /* pontuação acumulada para abrir VAD */
     uint32_t             vad_settle_ms;      /* > 0 = settling — não emite eventos VAD */
     uint32_t             vad_noise_log_ctr;  /* contador para log periódico de ruído */
     int32_t              vad_noise_peak;     /* pico de RMS em silêncio (janela atual) */
+    float                vad_noise_ema;      /* média exponencial do ruído de fundo */
+    uint32_t             vad_playback_mute_ms; /* inibe VAD após áudio local */
 
     /* Gravação de diagnóstico */
     rec_state_t          rec_state;
@@ -125,6 +157,7 @@ static bridge_say_item_t s_bridge_say_chunk; /* buffer de saída para o speaker 
 /* ── Buffers estáticos da task (SRAM) ────────────────────────────────────── */
 
 static int32_t  s_mic_buf  [NB_AUDIO_CHUNK_FRAMES];
+static int32_t  s_mic_proc [NB_AUDIO_CHUNK_FRAMES]; /* mic após high-pass */
 static int16_t  s_wav_chunk[WAV_SAMPLES_PER_CHUNK];
 static int16_t  s_rec_chunk[NB_AUDIO_CHUNK_FRAMES];
 static int16_t  s_sa_buf   [NB_AUDIO_CHUNK_FRAMES]; /* buffer para sound_analysis_tick */
@@ -197,24 +230,45 @@ static long wav_parse_header(FILE *f, uint32_t *duration_ms)
     return 0;
 }
 
+/*
+ * Remove offset DC + rumble antes de VAD/FFT/bridge.
+ *
+ * Os logs em silêncio mostraram RMS alto com ZCR≈0, típico de offset ou
+ * rumble de baixa frequência no caminho I2S/mic. Carros e motos também
+ * chegam fortes em 62-188Hz; o high-pass evita que esse grave domine a FFT
+ * e suba o threshold adaptativo.
+ */
+static void mic_condition_signal(const int32_t *in, int32_t *out, size_t n)
+{
+    if (n == 0U) return;
+
+    int64_t sum = 0;
+    for (size_t i = 0; i < n; i++) {
+        sum += (int64_t)in[i];
+    }
+
+    int32_t mean = (int32_t)(sum / (int64_t)n);
+
+    static float prev_x = 0.0f;
+    static float prev_y = 0.0f;
+
+    for (size_t i = 0; i < n; i++) {
+        float x = (float)(in[i] - mean);
+        float y = MIC_HPF_ALPHA * (prev_y + x - prev_x);
+        prev_x = x;
+        prev_y = y;
+        out[i] = (int32_t)y;
+    }
+}
+
 /* ── VAD ─────────────────────────────────────────────────────────────────── */
 
 /* Duração aproximada de um chunk em ms (256 samples @ 16kHz = 16ms). */
 #define CHUNK_DURATION_MS  16U
 
-static void vad_update(const int32_t *mic, size_t n)
+static void vad_update(const int32_t *mic, size_t n, bool local_output_active)
 {
     if (n == 0) return;
-
-    /* Settling pós-init: consome chunks silenciosamente até o mic estabilizar. */
-    if (s.vad_settle_ms > 0) {
-        s.vad_settle_ms = (s.vad_settle_ms > CHUNK_DURATION_MS)
-                          ? s.vad_settle_ms - CHUNK_DURATION_MS : 0;
-        if (s.vad_settle_ms == 0) {
-            ESP_LOGI(TAG, "VAD settling completo — deteccao ativa");
-        }
-        return;
-    }
 
     int64_t sum_sq = 0;
     uint32_t zcr_count = 0;
@@ -225,37 +279,138 @@ static void vad_update(const int32_t *mic, size_t n)
     }
     int32_t rms = (int32_t)sqrtf((float)(sum_sq / (int64_t)n));
 
-    /* ZCR: taxa de cruzamentos de zero (fala humana ≈ 0.05–0.45).
-     * Filtra ruído DC (ZCR≈0), chiados e fans (ZCR>0.45). */
+    /* ZCR: taxa de cruzamentos de zero. Faixa estreita para fala próxima:
+     * carros/vento tendem a baixo ZCR; chiado/TV/música tendem a variar alto. */
     float zcr = (n > 1u) ? ((float)zcr_count / (float)(n - 1u)) : 0.0f;
-    bool is_speech = (rms > s.vad_threshold) && (zcr >= 0.05f) && (zcr <= 0.45f);
+
+    if (local_output_active) {
+        s.vad_playback_mute_ms = VAD_PLAYBACK_MUTE_MS;
+    } else if (s.vad_playback_mute_ms > 0U) {
+        s.vad_playback_mute_ms = (s.vad_playback_mute_ms > CHUNK_DURATION_MS)
+                               ? s.vad_playback_mute_ms - CHUNK_DURATION_MS : 0U;
+    }
+
+    /* Settling pós-init: calibra ruído, mas não emite eventos. */
+    if (s.vad_settle_ms > 0U) {
+        s.vad_noise_ema = s.vad_noise_ema * 0.98f + (float)rms * 0.02f;
+        s.vad_threshold = (int32_t)fmaxf(VAD_MIN_RMS_ABS,
+                                         s.vad_noise_ema * VAD_NOISE_MULT_ENTER);
+        s.vad_settle_ms = (s.vad_settle_ms > CHUNK_DURATION_MS)
+                          ? s.vad_settle_ms - CHUNK_DURATION_MS : 0U;
+        if (s.vad_settle_ms == 0U) {
+            ESP_LOGI(TAG, "VAD settling completo — noise_ema=%ld thr=%ld",
+                     (long)s.vad_noise_ema, (long)s.vad_threshold);
+        }
+        return;
+    }
+
+    float voice_ratio = sound_analysis_get_voice_ratio();
+    float voice_low_ratio = sound_analysis_get_voice_low_ratio();
+    float voice_mid_ratio = sound_analysis_get_voice_mid_ratio();
+    float high_ratio  = sound_analysis_get_high_ratio();
+    float low_ratio   = sound_analysis_get_low_ratio();
+    float dom_freq    = sound_analysis_get_dominant_freq();
+    nb_sound_class_t cls = sound_analysis_get_class();
+
+    float enter_thr = fmaxf(VAD_MIN_RMS_ABS, s.vad_noise_ema * VAD_NOISE_MULT_ENTER);
+    float active_thr = fmaxf(VAD_MIN_RMS_ABS * 0.75f,
+                             s.vad_noise_ema * VAD_NOISE_MULT_ACTIVE);
+    float soft_thr = fmaxf(VAD_MIN_RMS_SOFT, s.vad_noise_ema * VAD_NOISE_MULT_SOFT);
+    s.vad_threshold = (int32_t)((s.vad_state == VAD_ACTIVE) ? active_thr : enter_thr);
+
+    bool zcr_ok      = (zcr >= VAD_ZCR_MIN) && (zcr <= VAD_ZCR_MAX);
+    bool formant_ok  = (voice_mid_ratio >= VAD_VOICE_MID_RATIO_MIN);
+    bool low_tonal_engine = (dom_freq >= VAD_DOM_FREQ_MIN_HZ)
+                         && (dom_freq <= VAD_ENGINE_DOM_MAX_HZ)
+                         && (voice_low_ratio > (voice_mid_ratio * VAD_ENGINE_LOW_DOMINANCE))
+                         && (high_ratio <= VAD_ENGINE_HIGH_RATIO_MAX)
+                         && (zcr <= VAD_ENGINE_ZCR_MAX);
+    bool engine_like = ((float)rms >= VAD_ENGINE_RMS_MIN) && low_tonal_engine;
+    bool spectral_ok = (cls == NB_SOUND_VOICE || voice_ratio >= VAD_VOICE_RATIO_MIN)
+                    && formant_ok
+                    && !engine_like
+                    && (high_ratio <= VAD_HIGH_RATIO_MAX)
+                    && (low_ratio <= VAD_LOW_RATIO_MAX)
+                    && (dom_freq >= VAD_DOM_FREQ_MIN_HZ);
+    bool muted       = (s.vad_playback_mute_ms > 0U);
+    bool energy_ok   = (float)rms >= (float)s.vad_threshold;
+    bool soft_energy_ok = (float)rms >= soft_thr;
+    bool speech_strong = energy_ok && zcr_ok && spectral_ok && !muted;
+    bool is_speech   = soft_energy_ok && zcr_ok && spectral_ok && !muted;
+
+    /* DEBUG: log periódico de rms e zcr para calibração */
+    static uint32_t s_dbg_ctr = 0;
+    if (++s_dbg_ctr >= 125U) {
+        s_dbg_ctr = 0;
+        ESP_LOGI(TAG,
+                 "VAD dbg rms=%ld zcr=%.2f vr=%.2f vl=%.2f vm=%.2f lo=%.2f hi=%.2f dom=%.0f cls=%d thr=%ld sth=%ld score=%u mute=%u eng=%d speech=%d",
+                 (long)rms, zcr, (double)voice_ratio, (double)voice_low_ratio,
+                 (double)voice_mid_ratio, (double)low_ratio, (double)high_ratio,
+                 (double)dom_freq, (int)cls, (long)s.vad_threshold, (long)soft_thr,
+                 (unsigned)s.vad_enter_count, (unsigned)s.vad_playback_mute_ms,
+                 (int)engine_like, (int)is_speech);
+    }
 
     int64_t now_us = esp_timer_get_time();
 
     if (is_speech) {
         if (s.vad_state == VAD_SILENCE) {
-            if (++s.vad_enter_count >= VAD_ENTER_CHUNKS) {
+            uint8_t inc = speech_strong ? VAD_ENTER_SCORE_STRONG_INC
+                                        : VAD_ENTER_SCORE_SOFT_INC;
+            uint16_t next_score = (uint16_t)s.vad_enter_count + inc;
+            s.vad_enter_count = (next_score > VAD_ENTER_SCORE_START)
+                              ? VAD_ENTER_SCORE_START : (uint8_t)next_score;
+            if (s.vad_enter_count >= VAD_ENTER_SCORE_START) {
                 s.vad_enter_count = 0;
                 s.vad_state = VAD_ACTIVE;
                 s.vad_silence_start_us = 0;
                 s.bridge_tx_active = bridge_service_is_connected();
                 if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
-                ESP_LOGI(TAG, "VAD START rms=%ld bridge_tx=%d",
-                         (long)rms, (int)s.bridge_tx_active);
+                if (s.bridge_tx_active) {
+                    nb_event_t marker = {
+                        .type         = NB_EVT_VOICE_ACTIVITY_START,
+                        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+                    };
+                    bridge_service_send_event(&marker);
+                }
+                ESP_LOGI(TAG,
+                         "VAD START rms=%ld zcr=%.2f vr=%.2f vl=%.2f vm=%.2f lo=%.2f hi=%.2f dom=%.0f eng=%d bridge_tx=%d",
+                         (long)rms, zcr, (double)voice_ratio, (double)voice_low_ratio,
+                         (double)voice_mid_ratio, (double)low_ratio, (double)high_ratio,
+                         (double)dom_freq, (int)engine_like, (int)s.bridge_tx_active);
             }
         } else {
             s.vad_enter_count = 0;
             s.vad_silence_start_us = 0;  /* reinicia contador de silêncio */
         }
     } else {
-        s.vad_enter_count = 0;
+        if (s.vad_enter_count > VAD_ENTER_SCORE_DEC) {
+            s.vad_enter_count -= VAD_ENTER_SCORE_DEC;
+        } else {
+            s.vad_enter_count = 0;
+        }
         /* RMS alto mas ZCR fora da faixa de fala (ruído, fan, música) — ignora. */
         /* Log periódico do pico de ruído ambiente para calibração. */
         if (s.vad_state == VAD_SILENCE) {
+            /* Atualiza EMA apenas em ruído não-rumble ou quando o nível caiu.
+             * Motor grave não deve subir o threshold, senão a fala morre. */
+            bool mechanical_noise = (low_ratio > VAD_LOW_RATIO_MAX)
+                                 || (dom_freq < VAD_DOM_FREQ_MIN_HZ)
+                                 || low_tonal_engine
+                                 || (((float)rms > enter_thr)
+                                     && !formant_ok
+                                     && (high_ratio < 0.06f));
+            if (!muted && (!mechanical_noise || (float)rms < s.vad_noise_ema)) {
+                s.vad_noise_ema = s.vad_noise_ema * 0.995f + (float)rms * 0.005f;
+            }
+            s.vad_threshold = (int32_t)fmaxf(VAD_MIN_RMS_ABS,
+                                             s.vad_noise_ema * VAD_NOISE_MULT_ENTER);
+
             if (rms > s.vad_noise_peak) s.vad_noise_peak = rms;
             if (++s.vad_noise_log_ctr >= VAD_NOISE_LOG_CHUNKS) {
-                ESP_LOGI(TAG, "VAD noise peak=%ld thr=%ld",
-                         (long)s.vad_noise_peak, (long)s.vad_threshold);
+                ESP_LOGI(TAG, "VAD noise ema=%ld peak=%ld thr=%ld",
+                         (long)s.vad_noise_ema, (long)s.vad_noise_peak,
+                         (long)s.vad_threshold);
                 s.vad_noise_log_ctr = 0;
                 s.vad_noise_peak    = 0;
             }
@@ -266,11 +421,12 @@ static void vad_update(const int32_t *mic, size_t n)
             } else {
                 int64_t silence_ms = (now_us - s.vad_silence_start_us) / 1000LL;
                 if (silence_ms >= (int64_t)NB_AUDIO_VAD_SILENCE_MS) {
+                    bool had_bridge_tx = s.bridge_tx_active;
                     s.vad_state = VAD_SILENCE;
                     s.bridge_tx_active = false;
                     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
                     /* Envia marcador de fim de fala ao bridge */
-                    if (bridge_service_is_connected()) {
+                    if (had_bridge_tx && bridge_service_is_connected()) {
                         nb_event_t marker = {
                             .type         = NB_EVT_VOICE_ACTIVITY_END,
                             .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
@@ -423,6 +579,7 @@ static void audio_task(void *arg)
             if (synth_fill_chunk(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES)) {
                 audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
                                     pdMS_TO_TICKS(100));
+                wrote_audio = true;
             } else {
                 audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES, pdMS_TO_TICKS(100));
             }
@@ -437,18 +594,20 @@ static void audio_task(void *arg)
             continue;
         }
 
-        /* ── 3. VAD ─────────────────────────────────────────────────────── */
-        vad_update(s_mic_buf, mic_n);
+        mic_condition_signal(s_mic_buf, s_mic_proc, mic_n);
 
-        /* ── 4. Sound analysis ──────────────────────────────────────────── */
+        /* ── 3. Sound analysis ──────────────────────────────────────────── */
         /* Converte int32 (24-bit) → int16 sem ganho extra (nível calibrado). */
         for (size_t i = 0; i < mic_n; i++) {
-            int32_t v = s_mic_buf[i] >> 8;
+            int32_t v = s_mic_proc[i] >> 8;
             if (v >  32767) v =  32767;
             if (v < -32768) v = -32768;
             s_sa_buf[i] = (int16_t)v;
         }
         sound_analysis_tick(s_sa_buf, mic_n);
+
+        /* ── 4. VAD ─────────────────────────────────────────────────────── */
+        vad_update(s_mic_proc, mic_n, wrote_audio);
 
         /* ── 4b. Bridge mic streaming ────────────────────────────────────── */
         if (s.bridge_tx_active && mic_n > 0) {
@@ -474,11 +633,12 @@ static void audio_task(void *arg)
                                   ? mic_n : (size_t)s.rec_samples_remaining;
                 for (size_t i = 0; i < to_write; i++) {
                     /*
-                     * s_mic_buf[i]: valor 24-bit (audio_hal já fez >> 8 do raw 32-bit).
+                     * s_mic_proc[i]: valor 24-bit condicionado (audio_hal já
+                     * fez >> 8 do raw 32-bit).
                      * Shift >> 8 para descer ao range 16-bit antes do clamp.
                      * Pico típico de voz direta ~400K–800K → ~1500–3000 em 16-bit.
                      */
-                    int32_t v = (s_mic_buf[i] >> 8) << 3;  /* +18 dB de ganho de gravação */
+                    int32_t v = (s_mic_proc[i] >> 8) << 3;  /* +18 dB de ganho de gravação */
                     if (v >  32767) v =  32767;
                     if (v < -32768) v = -32768;
                     s_rec_chunk[i] = (int16_t)v;
@@ -518,6 +678,7 @@ esp_err_t audio_service_init(void)
 
     s.volume         = 80U;  /* Default; boot_manager ajusta via audio_set_volume */
     s.vad_threshold  = NB_AUDIO_VAD_THRESHOLD_DEFAULT;
+    s.vad_noise_ema  = (float)NB_AUDIO_VAD_THRESHOLD_DEFAULT;
     s.vad_state      = VAD_SILENCE;
     s.vad_settle_ms  = NB_AUDIO_VAD_SETTLE_MS;
     s.play_state     = PLAY_IDLE;
