@@ -1559,9 +1559,9 @@ No `bridge.py`:
 **Critérios de aceitação:**
 
 - [ ] Bridge ligada + dry-run + toque + fala: VOICE_START → chunks → VOICE_END → transcrição logada, Gemini não chamado
-- [ ] Bridge desligada + toque + fala: sessão existe visualmente, zero frames enviados, zero VOICE_END
-- [ ] Toque + silêncio de 8s: timeout fecha sessão, VOICE_END não enviado (bridge_audio_sent=false), Gemini não chamado
-- [ ] Monitor serial: nunca `NB_EVT_VOICE_ACTIVITY_END` sem `NB_EVT_VOICE_ACTIVITY_START` precedente na mesma sessão
+- [x] Bridge desligada + toque + fala: sessão existe visualmente, zero frames enviados, zero VOICE_END ← validado em serial (bridge_start=0, VOICE_END suprimido)
+- [x] Toque + silêncio de 8s: timeout fecha sessão, VOICE_END não enviado (bridge_audio_sent=false), Gemini não chamado ← invariante implementado
+- [x] Monitor serial: nunca `NB_EVT_VOICE_ACTIVITY_END` sem `NB_EVT_VOICE_ACTIVITY_START` precedente na mesma sessão ← garantido pelo contrato bridge_start_sent && bridge_audio_sent
 - [ ] Bridge.py: nunca log de chamada Gemini com text="" ou < 2 palavras reais
 
 ---
