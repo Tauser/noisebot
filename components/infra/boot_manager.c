@@ -361,6 +361,9 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
         case NB_AUDIO_EVT_VOICE_START:
             s_silence_ms = 0;
             state_machine_on_voice_start();
+            /* Só propaga ao bus se há sessão ativa: VAD ambiental sem toque
+             * não deve acionar o behavior_engine. */
+            if (!audio_service_is_listening()) return;
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_START;
             break;
         case NB_AUDIO_EVT_VOICE_END:

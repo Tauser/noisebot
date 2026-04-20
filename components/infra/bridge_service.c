@@ -46,7 +46,7 @@
 /* ── TX queue ─────────────────────────────────────────────────────────────── */
 
 /* Cada item na fila é um frame serializado completo precedido por tamanho */
-#define TX_QUEUE_DEPTH  8u
+#define TX_QUEUE_DEPTH  32u  /* burst de pre-roll: 1 evento + 20 chunks + headroom live */
 #define TX_ITEM_SIZE    (sizeof(uint16_t) + FRAME_MAX_SIZE)
 
 typedef struct {
