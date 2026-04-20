@@ -86,7 +86,9 @@ static bool                     s_started = false;
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
 static inline int servo_index(uint8_t id) {
-    return (id == NB_SERVO_ID_PAN) ? 0 : 1;
+    if (id == NB_SERVO_ID_PAN)  return 0;
+    if (id == NB_SERVO_ID_TILT) return 1;
+    return -1;
 }
 
 /*
@@ -159,6 +161,7 @@ static uint16_t norm_to_steps(float norm, uint8_t servo_id)
 static void start_move(uint8_t id, uint16_t target_pos, uint32_t duration_ms)
 {
     int i = servo_index(id);
+    if (i < 0) { ESP_LOGE(TAG, "start_move: servo_id inválido %u", id); return; }
     s_servo[i].pos_start   = s_servo[i].pos_current;
     s_servo[i].pos_target  = target_pos;
     s_servo[i].duration_ms = duration_ms;
@@ -174,6 +177,7 @@ static void start_move(uint8_t id, uint16_t target_pos, uint32_t duration_ms)
 static void update_servo(uint8_t id, uint32_t dt_ms)
 {
     int i = servo_index(id);
+    if (i < 0) { ESP_LOGE(TAG, "update_servo: servo_id inválido %u", id); return; }
     servo_move_t *sv = &s_servo[i];
 
     if (!sv->moving) {
@@ -229,6 +233,7 @@ static void advance_sequence(uint32_t dt_ms)
     const nb_keyframe_t *frame = &s_seq.seq->frames[s_seq.frame_idx];
     uint8_t id = frame->servo_id;
     int idx = servo_index(id);
+    if (idx < 0) { ESP_LOGE(TAG, "advance_sequence: servo_id inválido %u no frame %u", id, s_seq.frame_idx); s_seq.active = false; return; }
 
     if (s_seq.holding) {
         /* Aguardando hold_ms antes de avançar ao próximo frame */
@@ -295,7 +300,9 @@ static void motion_task(void *arg)
                     s_servo[0].stop_req = true;
                     s_servo[1].stop_req = true;
                 } else {
-                    s_servo[servo_index(stop_id)].stop_req = true;
+                    int si = servo_index(stop_id);
+                    if (si >= 0) { s_servo[si].stop_req = true; }
+                    else { ESP_LOGE(TAG, "CMD_STOP: servo_id inválido %u", stop_id); }
                 }
                 /* Cancela sequência se ativa */
                 if (s_seq.active) {
@@ -558,10 +565,14 @@ esp_err_t motion_neck_tilt_curious(void)
 
 bool motion_is_moving(uint8_t id)
 {
-    return s_servo[servo_index(id)].moving;
+    int i = servo_index(id);
+    if (i < 0) { ESP_LOGE(TAG, "motion_is_moving: servo_id inválido %u", id); return false; }
+    return s_servo[i].moving;
 }
 
 uint16_t motion_current_pos(uint8_t id)
 {
-    return s_servo[servo_index(id)].pos_current;
+    int i = servo_index(id);
+    if (i < 0) { ESP_LOGE(TAG, "motion_current_pos: servo_id inválido %u", id); return 0; }
+    return s_servo[i].pos_current;
 }
