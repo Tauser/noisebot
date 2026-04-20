@@ -172,9 +172,10 @@ void rhythm_service_tick(uint32_t dt_ms)
      * Sem o gate de playback, synth_purr e WAVs do conductor são captados pelo
      * mic e travam o rhythm_service (lock espúrio no sono/acorda/touch_deep). */
     nb_sound_class_t cls = sound_analysis_get_class();
-    float rms = (cls == NB_SOUND_SILENCE || cls == NB_SOUND_VOICE || audio_is_playing())
-                ? 0.0f
-                : sound_analysis_get_rms();
+    float rms = 0.0f;
+    if (!audio_is_playing() && cls == NB_SOUND_MUSIC) {
+        rms = sound_analysis_get_rms();
+    }
 
     s_buf[s_head] = rms;
     s_head = (s_head + 1) % RMS_BUF_SIZE;

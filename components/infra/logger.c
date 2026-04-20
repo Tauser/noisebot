@@ -25,6 +25,13 @@ esp_err_t nb_logger_init(nb_log_level_t default_level)
     esp_log_level_set("nb_wdog",   ESP_LOG_INFO);
     esp_log_level_set("nb_safety", ESP_LOG_DEBUG);
 
+    /* Reduz ruído de componentes de infraestrutura HTTP/WS */
+    esp_log_level_set("httpd_txrx",  ESP_LOG_ERROR);
+    esp_log_level_set("httpd_uri",   ESP_LOG_ERROR);
+    esp_log_level_set("httpd_sess",  ESP_LOG_ERROR);
+    esp_log_level_set("nb_web",      ESP_LOG_WARN);
+    esp_log_level_set("nb_render",   ESP_LOG_WARN);
+
     ESP_LOGI(TAG, "Logger inicializado — nivel global: %d", (int)default_level);
     return ESP_OK;
 }
