@@ -252,7 +252,7 @@ def tts_piper(text: str) -> np.ndarray:
 
 CHUNK_SAMPLES    = 512
 VOICE_TIMEOUT_S  = 8.0  # forçar VOICE_END se nenhum sinal chegar em X segundos
-MIN_UTTERANCE_SAMPLES = 16000  # 1.0s: evita disparos curtos de porta/carro/TV
+MIN_UTTERANCE_SAMPLES = 8000   # 0.5s: rejeição pré-Whisper
 MIN_UTTERANCE_RMS     = 80.0   # PCM int16 pós-filtro no firmware
 MAX_NO_SPEECH_PROB    = 0.55
 MIN_AVG_LOGPROB       = -1.10
@@ -260,14 +260,17 @@ MAX_COMPRESSION_RATIO = 2.60
 
 class BridgeSession:
     def __init__(self, transport, dry_run: bool = False):
-        self.transport      = transport
-        self.rx_buf         = bytearray()
-        self.audio_buf      = []          # chunks PCM acumulados durante VOICE_ACTIVE
-        self.streaming      = False
-        self.last_status    = {}
-        self._lock          = threading.Lock()
-        self._voice_timer   = None
-        self.dry_run        = dry_run
+        self.transport          = transport
+        self.rx_buf             = bytearray()
+        self.audio_buf          = []          # chunks PCM acumulados durante VOICE_ACTIVE
+        self.streaming          = False
+        self.last_status        = {}
+        self._lock              = threading.Lock()
+        self._voice_timer       = None
+        self.dry_run            = dry_run
+        self._session_start     = None   # timestamp float quando VOICE_START chega
+        self._session_rms_sum   = 0.0    # soma de RMS por chunk para avg
+        self._session_n_chunks  = 0      # número de chunks recebidos
 
     def send_msg(self, msg_type: int, payload: bytes = b""):
         self.transport.send(encode_frame(msg_type, payload))
@@ -300,51 +303,54 @@ class BridgeSession:
 
     def handle_voice_end(self):
         self._cancel_voice_timer()
+        discard_reason = None
+        n_samples      = 0
+        text           = ""
+        avg_rms        = self._session_rms_sum / max(1, self._session_n_chunks)
+        duration_s     = time.time() - (self._session_start or time.time())
         try:
             if not self.audio_buf:
-                log.info("VOICE_END — audio_buf vazio, ignorando")
+                discard_reason = "buffer_vazio"
                 return
             pcm = np.concatenate(self.audio_buf).astype(np.int16)
             self.audio_buf.clear()
             self.streaming = False
+            n_samples = len(pcm)
 
             if transcribe_whisper._model is None:
-                log.warning("Whisper não pronto — ignorando")
+                discard_reason = "whisper_nao_pronto"
                 return
             if not self.dry_run and ask_gemini._model is None:
-                log.warning("Gemini não pronto — ignorando")
+                discard_reason = "gemini_nao_pronto"
                 return
 
-            if len(pcm) < MIN_UTTERANCE_SAMPLES:
-                log.info("Áudio muito curto (%d samples) — ignorando", len(pcm))
+            if n_samples < MIN_UTTERANCE_SAMPLES:
+                discard_reason = f"audio_curto_{n_samples}smp"
                 return
 
             pcm_f = pcm.astype(np.float32)
-            rms = float(np.sqrt(np.mean(pcm_f * pcm_f)))
-            peak = int(np.max(np.abs(pcm.astype(np.int32))))
-            log.info("Áudio capturado: %.2fs rms=%.1f peak=%d",
-                     len(pcm) / 16000.0, rms, peak)
-            if rms < MIN_UTTERANCE_RMS:
-                if self.dry_run:
-                    log.info("DRY-RUN: áudio abaixo do RMS mínimo, transcrevendo mesmo assim")
-                else:
-                    log.info("Áudio fraco demais para fala próxima — ignorando")
-                    return
-
-            log.info("Iniciando pipeline LLM (%d samples)", len(pcm))
-            tr = transcribe_whisper(pcm)
-            text = tr["text"]
-            log.info("Transcrição: %s (no_speech=%.2f avg_logprob=%.2f comp=%.2f)",
-                     text, tr["no_speech_prob"], tr["avg_logprob"], tr["compression_ratio"])
-            if not text:
+            rms_pcm = float(np.sqrt(np.mean(pcm_f * pcm_f)))
+            peak    = int(np.max(np.abs(pcm.astype(np.int32))))
+            if rms_pcm < MIN_UTTERANCE_RMS and not self.dry_run:
+                discard_reason = f"rms_baixo_{rms_pcm:.0f}"
                 return
-            if (tr["no_speech_prob"] > MAX_NO_SPEECH_PROB or
-                    tr["avg_logprob"] < MIN_AVG_LOGPROB or
-                    tr["compression_ratio"] > MAX_COMPRESSION_RATIO):
-                log.info("Transcrição baixa confiança — ignorando")
+
+            tr   = transcribe_whisper(pcm)
+            text = tr["text"]
+            if not text:
+                discard_reason = "texto_vazio"
+                return
+            if tr["no_speech_prob"] > MAX_NO_SPEECH_PROB:
+                discard_reason = f"no_speech_{tr['no_speech_prob']:.2f}"
+                return
+            if tr["avg_logprob"] < MIN_AVG_LOGPROB:
+                discard_reason = f"logprob_{tr['avg_logprob']:.2f}"
+                return
+            if tr["compression_ratio"] > MAX_COMPRESSION_RATIO:
+                discard_reason = f"compression_{tr['compression_ratio']:.2f}"
                 return
             if self.dry_run:
-                log.info("DRY-RUN: transcrição aceita, Gemini/TTS não chamados")
+                discard_reason = "dry_run"
                 return
 
             response = ask_gemini(text, self.last_status)
@@ -360,15 +366,22 @@ class BridgeSession:
             self.send_msg(MSG_ACTION, struct.pack("<I", 0))
             self.send_say_pcm(tts_pcm)
 
-            log.info("Resposta enviada (%d samples)", len(tts_pcm))
         except Exception as e:
             log.error("Pipeline LLM falhou: %s", e, exc_info=True)
+            discard_reason = "exception"
+        finally:
+            outcome = "ok" if discard_reason is None else f"descartado:{discard_reason}"
+            log.info("SESSAO dur=%.1fs samples=%d avg_rms=%.0f texto=%r motivo=%s",
+                     duration_s, n_samples, avg_rms, text or "", outcome)
 
     def process_msg(self, msg_type: int, payload: bytes):
         if msg_type == MSG_AUDIO_CHUNK:
             if self.streaming:
                 pcm = np.frombuffer(payload, dtype=np.int16)
                 self.audio_buf.append(pcm)
+                rms_c = float(np.sqrt(np.mean(pcm.astype(np.float32) ** 2)))
+                self._session_rms_sum  += rms_c
+                self._session_n_chunks += 1
 
         elif msg_type == MSG_EVENT:
             if len(payload) >= 4:
@@ -380,7 +393,10 @@ class BridgeSession:
                     threading.Thread(target=self.handle_voice_end, daemon=True).start()
                 elif evt_type == NB_EVT_VOICE_ACTIVITY_START:
                     log.info("VOICE_START recebido")
-                    self.streaming = True
+                    self.streaming         = True
+                    self._session_start    = time.time()
+                    self._session_rms_sum  = 0.0
+                    self._session_n_chunks = 0
                     self._arm_voice_timer()
                 else:
                     log.debug("EVENT ignorado evt_type=%d", evt_type)

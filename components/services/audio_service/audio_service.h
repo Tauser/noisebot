@@ -152,7 +152,50 @@ esp_err_t audio_set_volume(uint8_t level);
  */
 uint8_t audio_get_volume(void);
 
-/* ── Bridge SAY (Etapa 12.2) ───────────────────────────────────────────���─── */
+/* ── Sessão de escuta (Etapa 12.3) ──────────────────────────────────────── */
+
+/** Quem abriu a sessão de escuta. */
+typedef enum {
+    NB_LISTEN_SOURCE_TOUCH,      /**< Ativado por toque (Etapa 12.4)      */
+    NB_LISTEN_SOURCE_WAKE_WORD,  /**< Ativado por wake-word (futuro)       */
+    NB_LISTEN_SOURCE_DEBUG,      /**< Ativado pelo VAD em modo de debug    */
+} nb_listen_source_t;
+
+/** Motivo pelo qual a sessão foi encerrada. */
+typedef enum {
+    NB_LISTEN_END_VAD_SILENCE,         /**< Silêncio detectado pelo VAD         */
+    NB_LISTEN_END_TIMEOUT,             /**< 8s sem áudio enviado à bridge        */
+    NB_LISTEN_END_BRIDGE_DISCONNECTED, /**< Bridge desconectada durante sessão   */
+    NB_LISTEN_END_CANCELLED,           /**< Cancelado externamente               */
+} nb_listen_end_reason_t;
+
+/**
+ * @brief Abre uma sessão de escuta.
+ *
+ * Se bridge conectada: envia VOICE_ACTIVITY_START e habilita streaming de mic.
+ * Se bridge offline: sessão existe visualmente, sem frames enviados.
+ * Timer de 8s: sem áudio enviado → fecha automaticamente com TIMEOUT.
+ *
+ * @return ESP_OK, ESP_ERR_INVALID_STATE se já há sessão ativa ou não iniciado.
+ */
+esp_err_t audio_service_begin_listen_session(nb_listen_source_t source);
+
+/**
+ * @brief Fecha a sessão de escuta ativa.
+ *
+ * Envia VOICE_ACTIVITY_END à bridge SOMENTE se bridge_start_sent &&
+ * bridge_audio_sent (ao menos um chunk foi enviado com sucesso).
+ *
+ * @return ESP_OK, ESP_ERR_INVALID_STATE se não há sessão ativa.
+ */
+esp_err_t audio_service_end_listen_session(nb_listen_end_reason_t reason);
+
+/**
+ * @brief Retorna true se há sessão de escuta ativa.
+ */
+bool audio_service_is_listening(void);
+
+/* ── Bridge SAY (Etapa 12.2) ─────────────────────────────────────────────── */
 
 /**
  * @brief Enfileira chunk de áudio PCM vindo do bridge para reprodução.

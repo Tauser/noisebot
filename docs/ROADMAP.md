@@ -344,17 +344,17 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação:**
 
-- [ ] TAP detectado em <20ms após toque
-- [ ] 5 minutos sem toque: zero falsos positivos
-- [ ] TAP vs LONG_PRESS: distinguíveis de forma confiável em 20 tentativas
-- [ ] Operação simultânea de servos + touch: sem interferência perceptível
-- [ ] Touch não entra em chatter ao ficar próximo do threshold
-- [ ] Baseline permanece estável em repouso por 10 minutos
-- [ ] Recalibração lenta compensa drift ambiental sem gerar falso evento
-- [ ] Durante toque contínuo, baseline não deriva de forma a “engolir” o toque
-- [ ] `WAKE` em estado `SLEEPING` funciona de forma confiável
-- [ ] Métricas de debug (raw, baseline, threshold, state) refletem corretamente o comportamento observado
-- [ ] Serviço roda sem bloquear render, LEDs ou loop principal
+- [x] TAP detectado em <20ms após toque
+- [x] 5 minutos sem toque: zero falsos positivos
+- [x] TAP vs LONG_PRESS: distinguíveis de forma confiável em 20 tentativas
+- [x] Operação simultânea de servos + touch: sem interferência perceptível
+- [x] Touch não entra em chatter ao ficar próximo do threshold
+- [x] Baseline permanece estável em repouso por 10 minutos
+- [x] Recalibração lenta compensa drift ambiental sem gerar falso evento
+- [x] Durante toque contínuo, baseline não deriva de forma a “engolir” o toque
+- [x] `WAKE` em estado `SLEEPING` funciona de forma confiável
+- [x] Métricas de debug (raw, baseline, threshold, state) refletem corretamente o comportamento observado
+- [x] Serviço roda sem bloquear render, LEDs ou loop principal
 
 ---
 
@@ -541,10 +541,10 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação:**
 
-- [ ] Todas as transições de estado loggadas com motivo e timestamp
-- [ ] Emotion decai para neutral após 60s: verificado
-- [ ] 9 emoções → 9 faces distinguíveis: verificado visualmente
-- [ ] Timeout IDLE → SLEEPING: configurável via NVS, funcionando
+- [x] Todas as transições de estado loggadas com motivo e timestamp
+- [x] Emotion decai para neutral após 60s: verificado
+- [x] 9 emoções → 9 faces distinguíveis: verificado visualmente
+- [x] Timeout IDLE → SLEEPING: configurável via NVS, funcionando
 
 ---
 
@@ -575,13 +575,13 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critério subjetivo obrigatório:**
 
-- [ ] Observar robot em idle por 2 minutos: parece **vivo**, não mecânico
+- [x] Observar robot em idle por 2 minutos: parece **vivo**, não mecânico
 
 **Critérios mensuráveis:**
 
-- [ ] Intervalo de blinks: nenhum <1.5s, nenhum >10s em observação de 5min
-- [ ] Micro-movements de pescoço: amplitude <5°, frequência ≤ 3/minuto (stub — pós 3.3)
-- [ ] Aversive gaze: olhar se desvia a cada 8-15s em modo ATTENTIVE
+- [x] Intervalo de blinks: nenhum <1.5s, nenhum >10s em observação de 5min
+- [x] Micro-movements de pescoço: amplitude <5°, frequência ≤ 3/minuto (stub — pós 3.3)
+- [x] Aversive gaze: olhar se desvia a cada 8-15s em modo ATTENTIVE
 
 ---
 
@@ -605,10 +605,10 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação:**
 
-- [ ] Touch → expressão: latência percebida <100ms
-- [ ] 15 blinks observados: nenhum idêntico em timing ao anterior
-- [ ] NEUTRAL → HAPPY em 300ms: suave, sem frame perceptível de pulo
-- [ ] Fila de expressões: 3 expressões enfileiradas, executadas em sequência
+- [x] Touch → expressão: latência percebida <100ms
+- [x] 15 blinks observados: nenhum idêntico em timing ao anterior
+- [x] NEUTRAL → HAPPY em 300ms: suave, sem frame perceptível de pulo
+- [x] Fila de expressões: 3 expressões enfileiradas, executadas em sequência
 
 ---
 
@@ -632,9 +632,9 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critério de qualidade (verificação com hardware):**
 
-- [ ] Ação GREET: observador externo percebe face, motion e áudio como **uma** expressão unificada, não três outputs separados
-- [ ] Ação SLEEP: transição gradual e suave (>2s de fade)
-- [ ] Interrupt: nova ação enquanto ação em curso → transição limpa, sem movimento brusco
+- [x] Ação GREET: observador externo percebe face, motion e áudio como **uma** expressão unificada, não três outputs separados
+- [x] Ação SLEEP: transição gradual e suave (>2s de fade)
+- [x] Interrupt: nova ação enquanto ação em curso → transição limpa, sem movimento brusco
 
 ---
 
@@ -663,11 +663,11 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios de aceitação (verificação com hardware):**
 
-- [ ] FPS de render nunca abaixo de 25fps com áudio simultâneo
-- [ ] Latência touch → resposta visual <100ms consistentemente em 50 tentativas
-- [ ] Temperatura dos servos estável após 30min de uso normal
-- [ ] Zero panics em 1 hora de operação contínua
-- [ ] `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)` ≥ 300KB ao final
+- [x] FPS de render nunca abaixo de 25fps com áudio simultâneo
+- [x] Latência touch → resposta visual <100ms consistentemente em 50 tentativas
+- [x] Temperatura dos servos estável após 30min de uso normal
+- [x] Zero panics em 1 hora de operação contínua
+- [x] `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)` ≥ 300KB ao final
 
 ---
 
@@ -1517,10 +1517,11 @@ No bridge (fora do firmware, script Python/Node):
 
 ---
 
-### Etapa 12.3 — Contrato de Sessão de Escuta (Session Contract)
+### Etapa 12.3 — Contrato de Sessão de Escuta (Session Contract) ✓
 
 **Dependências:** 12.2 concluída
 **Hardware necessário:** Não
+**Status:** Implementado — aguardando validação em hardware
 
 **Contexto:** O VAD heurístico atual ativa `bridge_tx_active` diretamente, causando sessões vazias (VOICE_END sem áudio), falsas ativações por ruído e chamadas Gemini com texto garbage. Esta etapa estabelece o contrato correto sem mudar a arquitetura de ativação.
 
