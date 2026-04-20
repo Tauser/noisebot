@@ -464,16 +464,24 @@ Critérios adicionais de integração do Bloco 0:
 **Implementado:**
 
 - `audio_hal`: I2S0 full-duplex, Philips 32-bit estéreo, 16kHz. Extrai canal L (INMP441).
-- `audio_service`: task "nb_audio_task" Core0 prio6. VAD por RMS sobre janelas de 256 samples (16ms).
-- Threshold ajustável via `audio_service_set_vad_threshold()`. Default: 2000 (escala 24-bit).
-- Eventos: `NB_EVT_VOICE_ACTIVITY_START`, `NB_EVT_VOICE_ACTIVITY_END` (após 300ms de silêncio).
+- `audio_service`: task "nb_audio_task" Core0 prio6. VAD multi-feature sobre janelas de 256 samples (16ms):
+  - High-pass one-pole (fc ≈ 180Hz) remove rumble antes do VAD.
+  - RMS, ZCR, e 6 ratios espectrais via `sound_analysis_service` (FFT 256pt).
+  - Threshold adaptativo ao ruído de fundo (EMA do piso de ruído × multiplicador).
+  - Detecção de motor: heurística de frequência dominante + low_ratio + ZCR baixo.
+  - Score acumulativo de entrada (frames fortes somam mais que frames suaves).
+  - Silêncio configurável via `NB_AUDIO_VAD_SILENCE_MS` (padrão 1000ms).
+- Threshold ajustável via `audio_service_set_vad_threshold()`.
+- Eventos: `NB_EVT_VOICE_ACTIVITY_START`, `NB_EVT_VOICE_ACTIVITY_END`.
 - Gravação de diagnóstico: `audio_record_diagnostic(path, duration_s)` → WAV 16-bit mono no SD.
+- **Nota arquitetural:** O VAD atual detecta atividade de voz mas não é o ativador de sessão LLM. Ver Etapas 12.3–12.4 para a arquitetura de sessão com touch-to-listen e wake word.
 
 **Critérios de aceitação:**
 
 - [x] Gravação de 3s: PCM audível sem artefatos (verificar via playback)
 - [x] Falar perto do mic: `VOICE_ACTIVITY_START` em <200ms
-- [x] Silêncio por 500ms: `VOICE_ACTIVITY_END` publicado
+- [x] Silêncio por 1000ms: `VOICE_ACTIVITY_END` publicado
+- [x] Moto/carro passando: VAD não dispara `VOICE_ACTIVITY_START` (ZCR ≈ 0, low_ratio alto)
 
 ---
 
@@ -1425,17 +1433,19 @@ boot
 - Apenas um transporte ativo por vez.
 
 **TCP:**
+
 - Servidor no ESP32, porta 9000.
 - Keep-alive TCP: detecta queda em < 10s.
 
 **UART (fallback de desenvolvimento):**
+
 - UART0/USB CDC, 921600 baud, separado do log serial.
 - Útil durante desenvolvimento sem AP configurado.
 
 **Mensagens ESP32 → Bridge:**
 
 ```
-AUDIO_CHUNK   payload: pcm_raw int16[], 512 samples (32ms)
+AUDIO_CHUNK   payload: pcm_raw int16[], 256 samples = 512 bytes (16ms @ 16kHz)
 EVENT         payload: nb_event_type_t + data
 STATUS        payload: state, emotion vec, attention level, health score
 ```
@@ -1456,7 +1466,7 @@ TEXT_SCROLL   payload: string (para futuro display de texto)
 - [x] Boot sem bridge e sem WiFi: sistema opera normalmente, sem bloqueio visível
 - [x] Bridge TCP conecta: handshake em < 300ms, modo TCP loggado
 - [x] Bridge UART conecta (WiFi off): handshake em < 200ms, modo UART loggado
-- [ ] AUDIO_CHUNK stream via TCP: jitter < 10ms entre chunks em rede local  ← validar em HW
+- [ ] AUDIO_CHUNK stream via TCP: jitter < 10ms entre chunks em rede local ← validar em HW
 - [x] TCP cai durante conversa: sistema detecta em < 10s, retorna offline
 - [x] CRC8 com erro: frame descartado, contabilizado, sem crash
 
@@ -1481,9 +1491,10 @@ No bridge (fora do firmware, script Python/Node):
 
 - Descobre ESP32 via mDNS (`noisebot.local:9000`) — sem IP hardcoded.
 - Recebe chunks de áudio → buffer até `VOICE_END`.
-- Whisper (local, small model) → transcrição.
+- Whisper (local, small model) → transcrição com filtro de `no_speech_prob`.
 - Gemini Flash free tier com system prompt de persona do NoiseBot.
 - Response parser: extrai intenção + emoção + texto de resposta.
+- `--dry-run`: transcreve com Whisper, loga resultado, não chama Gemini/Piper.
 - Piper TTS → WAV → envia em chunks via `SAY`.
 - Envia `EXPR` e `ACTION` conforme intenção da resposta.
 
@@ -1493,13 +1504,180 @@ No bridge (fora do firmware, script Python/Node):
 - Contexto de estado atual (estado, emoção, uptime, familiaridade).
 - Respostas curtas (< 10s de fala), nunca explicativas — sempre expressivas.
 
+**Nota:** O contrato de sessão desta etapa (VAD → VOICE_START → chunks → VOICE_END) é refatorado nas Etapas 12.3 e 12.4 para eliminar sessões vazias e ativações por ruído ambiente.
+
 **Critérios de aceitação:**
 
-- [ ] Pergunta simples ("tudo bem?"): resposta em < 8s do início da fala
-- [ ] Resposta chega em chunks: áudio começa antes do WAV completo (streaming)
-- [ ] `EXPR` e `ACTION` chegam: face e motion coordenados com a fala
-- [ ] Bridge offline mid-conversation: robot expressa confusão (CURIOUS) e retorna a idle
-- [ ] 10 conversas consecutivas: zero crash, sem degradação de memória
+- [x] Bridge conecta via TCP, handshake OK
+- [x] Pipeline completo: voz → Whisper → Gemini → Piper → speaker
+- [x] `EXPR` e `ACTION` chegam: face e motion coordenados com a fala
+- [x] Bridge offline: robot expressa confusão (CURIOUS) e retorna a idle
+- [ ] Pergunta simples ("tudo bem?"): resposta em < 8s após VOICE_END ← validar após 12.3
+- [ ] 10 conversas consecutivas: zero crash, sem degradação de memória ← validar após 12.3
+
+---
+
+### Etapa 12.3 — Contrato de Sessão de Escuta (Session Contract)
+
+**Dependências:** 12.2 concluída
+**Hardware necessário:** Não
+
+**Contexto:** O VAD heurístico atual ativa `bridge_tx_active` diretamente, causando sessões vazias (VOICE_END sem áudio), falsas ativações por ruído e chamadas Gemini com texto garbage. Esta etapa estabelece o contrato correto sem mudar a arquitetura de ativação.
+
+**O que entra:**
+
+No `audio_service`:
+
+- API explícita de sessão de escuta (substitui o gate direto via VAD):
+  ```c
+  typedef enum { NB_LISTEN_SOURCE_TOUCH, NB_LISTEN_SOURCE_WAKE_WORD, NB_LISTEN_SOURCE_DEBUG } nb_listen_source_t;
+  typedef enum { NB_LISTEN_END_VAD_SILENCE, NB_LISTEN_END_TIMEOUT, NB_LISTEN_END_BRIDGE_DISCONNECTED, NB_LISTEN_END_CANCELLED } nb_listen_end_reason_t;
+
+  esp_err_t audio_service_begin_listen_session(nb_listen_source_t source);
+  esp_err_t audio_service_end_listen_session(nb_listen_end_reason_t reason);
+  bool      audio_service_is_listening(void);
+  ```
+- Flags internas de sessão: `listen_session_active`, `bridge_start_sent`, `bridge_audio_sent`.
+- Invariantes obrigatórios:
+  - `NB_EVT_VOICE_ACTIVITY_END` só é enviado à bridge se `bridge_start_sent && bridge_audio_sent`.
+  - Chunks de áudio só são enviados se `listen_session_active && bridge_tx_active`.
+  - `bridge_audio_sent = true` quando ao menos um chunk é enviado com sucesso.
+  - Se bridge offline: sessão existe (visual/comportamental), mas sem VOICE_START, sem chunks, sem VOICE_END.
+- Timeout de sessão sem fala: 8s sem `bridge_audio_sent` → `end_listen_session(NB_LISTEN_END_TIMEOUT)`.
+- VAD não activa `bridge_tx_active` em estado IDLE — apenas fecha sessão aberta (`NB_LISTEN_END_VAD_SILENCE`).
+
+No `bridge.py`:
+
+- `--dry-run`: transcreve com Whisper, loga, não chama Gemini/Piper.
+- Rejeição pré-Whisper: buffer vazio, samples < 8000 (< 0.5s).
+- Rejeição pós-Whisper: texto vazio, `no_speech_prob` alto, `avg_logprob` ruim, `compression_ratio` suspeito.
+- Log de sessão no final de cada pipeline: duração, samples, RMS médio, texto, motivo de descarte.
+
+**Arquivos modificados:** `audio_service.h`, `audio_service.c`, `bridge.py`
+
+**Critérios de aceitação:**
+
+- [ ] Bridge ligada + dry-run + toque + fala: VOICE_START → chunks → VOICE_END → transcrição logada, Gemini não chamado
+- [ ] Bridge desligada + toque + fala: sessão existe visualmente, zero frames enviados, zero VOICE_END
+- [ ] Toque + silêncio de 8s: timeout fecha sessão, VOICE_END não enviado (bridge_audio_sent=false), Gemini não chamado
+- [ ] Monitor serial: nunca `NB_EVT_VOICE_ACTIVITY_END` sem `NB_EVT_VOICE_ACTIVITY_START` precedente na mesma sessão
+- [ ] Bridge.py: nunca log de chamada Gemini com text="" ou < 2 palavras reais
+
+---
+
+### Etapa 12.4 — Touch-to-Listen
+
+**Dependências:** 12.3 concluída, 2.2 (touch_service) concluída
+**Hardware necessário:** Sensor de toque conectado
+
+**Contexto:** Em ambiente com ruído externo (carros, TV, motos), o VAD heurístico não é confiável como ativador de sessão. O toque é a forma mais direta e robusta de sinalizar intenção de falar com o bot. Esta etapa transforma o fluxo de sessão: **Touch → ATTENTIVE → streaming → VAD fecha → bridge processa**.
+
+**O que entra:**
+
+Na `state_machine`:
+
+- `state_machine_on_touch_tap()` em IDLE/SLEEPING: transita para `NB_STATE_ATTENTIVE` (antes ia para `TOUCH_REACTING`).
+- Em `NB_STATE_ATTENTIVE`: timer de 8s de inatividade → `ATTENTIVE → IDLE` se `audio_service_is_listening() == false`.
+- `state_machine_on_voice_end()`: `ATTENTIVE → RESPONDING` (se SAY for esperado) ou `ATTENTIVE → IDLE`.
+
+No `boot_manager`:
+
+- Handler de `NB_EVT_TOUCH_TAP` quando estado = IDLE/SLEEPING: chama `audio_service_begin_listen_session(NB_LISTEN_SOURCE_TOUCH)`.
+- Handler de `NB_EVT_STATE_CHANGED` para ATTENTIVE: feedback visual (expressão + LEDs "escutando").
+
+No `audio_service`:
+
+- `begin_listen_session()`: seta `listen_session_active = true`, `bridge_tx_active = bridge_is_connected()`, reseta flags, envia `NB_EVT_VOICE_ACTIVITY_START` se bridge conectada (`bridge_start_sent = true`), inicia streaming imediato nos próximos ciclos da audio_task.
+- Em IDLE: VAD continua rodando para `sound_analysis` e comportamento semântico, mas nunca seta `bridge_tx_active` nem chama `begin_listen_session()`.
+- VAD fecha sessão via `end_listen_session(NB_LISTEN_END_VAD_SILENCE)` após `NB_AUDIO_VAD_SILENCE_MS` de silêncio dentro de sessão ativa.
+
+**Arquivos modificados:** `state_machine.c`, `boot_manager.c`, `audio_service.c`
+
+**Critérios de aceitação:**
+
+- [ ] Moto/carro/TV sem toque: zero `VOICE_START` na bridge, zero chunks, zero Gemini
+- [ ] Toque em IDLE: estado → ATTENTIVE, bridge recebe VOICE_START imediatamente
+- [ ] Toque + fala + silêncio: VAD fecha sessão, bridge processa, robot responde
+- [ ] Toque + silêncio de 8s: timeout, sem VOICE_END para bridge, volta a IDLE
+- [ ] Toque em SLEEPING: bot acorda (IDLE), segunda interação necessária para ATTENTIVE (ou tap direto para ATTENTIVE — definir comportamento)
+- [ ] Bridge offline + toque: sessão visual existe (expressão muda), zero frames enviados
+
+---
+
+### Etapa 12.5 — Pre-roll Ring Buffer
+
+**Dependências:** 12.4 concluída
+**Hardware necessário:** Não
+
+**Contexto:** Quando o usuário toca e fala imediatamente, os primeiros 100–200ms da fala (primeira sílaba) são perdidos porque o streaming começa após o toque ser processado. Um ring buffer circular resolve isso sem alterar o contrato de sessão.
+
+**O que entra:**
+
+No `audio_service`:
+
+- Ring buffer estático de 20 chunks × 256 samples × 2 bytes = **10 KB SRAM**.
+  - Aloca em SRAM (não PSRAM) — DMA e acesso frequente requerem latência baixa.
+  - Buffer circular: sobrescreve o mais antigo quando cheio.
+  - Alimentado a cada ciclo da audio_task, independente do estado da sessão.
+- `begin_listen_session()`: se `bridge_tx_active`, faz flush do ring buffer para bridge antes do streaming normal.
+  - Flush conta para `bridge_audio_sent` se ao menos um chunk for enviado com sucesso.
+  - Flush é feito com timestamps retroativos para Whisper ter o áudio completo.
+- Pre-roll de ~320ms cobre o tempo de resposta ao toque + primeira sílaba.
+
+**Arquivos modificados:** `audio_service.c`, `audio_service.h` (documentação)
+
+**Critérios de aceitação:**
+
+- [ ] Toque + fala imediata "olá, que horas são": Whisper transcreve "olá" (primeira palavra não cortada)
+- [ ] Ring buffer não interfere com playback: `vad_playback_mute_ms` ainda inibe VAD durante TTS
+- [ ] Memória: `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` não cai abaixo de 50 KB após init
+- [ ] Flush do pre-roll precede chunks novos em ordem temporal correta na bridge
+
+---
+
+### Etapa 12.6 — Wake Word via ESP-SR (Investigação e Integração)
+
+**Dependências:** 12.4 concluída (touch-to-listen validado)
+**Hardware necessário:** INMP441 já conectado
+
+**Contexto:** Esta etapa substitui o toque como ativador primário por uma wake word local. O toque permanece como fallback. A estratégia é usar primeiro um modelo pronto do ESP-SR (sem treinamento), validar memória e integração, e só depois considerar wake word customizada.
+
+**O que entra:**
+
+Investigação primeiro (não implementar sem validar):
+
+- Adicionar `espressif/esp-sr: ">=1.6.0"` em `idf_component.yml`.
+- Medir PSRAM livre após AFE init: deve manter > 300 KB de headroom.
+- Medir tamanho de firmware: verificar se partição OTA suporta.
+
+Se investigação for viável, implementar:
+
+- `wake_service` (Layer 4): wrapper sobre AFE + WakeNet.
+  - Wake word inicial: **"Hi ESP"** (WakeNet9, modelo pronto, sem treinamento).
+  - Pipeline: `audio_hal` → `afe_handle->feed(pcm)` → WakeNet → `NB_EVT_WAKE_WORD_DETECTED`.
+  - AEC (cancelamento de eco): fase posterior — requer loopback do speaker.
+  - Task dedicada (Core 0, prio 7, 4KB).
+- `nb_events.h`: adicionar `NB_EVT_WAKE_WORD_DETECTED`.
+- `boot_manager`: handler `NB_EVT_WAKE_WORD_DETECTED` → `audio_service_begin_listen_session(NB_LISTEN_SOURCE_WAKE_WORD)` → mesmo fluxo do toque.
+- Feedback ao acordar: expressão + LED reagem antes de começar captura.
+- NVS: `nb_svc/ww_enabled` — desabilita WakeNet sem reflash.
+
+Wake word customizada ("Oi NoiseBot", "Hey NoiseBot"):
+
+- Requer ESP-SR Customization Tool ou fine-tuning.
+- Fase separada, posterior a esta etapa — não bloquear integração por isso.
+- "Noise" sozinho é curto demais e ambíguo — não usar como única keyword.
+
+**Arquivos criados/modificados:** `components/services/wake_service/` (novo), `nb_events.h`, `boot_manager.c`, `idf_component.yml`, `sdkconfig.defaults`
+
+**Critérios de aceitação:**
+
+- [ ] Build com esp-sr: zero warnings novos, zero regressão de funcionalidade
+- [ ] PSRAM livre após AFE init: > 300 KB
+- [ ] Dizer "Hi ESP": `NB_EVT_WAKE_WORD_DETECTED` no log, estado → ATTENTIVE, bot escuta
+- [ ] Ruído ambiente sem keyword: zero false positives em 5 minutos
+- [ ] Toque ainda funciona como fallback independente do `ww_enabled`
+- [ ] `ww_enabled=0` em NVS: WakeNet desabilitado, toque continua funcionando
 
 ---
 
@@ -1600,6 +1778,7 @@ No bridge (fora do firmware, script Python/Node):
 > os serviços de aplicação sobre essa infraestrutura.
 
 **Restrições de hardware para este bloco (ESP32-S3):**
+
 - TLS/HTTPS: mbedTLS consome ~250 KB SRAM adicionais — inviável. HTTP na LAN apenas.
 - Máximo 1 cliente WebSocket simultâneo.
 - Sem streaming de áudio ou vídeo via WiFi (jitter e banda insuficientes).
@@ -1617,6 +1796,7 @@ No bridge (fora do firmware, script Python/Node):
 ### Etapa 15.1 — Web Dashboard e Companion API (Layer 2)
 
 **Dependências:** 9.6 concluída (IP adquirido)
+
 **Hardware necessário:** Não
 
 **O que entra:**
@@ -1630,21 +1810,28 @@ No bridge (fora do firmware, script Python/Node):
 
 **REST API:**
 
-| Endpoint              | Método | Descrição                                          |
-| --------------------- | ------ | -------------------------------------------------- |
-| `GET /`               | HTTP   | Dashboard (HTML do SD ou fallback embutido)         |
-| `GET /api/status`     | HTTP   | JSON: state, expression, attention, health, uptime, fps |
-| `GET /api/persona`    | HTTP   | JSON: warmth, energy, curiosity, trust             |
-| `GET /api/config`     | HTTP   | JSON com todas as chaves NVS relevantes            |
-| `POST /api/config`    | HTTP   | Atualiza chave NVS (body: `{"key":"val","value":x}`) |
-| `POST /api/command`   | HTTP   | Injeta ação (body: `{"type":"ACTION","value":"GREET"}`) |
-| `WS /ws`              | WS     | Push de status a cada mudança; aceita comandos     |
+| Endpoint            | Método | Descrição                                               |
+| ------------------- | ------ | ------------------------------------------------------- |
+| `GET /`             | HTTP   | Dashboard (HTML do SD ou fallback embutido)             |
+| `GET /api/status`   | HTTP   | JSON: state, expression, attention, health, uptime, fps |
+| `GET /api/persona`  | HTTP   | JSON: warmth, energy, curiosity, trust                  |
+| `GET /api/config`   | HTTP   | JSON com todas as chaves NVS relevantes                 |
+| `POST /api/config`  | HTTP   | Atualiza chave NVS (body: `{"key":"val","value":x}`)    |
+| `POST /api/command` | HTTP   | Injeta ação (body: `{"type":"ACTION","value":"GREET"}`) |
+| `WS /ws`            | WS     | Push de status a cada mudança; aceita comandos          |
 
 **WebSocket (push do robot):**
 
 ```json
-{ "type": "status", "state": "IDLE", "expression": "NEUTRAL",
-  "attention": 0.3, "health": 87, "uptime_s": 3612, "fps": 45 }
+{
+  "type": "status",
+  "state": "IDLE",
+  "expression": "NEUTRAL",
+  "attention": 0.3,
+  "health": 87,
+  "uptime_s": 3612,
+  "fps": 45
+}
 ```
 
 **WebSocket (comando do cliente):**
@@ -1695,7 +1882,6 @@ No bridge (fora do firmware, script Python/Node):
 - [x] Export JSON: arquivo válido, importável em outro hardware com comportamento idêntico
 - [x] WiFi permanece ativo após OTA (não desliga mais após update)
 
-
 ---
 
 ## BLOCO 16 — Voz e Expressividade Avançada
@@ -1704,28 +1890,29 @@ No bridge (fora do firmware, script Python/Node):
 
 ---
 
-### Etapa 16.1 — Wake Word Service (Layer 4)
+### Etapa 16.1 — Wake Word Customizada (Layer 4)
 
-**Dependências:** 10.3 (VAD Semântico) concluída
+**Dependências:** 12.6 concluída (wake word "Hi ESP" validada em produção)
 **Hardware necessário:** INMP441 já conectado
+
+**Contexto:** A Etapa 12.6 integrou ESP-SR com wake word pronta ("Hi ESP"). Esta etapa substitui por uma keyword customizada do NoiseBot. Não implementar antes de 12.6 estar estável — o treinamento/customização é trabalho separado da integração de infraestrutura.
 
 **O que entra:**
 
-- `wake_word_service` (Layer 4): detecta keyword configurável usando `esp_afe` (Audio Front End) + `esp_mn` (MultiNet) do ESP-SR.
-  - Keyword padrão: "Noise Bot" (customizável via NVS).
-  - Pipeline: INMP441 → `esp_afe` (beamforming + noise suppression) → `esp_mn` (keyword spotting).
-  - Roda em task dedicada (prioridade 8), consome ~80KB PSRAM para modelos.
-- Publica `NB_EVT_WAKE_WORD` no event bus ao detectar keyword com confiança ≥ threshold configurável.
-- `boot_manager` registra handler: `NB_EVT_WAKE_WORD` → `conductor_play(NB_ACTION_WAKE_UP)` se em SLEEPING, senão `GREET`.
-- NVS: `nb_svc/ww_enabled` (u8), `nb_svc/ww_threshold` (u8, 0–100).
-- Integrado ao web dashboard: enable/disable, threshold slider.
+- Keyword customizada: **"Oi NoiseBot"** ou **"Hey NoiseBot"** via ESP-SR Customization Tool.
+  - "Noise" sozinho não é suficiente — muito curto e ambíguo em ambiente real.
+  - Processo: gravar amostras, treinar com ESP-SR tool, exportar modelo `.bin`, incluir no firmware.
+- `wake_service` atualizado para carregar modelo customizado de `/sdcard/models/wake.bin` se presente, senão fallback para "Hi ESP" embutido.
+- NVS: `nb_svc/ww_model` — path do modelo customizado.
+- Web dashboard: seção wake word — modelo ativo, threshold, botão de teste, enable/disable.
 
 **Critérios de aceitação:**
 
-- [ ] Dizer "Noise Bot" com robot em SLEEPING → acorda e cumprimenta em <1.5s
-- [ ] Dizer "Noise Bot" em IDLE → plays GREET
-- [ ] Ruído ambiente sem keyword: zero false positives em 5 minutos
-- [ ] `ww_enabled=0` em NVS: keyword não detectada, VAD continua normal
+- [ ] Dizer "Oi NoiseBot": `NB_EVT_WAKE_WORD_DETECTED`, bot entra em ATTENTIVE em < 1.5s
+- [ ] Dizer "Oi NoiseBot" em SLEEPING: acorda e entra em ATTENTIVE
+- [ ] Ruído ambiente e TV sem keyword: zero false positives em 10 minutos
+- [ ] Modelo ausente no SD: fallback para "Hi ESP" sem crash, log informativo
+- [ ] `ww_enabled=0` em NVS: keyword desabilitada, toque continua funcionando
 - [ ] Threshold ajustável pelo dashboard sem reflash
 
 ---

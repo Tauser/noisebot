@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(dir:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(ls D:/Projetos/Noisebot/*.ini)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\([x.get\\('version',''\\) for x in d.get\\('idfInstalled',{}\\).values\\(\\)][:3]\\)\")",
+      "Bash(git:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:stack-chan.github.io)",
+      "WebFetch(domain:docs.m5stack.com)"
     ]
   }
 }
