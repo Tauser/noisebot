@@ -14,7 +14,7 @@ Este arquivo tem autoridade máxima sobre qualquer instrução geral.
 ## Projeto
 
 **NoiseBot** é um companion robot desktop expressivo baseado em ESP32-S3.
-O firmware é C17 puro, salvo o componente `hal/display` (C++ para LovyanGFX).
+O firmware é C17 puro, salvo o componente `nb_hal/display` (C++ para LovyanGFX).
 A stack é ESP-IDF + FreeRTOS. **Nunca usar Arduino.**
 
 ---
@@ -24,7 +24,7 @@ A stack é ESP-IDF + FreeRTOS. **Nunca usar Arduino.**
 ### Stack e Linguagem
 
 - ESP-IDF (não Arduino). Toda API vem de `esp_*` ou `freertos/`.
-- C17 em todos os componentes exceto `hal/display` (C++ exclusivamente para LovyanGFX).
+- C17 em todos os componentes exceto `nb_hal/display` (C++ exclusivamente para LovyanGFX).
 - CMake via `idf_component_register`. Não usar Makefile legado.
 - Compilar com `-Wall -Wextra -Werror` — zero warnings tolerados.
 
@@ -37,7 +37,7 @@ A stack é ESP-IDF + FreeRTOS. **Nunca usar Arduino.**
 
 ```
 Layer 0: ESP-IDF / FreeRTOS / Hardware
-Layer 1: HAL        (hal/display, hal/servo, hal/audio, hal/led, hal/touch, hal/sd)
+Layer 1: HAL        (nb_hal/display, nb_hal/servo, nb_hal/audio, nb_hal/led, nb_hal/touch, nb_hal/sd)
 Layer 2: Infra      (event_bus, logger, config_manager, persistence_mgr, watchdog, boot_manager)
 Layer 3: Safety     (motion_safety, power_monitor, error_policy)
 Layer 4: Services   (render_service, motion_service, audio_service, led_service, touch_service)
@@ -78,8 +78,10 @@ Layer 8: Futuro     (camera, imu, battery)
 
 ### WiFi e Conectividade
 
-- **WiFi desabilitado em todos os blocos 0–6.** Habilitado apenas no Bloco 7 para OTA.
-- O produto é offline-first. Não assumir conectividade em nenhuma decisão de design.
+- **WiFi desabilitado nos Blocos 0–8.** Ativado na Etapa 9.6 via `wifi_service` (boot-time, background, Layer 2).
+- O produto é **offline-first**: funciona 100% sem WiFi. Conectividade é conveniência, nunca dependência.
+- Não assumir IP disponível em decisões de design anteriores à Etapa 9.6.
+- Sem TLS/HTTPS no firmware: mbedTLS ~250 KB SRAM — inviável. HTTP local apenas.
 
 ---
 
@@ -87,12 +89,12 @@ Layer 8: Futuro     (camera, imu, battery)
 
 ```
 components/
-├── infra/          # Layer 2: boot_manager, logger, event_bus,
-│                   #          config_manager, persistence_mgr,
-│                   #          watchdog_service, error_policy, nb_events.h
-├── hal/            # Layer 1: display_hal (.cpp + .h), servo_hal,
+├── infra/          # Layer 2+3: boot_manager, logger, event_bus,
+│                   #            config_manager, persistence_mgr,
+│                   #            watchdog_service, error_policy, nb_events.h,
+│                   #            motion_safety, power_monitor (Layer 3 físico)
+├── nb_hal/         # Layer 1: display_hal (.cpp + .h), servo_hal,
 │                   #          audio_hal, led_hal, touch_hal, sd_hal
-├── safety/         # Layer 3: motion_safety, power_monitor
 ├── services/       # Layer 4-5: render_service, motion_service,
 │                   #             audio_service, led_service, touch_service,
 │                   #             gaze_service, idle_service,
@@ -109,7 +111,7 @@ components/
 - Arquivos de header com include guard `#ifndef NB_<MODULO>_H`.
 - Erros retornam `esp_err_t`. Usar `ESP_ERROR_CHECK` apenas em init (não em runtime).
 - Tasks: nome descritivo (`"nb_render_task"`), stack e prioridade documentados no header.
-- Constantes de hardware (GPIO, limites de servo) em `hal/nb_hw_config.h` — nunca hardcoded em lógica.
+- Constantes de hardware (GPIO, limites de servo) em `nb_hal/nb_hw_config.h` — nunca hardcoded em lógica.
 
 ---
 

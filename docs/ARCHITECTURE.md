@@ -61,7 +61,7 @@ components/
 │   ├── web_service.c / .h       # HTTP+WS dashboard e REST API (Etapa 15.1)
 │   └── nb_persist_types.h       # Tipos das estruturas persistidas
 │
-├── hal/
+├── nb_hal/
 │   ├── CMakeLists.txt
 │   ├── display_hal.cpp / .h     # LovyanGFX + wrapper C (extern "C")
 │   ├── display_lgfx_config.hpp  # Configuração do panel ST7789
@@ -71,11 +71,8 @@ components/
 │   ├── touch_hal.c / .h         # Touch peripheral ESP32-S3
 │   ├── sd_hal.c / .h            # SPI3 + FATFS + mount
 │   └── nb_hw_config.h           # GPIO, limites HW, constantes de hardware
-│
-├── safety/
-│   ├── CMakeLists.txt
-│   ├── motion_safety.c / .h     # Limites, stall detection, heartbeat, fail-safe
-│   └── power_monitor.c / .h     # Brownout callback, modos de energia
+│                                # (safety/ não existe como diretório separado:
+│                                #  motion_safety e power_monitor vivem em infra/)
 │
 ├── services/
 │   ├── CMakeLists.txt
@@ -205,9 +202,9 @@ esp_err_t event_bus_unsubscribe(nb_event_type_t type,
 LovyanGFX é C++. O projeto é C17. A solução é um componente wrapper:
 
 ```
-hal/display_lgfx_config.hpp   →  Configuração do panel (C++ puro)
-hal/display_hal.cpp            →  Instância LGFX, operações, mutex (C++)
-hal/display_hal.h              →  API pública com extern "C" (visível em C)
+nb_hal/display_lgfx_config.hpp   →  Configuração do panel (C++ puro)
+nb_hal/display_hal.cpp            →  Instância LGFX, operações, mutex (C++)
+nb_hal/display_hal.h              →  API pública com extern "C" (visível em C)
 ```
 
 Nenhum código C inclui headers C++ do LovyanGFX diretamente.
@@ -250,7 +247,7 @@ public:
 };
 ```
 
-Todos os pinos `NB_PIN_*` definidos em `hal/nb_hw_config.h`.
+Todos os pinos `NB_PIN_*` definidos em `nb_hal/nb_hw_config.h`.
 
 ### Framebuffer e Sprites
 
