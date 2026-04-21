@@ -1674,12 +1674,264 @@ Wake word customizada ("Oi NoiseBot", "Hey NoiseBot"):
 
 **Critérios de aceitação:**
 
-- [ ] Build com esp-sr: zero warnings novos, zero regressão de funcionalidade
-- [ ] PSRAM livre após AFE init: > 300 KB
-- [ ] Dizer "Hi ESP": `NB_EVT_WAKE_WORD_DETECTED` no log, estado → ATTENTIVE, bot escuta
+- [x] Build com esp-sr: zero warnings novos, zero regressão de funcionalidade
+- [x] PSRAM livre após AFE init: > 300 KB — **7478 KB livres** (headroom câmera OK)
+- [x] Dizer "Hi ESP": `NB_EVT_WAKE_WORD_DETECTED` no log, estado → ATTENTIVE, bot escuta — **requer ~10cm do mic (afe_linear_gain=10.0, máximo)**
 - [ ] Ruído ambiente sem keyword: zero false positives em 5 minutos
 - [ ] Toque ainda funciona como fallback independente do `ww_enabled`
 - [ ] `ww_enabled=0` em NVS: WakeNet desabilitado, toque continua funcionando
+
+---
+
+### Etapa 12.7 — Bridge Dry-Run e Transporte Confiável
+
+**Dependências:** 12.3, 12.4 e 12.5 concluídas
+**Hardware necessário:** ESP32-S3 + PC/RPi executando `bridge.py --dry-run`
+
+**Contexto:** Os testes pós-12.6 mostraram sessões em que a bridge recebia `VOICE_START`, mas encerrava com `samples=0`, e outras interações por toque não apareciam no terminal da bridge. Antes de mexer no VAD ou no wake word, o contrato físico de transporte precisa ficar provado: `VOICE_START -> AUDIO_CHUNK(s) -> VOICE_END`, com áudio real chegando ao bridge.
+
+**O que entra:**
+
+No `bridge_service`:
+
+- Garantir envio completo de frames TCP: `send()` deve repetir até transmitir todo o frame ou detectar erro.
+- Em queda de socket: publicar estado offline, limpar fila TX e permitir reconexão limpa.
+- `bridge_service_flush_tx()` antes de uma nova sessão: remove resíduos de sessão anterior.
+- Logs de diagnóstico compactos para:
+  - `VOICE_START` enfileirado/enviado.
+  - primeiro `AUDIO_CHUNK` enviado.
+  - `VOICE_END` enviado ou suprimido.
+  - desconexão/reconexão.
+
+No `audio_service`:
+
+- `begin_listen_session()` só marca `bridge_tx_active = true` se `VOICE_START` entrou na fila da bridge com sucesso.
+- `bridge_audio_sent` só vira `true` após ao menos um chunk aceito pelo `bridge_service`.
+- Pre-roll conta como áudio apenas se o chunk entrou na fila com sucesso.
+- Se bridge não estiver conectada, a sessão continua visualmente, mas não tenta enviar frames.
+
+No `bridge.py`:
+
+- Detectar socket fechado (`recv() == b""`) como desconexão, não como ausência silenciosa de dados.
+- Logar o primeiro chunk de áudio por sessão.
+- Em `--dry-run`, nunca chamar Gemini/Piper; o sucesso do teste é `samples > 0` e transcrição/log de descarte coerente.
+
+**Arquivos prováveis:** `bridge_service.c`, `bridge_service.h`, `audio_service.c`, `bridge.py`
+
+**Critérios de aceitação:**
+
+- [ ] Bridge ligada + dry-run + toque: terminal mostra `VOICE_START recebido`.
+- [ ] Bridge ligada + dry-run + toque + fala: terminal mostra primeiro `AUDIO_CHUNK` e `samples > 0`.
+- [ ] `VOICE_START` sem nenhum chunk por 8s: bridge descarta como `buffer_vazio` sem chamar Gemini/Piper.
+- [ ] 5 sessões de toque consecutivas: todas aparecem no terminal da bridge.
+- [ ] Desconectar/reconectar bridge: firmware volta a enviar sessão sem reboot.
+
+---
+
+### Etapa 12.8 — WakeNet Single-Shot e Rearm Seguro
+
+**Dependências:** 12.6 concluída, 12.7 validada com toque
+**Hardware necessário:** INMP441 + modelo WakeNet pronto ("Hi ESP")
+
+**Contexto:** Wake word deve ser um gatilho de intenção, não um detector contínuo que continua disparando durante `ATTENTIVE`. Os logs mostraram múltiplas detecções de wake em sequência e warnings do AFE quando o fetch rodava sem áudio disponível. A referência XiaoZhi usa AFE/WakeNet como modo de IDLE, para o wake ao detectar, e só rearma quando o estado volta a permitir escuta de wake.
+
+**O que entra:**
+
+No `wake_service`:
+
+- Avaliar e usar `fetch_with_delay(..., portMAX_DELAY)` se disponível na versão do ESP-SR.
+- WakeNet é **single-shot** por sessão:
+  - detectou wake -> suspende WakeNet imediatamente;
+  - publica `NB_EVT_WAKE_WORD_DETECTED` uma única vez;
+  - ignora novas detecções até rearm explícito.
+- `wake_service_rearm()`:
+  - só habilita WakeNet quando o sistema está de volta a `IDLE`/modo permitido;
+  - reseta buffer AFE e buffer de feed;
+  - aplica guard/cooldown para evitar wake residual.
+- Medição de escala do PCM:
+  - log de RMS/pico antes do `WAKE_INPUT_GAIN`;
+  - log de saturação após ganho;
+  - validar se `WAKE_INPUT_GAIN=16` ajuda ou satura.
+
+No `boot_manager`/state flow:
+
+- Wake word não deve ser rearmada por timeout parcial enquanto a sessão ainda está ativa.
+- Durante `ATTENTIVE`/`RESPONDING`, WakeNet fica suspenso, exceto se uma etapa futura implementar interrupção explícita.
+
+**Arquivos prováveis:** `wake_service.c`, `wake_service.h`, `boot_manager.c`, `state_machine.c`
+
+**Critérios de aceitação:**
+
+- [ ] Dizer "Hi ESP" gera exatamente um `NB_EVT_WAKE_WORD_DETECTED` por sessão.
+- [ ] Durante `ATTENTIVE`, repetir "Hi ESP" não gera novo wake.
+- [ ] Após voltar para `IDLE`, "Hi ESP" volta a funcionar.
+- [ ] Zero spam de `AFE: Ringbuffer of AFE is empty` em operação normal.
+- [ ] Log de ganho mostra pico sem saturação persistente.
+
+---
+
+### Etapa 12.9 — Turn-Taking Natural de Voz
+
+**Dependências:** 12.7 validada, 12.8 sem repetição de wake
+**Hardware necessário:** INMP441 + bridge em dry-run
+
+**Contexto:** Produtos conversacionais como StackChan/XiaoZhi não limitam a fala do usuário a uma janela curta fixa. A sessão deve ter dois tempos diferentes: um timeout curto para o usuário **começar** a falar e um limite longo de segurança enquanto ele **continua** falando. O fim normal do turno é silêncio pós-fala, não "acabou a janela".
+
+**O que entra:**
+
+No `audio_service`:
+
+- Substituir a lógica conceitual de janela curta por estados internos de sessão:
+  - `WAITING_FOR_SPEECH`: sessão aberta, aguardando primeira fala.
+  - `CAPTURING_SPEECH`: fala detectada, áudio fluindo para bridge.
+  - `ENDING_ON_SILENCE`: silêncio pós-fala acumulando para encerrar.
+- Separar constantes:
+  ```c
+  LISTEN_WAIT_SPEECH_TIMEOUT_MS  /* ex.: 8000ms */
+  LISTEN_END_SILENCE_MS          /* ex.: 1000ms */
+  LISTEN_MAX_SPEECH_MS           /* ex.: 30000-60000ms, safety */
+  ```
+- O timeout curto só roda em `WAITING_FOR_SPEECH`.
+- Depois que a fala começa, a sessão não deve encerrar por `LISTEN_NO_VOICE_FALLBACK_MS`.
+- Encerramento normal:
+  - fala detectada -> silêncio contínuo pós-fala -> `VOICE_END`.
+- Encerramento de segurança:
+  - fala ou ruído contínuo por tempo máximo -> `VOICE_END` com motivo de safety.
+
+No `bridge.py`:
+
+- Aceitar sessões mais longas em dry-run sem truncar automaticamente.
+- Logar duração, samples e motivo (`silence`, `wait_timeout`, `max_speech_timeout`, `buffer_vazio`).
+
+**Arquivos prováveis:** `audio_service.c`, `audio_service.h`, `bridge.py`
+
+**Critérios de aceitação:**
+
+- [ ] Toque + silêncio: cancela após ~8s sem enviar Gemini/Piper.
+- [ ] Toque + frase curta: encerra ~1s após parar de falar.
+- [ ] Toque + fala por 15-20s: não corta antes do silêncio final.
+- [ ] Toque + ruído contínuo: encerra por timeout máximo de segurança, sem travar.
+- [ ] Bridge dry-run mostra sessão longa com `samples > 0`.
+
+---
+
+### Etapa 12.10 — AFE/VADNet para Listening
+
+**Dependências:** 12.7 e 12.9 validadas com touch; 12.8 estável para wake
+**Hardware necessário:** INMP441 mono; PSRAM habilitada
+
+**Contexto:** O VAD heurístico de RMS/ZCR/FFT é útil para consciência sonora, mas não deve ser o juiz principal da sessão LLM em ambiente real com TV, carros e motos. A referência XiaoZhi usa ESP-SR AFE também no modo de voz, com VAD do AFE (`res->vad_state`) e processamento de ruído. Esta etapa migra o listening para AFE/VADNet mantendo o touch como fallback de teste.
+
+**O que entra:**
+
+Investigar primeiro:
+
+- Verificar modelos disponíveis na partição `model`:
+  - WakeNet (`ESP_WN_PREFIX`)
+  - VADNet (`ESP_VADN_PREFIX`)
+  - NSNet (`ESP_NSNET_PREFIX`)
+- Medir PSRAM antes/depois de criar o AFE de voice processing.
+- Confirmar se dois AFE handles simultâneos (WakeNet + Voice Processor) cabem na memória ou se será necessário alternar instâncias.
+
+Implementação proposta:
+
+- Criar `voice_processor_service` (Layer 4) ou extensão isolada do `audio_service`:
+  - modo `START`: inicializa/ativa AFE para listening;
+  - modo `FEED`: recebe PCM do `audio_service`;
+  - modo `FETCH`: retorna áudio processado e VAD state;
+  - modo `STOP`: reseta buffers e libera/suspende processamento.
+- Config AFE de listening:
+  - `AFE_TYPE_VC` quando suportado;
+  - `vad_init = true`;
+  - `vad_model_name = ESP_VADN_PREFIX` se existir;
+  - `ns_init = true` com NSNet se existir;
+  - `aec_init = false` inicialmente (sem referência limpa do speaker);
+  - `memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM`.
+- Usar `res->vad_state` do AFE para `WAITING_FOR_SPEECH`/`CAPTURING_SPEECH`/silêncio.
+- Avaliar envio de `res->data` processado para bridge no lugar do PCM bruto.
+- Preservar pre-roll/vad-cache para não cortar a primeira palavra.
+
+**Arquivos prováveis:** `audio_service.c`, `audio_service.h`, `components/services/voice_processor_service/`, `wake_service.c`, `CMakeLists.txt`, `idf_component.yml`, `sdkconfig.defaults`
+
+**Critérios de aceitação:**
+
+- [ ] Touch + fala: VAD state do AFE detecta fala e silêncio.
+- [ ] Touch + frase longa: sessão fecha por silêncio pós-fala.
+- [ ] Moto/carro/TV sem touch: zero sessão bridge.
+- [ ] Touch + ruído sem voz: bridge descarta ou sessão encerra sem Gemini/Piper.
+- [ ] PSRAM livre após AFE listening: > 300 KB, ou decisão explícita de trade-off se câmera continuar adiada.
+
+---
+
+### Etapa 12.11 — Rebaixar VAD Heurístico para Diagnóstico
+
+**Dependências:** 12.10 validada
+**Hardware necessário:** Não
+
+**Contexto:** Depois que o AFE/VADNet governa o listening, o VAD heurístico atual deixa de ser caminho crítico para conversa. Ele continua valioso para comportamento emergente, sound analysis, detecção de eventos ambientais e calibração, mas não deve abrir/fechar sessão LLM.
+
+**O que entra:**
+
+- Documentar explicitamente no `audio_service.h`:
+  - VAD heurístico não ativa bridge;
+  - VAD heurístico não é fonte primária de `VOICE_END` da sessão LLM quando AFE/VADNet está ativo.
+- Manter features atuais para:
+  - `sound_analysis_service`;
+  - `vad_semantic_service`;
+  - eventos de comportamento (`VOICE_SOFT`, `VOICE_LOUD`, etc.);
+  - logs/calibração.
+- Remover ou isolar defines frágeis que só existiam para impedir falso positivo de bridge.
+- Atualizar docs de arquitetura de voz.
+
+**Arquivos prováveis:** `audio_service.c`, `audio_service.h`, `sound_analysis_service.*`, `vad_semantic_service.*`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`
+
+**Critérios de aceitação:**
+
+- [ ] Desabilitar VAD heurístico não quebra sessão LLM com touch/wake.
+- [ ] Sound analysis continua classificando ambiente para comportamento.
+- [ ] Nenhum caminho em IDLE consegue enviar áudio para bridge sem touch/wake.
+- [ ] Documentação deixa claro qual VAD serve a qual finalidade.
+
+---
+
+### Etapa 12.12 — Avaliação Dual Mic, BSS e AEC
+
+**Dependências:** 12.10 validada com 1 mic; 12.11 concluída
+**Hardware necessário:** Protótipo com segundo microfone ou codec adequado
+
+**Contexto:** StackChan/CoreS3 usa dual microphones e codec ES7210, mas dois microfones não corrigem bugs de sessão, bridge, wake rearm ou timeouts. A avaliação dual mic só deve acontecer depois que 1 mic + AFE/VADNet + bridge estiver estável.
+
+**O que entra:**
+
+Investigação:
+
+- Mapear opções de hardware:
+  - segundo INMP441 em canal oposto do I2S;
+  - codec multi-mic externo;
+  - manter hardware atual e não avançar.
+- Verificar conflito de GPIOs com câmera/IMU reservados.
+- Definir espaçamento físico entre mics e orientação na carcaça.
+- Avaliar `input_format` do AFE:
+  - `"M"`: mono atual;
+  - `"MM"`: dois microfones;
+  - `"MR"`/`"MMR"`: microfone(s) + referência de playback se houver caminho limpo;
+  - BSS/MISO quando suportado.
+- AEC:
+  - só habilitar se houver referência digital limpa do speaker;
+  - não misturar com mute heurístico sem medição.
+
+**Critérios de decisão:**
+
+- Só migrar para dual mic se 1 mic falhar em ruído real mesmo com AFE/VADNet.
+- Dual mic não deve consumir GPIO reservado da câmera.
+- PSRAM livre deve continuar dentro do orçamento.
+
+**Critérios de aceitação para eventual protótipo:**
+
+- [ ] 1 mic vs 2 mics medidos com os mesmos cenários: silêncio, fala próxima, TV, carro/moto.
+- [ ] BSS/AEC melhora transcrição ou reduz falso fim de fala de forma mensurável.
+- [ ] Sem regressão de wake word.
+- [ ] Sem queda de FPS/render ou instabilidade de áudio.
 
 ---
 
