@@ -1768,6 +1768,12 @@ No `boot_manager`/state flow:
 - [x] Zero spam de `AFE: Ringbuffer of AFE is empty` em operação normal.
 - [x] Log de ganho mostra pico sem saturação persistente.
 
+**Validação pós-12.9 (2026-04-21):**
+
+- [x] Wake word recuperada após regressão de sensibilidade: `wn9_hiesp` em `DET_MODE_95`, threshold 0.40 e feed com PCM cru dedicado ao WakeNet.
+- [x] `Hi ESP` transiciona `IDLE → ATTENTIVE`, abre sessão de fala e rearma WakeNet ao retornar para `IDLE`.
+- [x] Caminho touch/bridge preservado usando buffer condicionado separado do buffer de WakeNet.
+
 ---
 
 ### Etapa 12.9 — Turn-Taking Natural de Voz ✓

@@ -198,6 +198,7 @@ static int32_t  s_mic_proc [NB_AUDIO_CHUNK_FRAMES]; /* mic após high-pass */
 static int16_t  s_wav_chunk[WAV_SAMPLES_PER_CHUNK];
 static int16_t  s_rec_chunk[NB_AUDIO_CHUNK_FRAMES];
 static int16_t  s_sa_buf   [NB_AUDIO_CHUNK_FRAMES]; /* buffer para sound_analysis_tick */
+static int16_t  s_wake_buf [NB_AUDIO_CHUNK_FRAMES]; /* mic cru 16-bit para WakeNet */
 
 /* ── Helpers WAV ─────────────────────────────────────────────────────────── */
 
@@ -759,6 +760,13 @@ static void audio_task(void *arg)
             continue;
         }
 
+        for (size_t i = 0; i < mic_n; i++) {
+            int32_t v = s_mic_buf[i] >> 8;
+            if (v >  32767) v =  32767;
+            if (v < -32768) v = -32768;
+            s_wake_buf[i] = (int16_t)v;
+        }
+
         mic_condition_signal(s_mic_buf, s_mic_proc, mic_n);
 
         /* ── 3. Sound analysis ──────────────────────────────────────────── */
@@ -776,7 +784,7 @@ static void audio_task(void *arg)
 
         /* ── 4b. Alimentar pre-roll ring buffer e wake_service ──────────── */
         if (!s.listen_session_active && !wrote_audio) {
-            wake_service_feed(s_sa_buf, (uint16_t)mic_n);
+            wake_service_feed(s_wake_buf, (uint16_t)mic_n);
         }
         if (mic_n > 0U) {
             memcpy(s_preroll_buf[s_preroll_head], s_sa_buf, mic_n * sizeof(int16_t));
