@@ -31,6 +31,9 @@ WHISPER_DEVICE = os.environ.get("NOISEBOT_WHISPER_DEVICE", "cpu")
 WHISPER_COMPUTE_TYPE = os.environ.get("NOISEBOT_WHISPER_COMPUTE_TYPE", "int8")
 WHISPER_TARGET_PEAK = 0.86
 WHISPER_MIN_PEAK_FOR_GAIN = 0.04
+MIN_TRANSCRIBE_RMS = float(os.environ.get("NOISEBOT_MIN_TRANSCRIBE_RMS", "140"))
+MIN_TRANSCRIBE_PEAK = int(os.environ.get("NOISEBOT_MIN_TRANSCRIBE_PEAK", "1600"))
+LOG_TEXT_MAX_CHARS = 160
 
 # ── Frame protocol ────────────────────────────────────────────────────────────
 
@@ -431,6 +434,7 @@ class BridgeSession:
 
     def handle_voice_end(self, snapshot):
         discard_reason = None
+        silent_ack_sent = False
         n_samples      = 0
         text           = ""
         rms_pcm        = 0.0
@@ -447,6 +451,13 @@ class BridgeSession:
         avg_rms        = snapshot["avg_rms"]
         duration_s     = snapshot["duration_s"]
         end_reason     = snapshot.get("end_reason", "unknown")
+
+        def send_silent_ack():
+            nonlocal silent_ack_sent
+            if not silent_ack_sent:
+                self.send_msg(MSG_SAY, b"")
+                silent_ack_sent = True
+
         try:
             audio_chunks = snapshot["audio_chunks"]
             if not audio_chunks:
@@ -459,40 +470,52 @@ class BridgeSession:
 
             if transcribe_whisper._model is None:
                 discard_reason = "whisper_nao_pronto"
+                send_silent_ack()
                 return
             if not self.dry_run and ask_gemini._model is None:
                 discard_reason = "gemini_nao_pronto"
+                send_silent_ack()
                 return
 
             if n_samples < MIN_UTTERANCE_SAMPLES:
                 discard_reason = f"audio_curto_{n_samples}smp"
+                send_silent_ack()
                 return
 
             pcm_f = pcm.astype(np.float32)
             rms_pcm = float(np.sqrt(np.mean(pcm_f * pcm_f)))
             peak    = int(np.max(np.abs(pcm.astype(np.int32))))
+            if rms_pcm < MIN_TRANSCRIBE_RMS or peak < MIN_TRANSCRIBE_PEAK:
+                discard_reason = f"audio_baixo_rms{rms_pcm:.0f}_peak{peak}"
+                send_silent_ack()
+                return
             if rms_pcm < MIN_UTTERANCE_RMS and not self.dry_run:
                 discard_reason = f"rms_baixo_{rms_pcm:.0f}"
+                send_silent_ack()
                 return
 
             if self.dry_run:
-                self.send_msg(MSG_SAY, b"")  # ACK imediato: cancela timer de resposta no ESP32.
+                send_silent_ack()  # ACK imediato: cancela timer de resposta no ESP32.
 
             tr   = transcribe_whisper(pcm)
             text = tr["text"]
             if not text:
                 discard_reason = "texto_vazio"
+                send_silent_ack()
                 return
 
             max_no_speech = MAX_NO_SPEECH_PROB_DRY_RUN if self.dry_run else MAX_NO_SPEECH_PROB
             if tr["no_speech_prob"] > max_no_speech:
                 discard_reason = f"no_speech_{tr['no_speech_prob']:.2f}"
+                send_silent_ack()
                 return
             if tr["avg_logprob"] < MIN_AVG_LOGPROB:
                 discard_reason = f"logprob_{tr['avg_logprob']:.2f}"
+                send_silent_ack()
                 return
             if tr["compression_ratio"] > MAX_COMPRESSION_RATIO:
                 discard_reason = f"compression_{tr['compression_ratio']:.2f}"
+                send_silent_ack()
                 return
             if self.dry_run:
                 discard_reason = "dry_run_ok"
@@ -516,6 +539,9 @@ class BridgeSession:
             discard_reason = "exception"
         finally:
             outcome = "ok" if discard_reason is None else f"descartado:{discard_reason}"
+            log_text = text or ""
+            if len(log_text) > LOG_TEXT_MAX_CHARS:
+                log_text = log_text[:LOG_TEXT_MAX_CHARS] + "..."
             log.info(
                 "SESSAO dur=%.1fs samples=%d avg_rms=%.0f pcm_rms=%.0f peak=%d "
                 "stt=%s/%0.fms gain=%.1f peak_in=%.3f ns=%.2f logp=%.2f comp=%.2f "
@@ -523,7 +549,7 @@ class BridgeSession:
                 duration_s, n_samples, avg_rms, rms_pcm, peak,
                 tr["backend"], tr["elapsed_ms"], tr["gain"], tr["peak_in"],
                 tr["no_speech_prob"], tr["avg_logprob"], tr["compression_ratio"],
-                text or "", end_reason, outcome,
+                log_text, end_reason, outcome,
             )
 
     def process_msg(self, msg_type: int, payload: bytes):
