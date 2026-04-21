@@ -169,13 +169,13 @@ void diagnostics_collect(void)
     /* ── Calcula health score ── */
     uint8_t score = compute_health_score(fps, psram_kb, sram_kb, tasks, K_NTASKS);
 
-    /* ── Log de diagnóstico ── */
-    NB_LOGI(TAG, "--- DIAG ---  PSRAM=%luKB  SRAM=%luKB  FPS=%.1f  health=%u/100",
+    /* ── Log de diagnóstico detalhado: útil em debug, ruidoso no monitor normal. */
+    NB_LOGD(TAG, "--- DIAG ---  PSRAM=%luKB  SRAM=%luKB  FPS=%.1f  health=%u/100",
             (unsigned long)psram_kb, (unsigned long)sram_kb, fps, (unsigned)score);
 
     for (int i = 0; i < K_NTASKS; i++) {
         if (tasks[i].watermark_words == 0U) continue;
-        NB_LOGI(TAG, "  %-24s watermark=%4lu bytes",
+        NB_LOGD(TAG, "  %-24s watermark=%4lu bytes",
                 tasks[i].name,
                 (unsigned long)(tasks[i].watermark_words * sizeof(StackType_t)));
     }
