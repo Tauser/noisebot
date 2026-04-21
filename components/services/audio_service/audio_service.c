@@ -444,7 +444,6 @@ static void vad_update(const int32_t *mic, size_t n, bool local_output_active)
                         s.bridge_start_sent = false;
                         s.bridge_audio_sent = false;
                         s.listen_voice_detected = false;
-                        wake_service_rearm();
                     }
                 }
             }
@@ -728,7 +727,6 @@ static void audio_task(void *arg)
                 s.bridge_tx_fail_count = 0;
                 s.bridge_flush_before_end = false;
                 s.listen_voice_detected = false;
-                wake_service_rearm();
             }
         }
 
@@ -1018,7 +1016,6 @@ esp_err_t audio_service_end_listen_session(nb_listen_end_reason_t reason)
     s.bridge_tx_fail_count = 0;
     s.bridge_flush_before_end = false;
     s.listen_voice_detected = false;
-    wake_service_rearm();
     return ESP_OK;
 }
 

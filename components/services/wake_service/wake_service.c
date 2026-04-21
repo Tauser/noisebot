@@ -32,6 +32,7 @@
 /* Buffer de acumulação: AFE tipicamente requer 512 samples @ 16kHz */
 #define FEED_BUF_MAX  512U
 #define WAKE_REARM_GUARD_MS  350U
+#define WAKE_GAIN_LOG_INTERVAL_MS  2000U
 
 /* Ganho de entrada aplicado antes do feed: s_sa_buf chega em ~±400 int16
  * (speech típico), WakeNet espera ~±4000-8000. Fator 16 = +24 dB compensa
@@ -47,12 +48,44 @@ static struct {
     int16_t                      feed_buf[FEED_BUF_MAX];
     uint16_t                     feed_pos;
     volatile bool                suspended;
+    volatile bool                armed;
+    volatile bool                detection_latched;
     volatile uint32_t            guard_until_ms;
+    uint32_t                     gain_log_next_ms;
+    uint32_t                     gain_log_samples;
+    uint64_t                     gain_log_sum_sq;
+    uint16_t                     gain_log_raw_peak;
+    uint16_t                     gain_log_post_peak;
+    uint32_t                     gain_log_saturated;
     SemaphoreHandle_t            mutex;
     StaticSemaphore_t            mutex_buf;
 } s;
 
-static void wake_service_set_suspended(bool suspended)
+static uint16_t abs_i16(int16_t v)
+{
+    return (v == INT16_MIN) ? 32768U : (uint16_t)((v < 0) ? -v : v);
+}
+
+static uint32_t isqrt_u32(uint32_t x)
+{
+    uint32_t result = 0;
+    uint32_t bit = 1UL << 30;
+    while (bit > x) {
+        bit >>= 2;
+    }
+    while (bit != 0) {
+        if (x >= result + bit) {
+            x -= result + bit;
+            result = (result >> 1) + bit;
+        } else {
+            result >>= 1;
+        }
+        bit >>= 2;
+    }
+    return result;
+}
+
+static void wake_service_set_suspended(bool suspended, bool latch_detection)
 {
     if (!s.enabled || !s.data || !s.mutex) return;
 
@@ -63,12 +96,24 @@ static void wake_service_set_suspended(bool suspended)
         s.handle->reset_buffer(s.data);
     }
     if (suspended) {
+        s.armed = false;
+        if (latch_detection) {
+            s.detection_latched = true;
+        }
         if (s.handle->disable_wakenet) {
             s.handle->disable_wakenet(s.data);
         }
     } else {
+        s.armed = true;
+        s.detection_latched = false;
         s.guard_until_ms = (uint32_t)(esp_timer_get_time() / 1000LL)
                          + WAKE_REARM_GUARD_MS;
+        s.gain_log_next_ms = s.guard_until_ms + WAKE_GAIN_LOG_INTERVAL_MS;
+        s.gain_log_samples = 0;
+        s.gain_log_sum_sq = 0;
+        s.gain_log_raw_peak = 0;
+        s.gain_log_post_peak = 0;
+        s.gain_log_saturated = 0;
         if (s.handle->enable_wakenet) {
             s.handle->enable_wakenet(s.data);
         }
@@ -86,15 +131,17 @@ static void wake_task(void *arg)
             vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
-        afe_fetch_result_t *res = s.handle->fetch(s.data);
+        afe_fetch_result_t *res = s.handle->fetch_with_delay
+                                ? s.handle->fetch_with_delay(s.data, portMAX_DELAY)
+                                : s.handle->fetch(s.data);
         if (res == NULL) continue;
         if (res->wakeup_state == WAKENET_DETECTED) {
-            if (s.suspended) {
+            if (s.suspended || !s.armed || s.detection_latched) {
                 continue;
             }
             ESP_LOGI(TAG, "wake word detectada — channel=%d",
                      res->trigger_channel_id);
-            wake_service_set_suspended(true);
+            wake_service_set_suspended(true, true);
             nb_event_t evt = {
                 .type         = NB_EVT_WAKE_WORD_DETECTED,
                 .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000LL),
@@ -188,7 +235,11 @@ esp_err_t wake_service_init(void)
     }
     s.feed_pos = 0;
     s.suspended = false;
+    s.armed = true;
+    s.detection_latched = false;
     s.guard_until_ms = 0;
+    s.gain_log_next_ms = (uint32_t)(esp_timer_get_time() / 1000LL)
+                       + WAKE_GAIN_LOG_INTERVAL_MS;
     s.mutex = xSemaphoreCreateMutexStatic(&s.mutex_buf);
     if (!s.mutex) {
         ESP_LOGE(TAG, "mutex wake_service falhou");
@@ -233,9 +284,23 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
         uint16_t space   = (uint16_t)(s.feed_chunksize - (int)s.feed_pos);
         uint16_t to_copy = (remaining < space) ? remaining : space;
         for (uint16_t i = 0; i < to_copy; i++) {
-            int32_t v = (int32_t)src[i] * WAKE_INPUT_GAIN;
+            int32_t sample = (int32_t)src[i];
+            int32_t v = sample * WAKE_INPUT_GAIN;
+            uint16_t raw_abs = abs_i16(src[i]);
+            if (raw_abs > s.gain_log_raw_peak) {
+                s.gain_log_raw_peak = raw_abs;
+            }
+            s.gain_log_sum_sq += (uint64_t)(sample * sample);
+            s.gain_log_samples++;
             if (v >  32767) v =  32767;
             if (v < -32768) v = -32768;
+            if (v == 32767 || v == -32768) {
+                s.gain_log_saturated++;
+            }
+            uint16_t post_abs = abs_i16((int16_t)v);
+            if (post_abs > s.gain_log_post_peak) {
+                s.gain_log_post_peak = post_abs;
+            }
             s.feed_buf[s.feed_pos + i] = (int16_t)v;
         }
         s.feed_pos += to_copy;
@@ -245,6 +310,25 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
             s.handle->feed(s.data, s.feed_buf);
             s.feed_pos = 0;
         }
+    }
+    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000LL);
+    if ((int32_t)(now_ms - s.gain_log_next_ms) >= 0 && s.gain_log_samples > 0U) {
+        uint32_t mean_sq = (uint32_t)(s.gain_log_sum_sq / s.gain_log_samples);
+        uint32_t rms = isqrt_u32(mean_sq);
+        ESP_LOGI(TAG,
+                 "gain diag: raw_rms=%lu raw_peak=%u gain=%d post_peak=%u saturated=%lu/%lu",
+                 (unsigned long)rms,
+                 (unsigned)s.gain_log_raw_peak,
+                 WAKE_INPUT_GAIN,
+                 (unsigned)s.gain_log_post_peak,
+                 (unsigned long)s.gain_log_saturated,
+                 (unsigned long)s.gain_log_samples);
+        s.gain_log_next_ms = now_ms + WAKE_GAIN_LOG_INTERVAL_MS;
+        s.gain_log_samples = 0;
+        s.gain_log_sum_sq = 0;
+        s.gain_log_raw_peak = 0;
+        s.gain_log_post_peak = 0;
+        s.gain_log_saturated = 0;
     }
     xSemaphoreGive(s.mutex);
 }
@@ -256,12 +340,12 @@ bool wake_service_is_active(void)
 
 void wake_service_suspend(void)
 {
-    wake_service_set_suspended(true);
+    wake_service_set_suspended(true, false);
 }
 
 void wake_service_rearm(void)
 {
-    wake_service_set_suspended(false);
+    wake_service_set_suspended(false, false);
     if (wake_service_is_active()) {
         ESP_LOGI(TAG, "WakeNet rearmado");
     }

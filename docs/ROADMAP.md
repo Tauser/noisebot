@@ -1728,7 +1728,7 @@ No `bridge.py`:
 
 ---
 
-### Etapa 12.8 — WakeNet Single-Shot e Rearm Seguro
+### Etapa 12.8 — WakeNet Single-Shot e Rearm Seguro ✓
 
 **Dependências:** 12.6 concluída, 12.7 validada com toque
 **Hardware necessário:** INMP441 + modelo WakeNet pronto ("Hi ESP")
@@ -1762,11 +1762,11 @@ No `boot_manager`/state flow:
 
 **Critérios de aceitação:**
 
-- [ ] Dizer "Hi ESP" gera exatamente um `NB_EVT_WAKE_WORD_DETECTED` por sessão.
-- [ ] Durante `ATTENTIVE`, repetir "Hi ESP" não gera novo wake.
-- [ ] Após voltar para `IDLE`, "Hi ESP" volta a funcionar.
-- [ ] Zero spam de `AFE: Ringbuffer of AFE is empty` em operação normal.
-- [ ] Log de ganho mostra pico sem saturação persistente.
+- [x] Dizer "Hi ESP" gera exatamente um `NB_EVT_WAKE_WORD_DETECTED` por sessão.
+- [x] Durante `ATTENTIVE`, repetir "Hi ESP" não gera novo wake.
+- [x] Após voltar para `IDLE`, "Hi ESP" volta a funcionar.
+- [x] Zero spam de `AFE: Ringbuffer of AFE is empty` em operação normal.
+- [x] Log de ganho mostra pico sem saturação persistente.
 
 ---
 

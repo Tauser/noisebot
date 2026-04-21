@@ -114,6 +114,7 @@ void state_machine_on_boot_complete(void);
 void state_machine_on_touch_tap(void);
 void state_machine_on_touch_long_press(void);
 void state_machine_on_touch_wake(void);
+void state_machine_on_wake_word(void);
 void state_machine_on_voice_start(void);
 void state_machine_on_voice_end(void);
 void state_machine_on_audio_started(void);

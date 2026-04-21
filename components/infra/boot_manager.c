@@ -490,14 +490,20 @@ static void on_state_changed(nb_robot_state_t new_state,
             }
             led_base_set(NB_LED_BASE_ATTENTIVE, true);
             break;
+        case NB_STATE_RESPONDING:
+            wake_service_suspend();
+            break;
         case NB_STATE_MEDITATION:
             led_base_set(NB_LED_BASE_MEDITATION, true);
+            wake_service_suspend();
             synth_purr(60000, 0.2f);
             break;
         case NB_STATE_SILENT_COMPANY:
             led_base_set(NB_LED_BASE_SILENT_COMPANY, true);
+            wake_service_suspend();
             break;
         case NB_STATE_IDLE:
+            s_wake_word_triggered = false;
             if (old_state == NB_STATE_ATTENTIVE) {
                 led_base_set(NB_LED_BASE_ATTENTIVE, false);
                 expression_service_set(NB_EXPR_NEUTRAL, 600.0f);
@@ -525,6 +531,7 @@ static void on_state_changed(nb_robot_state_t new_state,
                 nb_event_t me = { .type = NB_EVT_MILESTONE_UPTIME_100H };
                 nb_event_publish_async(&me);
             }
+            wake_service_rearm();
             break;
         default: break;
     }
@@ -600,9 +607,14 @@ static void on_circadian_phase(const nb_event_t *ev, void *ctx)
 static void on_wake_word_detected(const nb_event_t *evt, void *ctx)
 {
     (void)evt; (void)ctx;
-    if (state_machine_get_state() == NB_STATE_ATTENTIVE) return;
+    nb_robot_state_t st = state_machine_get_state();
+    if (st != NB_STATE_IDLE && st != NB_STATE_SLEEPING) {
+        NB_LOGI(TAG, "wake word ignorada em estado %s",
+                state_machine_state_name(st));
+        return;
+    }
     s_wake_word_triggered = true;
-    state_machine_on_touch_tap();   /* reutiliza trigger de toque para entrar em ATTENTIVE */
+    state_machine_on_wake_word();
     s_wake_word_triggered = false;  /* garante reset mesmo se SM não transitou */
 }
 

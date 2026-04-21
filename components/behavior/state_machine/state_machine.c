@@ -205,6 +205,22 @@ void state_machine_on_touch_tap(void)
     }
 }
 
+void state_machine_on_wake_word(void)
+{
+    if (!s_initialized) return;
+    nb_robot_state_t cur = state_machine_get_state();
+    switch (cur) {
+        case NB_STATE_IDLE:
+            do_transition(NB_STATE_ATTENTIVE, "wake word");
+            break;
+        case NB_STATE_SLEEPING:
+            do_transition(NB_STATE_ATTENTIVE, "wake word em SLEEPING");
+            break;
+        default:
+            break;
+    }
+}
+
 void state_machine_on_touch_long_press(void)
 {
     if (!s_initialized) return;
