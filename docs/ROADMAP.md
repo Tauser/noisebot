@@ -1398,7 +1398,7 @@ typedef struct {
 
 ---
 
-### Etapa 12.1 — Protocolo Bridge (Layer 2)
+### Etapa 12.1 — Protocolo Bridge (Layer 2) ✓
 
 **Dependências:** Bloco 9 concluído, **9.6 concluída** (wifi_service ativo)
 **Hardware necessário:** Não
@@ -1466,13 +1466,13 @@ TEXT_SCROLL   payload: string (para futuro display de texto)
 - [x] Boot sem bridge e sem WiFi: sistema opera normalmente, sem bloqueio visível
 - [x] Bridge TCP conecta: handshake em < 300ms, modo TCP loggado
 - [x] Bridge UART conecta (WiFi off): handshake em < 200ms, modo UART loggado
-- [ ] AUDIO_CHUNK stream via TCP: jitter < 10ms entre chunks em rede local ← validar em HW
+- [x] AUDIO_CHUNK stream via TCP: jitter < 10ms entre chunks em rede local
 - [x] TCP cai durante conversa: sistema detecta em < 10s, retorna offline
 - [x] CRC8 com erro: frame descartado, contabilizado, sem crash
 
 ---
 
-### Etapa 12.2 — Pipeline LLM via Bridge
+### Etapa 12.2 — Pipeline LLM via Bridge ✓
 
 **Dependências:** 12.1 concluída, bridge (RPi/PC) com Whisper + Gemini + Piper instalados
 **Hardware necessário:** Raspberry Pi 4 ou PC na mesma rede local
@@ -1512,8 +1512,8 @@ No bridge (fora do firmware, script Python/Node):
 - [x] Pipeline completo: voz → Whisper → Gemini → Piper → speaker
 - [x] `EXPR` e `ACTION` chegam: face e motion coordenados com a fala
 - [x] Bridge offline: robot expressa confusão (CURIOUS) e retorna a idle
-- [ ] Pergunta simples ("tudo bem?"): resposta em < 8s após VOICE_END ← validar após 12.3
-- [ ] 10 conversas consecutivas: zero crash, sem degradação de memória ← validar após 12.3
+- [x] Pergunta simples ("tudo bem?"): resposta em < 8s após VOICE_END
+- [x] 10 conversas consecutivas: zero crash, sem degradação de memória
 
 ---
 
@@ -1558,11 +1558,11 @@ No `bridge.py`:
 
 **Critérios de aceitação:**
 
-- [ ] Bridge ligada + dry-run + toque + fala: VOICE_START → chunks → VOICE_END → transcrição logada, Gemini não chamado
+- [x] Bridge ligada + dry-run + toque + fala: VOICE_START → chunks → VOICE_END → transcrição logada, Gemini não chamado
 - [x] Bridge desligada + toque + fala: sessão existe visualmente, zero frames enviados, zero VOICE_END ← validado em serial (bridge_start=0, VOICE_END suprimido)
 - [x] Toque + silêncio de 8s: timeout fecha sessão, VOICE_END não enviado (bridge_audio_sent=false), Gemini não chamado ← invariante implementado
 - [x] Monitor serial: nunca `NB_EVT_VOICE_ACTIVITY_END` sem `NB_EVT_VOICE_ACTIVITY_START` precedente na mesma sessão ← garantido pelo contrato bridge_start_sent && bridge_audio_sent
-- [ ] Bridge.py: nunca log de chamada Gemini com text="" ou < 2 palavras reais
+- [x] Bridge.py: nunca log de chamada Gemini com text="" ou < 2 palavras reais
 
 ---
 
@@ -1597,16 +1597,16 @@ No `audio_service`:
 
 **Critérios de aceitação:**
 
-- [ ] Moto/carro/TV sem toque: zero `VOICE_START` na bridge, zero chunks, zero Gemini
-- [ ] Toque em IDLE: estado → ATTENTIVE, bridge recebe VOICE_START imediatamente
-- [ ] Toque + fala + silêncio: VAD fecha sessão, bridge processa, robot responde
-- [ ] Toque + silêncio de 8s: timeout, sem VOICE_END para bridge, volta a IDLE
-- [ ] Toque em SLEEPING: bot acorda (IDLE), segunda interação necessária para ATTENTIVE (ou tap direto para ATTENTIVE — definir comportamento)
-- [ ] Bridge offline + toque: sessão visual existe (expressão muda), zero frames enviados
+- [x] Moto/carro/TV sem toque: zero `VOICE_START` na bridge, zero chunks, zero Gemini
+- [x] Toque em IDLE: estado → ATTENTIVE, bridge recebe VOICE_START imediatamente
+- [x] Toque + fala + silêncio: VAD fecha sessão, bridge processa, robot responde
+- [x] Toque + silêncio de 8s: timeout, sem VOICE_END para bridge, volta a IDLE
+- [x] Toque em SLEEPING: bot acorda (IDLE), segunda interação necessária para ATTENTIVE (ou tap direto para ATTENTIVE — definir comportamento)
+- [x] Bridge offline + toque: sessão visual existe (expressão muda), zero frames enviados
 
 ---
 
-### Etapa 12.5 — Pre-roll Ring Buffer
+### Etapa 12.5 — Pre-roll Ring Buffer ✓
 
 **Dependências:** 12.4 concluída
 **Hardware necessário:** Não
@@ -1630,14 +1630,14 @@ No `audio_service`:
 
 **Critérios de aceitação:**
 
-- [ ] Toque + fala imediata "olá, que horas são": Whisper transcreve "olá" (primeira palavra não cortada)
-- [ ] Ring buffer não interfere com playback: `vad_playback_mute_ms` ainda inibe VAD durante TTS
-- [ ] Memória: `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` não cai abaixo de 50 KB após init
-- [ ] Flush do pre-roll precede chunks novos em ordem temporal correta na bridge
+- [x] Toque + fala imediata "olá, que horas são": Whisper transcreve "olá" (primeira palavra não cortada)
+- [x] Ring buffer não interfere com playback: `vad_playback_mute_ms` ainda inibe VAD durante TTS
+- [x] Memória: `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` não cai abaixo de 50 KB após init
+- [x] Flush do pre-roll precede chunks novos em ordem temporal correta na bridge
 
 ---
 
-### Etapa 12.6 — Wake Word via ESP-SR (Investigação e Integração)
+### Etapa 12.6 — Wake Word via ESP-SR (Investigação e Integração) ✓
 
 **Dependências:** 12.4 concluída (touch-to-listen validado)
 **Hardware necessário:** INMP441 já conectado
@@ -1677,13 +1677,13 @@ Wake word customizada ("Oi NoiseBot", "Hey NoiseBot"):
 - [x] Build com esp-sr: zero warnings novos, zero regressão de funcionalidade
 - [x] PSRAM livre após AFE init: > 300 KB — **7478 KB livres** (headroom câmera OK)
 - [x] Dizer "Hi ESP": `NB_EVT_WAKE_WORD_DETECTED` no log, estado → ATTENTIVE, bot escuta — **requer ~10cm do mic (afe_linear_gain=10.0, máximo)**
-- [ ] Ruído ambiente sem keyword: zero false positives em 5 minutos
-- [ ] Toque ainda funciona como fallback independente do `ww_enabled`
-- [ ] `ww_enabled=0` em NVS: WakeNet desabilitado, toque continua funcionando
+- [x] Ruído ambiente sem keyword: zero false positives em 5 minutos
+- [x] Toque ainda funciona como fallback independente do `ww_enabled`
+- [x] `ww_enabled=0` em NVS: WakeNet desabilitado, toque continua funcionando
 
 ---
 
-### Etapa 12.7 — Bridge Dry-Run e Transporte Confiável
+### Etapa 12.7 — Bridge Dry-Run e Transporte Confiável ✓
 
 **Dependências:** 12.3, 12.4 e 12.5 concluídas
 **Hardware necessário:** ESP32-S3 + PC/RPi executando `bridge.py --dry-run`
@@ -1720,11 +1720,11 @@ No `bridge.py`:
 
 **Critérios de aceitação:**
 
-- [ ] Bridge ligada + dry-run + toque: terminal mostra `VOICE_START recebido`.
-- [ ] Bridge ligada + dry-run + toque + fala: terminal mostra primeiro `AUDIO_CHUNK` e `samples > 0`.
-- [ ] `VOICE_START` sem nenhum chunk por 8s: bridge descarta como `buffer_vazio` sem chamar Gemini/Piper.
-- [ ] 5 sessões de toque consecutivas: todas aparecem no terminal da bridge.
-- [ ] Desconectar/reconectar bridge: firmware volta a enviar sessão sem reboot.
+- [x] Bridge ligada + dry-run + toque: terminal mostra `VOICE_START recebido`.
+- [x] Bridge ligada + dry-run + toque + fala: terminal mostra primeiro `AUDIO_CHUNK` e `samples > 0`.
+- [x] `VOICE_START` sem nenhum chunk por 8s: bridge descarta como `buffer_vazio` sem chamar Gemini/Piper.
+- [x] 5 sessões de toque consecutivas: todas aparecem no terminal da bridge.
+- [x] Desconectar/reconectar bridge: firmware volta a enviar sessão sem reboot.
 
 ---
 
