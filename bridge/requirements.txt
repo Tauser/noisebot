@@ -1,4 +1,5 @@
 openai-whisper
+faster-whisper
 google-genai
 piper-tts
 numpy

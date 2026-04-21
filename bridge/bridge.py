@@ -25,6 +25,13 @@ import sys
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 log = logging.getLogger("noisebot_bridge")
 
+WHISPER_MODEL_NAME = os.environ.get("NOISEBOT_WHISPER_MODEL", "small")
+WHISPER_BACKEND = os.environ.get("NOISEBOT_WHISPER_BACKEND", "openai")
+WHISPER_DEVICE = os.environ.get("NOISEBOT_WHISPER_DEVICE", "cpu")
+WHISPER_COMPUTE_TYPE = os.environ.get("NOISEBOT_WHISPER_COMPUTE_TYPE", "int8")
+WHISPER_TARGET_PEAK = 0.86
+WHISPER_MIN_PEAK_FOR_GAIN = 0.04
+
 # ── Frame protocol ────────────────────────────────────────────────────────────
 
 SOF          = 0xAB
@@ -179,32 +186,93 @@ def discover_mdns(timeout=5.0) -> str | None:
 # ── LLM pipeline ─────────────────────────────────────────────────────────────
 
 def transcribe_whisper(pcm_int16: np.ndarray) -> dict:
-    import whisper
     model = transcribe_whisper._model
     audio = pcm_int16.astype(np.float32) / 32768.0
-    result = model.transcribe(audio, language="pt", fp16=False)
-    segs = result.get("segments", [])
-    if segs:
-        no_speech = max(float(s.get("no_speech_prob", 0.0)) for s in segs)
-        avg_logprob = float(np.mean([float(s.get("avg_logprob", -10.0)) for s in segs]))
-        compression = max(float(s.get("compression_ratio", 0.0)) for s in segs)
+    peak_in = float(np.max(np.abs(audio))) if audio.size else 0.0
+    gain = 1.0
+    if peak_in >= WHISPER_MIN_PEAK_FOR_GAIN and peak_in < WHISPER_TARGET_PEAK:
+        gain = min(WHISPER_TARGET_PEAK / peak_in, 12.0)
+        audio = np.clip(audio * gain, -0.98, 0.98)
+
+    t0 = time.perf_counter()
+    if transcribe_whisper._backend == "faster":
+        segments, info = model.transcribe(
+            audio,
+            language="pt",
+            task="transcribe",
+            beam_size=1,
+            best_of=1,
+            temperature=0.0,
+            condition_on_previous_text=False,
+            initial_prompt="Comandos em português brasileiro para um robô chamado NoiseBot.",
+            vad_filter=False,
+        )
+        segs = list(segments)
+        text = " ".join(s.text.strip() for s in segs).strip()
+        if segs:
+            no_speech = max(float(getattr(s, "no_speech_prob", 0.0) or 0.0) for s in segs)
+            avg_logprob = float(np.mean([float(getattr(s, "avg_logprob", -10.0) or -10.0) for s in segs]))
+            compression = max(float(getattr(s, "compression_ratio", 0.0) or 0.0) for s in segs)
+        else:
+            no_speech = 1.0
+            avg_logprob = -10.0
+            compression = 999.0
     else:
-        no_speech = 1.0
-        avg_logprob = -10.0
-        compression = 999.0
+        result = model.transcribe(
+            audio,
+            language="pt",
+            task="transcribe",
+            fp16=False,
+            temperature=0.0,
+            beam_size=1,
+            best_of=1,
+            condition_on_previous_text=False,
+            initial_prompt="Comandos em português brasileiro para um robô chamado NoiseBot.",
+        )
+        segs = result.get("segments", [])
+        text = result.get("text", "").strip()
+        if segs:
+            no_speech = max(float(s.get("no_speech_prob", 0.0)) for s in segs)
+            avg_logprob = float(np.mean([float(s.get("avg_logprob", -10.0)) for s in segs]))
+            compression = max(float(s.get("compression_ratio", 0.0)) for s in segs)
+        else:
+            no_speech = 1.0
+            avg_logprob = -10.0
+            compression = 999.0
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+
     return {
-        "text": result.get("text", "").strip(),
+        "text": text,
         "no_speech_prob": no_speech,
         "avg_logprob": avg_logprob,
         "compression_ratio": compression,
+        "elapsed_ms": elapsed_ms,
+        "gain": gain,
+        "peak_in": peak_in,
+        "backend": transcribe_whisper._backend,
     }
 
 transcribe_whisper._model = None
+transcribe_whisper._backend = "openai"
 
-def init_whisper():
-    import whisper
-    log.info("Carregando Whisper small...")
-    transcribe_whisper._model = whisper.load_model("small")
+def init_whisper(model_name: str | None = None, backend: str | None = None):
+    name = model_name or WHISPER_MODEL_NAME
+    backend = (backend or WHISPER_BACKEND).lower()
+    if backend == "faster":
+        from faster_whisper import WhisperModel
+        log.info("Carregando faster-whisper %s (%s/%s)...",
+                 name, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE)
+        transcribe_whisper._model = WhisperModel(
+            name,
+            device=WHISPER_DEVICE,
+            compute_type=WHISPER_COMPUTE_TYPE,
+        )
+        transcribe_whisper._backend = "faster"
+    else:
+        import whisper
+        log.info("Carregando Whisper %s...", name)
+        transcribe_whisper._model = whisper.load_model(name)
+        transcribe_whisper._backend = "openai"
     log.info("Whisper pronto")
 
 def ask_gemini(text: str, status: dict) -> dict:
@@ -371,6 +439,10 @@ class BridgeSession:
             "no_speech_prob": 0.0,
             "avg_logprob": 0.0,
             "compression_ratio": 0.0,
+            "elapsed_ms": 0.0,
+            "gain": 1.0,
+            "peak_in": 0.0,
+            "backend": transcribe_whisper._backend,
         }
         avg_rms        = snapshot["avg_rms"]
         duration_s     = snapshot["duration_s"]
@@ -403,6 +475,9 @@ class BridgeSession:
                 discard_reason = f"rms_baixo_{rms_pcm:.0f}"
                 return
 
+            if self.dry_run:
+                self.send_msg(MSG_SAY, b"")  # ACK imediato: cancela timer de resposta no ESP32.
+
             tr   = transcribe_whisper(pcm)
             text = tr["text"]
             if not text:
@@ -420,7 +495,6 @@ class BridgeSession:
                 discard_reason = f"compression_{tr['compression_ratio']:.2f}"
                 return
             if self.dry_run:
-                self.send_msg(MSG_SAY, b"")  # ACK silencioso: cancela timer de resposta no ESP32.
                 discard_reason = "dry_run_ok"
                 return
 
@@ -444,8 +518,10 @@ class BridgeSession:
             outcome = "ok" if discard_reason is None else f"descartado:{discard_reason}"
             log.info(
                 "SESSAO dur=%.1fs samples=%d avg_rms=%.0f pcm_rms=%.0f peak=%d "
-                "ns=%.2f logp=%.2f comp=%.2f texto=%r reason=%s motivo=%s",
+                "stt=%s/%0.fms gain=%.1f peak_in=%.3f ns=%.2f logp=%.2f comp=%.2f "
+                "texto=%r reason=%s motivo=%s",
                 duration_s, n_samples, avg_rms, rms_pcm, peak,
+                tr["backend"], tr["elapsed_ms"], tr["gain"], tr["peak_in"],
                 tr["no_speech_prob"], tr["avg_logprob"], tr["compression_ratio"],
                 text or "", end_reason, outcome,
             )
@@ -539,9 +615,14 @@ def main():
     parser.add_argument("--uart", default=None, metavar="PORT", help="Porta serial USB CDC")
     parser.add_argument("--dry-run", action="store_true",
                         help="Transcreve com Whisper e não chama Gemini/Piper")
+    parser.add_argument("--whisper-model", default=WHISPER_MODEL_NAME,
+                        help="Modelo Whisper local: tiny, base, small, medium...")
+    parser.add_argument("--whisper-backend", choices=("openai", "faster"),
+                        default=WHISPER_BACKEND,
+                        help="Backend STT: openai-whisper ou faster-whisper")
     args = parser.parse_args()
 
-    init_whisper()
+    init_whisper(args.whisper_model, args.whisper_backend)
     if args.dry_run:
         log.info("DRY-RUN ativo — Gemini/Piper desabilitados")
     else:
