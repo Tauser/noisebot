@@ -263,7 +263,7 @@ def tts_piper(text: str) -> np.ndarray:
 # ── Bridge session ────────────────────────────────────────────────────────────
 
 CHUNK_SAMPLES    = 256
-VOICE_TIMEOUT_S  = 25.0  # watchdog: firmware deve enviar VOICE_END antes disso
+VOICE_TIMEOUT_S  = 70.0  # watchdog: firmware deve enviar VOICE_END antes disso
 MIN_UTTERANCE_SAMPLES = 8000   # 0.5s: rejeição pré-Whisper
 MIN_UTTERANCE_RMS     = 80.0   # PCM int16 pós-filtro no firmware
 MAX_NO_SPEECH_PROB    = 0.75
@@ -314,14 +314,28 @@ class BridgeSession:
         self._voice_timer.start()
 
     def _on_voice_timeout(self, session_id: int):
-        snapshot = self._snapshot_voice_session(session_id)
+        snapshot = self._snapshot_voice_session(session_id,
+                                                end_reason="bridge_watchdog_timeout")
         if snapshot is not None:
             log.warning("VOICE timeout — forçando VOICE_END após %.0fs", VOICE_TIMEOUT_S)
             threading.Thread(target=self.handle_voice_end,
                              args=(snapshot,),
                              daemon=True).start()
 
-    def _snapshot_voice_session(self, session_id: int | None = None):
+    @staticmethod
+    def _voice_end_reason_name(reason_code: int | None) -> str:
+        if reason_code == 0:
+            return "silence"
+        if reason_code == 1:
+            return "timeout"
+        if reason_code == 2:
+            return "bridge_disconnected"
+        if reason_code == 3:
+            return "cancelled"
+        return "unknown"
+
+    def _snapshot_voice_session(self, session_id: int | None = None,
+                                end_reason: str = "unknown"):
         with self._lock:
             if session_id is not None and session_id != self._session_id:
                 return None
@@ -339,6 +353,7 @@ class BridgeSession:
                 "avg_rms": self._session_rms_sum / max(1, self._session_n_chunks),
                 "duration_s": time.time() - (session_start or time.time()),
                 "session_id": self._session_id,
+                "end_reason": end_reason,
             }
             self._session_start = None
             self._session_rms_sum = 0.0
@@ -359,6 +374,7 @@ class BridgeSession:
         }
         avg_rms        = snapshot["avg_rms"]
         duration_s     = snapshot["duration_s"]
+        end_reason     = snapshot.get("end_reason", "unknown")
         try:
             audio_chunks = snapshot["audio_chunks"]
             if not audio_chunks:
@@ -366,6 +382,8 @@ class BridgeSession:
                 return
             pcm = np.concatenate(audio_chunks).astype(np.int16)
             n_samples = len(pcm)
+            if end_reason == "timeout" and n_samples > 0:
+                end_reason = "max_speech_timeout"
 
             if transcribe_whisper._model is None:
                 discard_reason = "whisper_nao_pronto"
@@ -426,10 +444,10 @@ class BridgeSession:
             outcome = "ok" if discard_reason is None else f"descartado:{discard_reason}"
             log.info(
                 "SESSAO dur=%.1fs samples=%d avg_rms=%.0f pcm_rms=%.0f peak=%d "
-                "ns=%.2f logp=%.2f comp=%.2f texto=%r motivo=%s",
+                "ns=%.2f logp=%.2f comp=%.2f texto=%r reason=%s motivo=%s",
                 duration_s, n_samples, avg_rms, rms_pcm, peak,
                 tr["no_speech_prob"], tr["avg_logprob"], tr["compression_ratio"],
-                text or "", outcome,
+                text or "", end_reason, outcome,
             )
 
     def process_msg(self, msg_type: int, payload: bytes):
@@ -456,8 +474,10 @@ class BridgeSession:
                 evt_type = struct.unpack_from("<I", payload)[0]
                 log.info("EVENT evt_type=%d", evt_type)
                 if evt_type == NB_EVT_VOICE_ACTIVITY_END:
-                    log.info("VOICE_END recebido — processando")
-                    snapshot = self._snapshot_voice_session()
+                    reason_code = struct.unpack_from("<I", payload, 4)[0] if len(payload) >= 8 else None
+                    end_reason = self._voice_end_reason_name(reason_code)
+                    log.info("VOICE_END recebido — processando reason=%s", end_reason)
+                    snapshot = self._snapshot_voice_session(end_reason=end_reason)
                     if snapshot is not None:
                         threading.Thread(target=self.handle_voice_end,
                                          args=(snapshot,),

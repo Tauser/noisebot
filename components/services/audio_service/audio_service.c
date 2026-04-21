@@ -66,11 +66,14 @@
 #define VAD_ENGINE_RMS_MIN       55000.0f
 #define VAD_PLAYBACK_MUTE_MS       600U
 
-/* Sessão de escuta: VAD é fast-path para fechar quando percebe fala+silêncio.
- * A janela precisa comportar perguntas naturais; o fallback sem VAD existe
- * só para não deixar uma sessão aberta indefinidamente quando a fala é baixa. */
-#define LISTEN_SESSION_TIMEOUT_MS      20000U
-#define LISTEN_NO_VOICE_FALLBACK_MS    12000U
+/* Sessão de escuta: turn-taking explícito. A janela curta vale só antes da
+ * primeira fala; depois que começou, encerra por silêncio pós-fala ou teto de
+ * segurança para ruído contínuo. */
+#define LISTEN_WAIT_SPEECH_TIMEOUT_MS   8000U
+#define LISTEN_END_SILENCE_MS           1400U
+#define LISTEN_EARLY_END_SILENCE_MS     2400U
+#define LISTEN_EARLY_GRACE_MS           6000U
+#define LISTEN_MAX_SPEECH_MS           30000U
 #define BRIDGE_TX_FAIL_ABORT_COUNT     4U
 
 /* High-pass one-pole para tirar rumble/engine abaixo de ~180 Hz antes do VAD.
@@ -117,6 +120,13 @@ typedef enum {
     REC_ACTIVE,
 } rec_state_t;
 
+typedef enum {
+    LISTEN_PHASE_IDLE = 0,
+    LISTEN_PHASE_WAITING_FOR_SPEECH,
+    LISTEN_PHASE_CAPTURING_SPEECH,
+    LISTEN_PHASE_ENDING_ON_SILENCE,
+} listen_phase_t;
+
 static struct {
     bool                 initialized;
     SemaphoreHandle_t    mutex;
@@ -156,8 +166,9 @@ static struct {
     bool                 bridge_audio_sent;           /* ao menos 1 chunk enviado */
     uint8_t              bridge_tx_fail_count;        /* falhas seguidas na fila TX */
     bool                 bridge_flush_before_end;     /* limpa fila antes do END    */
-    uint32_t             listen_timeout_remaining_ms; /* countdown 8s            */
-    uint32_t             listen_no_voice_remaining_ms;/* fallback se VAD não ativa */
+    listen_phase_t       listen_phase;                /* turn-taking interno       */
+    uint32_t             listen_wait_remaining_ms;    /* espera por 1a fala        */
+    uint32_t             listen_speech_elapsed_ms;    /* teto desde fala iniciar   */
     bool                 listen_voice_detected;       /* VAD ativou na sessão    */
 } s;
 
@@ -292,6 +303,129 @@ static void mic_condition_signal(const int32_t *in, int32_t *out, size_t n)
 /* Duração aproximada de um chunk em ms (256 samples @ 16kHz = 16ms). */
 #define CHUNK_DURATION_MS  16U
 
+static const char *listen_phase_name(listen_phase_t phase)
+{
+    switch (phase) {
+    case LISTEN_PHASE_WAITING_FOR_SPEECH: return "waiting_for_speech";
+    case LISTEN_PHASE_CAPTURING_SPEECH:   return "capturing_speech";
+    case LISTEN_PHASE_ENDING_ON_SILENCE:  return "ending_on_silence";
+    default:                              return "idle";
+    }
+}
+
+static const char *listen_end_reason_name(nb_listen_end_reason_t reason)
+{
+    switch (reason) {
+    case NB_LISTEN_END_VAD_SILENCE:         return "silence";
+    case NB_LISTEN_END_TIMEOUT:             return "timeout";
+    case NB_LISTEN_END_BRIDGE_DISCONNECTED: return "bridge_disconnected";
+    case NB_LISTEN_END_CANCELLED:           return "cancelled";
+    default:                                return "unknown";
+    }
+}
+
+static uint32_t listen_current_end_silence_ms(void)
+{
+    return (s.listen_speech_elapsed_ms < LISTEN_EARLY_GRACE_MS)
+         ? LISTEN_EARLY_END_SILENCE_MS
+         : LISTEN_END_SILENCE_MS;
+}
+
+static void listen_start_bridge_capture(void)
+{
+    if (s.bridge_start_sent || !s.listen_session_active) return;
+
+    if (!bridge_service_is_connected()) {
+        ESP_LOGI(TAG, "captura local sem bridge conectada");
+        return;
+    }
+
+    bridge_service_flush_tx();
+
+    nb_event_t marker = {
+        .type         = NB_EVT_VOICE_ACTIVITY_START,
+        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+    };
+    esp_err_t start_rc = bridge_service_send_event(&marker);
+    s.bridge_start_sent = (start_rc == ESP_OK);
+    if (!s.bridge_start_sent) {
+        ESP_LOGW(TAG, "VOICE_START nao entrou na fila da bridge: %s",
+                 esp_err_to_name(start_rc));
+        return;
+    }
+
+    uint8_t pr_count = s_preroll_count;
+    if (pr_count > 0U) {
+        uint8_t start = (uint8_t)((s_preroll_head + PREROLL_CHUNKS - pr_count) % PREROLL_CHUNKS);
+        for (uint8_t i = 0; i < pr_count; i++) {
+            uint8_t idx = (uint8_t)((start + i) % PREROLL_CHUNKS);
+            if (bridge_service_send_audio_chunk(s_preroll_buf[idx],
+                                                NB_AUDIO_CHUNK_FRAMES) == ESP_OK) {
+                s.bridge_audio_sent = true;
+            }
+        }
+    }
+
+    s.bridge_tx_active = true;
+    ESP_LOGD(TAG, "bridge captura iniciada preroll=%u", (unsigned)pr_count);
+}
+
+static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
+{
+    if (!s.listen_session_active) return ESP_ERR_INVALID_STATE;
+
+    bool can_end = s.bridge_start_sent
+                && (s.bridge_audio_sent || reason == NB_LISTEN_END_CANCELLED);
+    listen_phase_t phase = s.listen_phase;
+    uint32_t speech_elapsed_ms = s.listen_speech_elapsed_ms;
+
+    s.listen_session_active    = false;
+    s.listen_phase             = LISTEN_PHASE_IDLE;
+    s.listen_wait_remaining_ms = 0;
+    s.listen_speech_elapsed_ms = 0;
+    s.bridge_tx_active         = false;
+    s.vad_state                = VAD_SILENCE;
+    s.vad_enter_count          = 0;
+    s.vad_silence_start_us     = 0;
+
+    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
+
+    if (can_end && bridge_service_is_connected()) {
+        if (s.bridge_flush_before_end || reason == NB_LISTEN_END_CANCELLED) {
+            bridge_service_flush_tx();
+        }
+        nb_event_t marker = {
+            .type         = NB_EVT_VOICE_ACTIVITY_END,
+            .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+            .data.u32     = (uint32_t)reason,
+        };
+        esp_err_t end_rc = bridge_service_send_event(&marker);
+        if (end_rc != ESP_OK) {
+            ESP_LOGW(TAG, "VOICE_END nao entrou na fila da bridge: %s",
+                     esp_err_to_name(end_rc));
+        } else {
+            ESP_LOGI(TAG, "[ AUDIO ENVIADO — aguardando resposta ]");
+        }
+    } else {
+        ESP_LOGI(TAG,
+                 "[ FIM DE SESSAO — reason=%s phase=%s start=%d audio=%d conn=%d ]",
+                 listen_end_reason_name(reason), listen_phase_name(phase),
+                 (int)s.bridge_start_sent, (int)s.bridge_audio_sent,
+                 (int)bridge_service_is_connected());
+    }
+
+    ESP_LOGI(TAG, "sessao listen encerrada reason=%s phase=%s speech_ms=%u can_end=%d",
+             listen_end_reason_name(reason), listen_phase_name(phase),
+             (unsigned)speech_elapsed_ms, (int)can_end);
+
+    s.bridge_start_sent = false;
+    s.bridge_audio_sent = false;
+    s.bridge_tx_fail_count = 0;
+    s.bridge_flush_before_end = false;
+    s.listen_voice_detected = false;
+    return ESP_OK;
+}
+
 static void vad_update(const int32_t *mic, size_t n, bool local_output_active)
 {
     if (n == 0) return;
@@ -366,6 +500,24 @@ static void vad_update(const int32_t *mic, size_t n, bool local_output_active)
 
     int64_t now_us = esp_timer_get_time();
 
+    if (is_speech
+            && s.listen_session_active
+            && s.listen_voice_detected
+            && s.listen_phase == LISTEN_PHASE_ENDING_ON_SILENCE
+            && !speech_strong) {
+        if (s.vad_silence_start_us == 0) {
+            s.vad_silence_start_us = now_us;
+        } else {
+            int64_t silence_ms = (now_us - s.vad_silence_start_us) / 1000LL;
+            if (silence_ms >= (int64_t)listen_current_end_silence_ms()) {
+                s.vad_state        = VAD_SILENCE;
+                s.bridge_tx_active = false;
+                listen_session_finish(NB_LISTEN_END_VAD_SILENCE);
+            }
+        }
+        return;
+    }
+
     if (is_speech) {
         if (s.vad_state == VAD_SILENCE) {
             uint8_t inc = speech_strong ? VAD_ENTER_SCORE_STRONG_INC
@@ -382,13 +534,26 @@ static void vad_update(const int32_t *mic, size_t n, bool local_output_active)
                 if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
                 if (s.listen_session_active) {
                     s.listen_voice_detected = true;
-                    s.listen_no_voice_remaining_ms = 0;
+                    s.listen_phase = LISTEN_PHASE_CAPTURING_SPEECH;
+                    s.listen_wait_remaining_ms = 0;
+                    s.listen_speech_elapsed_ms = 0;
+                    listen_start_bridge_capture();
                     ESP_LOGI(TAG, "[ VOZ DETECTADA — capturando... ]");
                 }
             }
         } else {
             s.vad_enter_count = 0;
             s.vad_silence_start_us = 0;  /* reinicia contador de silêncio */
+            if (s.listen_session_active) {
+                if (!s.listen_voice_detected) {
+                    s.listen_voice_detected = true;
+                    s.listen_wait_remaining_ms = 0;
+                    s.listen_speech_elapsed_ms = 0;
+                    listen_start_bridge_capture();
+                    ESP_LOGI(TAG, "[ VOZ DETECTADA — capturando... ]");
+                }
+                s.listen_phase = LISTEN_PHASE_CAPTURING_SPEECH;
+            }
         }
     } else {
         if (s.vad_enter_count > VAD_ENTER_SCORE_DEC) {
@@ -418,32 +583,21 @@ static void vad_update(const int32_t *mic, size_t n, bool local_output_active)
         if (s.vad_state == VAD_ACTIVE) {
             if (s.vad_silence_start_us == 0) {
                 s.vad_silence_start_us = now_us;
+                if (s.listen_session_active && s.listen_voice_detected) {
+                    s.listen_phase = LISTEN_PHASE_ENDING_ON_SILENCE;
+                }
             } else {
                 int64_t silence_ms = (now_us - s.vad_silence_start_us) / 1000LL;
-                if (silence_ms >= (int64_t)NB_AUDIO_VAD_SILENCE_MS) {
+                uint32_t end_silence_ms = (s.listen_session_active && s.listen_voice_detected)
+                                        ? listen_current_end_silence_ms()
+                                        : NB_AUDIO_VAD_SILENCE_MS;
+                if (silence_ms >= (int64_t)end_silence_ms) {
                     s.vad_state        = VAD_SILENCE;
                     s.bridge_tx_active = false;
-                    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
-                    /* Encerra sessão com invariante: VOICE_END só à bridge se houve
-                     * VOICE_START E ao menos um chunk de áudio enviado. */
                     if (s.listen_session_active) {
-                        bool can_end = s.bridge_start_sent && s.bridge_audio_sent;
-                        s.listen_session_active       = false;
-                        s.listen_timeout_remaining_ms = 0;
-                        s.listen_no_voice_remaining_ms = 0;
-                        if (can_end && bridge_service_is_connected()) {
-                            nb_event_t marker = {
-                                .type         = NB_EVT_VOICE_ACTIVITY_END,
-                                .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
-                            };
-                            bridge_service_send_event(&marker);
-                            ESP_LOGI(TAG, "[ AUDIO ENVIADO — aguardando resposta ]");
-                        } else {
-                            ESP_LOGI(TAG, "[ FIM DE SESSAO — bridge offline ]");
-                        }
-                        s.bridge_start_sent = false;
-                        s.bridge_audio_sent = false;
-                        s.listen_voice_detected = false;
+                        listen_session_finish(NB_LISTEN_END_VAD_SILENCE);
+                    } else if (s.event_cb) {
+                        s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
                     }
                 }
             }
@@ -639,10 +793,8 @@ static void audio_task(void *arg)
             } else {
                 if (tx_rc == ESP_ERR_INVALID_STATE) {
                     ESP_LOGW(TAG, "bridge desconectou durante sessao — encerrando escuta");
-                    s.bridge_tx_active = false;
                     s.bridge_flush_before_end = false;
-                    s.listen_timeout_remaining_ms = CHUNK_DURATION_MS;
-                    s.listen_no_voice_remaining_ms = 0;
+                    listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
                 } else if (tx_rc == ESP_ERR_NO_MEM) {
                     /* Fila cheia é backpressure: o bridge_service já loga/dropa áudio.
                      * Mantém a sessão aberta para permitir que os próximos chunks entrem. */
@@ -654,10 +806,8 @@ static void audio_task(void *arg)
                         ESP_LOGW(TAG,
                                  "bridge TX travou (%u falhas seguidas: %s) — encerrando sessao",
                                  (unsigned)s.bridge_tx_fail_count, esp_err_to_name(tx_rc));
-                        s.bridge_tx_active = false;
                         s.bridge_flush_before_end = true;
-                        s.listen_timeout_remaining_ms = CHUNK_DURATION_MS;
-                        s.listen_no_voice_remaining_ms = 0;
+                        listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
                     }
                 }
             }
@@ -665,68 +815,21 @@ static void audio_task(void *arg)
 
         /* ── 4d. Session timeouts ────────────────────────────────────────── */
         if (s.listen_session_active) {
-            bool timeout_now = false;
-            bool no_voice_fallback = false;
-
-            if (s.listen_timeout_remaining_ms > 0) {
-                if (s.listen_timeout_remaining_ms <= CHUNK_DURATION_MS) {
-                    s.listen_timeout_remaining_ms = 0;
-                    timeout_now = true;
+            if (s.listen_phase == LISTEN_PHASE_WAITING_FOR_SPEECH) {
+                if (s.listen_wait_remaining_ms <= CHUNK_DURATION_MS) {
+                    listen_session_finish(NB_LISTEN_END_TIMEOUT);
                 } else {
-                    s.listen_timeout_remaining_ms -= CHUNK_DURATION_MS;
+                    s.listen_wait_remaining_ms -= CHUNK_DURATION_MS;
                 }
-            }
-
-            if (!timeout_now && !s.listen_voice_detected
-                    && s.listen_no_voice_remaining_ms > 0) {
-                if (s.listen_no_voice_remaining_ms <= CHUNK_DURATION_MS) {
-                    s.listen_no_voice_remaining_ms = 0;
-                    timeout_now = true;
-                    no_voice_fallback = true;
+            } else if (s.listen_phase == LISTEN_PHASE_CAPTURING_SPEECH
+                    || s.listen_phase == LISTEN_PHASE_ENDING_ON_SILENCE) {
+                if (s.listen_speech_elapsed_ms >= LISTEN_MAX_SPEECH_MS) {
+                    ESP_LOGW(TAG, "sessao listen atingiu teto de fala (%ums)",
+                             (unsigned)LISTEN_MAX_SPEECH_MS);
+                    listen_session_finish(NB_LISTEN_END_TIMEOUT);
                 } else {
-                    s.listen_no_voice_remaining_ms -= CHUNK_DURATION_MS;
+                    s.listen_speech_elapsed_ms += CHUNK_DURATION_MS;
                 }
-            }
-
-            if (timeout_now) {
-                bool can_end = s.bridge_start_sent && s.bridge_audio_sent;
-                s.listen_timeout_remaining_ms = 0;
-                s.listen_no_voice_remaining_ms = 0;
-                s.listen_session_active       = false;
-                s.bridge_tx_active            = false;
-                s.vad_state                   = VAD_SILENCE;
-                s.vad_enter_count             = 0;
-                s.vad_silence_start_us        = 0;
-                if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
-                if (can_end && bridge_service_is_connected()) {
-                    if (s.bridge_flush_before_end) {
-                        bridge_service_flush_tx();
-                    }
-                    nb_event_t marker = {
-                        .type         = NB_EVT_VOICE_ACTIVITY_END,
-                        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
-                    };
-                    esp_err_t end_rc = bridge_service_send_event(&marker);
-                    if (end_rc != ESP_OK) {
-                        ESP_LOGW(TAG, "VOICE_END nao entrou na fila da bridge: %s",
-                                 esp_err_to_name(end_rc));
-                    }
-                    if (no_voice_fallback) {
-                        ESP_LOGI(TAG, "[ AUDIO ENVIADO — timeout fallback ]");
-                    } else {
-                        ESP_LOGI(TAG, "[ AUDIO ENVIADO — aguardando resposta ]");
-                    }
-                } else {
-                    ESP_LOGW(TAG,
-                             "[ FIM DE SESSAO — sem envio bridge start=%d audio=%d conn=%d ]",
-                             (int)s.bridge_start_sent, (int)s.bridge_audio_sent,
-                             (int)bridge_service_is_connected());
-                }
-                s.bridge_start_sent = false;
-                s.bridge_audio_sent = false;
-                s.bridge_tx_fail_count = 0;
-                s.bridge_flush_before_end = false;
-                s.listen_voice_detected = false;
             }
         }
 
@@ -806,8 +909,9 @@ esp_err_t audio_service_init(void)
     s.bridge_audio_sent           = false;
     s.bridge_tx_fail_count        = 0;
     s.bridge_flush_before_end     = false;
-    s.listen_timeout_remaining_ms = 0;
-    s.listen_no_voice_remaining_ms = 0;
+    s.listen_phase                = LISTEN_PHASE_IDLE;
+    s.listen_wait_remaining_ms    = 0;
+    s.listen_speech_elapsed_ms    = 0;
     s.listen_voice_detected       = false;
     s.bridge_say_q = xQueueCreateStatic(BRIDGE_SAY_QUEUE_DEPTH,
                                          sizeof(bridge_say_item_t),
@@ -917,10 +1021,11 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
     s.bridge_audio_sent           = false;
     s.bridge_tx_fail_count        = 0;
     s.bridge_flush_before_end     = false;
-    s.listen_timeout_remaining_ms = LISTEN_SESSION_TIMEOUT_MS;
-    s.listen_no_voice_remaining_ms = LISTEN_NO_VOICE_FALLBACK_MS;
+    s.listen_phase                = LISTEN_PHASE_WAITING_FOR_SPEECH;
+    s.listen_wait_remaining_ms    = LISTEN_WAIT_SPEECH_TIMEOUT_MS;
+    s.listen_speech_elapsed_ms    = 0;
     s.listen_voice_detected       = false;
-    s.bridge_tx_active            = false;  /* mantido false até após flush do pre-roll */
+    s.bridge_tx_active            = false;  /* liga apenas quando o VAD detectar fala */
     wake_service_suspend();
 
     /* Wake word: o áudio "Hi ESP" deixa o VAD em ACTIVE antes de a sessão abrir.
@@ -932,46 +1037,13 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
         s.vad_silence_start_us = 0;
     }
 
-    if (bridge_service_is_connected()) {
-        bridge_service_flush_tx();
-
-        /* 1. Envia marcador de início antes do pre-roll */
-        nb_event_t marker = {
-            .type         = NB_EVT_VOICE_ACTIVITY_START,
-            .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
-        };
-        esp_err_t start_rc = bridge_service_send_event(&marker);
-        s.bridge_start_sent = (start_rc == ESP_OK);
-
-        /* 2. Flush pre-roll: mais antigo → mais novo, antes do streaming live.
-         *    bridge_tx_active ainda é false, evitando envio concorrente da audio_task.
-         *    Conta como áudio enviado se algum chunk entrar na fila da bridge. */
-        uint8_t pr_count = s.bridge_start_sent ? s_preroll_count : 0U;
-        if (pr_count > 0U) {
-            uint8_t start = (uint8_t)((s_preroll_head + PREROLL_CHUNKS - pr_count) % PREROLL_CHUNKS);
-            for (uint8_t i = 0; i < pr_count; i++) {
-                uint8_t idx = (uint8_t)((start + i) % PREROLL_CHUNKS);
-                if (bridge_service_send_audio_chunk(s_preroll_buf[idx],
-                                                    NB_AUDIO_CHUNK_FRAMES) == ESP_OK) {
-                    s.bridge_audio_sent = true;
-                }
-            }
-        }
-
-        /* 3. Habilita streaming live — audio_task começa a enviar novos chunks */
-        s.bridge_tx_active = s.bridge_start_sent;
-        if (!s.bridge_start_sent) {
-            ESP_LOGW(TAG, "VOICE_START nao entrou na fila da bridge: %s",
-                     esp_err_to_name(start_rc));
-        }
-    }
-
     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
     if (source == NB_LISTEN_SOURCE_WAKE_WORD || source == NB_LISTEN_SOURCE_TOUCH) {
         ESP_LOGI(TAG, "[ PODE FALAR ]");
     }
-    ESP_LOGD(TAG, "sessao listen aberta source=%d bridge_start=%d preroll=%u",
-             (int)source, (int)s.bridge_start_sent, (unsigned)s_preroll_count);
+    ESP_LOGD(TAG, "sessao listen aberta source=%d phase=%s wait=%ums preroll=%u",
+             (int)source, listen_phase_name(s.listen_phase),
+             (unsigned)s.listen_wait_remaining_ms, (unsigned)s_preroll_count);
     return ESP_OK;
 }
 
@@ -980,43 +1052,7 @@ esp_err_t audio_service_end_listen_session(nb_listen_end_reason_t reason)
     if (!s.initialized)           return ESP_ERR_INVALID_STATE;
     if (!s.listen_session_active) return ESP_ERR_INVALID_STATE;
 
-    bool can_end = s.bridge_start_sent
-                && (s.bridge_audio_sent || reason == NB_LISTEN_END_CANCELLED);
-
-    s.listen_session_active       = false;
-    s.listen_timeout_remaining_ms = 0;
-    s.listen_no_voice_remaining_ms = 0;
-    s.bridge_tx_active            = false;
-    s.vad_state                   = VAD_SILENCE;
-    s.vad_enter_count             = 0;
-    s.vad_silence_start_us        = 0;
-
-    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
-
-    if (can_end && bridge_service_is_connected()) {
-        if (reason == NB_LISTEN_END_CANCELLED) {
-            bridge_service_flush_tx();
-        }
-        nb_event_t marker = {
-            .type         = NB_EVT_VOICE_ACTIVITY_END,
-            .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
-        };
-        esp_err_t end_rc = bridge_service_send_event(&marker);
-        if (end_rc != ESP_OK) {
-            ESP_LOGW(TAG, "VOICE_END nao entrou na fila da bridge: %s",
-                     esp_err_to_name(end_rc));
-        }
-    }
-
-    ESP_LOGI(TAG, "sessao listen encerrada reason=%d can_end=%d",
-             (int)reason, (int)can_end);
-
-    s.bridge_start_sent = false;
-    s.bridge_audio_sent = false;
-    s.bridge_tx_fail_count = 0;
-    s.bridge_flush_before_end = false;
-    s.listen_voice_detected = false;
-    return ESP_OK;
+    return listen_session_finish(reason);
 }
 
 bool audio_service_is_listening(void)

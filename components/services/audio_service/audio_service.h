@@ -12,7 +12,7 @@
  *   RMS + ZCR + assinatura espectral via sound_analysis_service.
  *   Threshold é adaptativo ao ruído de fundo e conservador para fala próxima.
  *   VOICE_START: somente após chunks consecutivos que pareçam fala humana.
- *   VOICE_END: após NB_AUDIO_VAD_SILENCE_MS contínuos de silêncio.
+ *   VOICE_END: após silêncio pós-fala ou timeout de segurança.
  *
  * Playback:
  *   Suporta WAV PCM 16-bit mono 16kHz. Outros formatos retornam erro.
@@ -178,10 +178,9 @@ typedef enum {
 /**
  * @brief Abre uma sessão de escuta.
  *
- * Se bridge conectada: envia VOICE_ACTIVITY_START e habilita streaming de mic.
- * Se bridge offline: sessão existe visualmente, sem frames enviados.
- * O VAD fecha no silêncio; se o VAD não ativar, há fallback curto que fecha a
- * janela e deixa o Whisper validar o áudio recebido.
+ * Abre uma janela visual de escuta. O VOICE_ACTIVITY_START e o streaming para a
+ * bridge começam apenas quando o VAD detectar fala; se não houver fala, a
+ * sessão fecha por timeout curto sem enviar sessão vazia ao bridge.
  *
  * @return ESP_OK, ESP_ERR_INVALID_STATE se já há sessão ativa ou não iniciado.
  */

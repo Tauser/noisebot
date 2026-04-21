@@ -1770,7 +1770,7 @@ No `boot_manager`/state flow:
 
 ---
 
-### Etapa 12.9 — Turn-Taking Natural de Voz
+### Etapa 12.9 — Turn-Taking Natural de Voz ✓
 
 **Dependências:** 12.7 validada, 12.8 sem repetição de wake
 **Hardware necessário:** INMP441 + bridge em dry-run
@@ -1788,7 +1788,7 @@ No `audio_service`:
 - Separar constantes:
   ```c
   LISTEN_WAIT_SPEECH_TIMEOUT_MS  /* ex.: 8000ms */
-  LISTEN_END_SILENCE_MS          /* ex.: 1000ms */
+  LISTEN_END_SILENCE_MS          /* ex.: 1400ms, com graça inicial maior */
   LISTEN_MAX_SPEECH_MS           /* ex.: 30000-60000ms, safety */
   ```
 - O timeout curto só roda em `WAITING_FOR_SPEECH`.
@@ -1807,11 +1807,11 @@ No `bridge.py`:
 
 **Critérios de aceitação:**
 
-- [ ] Toque + silêncio: cancela após ~8s sem enviar Gemini/Piper.
-- [ ] Toque + frase curta: encerra ~1s após parar de falar.
-- [ ] Toque + fala por 15-20s: não corta antes do silêncio final.
+- [x] Toque + silêncio: cancela após ~8s sem enviar Gemini/Piper.
+- [x] Toque + frase curta: encerra ~1s após parar de falar.
+- [x] Toque + fala por 15-20s: não corta antes do silêncio final.
 - [ ] Toque + ruído contínuo: encerra por timeout máximo de segurança, sem travar.
-- [ ] Bridge dry-run mostra sessão longa com `samples > 0`.
+- [x] Bridge dry-run mostra sessão longa com `samples > 0`.
 
 ---
 
