@@ -317,6 +317,7 @@ static const nb_action_t k_bridge_action_map[] = {
 
 static esp_timer_handle_t s_bridge_resp_timer;
 static bool               s_bridge_say_started;
+static bool               s_bridge_voice_pending;
 
 static void bridge_resp_timeout_cb(void *arg)
 {
@@ -334,12 +335,14 @@ static void bridge_on_event(const nb_event_t *evt)
 
     case NB_EVT_VOICE_ACTIVITY_START:
         s_bridge_say_started = false;
+        s_bridge_voice_pending = true;
         esp_timer_stop(s_bridge_resp_timer);
         break;
 
     case NB_EVT_VOICE_ACTIVITY_END:
-        if (bridge_service_is_connected()) {
+        if (bridge_service_is_connected() && s_bridge_voice_pending) {
             s_bridge_say_started = false;
+            s_bridge_voice_pending = false;
             esp_timer_stop(s_bridge_resp_timer);
             esp_timer_start_once(s_bridge_resp_timer, 8000000LL);
         }
@@ -389,11 +392,13 @@ static void bridge_on_event(const nb_event_t *evt)
     }
 
     case NB_EVT_BRIDGE_DISCONNECTED:
+        s_bridge_voice_pending = false;
         esp_timer_stop(s_bridge_resp_timer);
         expression_service_set(NB_EXPR_NEUTRAL, 500.0f);
         break;
 
     case NB_EVT_BRIDGE_RESPONSE_TIMEOUT:
+        s_bridge_voice_pending = false;
         expression_service_set(NB_EXPR_NEUTRAL, 500.0f);
         NB_LOGW(TAG, "bridge sem resposta em 8s — retornando a idle");
         break;
