@@ -132,16 +132,16 @@ static const score_step_t k_curious_c[] = {
 
 /* TOUCH_WARM — variação A */
 static const score_step_t k_touch_warm_a[] = {
-    { 0,   NB_EXPR_HAPPY,   200.0f, true, 1500.0f, CM_NONE, 0, "/sdcard/assets/audio/touch_respond_01.wav" },
+    { 0,   NB_EXPR_HAPPY,   200.0f, true, 1500.0f, CM_NONE, 0, NULL },
     { 100, NB_EXPR_COUNT,   0.0f,   false,0.0f,    CM_NOD,  0, NULL },
 };
 /* TOUCH_WARM — variação B */
 static const score_step_t k_touch_warm_b[] = {
-    { 0,   NB_EXPR_HAPPY,   150.0f, true, 1500.0f, CM_NONE, 0, "/sdcard/assets/audio/touch_respond_02.wav" },
+    { 0,   NB_EXPR_HAPPY,   150.0f, true, 1500.0f, CM_NONE, 0, NULL },
 };
 /* TOUCH_WARM — variação C */
 static const score_step_t k_touch_warm_c[] = {
-    { 0,   NB_EXPR_CURIOUS, 200.0f, true, 1500.0f, CM_TILT_CURIOUS, 0, "/sdcard/assets/audio/touch_respond_03.wav" },
+    { 0,   NB_EXPR_CURIOUS, 200.0f, true, 1500.0f, CM_TILT_CURIOUS, 0, NULL },
 };
 
 /* TOUCH_STARTLE */

@@ -29,7 +29,7 @@
  *   Sem resposta em ambos → modo OFFLINE (operação normal sem bridge)
  *
  * Mensagens ESP32 → Bridge:
- *   AUDIO_CHUNK: int16_t pcm[512] (512 samples × 2 bytes = 1024 bytes DATA)
+ *   AUDIO_CHUNK: int16_t pcm[256] (256 samples × 2 bytes = 512 bytes DATA)
  *   EVENT      : uint32_t type + uint8_t data[8] (12 bytes DATA)
  *   STATUS     : state(1) + valence(4) + activation(4) + attention(4) + health(1) = 14 bytes
  *
@@ -74,18 +74,18 @@ extern "C" {
 #define NB_BRIDGE_RECONNECT_INTVL_MS 5000   /* intervalo entre tentativas TCP  */
 #define NB_BRIDGE_RECONNECT_TIMEOUT_MS 60000/* para de tentar após 60s         */
 
-#define NB_BRIDGE_AUDIO_CHUNK_SAMPLES 512   /* amostras por chunk PCM          */
+#define NB_BRIDGE_AUDIO_CHUNK_SAMPLES 256   /* amostras por chunk PCM          */
 #define NB_BRIDGE_TEXT_MAX_LEN      128     /* tamanho máximo TEXT_SCROLL      */
 
 /* ── Tipos de mensagem ────────────────────────────────────────────────────── */
 
 typedef enum {
     /* ESP32 → Bridge */
-    NB_BRIDGE_MSG_AUDIO_CHUNK  = 0x01,   /* PCM int16[], 512 samples          */
+    NB_BRIDGE_MSG_AUDIO_CHUNK  = 0x01,   /* PCM int16[], 256 samples          */
     NB_BRIDGE_MSG_EVENT        = 0x02,   /* nb_event_type_t + data[8]         */
     NB_BRIDGE_MSG_STATUS       = 0x03,   /* estado geral do robot             */
     /* Bridge → ESP32 */
-    NB_BRIDGE_MSG_SAY          = 0x10,   /* chunk PCM int16[], 512 samples    */
+    NB_BRIDGE_MSG_SAY          = 0x10,   /* chunk PCM int16[], 256 samples    */
     NB_BRIDGE_MSG_EXPR         = 0x11,   /* expressão + duração               */
     NB_BRIDGE_MSG_ACTION       = 0x12,   /* ação pré-definida                 */
     NB_BRIDGE_MSG_EMOT_EVENT   = 0x13,   /* nb_emotion_event_t                */
@@ -159,6 +159,14 @@ nb_bridge_transport_t bridge_service_get_transport(void);
  * Thread-safe.
  */
 bool bridge_service_is_connected(void);
+
+/**
+ * @brief Limpa a fila de transmissão do bridge.
+ *
+ * Útil antes de iniciar uma nova sessão de voz: garante que VOICE_START e os
+ * primeiros chunks não sejam bloqueados por frames antigos.
+ */
+void bridge_service_flush_tx(void);
 
 /**
  * @brief Envia chunk de áudio PCM para o bridge.

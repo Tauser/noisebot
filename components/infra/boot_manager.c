@@ -55,6 +55,7 @@
 #include "wifi_service.h"
 #include "web_service.h"
 #include "bridge_service.h"
+#include "wake_service.h"
 #include "esp_ota_ops.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
@@ -85,6 +86,7 @@ static nb_boot_status_t s_status = {
 static bool     s_initialized       = false;
 static uint32_t s_silence_ms        = 0;    /* ms sem interação — acumula em IDLE/SLEEPING */
 static bool     s_milestone_100h    = false; /* greet especial de 100h pendente ao primeiro IDLE */
+static bool     s_wake_word_triggered = false; /* sinaliza que ATTENTIVE foi ativado via wake word */
 
 /* ── Helpers de NVS (acesso direto, sem config_manager) ──────────────────── */
 
@@ -469,11 +471,23 @@ static void on_state_changed(nb_robot_state_t new_state,
 {
     (void)reason;
 
+    if (old_state == NB_STATE_ATTENTIVE && new_state != NB_STATE_ATTENTIVE) {
+        led_base_set(NB_LED_BASE_ATTENTIVE, false);
+        if (audio_service_is_listening()) {
+            audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
+        }
+    }
+
     /* LED + sessão de escuta + synth para transições de estado. */
     switch (new_state) {
         case NB_STATE_ATTENTIVE:
-            /* Touch-to-Listen (12.4): abre sessão e sinaliza escuta com LED cyan. */
-            audio_service_begin_listen_session(NB_LISTEN_SOURCE_TOUCH);
+            /* Touch-to-Listen (12.4) ou Wake Word (12.6): abre sessão e sinaliza com LED cyan. */
+            if (s_wake_word_triggered) {
+                audio_service_begin_listen_session(NB_LISTEN_SOURCE_WAKE_WORD);
+                s_wake_word_triggered = false;
+            } else {
+                audio_service_begin_listen_session(NB_LISTEN_SOURCE_TOUCH);
+            }
             led_base_set(NB_LED_BASE_ATTENTIVE, true);
             break;
         case NB_STATE_MEDITATION:
@@ -486,6 +500,7 @@ static void on_state_changed(nb_robot_state_t new_state,
         case NB_STATE_IDLE:
             if (old_state == NB_STATE_ATTENTIVE) {
                 led_base_set(NB_LED_BASE_ATTENTIVE, false);
+                expression_service_set(NB_EXPR_NEUTRAL, 600.0f);
                 /* Encerra sessão se ainda ativa (fallback — normalmente VOICE_END
                  * já a fechou antes desta transição). */
                 if (audio_service_is_listening()) {
@@ -579,6 +594,16 @@ static void on_circadian_phase(const nb_event_t *ev, void *ctx)
 {
     (void)ctx;
     apply_idle_modifiers((nb_circadian_phase_t)ev->data.u32);
+}
+
+/* Wake word detectada → entra em ATTENTIVE com source WAKE_WORD (12.6) */
+static void on_wake_word_detected(const nb_event_t *evt, void *ctx)
+{
+    (void)evt; (void)ctx;
+    if (state_machine_get_state() == NB_STATE_ATTENTIVE) return;
+    s_wake_word_triggered = true;
+    state_machine_on_touch_tap();   /* reutiliza trigger de toque para entrar em ATTENTIVE */
+    s_wake_word_triggered = false;  /* garante reset mesmo se SM não transitou */
 }
 
 
@@ -969,6 +994,15 @@ static esp_err_t phase_services(void)
     err = bridge_service_init();
     if (err != ESP_OK) {
         NB_LOGW(TAG, "bridge_service_init falhou: %s", esp_err_to_name(err));
+    }
+
+    /* wake_service (Etapa 12.6): wake word "Hi ESP" via WakeNet9 */
+    err = wake_service_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "wake_service_init falhou: %s — wake word desativado",
+                esp_err_to_name(err));
+    } else {
+        nb_event_subscribe(NB_EVT_WAKE_WORD_DETECTED, on_wake_word_detected, NULL, NULL);
     }
 
     phase_ok(NB_BOOT_PHASE_SERVICES);

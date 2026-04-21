@@ -35,6 +35,14 @@ A stack é ESP-IDF + FreeRTOS. **Nunca usar Arduino.**
 - Nenhum componente de comportamento (Layer 5-7) chama HAL diretamente.
 - Nenhum HAL publica no event bus diretamente — passes para o serviço da Layer 4.
 
+### Baseline de Comportamento
+
+- `IDLE` é sempre o baseline persistente visual e comportamental do robô.
+- A base de `IDLE` é expressão `NEUTRAL`, gaze central, pescoço central e LED idle.
+- Expressões/ações como `CURIOUS`, `HAPPY`, `FOCUSED`, `ATTENTIVE`, touch, wake e fala são momentos transitórios ou overlays. Elas nunca substituem o baseline de `IDLE`.
+- Toda entrada em `IDLE` deve limpar expressão, gaze, postura e overlays transitórios antes de aceitar novos comportamentos.
+- `SLEEPING`, `MEDITATION`, `SILENT_COMPANY`, `RESPONDING` e estados de erro podem ter bases próprias, mas ao sair deles para `IDLE` o baseline de `IDLE` volta a ter autoridade.
+
 ```
 Layer 0: ESP-IDF / FreeRTOS / Hardware
 Layer 1: HAL        (nb_hal/display, nb_hal/servo, nb_hal/audio, nb_hal/led, nb_hal/touch, nb_hal/sd)

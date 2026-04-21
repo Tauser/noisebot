@@ -90,6 +90,9 @@ typedef enum {
     NB_EVT_WIFI_IP_ACQUIRED,        /* IP obtido via DHCP — serviços web podem iniciar */
     NB_EVT_WIFI_DISCONNECTED,       /* conexão perdida — reconexão em andamento        */
 
+    /* Wake Word (Etapa 12.6) */
+    NB_EVT_WAKE_WORD_DETECTED,      /* wake word local detectada via WakeNet         */
+
     /* Bridge LLM (Etapa 12.1) */
     NB_EVT_BRIDGE_CONNECTED,        /* bridge conectado; data.u32 = nb_bridge_transport_t */
     NB_EVT_BRIDGE_DISCONNECTED,     /* bridge desconectado (TCP caiu ou UART perdida)     */

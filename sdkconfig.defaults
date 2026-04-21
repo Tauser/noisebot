@@ -5,6 +5,11 @@
 # ── Target ────────────────────────────────────────────────────────────────────
 CONFIG_IDF_TARGET="esp32s3"
 
+# ── Compilador ───────────────────────────────────────────────────────────────
+# GCC ICE em esp_lcd_panel_rgb.c com -O2 no IDF 5.5. -Og resolve sem custo
+# perceptível no S3 @ 240MHz.
+CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y
+
 # ── CPU ───────────────────────────────────────────────────────────────────────
 CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=y
 
@@ -85,3 +90,12 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
 # ── Coredump (diagnóstico em crash) ──────────────────────────────────────────
 CONFIG_ESP_COREDUMP_ENABLE_TO_UART=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+
+# ── ESP-SR (Etapa 12.6) ──────────────────────────────────────────────────────
+# Modelo WakeNet9 "Hi ESP" compilado no build e empacotado na partição "model".
+CONFIG_SR_WN_WN9_HIESP=y
+# Modelos lidos da partição flash ("model") — requer partição data/spiffs "model".
+CONFIG_MODEL_IN_FLASH=y
+# Data cache 64KB e cache line 64B: recomendado pelo ESP-SR para S3.
+CONFIG_ESP32S3_DATA_CACHE_64KB=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y

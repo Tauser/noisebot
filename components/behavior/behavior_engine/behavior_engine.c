@@ -332,9 +332,15 @@ static void bridge_on_event(const nb_event_t *evt)
 {
     switch (evt->type) {
 
+    case NB_EVT_VOICE_ACTIVITY_START:
+        s_bridge_say_started = false;
+        esp_timer_stop(s_bridge_resp_timer);
+        break;
+
     case NB_EVT_VOICE_ACTIVITY_END:
         if (bridge_service_is_connected()) {
             s_bridge_say_started = false;
+            esp_timer_stop(s_bridge_resp_timer);
             esp_timer_start_once(s_bridge_resp_timer, 8000000LL);
         }
         break;
@@ -384,12 +390,11 @@ static void bridge_on_event(const nb_event_t *evt)
 
     case NB_EVT_BRIDGE_DISCONNECTED:
         esp_timer_stop(s_bridge_resp_timer);
-        conductor_play(NB_ACTION_CURIOUS);
+        expression_service_set(NB_EXPR_NEUTRAL, 500.0f);
         break;
 
     case NB_EVT_BRIDGE_RESPONSE_TIMEOUT:
-        expression_service_set(NB_EXPR_CURIOUS, 500.0f);
-        conductor_play(NB_ACTION_CURIOUS);
+        expression_service_set(NB_EXPR_NEUTRAL, 500.0f);
         NB_LOGW(TAG, "bridge sem resposta em 8s — retornando a idle");
         break;
 

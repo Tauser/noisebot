@@ -1,0 +1,3 @@
+## IDF Component Manager — wake_service
+dependencies:
+  espressif/esp-sr: ">=1.6.0"

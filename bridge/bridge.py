@@ -113,7 +113,10 @@ class TcpTransport:
 
     def recv(self, max_bytes=4096) -> bytes:
         try:
-            return self.sock.recv(max_bytes)
+            data = self.sock.recv(max_bytes)
+            if data == b"":
+                raise ConnectionError("TCP peer closed")
+            return data
         except socket.timeout:
             return b""
         except Exception as e:
@@ -143,11 +146,20 @@ class UartTransport:
 # ── Handshake ─────────────────────────────────────────────────────────────────
 
 def do_handshake(transport, timeout=1.0) -> bool:
-    transport.send(encode_frame(MSG_HELLO))
+    try:
+        transport.send(encode_frame(MSG_HELLO))
+    except Exception as e:
+        log.warning("Handshake send falhou: %s", e)
+        return False
+
     buf = bytearray()
     deadline = time.time() + timeout
     while time.time() < deadline:
-        data = transport.recv(FRAME_OVERHEAD)
+        try:
+            data = transport.recv(FRAME_OVERHEAD)
+        except Exception as e:
+            log.warning("Handshake recv falhou: %s", e)
+            return False
         if data:
             buf.extend(data)
         if len(buf) >= FRAME_OVERHEAD:
@@ -250,11 +262,12 @@ def tts_piper(text: str) -> np.ndarray:
 
 # ── Bridge session ────────────────────────────────────────────────────────────
 
-CHUNK_SAMPLES    = 512
-VOICE_TIMEOUT_S  = 8.0  # forçar VOICE_END se nenhum sinal chegar em X segundos
+CHUNK_SAMPLES    = 256
+VOICE_TIMEOUT_S  = 25.0  # watchdog: firmware deve enviar VOICE_END antes disso
 MIN_UTTERANCE_SAMPLES = 8000   # 0.5s: rejeição pré-Whisper
 MIN_UTTERANCE_RMS     = 80.0   # PCM int16 pós-filtro no firmware
-MAX_NO_SPEECH_PROB    = 0.55
+MAX_NO_SPEECH_PROB    = 0.75
+MAX_NO_SPEECH_PROB_DRY_RUN = 0.90
 MIN_AVG_LOGPROB       = -1.10
 MAX_COMPRESSION_RATIO = 2.60
 
@@ -271,18 +284,20 @@ class BridgeSession:
         self._session_start     = None   # timestamp float quando VOICE_START chega
         self._session_rms_sum   = 0.0    # soma de RMS por chunk para avg
         self._session_n_chunks  = 0      # número de chunks recebidos
+        self._session_audio_seen = False # loga primeiro chunk recebido
+        self._session_id        = 0
 
     def send_msg(self, msg_type: int, payload: bytes = b""):
         self.transport.send(encode_frame(msg_type, payload))
 
     def send_say_pcm(self, pcm: np.ndarray):
-        """Envia PCM int16 em chunks de 512 samples via MSG_SAY."""
+        """Envia PCM int16 em chunks de 256 samples via MSG_SAY."""
         for i in range(0, len(pcm), CHUNK_SAMPLES):
             chunk = pcm[i:i+CHUNK_SAMPLES]
             if len(chunk) < CHUNK_SAMPLES:
                 chunk = np.pad(chunk, (0, CHUNK_SAMPLES - len(chunk)))
             self.send_msg(MSG_SAY, chunk.astype(np.int16).tobytes())
-            time.sleep(0.028)  # ~28ms por chunk (512/16000 ≈ 32ms, com margem)
+            time.sleep(0.014)  # ~14ms por chunk (256/16000 = 16ms, com margem)
 
     def _cancel_voice_timer(self):
         if self._voice_timer is not None:
@@ -291,30 +306,65 @@ class BridgeSession:
 
     def _arm_voice_timer(self):
         self._cancel_voice_timer()
-        self._voice_timer = threading.Timer(VOICE_TIMEOUT_S, self._on_voice_timeout)
+        session_id = self._session_id
+        self._voice_timer = threading.Timer(VOICE_TIMEOUT_S,
+                                            self._on_voice_timeout,
+                                            args=(session_id,))
         self._voice_timer.daemon = True
         self._voice_timer.start()
 
-    def _on_voice_timeout(self):
-        if self.streaming:
+    def _on_voice_timeout(self, session_id: int):
+        snapshot = self._snapshot_voice_session(session_id)
+        if snapshot is not None:
             log.warning("VOICE timeout — forçando VOICE_END após %.0fs", VOICE_TIMEOUT_S)
-            self.streaming = False
-            threading.Thread(target=self.handle_voice_end, daemon=True).start()
+            threading.Thread(target=self.handle_voice_end,
+                             args=(snapshot,),
+                             daemon=True).start()
 
-    def handle_voice_end(self):
-        self._cancel_voice_timer()
+    def _snapshot_voice_session(self, session_id: int | None = None):
+        with self._lock:
+            if session_id is not None and session_id != self._session_id:
+                return None
+            if not self.streaming and not self.audio_buf:
+                return None
+
+            self._cancel_voice_timer()
+            pcm_chunks = list(self.audio_buf)
+            self.audio_buf.clear()
+            self.streaming = False
+
+            session_start = self._session_start
+            snapshot = {
+                "audio_chunks": pcm_chunks,
+                "avg_rms": self._session_rms_sum / max(1, self._session_n_chunks),
+                "duration_s": time.time() - (session_start or time.time()),
+                "session_id": self._session_id,
+            }
+            self._session_start = None
+            self._session_rms_sum = 0.0
+            self._session_n_chunks = 0
+            self._session_audio_seen = False
+            return snapshot
+
+    def handle_voice_end(self, snapshot):
         discard_reason = None
         n_samples      = 0
         text           = ""
-        avg_rms        = self._session_rms_sum / max(1, self._session_n_chunks)
-        duration_s     = time.time() - (self._session_start or time.time())
+        rms_pcm        = 0.0
+        peak           = 0
+        tr             = {
+            "no_speech_prob": 0.0,
+            "avg_logprob": 0.0,
+            "compression_ratio": 0.0,
+        }
+        avg_rms        = snapshot["avg_rms"]
+        duration_s     = snapshot["duration_s"]
         try:
-            if not self.audio_buf:
+            audio_chunks = snapshot["audio_chunks"]
+            if not audio_chunks:
                 discard_reason = "buffer_vazio"
                 return
-            pcm = np.concatenate(self.audio_buf).astype(np.int16)
-            self.audio_buf.clear()
-            self.streaming = False
+            pcm = np.concatenate(audio_chunks).astype(np.int16)
             n_samples = len(pcm)
 
             if transcribe_whisper._model is None:
@@ -340,7 +390,9 @@ class BridgeSession:
             if not text:
                 discard_reason = "texto_vazio"
                 return
-            if tr["no_speech_prob"] > MAX_NO_SPEECH_PROB:
+
+            max_no_speech = MAX_NO_SPEECH_PROB_DRY_RUN if self.dry_run else MAX_NO_SPEECH_PROB
+            if tr["no_speech_prob"] > max_no_speech:
                 discard_reason = f"no_speech_{tr['no_speech_prob']:.2f}"
                 return
             if tr["avg_logprob"] < MIN_AVG_LOGPROB:
@@ -350,7 +402,8 @@ class BridgeSession:
                 discard_reason = f"compression_{tr['compression_ratio']:.2f}"
                 return
             if self.dry_run:
-                discard_reason = "dry_run"
+                self.send_msg(MSG_SAY, b"")  # ACK silencioso: cancela timer de resposta no ESP32.
+                discard_reason = "dry_run_ok"
                 return
 
             response = ask_gemini(text, self.last_status)
@@ -371,17 +424,32 @@ class BridgeSession:
             discard_reason = "exception"
         finally:
             outcome = "ok" if discard_reason is None else f"descartado:{discard_reason}"
-            log.info("SESSAO dur=%.1fs samples=%d avg_rms=%.0f texto=%r motivo=%s",
-                     duration_s, n_samples, avg_rms, text or "", outcome)
+            log.info(
+                "SESSAO dur=%.1fs samples=%d avg_rms=%.0f pcm_rms=%.0f peak=%d "
+                "ns=%.2f logp=%.2f comp=%.2f texto=%r motivo=%s",
+                duration_s, n_samples, avg_rms, rms_pcm, peak,
+                tr["no_speech_prob"], tr["avg_logprob"], tr["compression_ratio"],
+                text or "", outcome,
+            )
 
     def process_msg(self, msg_type: int, payload: bytes):
         if msg_type == MSG_AUDIO_CHUNK:
-            if self.streaming:
-                pcm = np.frombuffer(payload, dtype=np.int16)
-                self.audio_buf.append(pcm)
-                rms_c = float(np.sqrt(np.mean(pcm.astype(np.float32) ** 2)))
-                self._session_rms_sum  += rms_c
-                self._session_n_chunks += 1
+            with self._lock:
+                streaming = self.streaming
+                if streaming:
+                    self.audio_buf.append(np.frombuffer(payload, dtype=np.int16).copy())
+                    pcm = self.audio_buf[-1]
+                    rms_c = float(np.sqrt(np.mean(pcm.astype(np.float32) ** 2)))
+                    self._session_rms_sum  += rms_c
+                    self._session_n_chunks += 1
+                    first_audio = not self._session_audio_seen
+                    if first_audio:
+                        self._session_audio_seen = True
+                else:
+                    first_audio = False
+            if streaming and first_audio:
+                log.info("AUDIO primeiro chunk payload=%d bytes rms=%.0f",
+                         len(payload), rms_c)
 
         elif msg_type == MSG_EVENT:
             if len(payload) >= 4:
@@ -389,15 +457,25 @@ class BridgeSession:
                 log.info("EVENT evt_type=%d", evt_type)
                 if evt_type == NB_EVT_VOICE_ACTIVITY_END:
                     log.info("VOICE_END recebido — processando")
-                    self.streaming = False
-                    threading.Thread(target=self.handle_voice_end, daemon=True).start()
+                    snapshot = self._snapshot_voice_session()
+                    if snapshot is not None:
+                        threading.Thread(target=self.handle_voice_end,
+                                         args=(snapshot,),
+                                         daemon=True).start()
                 elif evt_type == NB_EVT_VOICE_ACTIVITY_START:
-                    log.info("VOICE_START recebido")
-                    self.streaming         = True
-                    self._session_start    = time.time()
-                    self._session_rms_sum  = 0.0
-                    self._session_n_chunks = 0
-                    self._arm_voice_timer()
+                    with self._lock:
+                        if self.streaming:
+                            log.warning("VOICE_START recebido durante sessão ativa — resetando sessão anterior")
+                        log.info("VOICE_START recebido")
+                        self._cancel_voice_timer()
+                        self._session_id += 1
+                        self.streaming         = True
+                        self.audio_buf.clear()
+                        self._session_start    = time.time()
+                        self._session_rms_sum  = 0.0
+                        self._session_n_chunks = 0
+                        self._session_audio_seen = False
+                        self._arm_voice_timer()
                 else:
                     log.debug("EVENT ignorado evt_type=%d", evt_type)
 
@@ -428,6 +506,7 @@ class BridgeSession:
                     self.process_msg(msg_type, payload)
             except Exception as e:
                 log.error("Erro de I/O: %s", e)
+                self._cancel_voice_timer()
                 break
         log.info("Sessão bridge encerrada")
 

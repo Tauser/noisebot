@@ -184,14 +184,15 @@ void state_machine_on_touch_tap(void)
             /* Touch-to-Listen (12.4): tap em IDLE abre sessão de escuta. */
             do_transition(NB_STATE_ATTENTIVE, "tap");
             break;
+        case NB_STATE_SLEEPING:
+            /* Touch-to-Listen: tap acorda e já abre sessão de escuta. */
+            do_transition(NB_STATE_ATTENTIVE, "tap em SLEEPING");
+            break;
         case NB_STATE_ATTENTIVE:
         case NB_STATE_RESPONDING:
             /* Tap durante ATTENTIVE/RESPONDING: reação de toque breve. */
             s_touch_elapsed_ms = 0;
             do_transition(NB_STATE_TOUCH_REACTING, "tap");
-            break;
-        case NB_STATE_SLEEPING:
-            do_transition(NB_STATE_IDLE, "tap em SLEEPING");
             break;
         case NB_STATE_MEDITATION:
             do_transition(NB_STATE_IDLE, "tap sai de MEDITATION");

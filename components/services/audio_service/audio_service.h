@@ -170,7 +170,7 @@ typedef enum {
 /** Motivo pelo qual a sessão foi encerrada. */
 typedef enum {
     NB_LISTEN_END_VAD_SILENCE,         /**< Silêncio detectado pelo VAD         */
-    NB_LISTEN_END_TIMEOUT,             /**< 8s sem áudio enviado à bridge        */
+    NB_LISTEN_END_TIMEOUT,             /**< Timeout da janela de escuta          */
     NB_LISTEN_END_BRIDGE_DISCONNECTED, /**< Bridge desconectada durante sessão   */
     NB_LISTEN_END_CANCELLED,           /**< Cancelado externamente               */
 } nb_listen_end_reason_t;
@@ -180,7 +180,8 @@ typedef enum {
  *
  * Se bridge conectada: envia VOICE_ACTIVITY_START e habilita streaming de mic.
  * Se bridge offline: sessão existe visualmente, sem frames enviados.
- * Timer de 8s: sem áudio enviado → fecha automaticamente com TIMEOUT.
+ * O VAD fecha no silêncio; se o VAD não ativar, há fallback curto que fecha a
+ * janela e deixa o Whisper validar o áudio recebido.
  *
  * @return ESP_OK, ESP_ERR_INVALID_STATE se já há sessão ativa ou não iniciado.
  */
