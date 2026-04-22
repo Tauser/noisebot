@@ -325,6 +325,16 @@ static const char *listen_end_reason_name(nb_listen_end_reason_t reason)
     }
 }
 
+static const char *listen_source_name(nb_listen_source_t source)
+{
+    switch (source) {
+    case NB_LISTEN_SOURCE_TOUCH:     return "touch";
+    case NB_LISTEN_SOURCE_WAKE_WORD: return "wake_word";
+    case NB_LISTEN_SOURCE_DEBUG:     return "debug";
+    default:                         return "unknown";
+    }
+}
+
 static uint32_t listen_current_end_silence_ms(void)
 {
     return (s.listen_speech_elapsed_ms < LISTEN_EARLY_GRACE_MS)
@@ -1049,8 +1059,8 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
     if (source == NB_LISTEN_SOURCE_WAKE_WORD || source == NB_LISTEN_SOURCE_TOUCH) {
         ESP_LOGI(TAG, "[ PODE FALAR ]");
     }
-    ESP_LOGD(TAG, "sessao listen aberta source=%d phase=%s wait=%ums preroll=%u",
-             (int)source, listen_phase_name(s.listen_phase),
+    ESP_LOGI(TAG, "sessao listen aberta source=%s phase=%s wait=%ums preroll=%u",
+             listen_source_name(source), listen_phase_name(s.listen_phase),
              (unsigned)s.listen_wait_remaining_ms, (unsigned)s_preroll_count);
     return ESP_OK;
 }

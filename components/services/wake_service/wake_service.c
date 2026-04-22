@@ -22,6 +22,7 @@
 #include "esp_heap_caps.h"
 
 #include <string.h>
+#include <math.h>
 
 #define TAG "wake_svc"
 
@@ -39,7 +40,7 @@
 #define WAKE_INPUT_GAIN_MAX      16
 #define WAKE_INPUT_GAIN_MIN       2
 #define WAKE_INPUT_TARGET_PEAK 18000
-#define WAKE_WAKENET_THRESHOLD 0.40f
+#define WAKE_WAKENET_THRESHOLD 0.45f
 
 static struct {
     bool                         initialized;
@@ -53,6 +54,19 @@ static struct {
     volatile bool                armed;
     volatile bool                detection_latched;
     volatile uint32_t            guard_until_ms;
+    uint32_t                     last_raw_rms;
+    uint16_t                     last_raw_peak;
+    uint16_t                     last_gain_min;
+    uint16_t                     last_gain_max;
+    uint16_t                     last_post_peak;
+    uint16_t                     last_saturated;
+    uint64_t                     cur_raw_sumsq;
+    uint16_t                     cur_samples;
+    uint16_t                     cur_raw_peak;
+    uint16_t                     cur_gain_min;
+    uint16_t                     cur_gain_max;
+    uint16_t                     cur_post_peak;
+    uint16_t                     cur_saturated;
     SemaphoreHandle_t            mutex;
     StaticSemaphore_t            mutex_buf;
 } s;
@@ -74,6 +88,13 @@ static void wake_service_set_suspended(bool suspended, bool latch_detection)
     }
     if (suspended) {
         s.armed = false;
+        s.cur_raw_sumsq = 0;
+        s.cur_samples = 0;
+        s.cur_raw_peak = 0;
+        s.cur_gain_min = 0;
+        s.cur_gain_max = 0;
+        s.cur_post_peak = 0;
+        s.cur_saturated = 0;
         if (latch_detection) {
             s.detection_latched = true;
         }
@@ -110,8 +131,17 @@ static void wake_task(void *arg)
             if (s.suspended || !s.armed || s.detection_latched) {
                 continue;
             }
-            ESP_LOGI(TAG, "wake word detectada — channel=%d",
-                     res->trigger_channel_id);
+            ESP_LOGI(TAG,
+                     "wake word detectada — channel=%d thr=%.2f raw_rms=%lu raw_peak=%u gain=%u..%u post_peak=%u saturated=%u/%d",
+                     res->trigger_channel_id,
+                     (double)WAKE_WAKENET_THRESHOLD,
+                     (unsigned long)s.last_raw_rms,
+                     (unsigned)s.last_raw_peak,
+                     (unsigned)s.last_gain_min,
+                     (unsigned)s.last_gain_max,
+                     (unsigned)s.last_post_peak,
+                     (unsigned)s.last_saturated,
+                     s.feed_chunksize);
             wake_service_set_suspended(true, true);
             nb_event_t evt = {
                 .type         = NB_EVT_WAKE_WORD_DETECTED,
@@ -229,6 +259,19 @@ esp_err_t wake_service_init(void)
     s.armed = true;
     s.detection_latched = false;
     s.guard_until_ms = 0;
+    s.last_raw_rms = 0;
+    s.last_raw_peak = 0;
+    s.last_gain_min = 0;
+    s.last_gain_max = 0;
+    s.last_post_peak = 0;
+    s.last_saturated = 0;
+    s.cur_raw_sumsq = 0;
+    s.cur_samples = 0;
+    s.cur_raw_peak = 0;
+    s.cur_gain_min = 0;
+    s.cur_gain_max = 0;
+    s.cur_post_peak = 0;
+    s.cur_saturated = 0;
     s.mutex = xSemaphoreCreateMutexStatic(&s.mutex_buf);
     if (!s.mutex) {
         ESP_LOGE(TAG, "mutex wake_service falhou");
@@ -273,11 +316,13 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
         uint16_t space   = (uint16_t)(s.feed_chunksize - (int)s.feed_pos);
         uint16_t to_copy = (remaining < space) ? remaining : space;
         uint16_t chunk_peak = 0;
+        uint64_t sum_sq = 0;
         for (uint16_t i = 0; i < to_copy; i++) {
             uint16_t raw_abs = abs_i16(src[i]);
             if (raw_abs > chunk_peak) {
                 chunk_peak = raw_abs;
             }
+            sum_sq += (uint64_t)raw_abs * (uint64_t)raw_abs;
         }
         uint16_t eff_gain = WAKE_INPUT_GAIN_MAX;
         if (chunk_peak > 0U) {
@@ -285,19 +330,60 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
             if (peak_gain < WAKE_INPUT_GAIN_MIN) peak_gain = WAKE_INPUT_GAIN_MIN;
             if (peak_gain < eff_gain) eff_gain = peak_gain;
         }
+        uint16_t post_peak = 0;
+        uint16_t saturated = 0;
         for (uint16_t i = 0; i < to_copy; i++) {
             int32_t sample = (int32_t)src[i];
             int32_t v = sample * eff_gain;
-            if (v >  32767) v =  32767;
-            if (v < -32768) v = -32768;
+            if (v >  32767) {
+                v =  32767;
+                saturated++;
+            }
+            if (v < -32768) {
+                v = -32768;
+                saturated++;
+            }
+            uint16_t post_abs = abs_i16((int16_t)v);
+            if (post_abs > post_peak) {
+                post_peak = post_abs;
+            }
             s.feed_buf[s.feed_pos + i] = (int16_t)v;
         }
         s.feed_pos += to_copy;
+        s.cur_raw_sumsq += sum_sq;
+        s.cur_samples += to_copy;
+        if (chunk_peak > s.cur_raw_peak) {
+            s.cur_raw_peak = chunk_peak;
+        }
+        if (s.cur_gain_min == 0U || eff_gain < s.cur_gain_min) {
+            s.cur_gain_min = eff_gain;
+        }
+        if (eff_gain > s.cur_gain_max) {
+            s.cur_gain_max = eff_gain;
+        }
+        if (post_peak > s.cur_post_peak) {
+            s.cur_post_peak = post_peak;
+        }
+        s.cur_saturated += saturated;
         src        += to_copy;
         remaining  -= to_copy;
         if (s.feed_pos >= (uint16_t)s.feed_chunksize) {
+            uint16_t samples = (s.cur_samples > 0U) ? s.cur_samples : 1U;
+            s.last_raw_rms = (uint32_t)sqrtf((float)(s.cur_raw_sumsq / (uint64_t)samples));
+            s.last_raw_peak = s.cur_raw_peak;
+            s.last_gain_min = s.cur_gain_min;
+            s.last_gain_max = s.cur_gain_max;
+            s.last_post_peak = s.cur_post_peak;
+            s.last_saturated = s.cur_saturated;
             s.handle->feed(s.data, s.feed_buf);
             s.feed_pos = 0;
+            s.cur_raw_sumsq = 0;
+            s.cur_samples = 0;
+            s.cur_raw_peak = 0;
+            s.cur_gain_min = 0;
+            s.cur_gain_max = 0;
+            s.cur_post_peak = 0;
+            s.cur_saturated = 0;
         }
     }
     xSemaphoreGive(s.mutex);
