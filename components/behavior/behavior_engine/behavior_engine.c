@@ -333,6 +333,12 @@ static void bridge_on_event(const nb_event_t *evt)
 {
     switch (evt->type) {
 
+    case NB_EVT_WAKE_WORD_DETECTED:
+        s_bridge_say_started = false;
+        s_bridge_voice_pending = false;
+        esp_timer_stop(s_bridge_resp_timer);
+        break;
+
     case NB_EVT_VOICE_ACTIVITY_START:
         s_bridge_say_started = false;
         s_bridge_voice_pending = true;
@@ -479,6 +485,7 @@ esp_err_t behavior_engine_init(void)
 
     /* Subscreve eventos de bridge que não estão na tabela de regras */
     static const nb_event_type_t k_bridge_evts[] = {
+        NB_EVT_WAKE_WORD_DETECTED,
         NB_EVT_VOICE_ACTIVITY_END,
         NB_EVT_BRIDGE_SAY,
         NB_EVT_BRIDGE_EXPR,

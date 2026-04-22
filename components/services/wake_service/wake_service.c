@@ -41,6 +41,9 @@
 #define WAKE_INPUT_GAIN_MIN       2
 #define WAKE_INPUT_TARGET_PEAK 18000
 #define WAKE_WAKENET_THRESHOLD 0.50f
+#define WAKE_MIN_DETECT_RAW_RMS   120U
+#define WAKE_MIN_DETECT_RAW_PEAK  350U
+#define WAKE_MIN_DETECT_POST_PEAK 6000U
 
 static struct {
     bool                         initialized;
@@ -74,6 +77,13 @@ static struct {
 static uint16_t abs_i16(int16_t v)
 {
     return (v == INT16_MIN) ? 32768U : (uint16_t)((v < 0) ? -v : v);
+}
+
+static bool wake_detection_too_weak(void)
+{
+    return s.last_raw_rms < WAKE_MIN_DETECT_RAW_RMS &&
+           s.last_raw_peak < WAKE_MIN_DETECT_RAW_PEAK &&
+           s.last_post_peak < WAKE_MIN_DETECT_POST_PEAK;
 }
 
 static void wake_service_set_suspended(bool suspended, bool latch_detection)
@@ -129,6 +139,24 @@ static void wake_task(void *arg)
         if (res == NULL) continue;
         if (res->wakeup_state == WAKENET_DETECTED) {
             if (s.suspended || !s.armed || s.detection_latched) {
+                continue;
+            }
+            if (wake_detection_too_weak()) {
+                ESP_LOGW(TAG,
+                         "wake word rejeitada — energia baixa thr=%.2f raw_rms=%lu raw_peak=%u gain=%u..%u post_peak=%u saturated=%u/%d",
+                         (double)WAKE_WAKENET_THRESHOLD,
+                         (unsigned long)s.last_raw_rms,
+                         (unsigned)s.last_raw_peak,
+                         (unsigned)s.last_gain_min,
+                         (unsigned)s.last_gain_max,
+                         (unsigned)s.last_post_peak,
+                         (unsigned)s.last_saturated,
+                         s.feed_chunksize);
+                if (s.handle->reset_buffer) {
+                    s.handle->reset_buffer(s.data);
+                }
+                s.guard_until_ms = (uint32_t)(esp_timer_get_time() / 1000LL)
+                                 + WAKE_REARM_GUARD_MS;
                 continue;
             }
             ESP_LOGI(TAG,
