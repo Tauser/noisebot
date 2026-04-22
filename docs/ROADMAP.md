@@ -474,7 +474,7 @@ Critérios adicionais de integração do Bloco 0:
 - Threshold ajustável via `audio_service_set_vad_threshold()`.
 - Eventos: `NB_EVT_VOICE_ACTIVITY_START`, `NB_EVT_VOICE_ACTIVITY_END`.
 - Gravação de diagnóstico: `audio_record_diagnostic(path, duration_s)` → WAV 16-bit mono no SD.
-- **Nota arquitetural:** O VAD atual detecta atividade de voz mas não é o ativador de sessão LLM. Ver Etapas 12.3–12.4 para a arquitetura de sessão com touch-to-listen e wake word.
+- **Nota arquitetural:** O VAD atual detecta atividade de voz mas não é o ativador de sessão LLM. Ver Etapas 12.3–12.4 para a arquitetura atual: contrato explícito de sessão, touch como interação e wake word como ativador de escuta.
 
 **Critérios de aceitação:**
 
@@ -1504,7 +1504,7 @@ No bridge (fora do firmware, script Python/Node):
 - Contexto de estado atual (estado, emoção, uptime, familiaridade).
 - Respostas curtas (< 10s de fala), nunca explicativas — sempre expressivas.
 
-**Nota:** O contrato de sessão desta etapa (VAD → VOICE_START → chunks → VOICE_END) é refatorado nas Etapas 12.3 e 12.4 para eliminar sessões vazias e ativações por ruído ambiente.
+**Nota:** O contrato de sessão desta etapa (VAD → VOICE_START → chunks → VOICE_END) é refatorado nas Etapas 12.3 e 12.4 para eliminar sessões vazias, ativações por ruído ambiente e escuta involuntária por touch.
 
 **Critérios de aceitação:**
 
@@ -1521,7 +1521,7 @@ No bridge (fora do firmware, script Python/Node):
 
 **Dependências:** 12.2 concluída
 **Hardware necessário:** Não
-**Status:** Implementado — aguardando validação em hardware
+**Status:** Implementado e validado em hardware
 
 **Contexto:** O VAD heurístico atual ativa `bridge_tx_active` diretamente, causando sessões vazias (VOICE_END sem áudio), falsas ativações por ruído e chamadas Gemini com texto garbage. Esta etapa estabelece o contrato correto sem mudar a arquitetura de ativação.
 
@@ -1558,38 +1558,39 @@ No `bridge.py`:
 
 **Critérios de aceitação:**
 
-- [x] Bridge ligada + dry-run + toque + fala: VOICE_START → chunks → VOICE_END → transcrição logada, Gemini não chamado
-- [x] Bridge desligada + toque + fala: sessão existe visualmente, zero frames enviados, zero VOICE_END ← validado em serial (bridge_start=0, VOICE_END suprimido)
-- [x] Toque + silêncio de 8s: timeout fecha sessão, VOICE_END não enviado (bridge_audio_sent=false), Gemini não chamado ← invariante implementado
+- [x] Bridge ligada + dry-run + wake word + fala: VOICE_START → chunks → VOICE_END → transcrição logada, Gemini não chamado
+- [x] Bridge desligada + wake word + fala: sessão existe visualmente, zero frames enviados, zero VOICE_END ← validado em serial (bridge_start=0, VOICE_END suprimido)
+- [x] Wake word + silêncio de 8s: timeout fecha sessão, VOICE_END não enviado (bridge_audio_sent=false), Gemini não chamado ← invariante implementado
 - [x] Monitor serial: nunca `NB_EVT_VOICE_ACTIVITY_END` sem `NB_EVT_VOICE_ACTIVITY_START` precedente na mesma sessão ← garantido pelo contrato bridge_start_sent && bridge_audio_sent
 - [x] Bridge.py: nunca log de chamada Gemini com text="" ou < 2 palavras reais
 
 ---
 
-### Etapa 12.4 — Touch-to-Listen ✓
+### Etapa 12.4 — Touch como Interação, não Escuta ✓
 
 **Dependências:** 12.3 concluída, 2.2 (touch_service) concluída
 **Hardware necessário:** Sensor de toque conectado
-**Status:** Implementado — aguardando validação em hardware
+**Status:** Implementado e validado em hardware
 
-**Contexto:** Em ambiente com ruído externo (carros, TV, motos), o VAD heurístico não é confiável como ativador de sessão. O toque é a forma mais direta e robusta de sinalizar intenção de falar com o bot. Esta etapa transforma o fluxo de sessão: **Touch → ATTENTIVE → streaming → VAD fecha → bridge processa**.
+**Contexto:** O protótipo inicial usou touch como ativador de sessão, mas o robô tem apenas um canal de toque e ele precisa servir como interação afetiva contínua. Manter touch abrindo escuta fazia qualquer carinho/tap virar captura de áudio, consumindo memória e poluindo o fluxo conversacional. A decisão final desta etapa é: **touch reage emocionalmente; escuta abre por wake word**.
 
 **O que entra:**
 
 Na `state_machine`:
 
-- `state_machine_on_touch_tap()` em IDLE/SLEEPING: transita para `NB_STATE_ATTENTIVE` (antes ia para `TOUCH_REACTING`).
+- `state_machine_on_touch_tap()` em IDLE/SLEEPING: transita para `NB_STATE_TOUCH_REACTING`.
 - Em `NB_STATE_ATTENTIVE`: timer de 8s de inatividade → `ATTENTIVE → IDLE` se `audio_service_is_listening() == false`.
 - `state_machine_on_voice_end()`: `ATTENTIVE → RESPONDING` (se SAY for esperado) ou `ATTENTIVE → IDLE`.
 
 No `boot_manager`:
 
-- Handler de `NB_EVT_TOUCH_TAP` quando estado = IDLE/SLEEPING: chama `audio_service_begin_listen_session(NB_LISTEN_SOURCE_TOUCH)`.
-- Handler de `NB_EVT_STATE_CHANGED` para ATTENTIVE: feedback visual (expressão + LEDs "escutando").
+- Handler de `NB_EVT_STATE_CHANGED` para ATTENTIVE: abre sessão somente quando a transição veio de `NB_EVT_WAKE_WORD_DETECTED`.
+- Touch continua alimentando emotion model, conductor e LTM, sem abrir bridge nem capturar áudio.
 
 No `audio_service`:
 
-- `begin_listen_session()`: seta `listen_session_active = true`, `bridge_tx_active = bridge_is_connected()`, reseta flags, envia `NB_EVT_VOICE_ACTIVITY_START` se bridge conectada (`bridge_start_sent = true`), inicia streaming imediato nos próximos ciclos da audio_task.
+- `begin_listen_session(NB_LISTEN_SOURCE_TOUCH)`: bloqueado com `ESP_ERR_NOT_SUPPORTED`.
+- `begin_listen_session(NB_LISTEN_SOURCE_WAKE_WORD)`: seta `listen_session_active = true`, reseta flags, aguarda fala real, envia `NB_EVT_VOICE_ACTIVITY_START` somente quando áudio começa a fluir.
 - Em IDLE: VAD continua rodando para `sound_analysis` e comportamento semântico, mas nunca seta `bridge_tx_active` nem chama `begin_listen_session()`.
 - VAD fecha sessão via `end_listen_session(NB_LISTEN_END_VAD_SILENCE)` após `NB_AUDIO_VAD_SILENCE_MS` de silêncio dentro de sessão ativa.
 
@@ -1597,21 +1598,21 @@ No `audio_service`:
 
 **Critérios de aceitação:**
 
-- [x] Moto/carro/TV sem toque: zero `VOICE_START` na bridge, zero chunks, zero Gemini
-- [x] Toque em IDLE: estado → ATTENTIVE, bridge recebe VOICE_START imediatamente
-- [x] Toque + fala + silêncio: VAD fecha sessão, bridge processa, robot responde
-- [x] Toque + silêncio de 8s: timeout, sem VOICE_END para bridge, volta a IDLE
-- [x] Toque em SLEEPING: bot acorda (IDLE), segunda interação necessária para ATTENTIVE (ou tap direto para ATTENTIVE — definir comportamento)
-- [x] Bridge offline + toque: sessão visual existe (expressão muda), zero frames enviados
+- [x] Moto/carro/TV sem wake word: zero `VOICE_START` na bridge, zero chunks, zero Gemini
+- [x] Toque em IDLE: estado → `TOUCH_REACTING`, sem `[ PODE FALAR ]`
+- [x] Toque em SLEEPING: estado → `TOUCH_REACTING`, retorna a `IDLE`, sem sessão de voz
+- [x] Touch livre repetido: não abre bridge, não envia áudio, não cria `VOICE_END`
+- [x] Tentativa legada de `NB_LISTEN_SOURCE_TOUCH`: retorna `ESP_ERR_NOT_SUPPORTED`
+- [x] Wake word continua sendo o único ativador normal de escuta conversacional
 
 ---
 
 ### Etapa 12.5 — Pre-roll Ring Buffer ✓
 
-**Dependências:** 12.4 concluída
+**Dependências:** 12.4 concluída; 12.6 validada para wake word
 **Hardware necessário:** Não
 
-**Contexto:** Quando o usuário toca e fala imediatamente, os primeiros 100–200ms da fala (primeira sílaba) são perdidos porque o streaming começa após o toque ser processado. Um ring buffer circular resolve isso sem alterar o contrato de sessão.
+**Contexto:** Quando o usuário fala logo após a wake word, os primeiros 100–200ms da fala útil podem ser perdidos porque o streaming começa após a sessão ser aberta. Um ring buffer circular resolve isso sem alterar o contrato de sessão.
 
 **O que entra:**
 
@@ -1621,16 +1622,16 @@ No `audio_service`:
   - Aloca em SRAM (não PSRAM) — DMA e acesso frequente requerem latência baixa.
   - Buffer circular: sobrescreve o mais antigo quando cheio.
   - Alimentado a cada ciclo da audio_task, independente do estado da sessão.
-- `begin_listen_session()`: se `bridge_tx_active`, faz flush do ring buffer para bridge antes do streaming normal.
+- `begin_listen_session()`: faz flush do ring buffer para bridge quando o streaming real começa.
   - Flush conta para `bridge_audio_sent` se ao menos um chunk for enviado com sucesso.
   - Flush é feito com timestamps retroativos para Whisper ter o áudio completo.
-- Pre-roll de ~320ms cobre o tempo de resposta ao toque + primeira sílaba.
+- Pre-roll de ~320ms cobre a transição wake word → fala útil + primeira sílaba.
 
 **Arquivos modificados:** `audio_service.c`, `audio_service.h` (documentação)
 
 **Critérios de aceitação:**
 
-- [x] Toque + fala imediata "olá, que horas são": Whisper transcreve "olá" (primeira palavra não cortada)
+- [x] Wake word + fala imediata "que horas são": Whisper recebe áudio com primeira palavra preservada
 - [x] Ring buffer não interfere com playback: `vad_playback_mute_ms` ainda inibe VAD durante TTS
 - [x] Memória: `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` não cai abaixo de 50 KB após init
 - [x] Flush do pre-roll precede chunks novos em ordem temporal correta na bridge
@@ -1639,10 +1640,10 @@ No `audio_service`:
 
 ### Etapa 12.6 — Wake Word via ESP-SR (Investigação e Integração) ✓
 
-**Dependências:** 12.4 concluída (touch-to-listen validado)
+**Dependências:** 12.4 concluída (touch como interação), 12.5 concluída
 **Hardware necessário:** INMP441 já conectado
 
-**Contexto:** Esta etapa substitui o toque como ativador primário por uma wake word local. O toque permanece como fallback. A estratégia é usar primeiro um modelo pronto do ESP-SR (sem treinamento), validar memória e integração, e só depois considerar wake word customizada.
+**Contexto:** Esta etapa estabelece uma wake word local como ativador primário de conversa. O toque permanece como canal de interação afetiva, não como fallback de escuta. A estratégia é usar primeiro um modelo pronto do ESP-SR (sem treinamento), validar memória e integração, e só depois considerar wake word customizada.
 
 **O que entra:**
 
@@ -1660,7 +1661,7 @@ Se investigação for viável, implementar:
   - AEC (cancelamento de eco): fase posterior — requer loopback do speaker.
   - Task dedicada (Core 0, prio 7, 4KB).
 - `nb_events.h`: adicionar `NB_EVT_WAKE_WORD_DETECTED`.
-- `boot_manager`: handler `NB_EVT_WAKE_WORD_DETECTED` → `audio_service_begin_listen_session(NB_LISTEN_SOURCE_WAKE_WORD)` → mesmo fluxo do toque.
+- `boot_manager`: handler `NB_EVT_WAKE_WORD_DETECTED` → `audio_service_begin_listen_session(NB_LISTEN_SOURCE_WAKE_WORD)`.
 - Feedback ao acordar: expressão + LED reagem antes de começar captura.
 - NVS: `nb_svc/ww_enabled` — desabilita WakeNet sem reflash.
 
@@ -1676,19 +1677,19 @@ Wake word customizada ("Oi NoiseBot", "Hey NoiseBot"):
 
 - [x] Build com esp-sr: zero warnings novos, zero regressão de funcionalidade
 - [x] PSRAM livre após AFE init: > 300 KB — **7478 KB livres** (headroom câmera OK)
-- [x] Dizer "Hi ESP": `NB_EVT_WAKE_WORD_DETECTED` no log, estado → ATTENTIVE, bot escuta — **requer ~10cm do mic (afe_linear_gain=10.0, máximo)**
+- [x] Dizer "Hi ESP": `NB_EVT_WAKE_WORD_DETECTED` no log, estado → ATTENTIVE, bot escuta
 - [x] Ruído ambiente sem keyword: zero false positives em 5 minutos
-- [x] Toque ainda funciona como fallback independente do `ww_enabled`
-- [x] `ww_enabled=0` em NVS: WakeNet desabilitado, toque continua funcionando
+- [x] Toque continua funcionando como interação independente do `ww_enabled`, sem abrir escuta
+- [x] `ww_enabled=0` em NVS: WakeNet desabilitado, touch continua funcionando como interação
 
 ---
 
 ### Etapa 12.7 — Bridge Dry-Run e Transporte Confiável ✓
 
-**Dependências:** 12.3, 12.4 e 12.5 concluídas
+**Dependências:** 12.3, 12.5 e 12.6 concluídas
 **Hardware necessário:** ESP32-S3 + PC/RPi executando `bridge.py --dry-run`
 
-**Contexto:** Os testes pós-12.6 mostraram sessões em que a bridge recebia `VOICE_START`, mas encerrava com `samples=0`, e outras interações por toque não apareciam no terminal da bridge. Antes de mexer no VAD ou no wake word, o contrato físico de transporte precisa ficar provado: `VOICE_START -> AUDIO_CHUNK(s) -> VOICE_END`, com áudio real chegando ao bridge.
+**Contexto:** Os testes pós-12.6 mostraram sessões em que a bridge recebia `VOICE_START`, mas encerrava com `samples=0`. Antes de mexer no VAD ou no wake word, o contrato físico de transporte precisa ficar provado: `VOICE_START -> AUDIO_CHUNK(s) -> VOICE_END`, com áudio real chegando ao bridge.
 
 **O que entra:**
 
@@ -1720,17 +1721,17 @@ No `bridge.py`:
 
 **Critérios de aceitação:**
 
-- [x] Bridge ligada + dry-run + toque: terminal mostra `VOICE_START recebido`.
-- [x] Bridge ligada + dry-run + toque + fala: terminal mostra primeiro `AUDIO_CHUNK` e `samples > 0`.
+- [x] Bridge ligada + dry-run + wake word: terminal mostra `VOICE_START recebido`.
+- [x] Bridge ligada + dry-run + wake word + fala: terminal mostra primeiro `AUDIO_CHUNK` e `samples > 0`.
 - [x] `VOICE_START` sem nenhum chunk por 8s: bridge descarta como `buffer_vazio` sem chamar Gemini/Piper.
-- [x] 5 sessões de toque consecutivas: todas aparecem no terminal da bridge.
+- [x] 5 sessões de wake word consecutivas: todas aparecem no terminal da bridge.
 - [x] Desconectar/reconectar bridge: firmware volta a enviar sessão sem reboot.
 
 ---
 
 ### Etapa 12.8 — WakeNet Single-Shot e Rearm Seguro ✓
 
-**Dependências:** 12.6 concluída, 12.7 validada com toque
+**Dependências:** 12.6 concluída, 12.7 validada com wake word
 **Hardware necessário:** INMP441 + modelo WakeNet pronto ("Hi ESP")
 
 **Contexto:** Wake word deve ser um gatilho de intenção, não um detector contínuo que continua disparando durante `ATTENTIVE`. Os logs mostraram múltiplas detecções de wake em sequência e warnings do AFE quando o fetch rodava sem áudio disponível. A referência XiaoZhi usa AFE/WakeNet como modo de IDLE, para o wake ao detectar, e só rearma quando o estado volta a permitir escuta de wake.
@@ -1770,9 +1771,17 @@ No `boot_manager`/state flow:
 
 **Validação pós-12.9 (2026-04-21):**
 
-- [x] Wake word recuperada após regressão de sensibilidade: `wn9_hiesp` em `DET_MODE_95`, threshold 0.40 e feed com PCM cru dedicado ao WakeNet.
+- [x] Wake word recuperada após regressão de sensibilidade: `wn9_hiesp` com threshold final `0.55` e feed com PCM dedicado ao WakeNet.
 - [x] `Hi ESP` transiciona `IDLE → ATTENTIVE`, abre sessão de fala e rearma WakeNet ao retornar para `IDLE`.
 - [x] Caminho touch/bridge preservado usando buffer condicionado separado do buffer de WakeNet.
+
+**Validação pós-remoção do touch-to-listen (2026-04-22):**
+
+- [x] WakeNet opera no estilo StackChan/XiaoZhi: detectou wake word válida, suspende WakeNet e publica evento imediatamente.
+- [x] Threshold ajustado para `0.55` em hardware, mantendo chamada real e reduzindo falsos positivos.
+- [x] Filtro mínimo de energia rejeita disparos quase mudos sem bloquear chamadas reais de baixa energia.
+- [x] `wake_service_rearm()` tornou-se idempotente: touch não deve resetar/logar rearme quando WakeNet já está armado.
+- [x] Touch não abre mais escuta; `IDLE/SLEEPING → TOUCH_REACTING → IDLE` sem `[ PODE FALAR ]`.
 
 ---
 
@@ -1813,20 +1822,21 @@ No `bridge.py`:
 
 **Critérios de aceitação:**
 
-- [x] Toque + silêncio: cancela após ~8s sem enviar Gemini/Piper.
-- [x] Toque + frase curta: encerra ~1s após parar de falar.
-- [x] Toque + fala por 15-20s: não corta antes do silêncio final.
-- [ ] Toque + ruído contínuo: encerra por timeout máximo de segurança, sem travar.
+- [x] Wake word + silêncio: cancela após ~8s sem enviar Gemini/Piper.
+- [x] Wake word + frase curta: encerra após parar de falar.
+- [x] Wake word + fala por 15-20s: não corta antes do silêncio final.
+- [x] Wake word + ruído contínuo: encerra por timeout máximo de segurança, sem travar.
 - [x] Bridge dry-run mostra sessão longa com `samples > 0`.
 
 ---
 
-### Etapa 12.10 — AFE/VADNet para Listening
+### Etapa 12.10 — ESP-SR VAD para Listening
 
-**Dependências:** 12.7 e 12.9 validadas com touch; 12.8 estável para wake
+**Dependências:** 12.7 e 12.9 validadas com wake word; 12.8 estável para wake
 **Hardware necessário:** INMP441 mono; PSRAM habilitada
+**Status:** Iniciada — integração inicial de `esp_vad` no `audio_service`, aguardando validação completa de build/boot/hardware
 
-**Contexto:** O VAD heurístico de RMS/ZCR/FFT é útil para consciência sonora, mas não deve ser o juiz principal da sessão LLM em ambiente real com TV, carros e motos. A referência XiaoZhi usa ESP-SR AFE também no modo de voz, com VAD do AFE (`res->vad_state`) e processamento de ruído. Esta etapa migra o listening para AFE/VADNet mantendo o touch como fallback de teste.
+**Contexto:** O VAD heurístico de RMS/ZCR/FFT é útil para consciência sonora, mas não deve ser o juiz principal da sessão LLM em ambiente real com TV, carros e motos. A referência XiaoZhi usa ESP-SR para wake/listening. Esta etapa migra o listening para VAD da ESP-SR, mantendo touch fora do fluxo de escuta.
 
 **O que entra:**
 
@@ -1841,30 +1851,22 @@ Investigar primeiro:
 
 Implementação proposta:
 
-- Criar `voice_processor_service` (Layer 4) ou extensão isolada do `audio_service`:
-  - modo `START`: inicializa/ativa AFE para listening;
-  - modo `FEED`: recebe PCM do `audio_service`;
-  - modo `FETCH`: retorna áudio processado e VAD state;
-  - modo `STOP`: reseta buffers e libera/suspende processamento.
-- Config AFE de listening:
-  - `AFE_TYPE_VC` quando suportado;
-  - `vad_init = true`;
-  - `vad_model_name = ESP_VADN_PREFIX` se existir;
-  - `ns_init = true` com NSNet se existir;
-  - `aec_init = false` inicialmente (sem referência limpa do speaker);
-  - `memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM`.
-- Usar `res->vad_state` do AFE para `WAITING_FOR_SPEECH`/`CAPTURING_SPEECH`/silêncio.
+- Integração inicial no `audio_service` usando `vad_create_with_param()`/`vad_process_with_trigger()`.
+- Processar frames de 10ms / 160 samples em paralelo ao fluxo atual de áudio.
+- Usar estado do ESP-SR VAD como decisão primária em `WAITING_FOR_SPEECH`/`CAPTURING_SPEECH`/silêncio.
+- Manter heurística atual como fallback se o ESP-SR VAD não inicializar.
 - Avaliar envio de `res->data` processado para bridge no lugar do PCM bruto.
 - Preservar pre-roll/vad-cache para não cortar a primeira palavra.
 
-**Arquivos prováveis:** `audio_service.c`, `audio_service.h`, `components/services/voice_processor_service/`, `wake_service.c`, `CMakeLists.txt`, `idf_component.yml`, `sdkconfig.defaults`
+**Arquivos modificados:** `audio_service.c`, `audio_service.h`, `components/services/audio_service/CMakeLists.txt`
 
 **Critérios de aceitação:**
 
-- [ ] Touch + fala: VAD state do AFE detecta fala e silêncio.
-- [ ] Touch + frase longa: sessão fecha por silêncio pós-fala.
-- [ ] Moto/carro/TV sem touch: zero sessão bridge.
-- [ ] Touch + ruído sem voz: bridge descarta ou sessão encerra sem Gemini/Piper.
+- [ ] Boot loga `audio_svc: inicializado (... esp_vad=1)`.
+- [ ] Wake word + fala: ESP-SR VAD detecta fala e silêncio.
+- [ ] Wake word + frase longa: sessão fecha por silêncio pós-fala.
+- [ ] Moto/carro/TV sem wake word: zero sessão bridge.
+- [ ] Wake word + ruído sem voz: bridge descarta ou sessão encerra sem Gemini/Piper.
 - [ ] PSRAM livre após AFE listening: > 300 KB, ou decisão explícita de trade-off se câmera continuar adiada.
 
 ---
@@ -1893,9 +1895,9 @@ Implementação proposta:
 
 **Critérios de aceitação:**
 
-- [ ] Desabilitar VAD heurístico não quebra sessão LLM com touch/wake.
+- [ ] Desabilitar VAD heurístico não quebra sessão LLM com wake word.
 - [ ] Sound analysis continua classificando ambiente para comportamento.
-- [ ] Nenhum caminho em IDLE consegue enviar áudio para bridge sem touch/wake.
+- [ ] Nenhum caminho em IDLE consegue enviar áudio para bridge sem wake word.
 - [ ] Documentação deixa claro qual VAD serve a qual finalidade.
 
 ---
