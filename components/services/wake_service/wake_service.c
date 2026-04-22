@@ -33,8 +33,6 @@
 /* Buffer de acumulação: AFE tipicamente requer 512 samples @ 16kHz */
 #define FEED_BUF_MAX  512U
 #define WAKE_REARM_GUARD_MS  350U
-#define WAKE_CONFIRM_WINDOW_MS  1400U
-#define WAKE_CONFIRM_MIN_FEEDS     2U
 
 /* Ganho de entrada aplicado antes do feed: o mic cru chega em nível variável.
  * Usa ganho alto em fala baixa, mas reduz por chunk quando o pico cru já é
@@ -69,10 +67,6 @@ static struct {
     uint16_t                     cur_gain_max;
     uint16_t                     cur_post_peak;
     uint16_t                     cur_saturated;
-    volatile bool                confirm_pending;
-    volatile uint32_t            confirm_until_ms;
-    volatile uint32_t            confirm_feed_seq;
-    volatile uint32_t            feed_seq;
     SemaphoreHandle_t            mutex;
     StaticSemaphore_t            mutex_buf;
 } s;
@@ -101,9 +95,6 @@ static void wake_service_set_suspended(bool suspended, bool latch_detection)
         s.cur_gain_max = 0;
         s.cur_post_peak = 0;
         s.cur_saturated = 0;
-        s.confirm_pending = false;
-        s.confirm_until_ms = 0;
-        s.confirm_feed_seq = 0;
         if (latch_detection) {
             s.detection_latched = true;
         }
@@ -136,37 +127,13 @@ static void wake_task(void *arg)
                                 ? s.handle->fetch_with_delay(s.data, portMAX_DELAY)
                                 : s.handle->fetch(s.data);
         if (res == NULL) continue;
-        now_ms = (uint32_t)(esp_timer_get_time() / 1000LL);
         if (res->wakeup_state == WAKENET_DETECTED) {
             if (s.suspended || !s.armed || s.detection_latched) {
                 continue;
             }
-            uint32_t feed_delta = s.feed_seq - s.confirm_feed_seq;
-            if (!s.confirm_pending
-                    || (int32_t)(now_ms - s.confirm_until_ms) > 0) {
-                s.confirm_pending = true;
-                s.confirm_until_ms = now_ms + WAKE_CONFIRM_WINDOW_MS;
-                s.confirm_feed_seq = s.feed_seq;
-                ESP_LOGI(TAG,
-                         "wake candidato — aguardando confirmacao (%ums) thr=%.2f raw_rms=%lu raw_peak=%u gain=%u..%u post_peak=%u saturated=%u/%d",
-                         (unsigned)WAKE_CONFIRM_WINDOW_MS,
-                         (double)WAKE_WAKENET_THRESHOLD,
-                         (unsigned long)s.last_raw_rms,
-                         (unsigned)s.last_raw_peak,
-                         (unsigned)s.last_gain_min,
-                         (unsigned)s.last_gain_max,
-                         (unsigned)s.last_post_peak,
-                         (unsigned)s.last_saturated,
-                         s.feed_chunksize);
-                continue;
-            }
-            if (feed_delta < WAKE_CONFIRM_MIN_FEEDS) {
-                continue;
-            }
             ESP_LOGI(TAG,
-                     "wake word detectada — channel=%d confirm_feeds=%lu thr=%.2f raw_rms=%lu raw_peak=%u gain=%u..%u post_peak=%u saturated=%u/%d",
+                     "wake word detectada — channel=%d thr=%.2f raw_rms=%lu raw_peak=%u gain=%u..%u post_peak=%u saturated=%u/%d",
                      res->trigger_channel_id,
-                     (unsigned long)feed_delta,
                      (double)WAKE_WAKENET_THRESHOLD,
                      (unsigned long)s.last_raw_rms,
                      (unsigned)s.last_raw_peak,
@@ -305,10 +272,6 @@ esp_err_t wake_service_init(void)
     s.cur_gain_max = 0;
     s.cur_post_peak = 0;
     s.cur_saturated = 0;
-    s.confirm_pending = false;
-    s.confirm_until_ms = 0;
-    s.confirm_feed_seq = 0;
-    s.feed_seq = 0;
     s.mutex = xSemaphoreCreateMutexStatic(&s.mutex_buf);
     if (!s.mutex) {
         ESP_LOGE(TAG, "mutex wake_service falhou");
@@ -413,7 +376,6 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
             s.last_post_peak = s.cur_post_peak;
             s.last_saturated = s.cur_saturated;
             s.handle->feed(s.data, s.feed_buf);
-            s.feed_seq++;
             s.feed_pos = 0;
             s.cur_raw_sumsq = 0;
             s.cur_samples = 0;
