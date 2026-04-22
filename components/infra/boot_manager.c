@@ -481,12 +481,10 @@ static void on_state_changed(nb_robot_state_t new_state,
     /* LED + sessão de escuta + synth para transições de estado. */
     switch (new_state) {
         case NB_STATE_ATTENTIVE:
-            /* Touch-to-Listen (12.4) ou Wake Word (12.6): abre sessão e sinaliza com LED cyan. */
+            /* Escuta ativa abre apenas por wake word. Touch fica reservado para interação afetiva. */
             if (s_wake_word_triggered) {
                 audio_service_begin_listen_session(NB_LISTEN_SOURCE_WAKE_WORD);
                 s_wake_word_triggered = false;
-            } else {
-                audio_service_begin_listen_session(NB_LISTEN_SOURCE_TOUCH);
             }
             led_base_set(NB_LED_BASE_ATTENTIVE, true);
             break;

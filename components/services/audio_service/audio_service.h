@@ -162,7 +162,7 @@ uint8_t audio_get_volume(void);
 
 /** Quem abriu a sessão de escuta. */
 typedef enum {
-    NB_LISTEN_SOURCE_TOUCH,      /**< Ativado por toque (Etapa 12.4)      */
+    NB_LISTEN_SOURCE_TOUCH,      /**< Legado: listen por toque desabilitado */
     NB_LISTEN_SOURCE_WAKE_WORD,  /**< Ativado por wake-word (futuro)       */
     NB_LISTEN_SOURCE_DEBUG,      /**< Ativado pelo VAD em modo de debug    */
 } nb_listen_source_t;

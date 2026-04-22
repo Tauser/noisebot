@@ -181,12 +181,12 @@ void state_machine_on_touch_tap(void)
     nb_robot_state_t cur = state_machine_get_state();
     switch (cur) {
         case NB_STATE_IDLE:
-            /* Touch-to-Listen (12.4): tap em IDLE abre sessão de escuta. */
-            do_transition(NB_STATE_ATTENTIVE, "tap");
+            s_touch_elapsed_ms = 0;
+            do_transition(NB_STATE_TOUCH_REACTING, "tap");
             break;
         case NB_STATE_SLEEPING:
-            /* Touch-to-Listen: tap acorda e já abre sessão de escuta. */
-            do_transition(NB_STATE_ATTENTIVE, "tap em SLEEPING");
+            s_touch_elapsed_ms = 0;
+            do_transition(NB_STATE_TOUCH_REACTING, "tap em SLEEPING");
             break;
         case NB_STATE_ATTENTIVE:
         case NB_STATE_RESPONDING:
@@ -244,9 +244,7 @@ void state_machine_on_touch_wake(void)
 
 void state_machine_on_voice_start(void)
 {
-    /* 12.4: VAD não ativa ATTENTIVE. Sessão só abre via touch (ou wake-word no
-     * futuro). Esta função mantida para vad_semantic_service e outros consumidores
-     * do evento, mas não gera transição de estado. */
+    /* VAD não ativa ATTENTIVE. Sessão de escuta abre apenas por wake word. */
     (void)s_initialized;
 }
 

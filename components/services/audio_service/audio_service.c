@@ -1111,6 +1111,10 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
 {
     if (!s.initialized)           return ESP_ERR_INVALID_STATE;
     if (s.listen_session_active)  return ESP_ERR_INVALID_STATE;
+    if (source == NB_LISTEN_SOURCE_TOUCH) {
+        ESP_LOGI(TAG, "listen por touch desabilitado — touch reservado para interação");
+        return ESP_ERR_NOT_SUPPORTED;
+    }
 
     s.listen_session_active       = true;
     s.bridge_start_sent           = false;
@@ -1126,8 +1130,7 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
     esp_vad_reset();
 
     /* Wake word: o áudio "Hi ESP" deixa o VAD em ACTIVE antes de a sessão abrir.
-     * Resetar para SILENCE evita VOICE_END prematuro por silêncio pós-wake-word.
-     * Touch: manter estado — usuário pode já estar falando ao tocar. */
+     * Resetar para SILENCE evita VOICE_END prematuro por silêncio pós-wake-word. */
     if (source == NB_LISTEN_SOURCE_WAKE_WORD) {
         s.vad_state            = VAD_SILENCE;
         s.vad_enter_count      = 0;
@@ -1135,7 +1138,7 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
     }
 
     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
-    if (source == NB_LISTEN_SOURCE_WAKE_WORD || source == NB_LISTEN_SOURCE_TOUCH) {
+    if (source == NB_LISTEN_SOURCE_WAKE_WORD) {
         ESP_LOGI(TAG, "[ PODE FALAR ]");
     }
     ESP_LOGI(TAG, "sessao listen aberta source=%s phase=%s wait=%ums preroll=%u",
