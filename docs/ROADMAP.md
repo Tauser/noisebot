@@ -1871,11 +1871,11 @@ Implementação:
 
 ---
 
-### Etapa 12.11 — Rebaixar VAD Heurístico para Diagnóstico
+### Etapa 12.11 — Rebaixar VAD Heurístico para Diagnóstico ✓
 
 **Dependências:** 12.10 validada
 **Hardware necessário:** Não
-**Status:** Implementado — aguardando validação de build/boot
+**Status:** Implementado e validado em hardware
 
 **Contexto:** Depois que o AFE/VADNet governa o listening, o VAD heurístico atual deixa de ser caminho crítico para conversa. Ele continua valioso para comportamento emergente, sound analysis, detecção de eventos ambientais e calibração, mas não deve abrir/fechar sessão LLM.
 
@@ -1896,10 +1896,10 @@ Implementação:
 
 **Critérios de aceitação:**
 
-- [ ] Desabilitar VAD heurístico não quebra sessão LLM com wake word.
-- [ ] Sound analysis continua classificando ambiente para comportamento.
-- [ ] Nenhum caminho em IDLE consegue enviar áudio para bridge sem wake word.
-- [ ] Documentação deixa claro qual VAD serve a qual finalidade.
+- [x] Desabilitar VAD heurístico não quebra sessão LLM com wake word.
+- [x] Sound analysis continua classificando ambiente para comportamento.
+- [x] Nenhum caminho em IDLE consegue enviar áudio para bridge sem wake word.
+- [x] Documentação deixa claro qual VAD serve a qual finalidade.
 
 ---
 
