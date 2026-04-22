@@ -12,4 +12,5 @@ idf_component_register(
         synth_service
         wake_service
         infra
+        espressif__esp-sr
 )

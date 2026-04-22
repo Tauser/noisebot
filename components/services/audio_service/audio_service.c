@@ -35,6 +35,22 @@
 
 #define TAG "audio_svc"
 
+/* ESP-SR VAD: declaracoes minimas para evitar conflito de nomes com o VAD
+ * heuristico local (esp_vad.h tambem define VAD_SILENCE/vad_state_t). */
+typedef void *nb_esp_vad_handle_t;
+extern nb_esp_vad_handle_t vad_create_with_param(
+    int vad_mode, int sample_rate, int one_frame_ms, int min_speech_ms, int min_noise_ms);
+extern int vad_process_with_trigger(nb_esp_vad_handle_t handle, int16_t *data);
+extern void vad_reset_trigger(nb_esp_vad_handle_t handle);
+extern void vad_destroy(nb_esp_vad_handle_t handle);
+
+#define ESP_SR_VAD_MODE             3   /* VAD_MODE_3: agressivo, estilo always-on */
+#define ESP_SR_VAD_FRAME_MS        10
+#define ESP_SR_VAD_FRAME_SAMPLES  160
+#define ESP_SR_VAD_MIN_SPEECH_MS   80
+#define ESP_SR_VAD_MIN_NOISE_MS   500
+#define ESP_SR_VAD_SPEECH           1
+
 /* Pontuação para declarar VAD START (5 = ~80ms de fala forte ou ~160ms suave).
  * Frames fortes somam 2, soft somam 1, não-fala desconta 1. */
 #define VAD_ENTER_SCORE_START       5U
@@ -149,6 +165,11 @@ static struct {
     int32_t              vad_noise_peak;     /* pico de RMS em silêncio (janela atual) */
     float                vad_noise_ema;      /* média exponencial do ruído de fundo */
     uint32_t             vad_playback_mute_ms; /* inibe VAD após áudio local */
+    nb_esp_vad_handle_t  esp_vad;            /* ESP-SR VAD para listening */
+    bool                 esp_vad_enabled;
+    uint16_t             esp_vad_pos;
+    int16_t              esp_vad_frame[ESP_SR_VAD_FRAME_SAMPLES];
+    int                  esp_vad_last_state;
 
     /* Gravação de diagnóstico */
     rec_state_t          rec_state;
@@ -342,6 +363,41 @@ static uint32_t listen_current_end_silence_ms(void)
          : LISTEN_END_SILENCE_MS;
 }
 
+static void esp_vad_reset(void)
+{
+    s.esp_vad_pos = 0;
+    s.esp_vad_last_state = 0;
+    if (s.esp_vad_enabled && s.esp_vad) {
+        vad_reset_trigger(s.esp_vad);
+    }
+}
+
+static int esp_vad_update(const int16_t *pcm, size_t n, bool muted)
+{
+    if (!s.esp_vad_enabled || !s.esp_vad || !pcm || n == 0 || muted) {
+        if (muted) esp_vad_reset();
+        return 0;
+    }
+
+    size_t off = 0;
+    while (off < n) {
+        size_t space = ESP_SR_VAD_FRAME_SAMPLES - s.esp_vad_pos;
+        size_t to_copy = (n - off < space) ? (n - off) : space;
+        memcpy(&s.esp_vad_frame[s.esp_vad_pos], &pcm[off],
+               to_copy * sizeof(int16_t));
+        s.esp_vad_pos += (uint16_t)to_copy;
+        off += to_copy;
+
+        if (s.esp_vad_pos >= ESP_SR_VAD_FRAME_SAMPLES) {
+            s.esp_vad_last_state = vad_process_with_trigger(s.esp_vad,
+                                                            s.esp_vad_frame);
+            s.esp_vad_pos = 0;
+        }
+    }
+
+    return s.esp_vad_last_state;
+}
+
 static void listen_start_bridge_capture(void)
 {
     if (s.bridge_start_sent || !s.listen_session_active) return;
@@ -434,10 +490,12 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
     s.bridge_tx_fail_count = 0;
     s.bridge_flush_before_end = false;
     s.listen_voice_detected = false;
+    esp_vad_reset();
     return ESP_OK;
 }
 
-static void vad_update(const int32_t *mic, size_t n, bool local_output_active)
+static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
+                       bool local_output_active)
 {
     if (n == 0) return;
 
@@ -506,8 +564,12 @@ static void vad_update(const int32_t *mic, size_t n, bool local_output_active)
     bool muted       = (s.vad_playback_mute_ms > 0U);
     bool energy_ok   = (float)rms >= (float)s.vad_threshold;
     bool soft_energy_ok = (float)rms >= soft_thr;
-    bool speech_strong = energy_ok && zcr_ok && spectral_ok && !muted;
-    bool is_speech   = soft_energy_ok && zcr_ok && spectral_ok && !muted;
+    bool heuristic_speech_strong = energy_ok && zcr_ok && spectral_ok && !muted;
+    bool heuristic_speech = soft_energy_ok && zcr_ok && spectral_ok && !muted;
+    int esp_vad_state = esp_vad_update(pcm16, n, muted);
+    bool esp_vad_speech = (esp_vad_state == ESP_SR_VAD_SPEECH);
+    bool speech_strong = s.esp_vad_enabled ? esp_vad_speech : heuristic_speech_strong;
+    bool is_speech = s.esp_vad_enabled ? esp_vad_speech : heuristic_speech;
 
     int64_t now_us = esp_timer_get_time();
 
@@ -790,7 +852,7 @@ static void audio_task(void *arg)
         sound_analysis_tick(s_sa_buf, mic_n);
 
         /* ── 4. VAD ─────────────────────────────────────────────────────── */
-        vad_update(s_mic_proc, mic_n, wrote_audio);
+        vad_update(s_mic_proc, s_sa_buf, mic_n, wrote_audio);
 
         /* ── 4b. Alimentar pre-roll ring buffer e wake_service ──────────── */
         if (!s.listen_session_active && !wrote_audio) {
@@ -918,6 +980,16 @@ esp_err_t audio_service_init(void)
     s.vad_noise_ema  = (float)NB_AUDIO_VAD_THRESHOLD_DEFAULT;
     s.vad_state      = VAD_SILENCE;
     s.vad_settle_ms  = NB_AUDIO_VAD_SETTLE_MS;
+    s.esp_vad = vad_create_with_param(ESP_SR_VAD_MODE, 16000,
+                                      ESP_SR_VAD_FRAME_MS,
+                                      ESP_SR_VAD_MIN_SPEECH_MS,
+                                      ESP_SR_VAD_MIN_NOISE_MS);
+    s.esp_vad_enabled = (s.esp_vad != NULL);
+    s.esp_vad_pos = 0;
+    s.esp_vad_last_state = 0;
+    if (!s.esp_vad_enabled) {
+        ESP_LOGW(TAG, "ESP-SR VAD indisponivel — usando VAD heuristico");
+    }
     s.play_state     = PLAY_IDLE;
     s.rec_state      = REC_IDLE;
     s.bridge_tx_active            = false;
@@ -944,14 +1016,20 @@ esp_err_t audio_service_init(void)
     );
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore audio_task falhou");
+        if (s.esp_vad) {
+            vad_destroy(s.esp_vad);
+            s.esp_vad = NULL;
+            s.esp_vad_enabled = false;
+        }
         vSemaphoreDelete(s.mutex);
         audio_hal_deinit();
         return ESP_ERR_NO_MEM;
     }
 
     s.initialized = true;
-    ESP_LOGI(TAG, "inicializado (vol=%u, vad_thr=%ld)",
-             (unsigned)s.volume, (long)s.vad_threshold);
+    ESP_LOGI(TAG, "inicializado (vol=%u, vad_thr=%ld, esp_vad=%d)",
+             (unsigned)s.volume, (long)s.vad_threshold,
+             (int)s.esp_vad_enabled);
     return ESP_OK;
 }
 
@@ -1045,6 +1123,7 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
     s.listen_voice_detected       = false;
     s.bridge_tx_active            = false;  /* liga apenas quando o VAD detectar fala */
     wake_service_suspend();
+    esp_vad_reset();
 
     /* Wake word: o áudio "Hi ESP" deixa o VAD em ACTIVE antes de a sessão abrir.
      * Resetar para SILENCE evita VOICE_END prematuro por silêncio pós-wake-word.
