@@ -429,8 +429,20 @@ void wake_service_suspend(void)
 
 void wake_service_rearm(void)
 {
-    wake_service_set_suspended(false, false);
-    if (wake_service_is_active()) {
-        ESP_LOGI(TAG, "WakeNet rearmado");
+    if (!wake_service_is_active()) {
+        return;
     }
+
+    bool needs_rearm = true;
+    if (s.mutex) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        needs_rearm = s.suspended || !s.armed || s.detection_latched;
+        xSemaphoreGive(s.mutex);
+    }
+    if (!needs_rearm) {
+        return;
+    }
+
+    wake_service_set_suspended(false, false);
+    ESP_LOGI(TAG, "WakeNet rearmado");
 }
