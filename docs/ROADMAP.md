@@ -1830,11 +1830,11 @@ No `bridge.py`:
 
 ---
 
-### Etapa 12.10 — ESP-SR VAD para Listening
+### Etapa 12.10 — ESP-SR VAD para Listening ✓
 
 **Dependências:** 12.7 e 12.9 validadas com wake word; 12.8 estável para wake
 **Hardware necessário:** INMP441 mono; PSRAM habilitada
-**Status:** Iniciada — integração inicial de `esp_vad` no `audio_service`, aguardando validação completa de build/boot/hardware
+**Status:** Implementado e validado em hardware
 
 **Contexto:** O VAD heurístico de RMS/ZCR/FFT é útil para consciência sonora, mas não deve ser o juiz principal da sessão LLM em ambiente real com TV, carros e motos. A referência XiaoZhi usa ESP-SR para wake/listening. Esta etapa migra o listening para VAD da ESP-SR, mantendo touch fora do fluxo de escuta.
 
@@ -1849,9 +1849,9 @@ Investigar primeiro:
 - Medir PSRAM antes/depois de criar o AFE de voice processing.
 - Confirmar se dois AFE handles simultâneos (WakeNet + Voice Processor) cabem na memória ou se será necessário alternar instâncias.
 
-Implementação proposta:
+Implementação:
 
-- Integração inicial no `audio_service` usando `vad_create_with_param()`/`vad_process_with_trigger()`.
+- Integração no `audio_service` usando `vad_create_with_param()`/`vad_process_with_trigger()`.
 - Processar frames de 10ms / 160 samples em paralelo ao fluxo atual de áudio.
 - Usar estado do ESP-SR VAD como decisão primária em `WAITING_FOR_SPEECH`/`CAPTURING_SPEECH`/silêncio.
 - Manter heurística atual como fallback se o ESP-SR VAD não inicializar.
@@ -1862,12 +1862,12 @@ Implementação proposta:
 
 **Critérios de aceitação:**
 
-- [ ] Boot loga `audio_svc: inicializado (... esp_vad=1)`.
-- [ ] Wake word + fala: ESP-SR VAD detecta fala e silêncio.
-- [ ] Wake word + frase longa: sessão fecha por silêncio pós-fala.
-- [ ] Moto/carro/TV sem wake word: zero sessão bridge.
-- [ ] Wake word + ruído sem voz: bridge descarta ou sessão encerra sem Gemini/Piper.
-- [ ] PSRAM livre após AFE listening: > 300 KB, ou decisão explícita de trade-off se câmera continuar adiada.
+- [x] Boot loga `audio_svc: inicializado (... esp_vad=1)`.
+- [x] Wake word + fala: ESP-SR VAD detecta fala e silêncio.
+- [x] Wake word + frase longa: sessão fecha por silêncio pós-fala.
+- [x] Moto/carro/TV sem wake word: zero sessão bridge.
+- [x] Wake word + ruído sem voz: bridge descarta ou sessão encerra sem Gemini/Piper.
+- [x] PSRAM livre após AFE listening: > 300 KB, ou decisão explícita de trade-off se câmera continuar adiada.
 
 ---
 
