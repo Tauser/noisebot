@@ -40,7 +40,8 @@
 #define WAKE_INPUT_GAIN_MAX      16
 #define WAKE_INPUT_GAIN_MIN       2
 #define WAKE_INPUT_TARGET_PEAK 18000
-#define WAKE_WAKENET_THRESHOLD 0.45f
+#define WAKE_WAKENET_THRESHOLD 0.50f
+#define WAKE_MIN_RAW_PEAK      1500U
 
 static struct {
     bool                         initialized;
@@ -129,6 +130,21 @@ static void wake_task(void *arg)
         if (res == NULL) continue;
         if (res->wakeup_state == WAKENET_DETECTED) {
             if (s.suspended || !s.armed || s.detection_latched) {
+                continue;
+            }
+            if (s.last_raw_peak < WAKE_MIN_RAW_PEAK) {
+                ESP_LOGW(TAG,
+                         "wake word rejeitada — raw_peak=%u abaixo de %u thr=%.2f raw_rms=%lu gain=%u..%u post_peak=%u saturated=%u/%d",
+                         (unsigned)s.last_raw_peak,
+                         (unsigned)WAKE_MIN_RAW_PEAK,
+                         (double)WAKE_WAKENET_THRESHOLD,
+                         (unsigned long)s.last_raw_rms,
+                         (unsigned)s.last_gain_min,
+                         (unsigned)s.last_gain_max,
+                         (unsigned)s.last_post_peak,
+                         (unsigned)s.last_saturated,
+                         s.feed_chunksize);
+                wake_service_set_suspended(false, false);
                 continue;
             }
             ESP_LOGI(TAG,
