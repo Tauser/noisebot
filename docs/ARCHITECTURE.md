@@ -195,6 +195,24 @@ esp_err_t event_bus_unsubscribe(nb_event_type_t type,
 
 ---
 
+## Arquitetura de Voz e Listening
+
+O fluxo conversacional é separado em três responsabilidades:
+
+- **Ativação de intenção:** `wake_service` com WakeNet detecta "Hi ESP" e abre uma sessão de escuta.
+- **Decisão de fala na sessão:** `audio_service` usa ESP-SR VAD como fonte primária para iniciar streaming, encerrar por silêncio e aplicar timeout de segurança.
+- **Diagnóstico e comportamento:** a heurística local de RMS/ZCR/espectro e `sound_analysis_service` continuam alimentando calibração, logs e classificação ambiente, mas não abrem bridge nem governam sessão LLM em produção.
+
+Invariantes:
+
+- Touch é interação afetiva; não abre sessão de voz.
+- VAD heurístico em `IDLE` não publica `VOICE_ACTIVITY_START/END` para o bus.
+- `VOICE_ACTIVITY_START` para bridge só ocorre dentro de sessão aberta por wake word.
+- `VOICE_ACTIVITY_END` para bridge só ocorre se `bridge_start_sent && bridge_audio_sent`.
+- Se `esp_vad=0`, o listening conversacional não deve cair silenciosamente para heurística em produção; qualquer fallback heurístico é opção explícita de bancada.
+
+---
+
 ## LovyanGFX — Contrato Arquitetural C++/C
 
 ### Problema

@@ -1875,6 +1875,7 @@ Implementação:
 
 **Dependências:** 12.10 validada
 **Hardware necessário:** Não
+**Status:** Implementado — aguardando validação de build/boot
 
 **Contexto:** Depois que o AFE/VADNet governa o listening, o VAD heurístico atual deixa de ser caminho crítico para conversa. Ele continua valioso para comportamento emergente, sound analysis, detecção de eventos ambientais e calibração, mas não deve abrir/fechar sessão LLM.
 
@@ -1891,7 +1892,7 @@ Implementação:
 - Remover ou isolar defines frágeis que só existiam para impedir falso positivo de bridge.
 - Atualizar docs de arquitetura de voz.
 
-**Arquivos prováveis:** `audio_service.c`, `audio_service.h`, `sound_analysis_service.*`, `vad_semantic_service.*`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`
+**Arquivos modificados:** `audio_service.c`, `audio_service.h`, `boot_manager.c`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`
 
 **Critérios de aceitação:**
 

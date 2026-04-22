@@ -2,17 +2,20 @@
  * audio_service.h — Serviço de áudio do NoiseBot (Layer 4)
  *
  * Responsabilidades:
- *   - VAD (Voice Activity Detection): lê mic continuamente, notifica via callback
- *     sobre NB_AUDIO_EVT_VOICE_START e NB_AUDIO_EVT_VOICE_END.
+ *   - Listening VAD: usa ESP-SR VAD para governar sessões abertas por wake word.
+ *   - VAD heurístico local: mantido para diagnóstico/calibração, não abre bridge.
  *   - Playback de WAV: streaming em chunks de 256 amostras do SD, sem OOM.
  *   - Controle de volume: 0–100, aplicado digitalmente no PCM.
  *   - Gravação de diagnóstico: N segundos de PCM salvo como WAV no SD.
  *
- * VAD:
- *   RMS + ZCR + assinatura espectral via sound_analysis_service.
- *   Threshold é adaptativo ao ruído de fundo e conservador para fala próxima.
- *   VOICE_START: somente após chunks consecutivos que pareçam fala humana.
- *   VOICE_END: após silêncio pós-fala ou timeout de segurança.
+ * Listening / VAD:
+ *   - A sessão conversacional abre apenas por wake word.
+ *   - ESP-SR VAD é a fonte primária de início/fim de fala dentro da sessão.
+ *   - A heurística RMS + ZCR + assinatura espectral continua calculada para
+ *     diagnóstico/calibração e fallback de bancada explicitamente habilitado,
+ *     mas não deve ser caminho crítico da bridge em produção.
+ *   - VOICE_START: somente dentro de sessão ativa e após fala real.
+ *   - VOICE_END: após silêncio pós-fala ou timeout de segurança.
  *
  * Playback:
  *   Suporta WAV PCM 16-bit mono 16kHz. Outros formatos retornam erro.
@@ -26,8 +29,8 @@
  * Pre-roll (Etapa 12.5):
  *   Ring buffer circular de 20 chunks × 256 samples = 320ms de áudio.
  *   Alimentado continuamente pela audio_task independente de sessão.
- *   Flushed para a bridge em begin_listen_session() antes do streaming live,
- *   cobrindo a primeira sílaba perdida no intervalo toque→captura.
+ *   Flushed para a bridge quando a captura real começa, cobrindo a primeira
+ *   sílaba perdida no intervalo wake word→fala útil.
  *
  * Task: "nb_audio_task"  Core: 0  Prioridade: 6  Stack: 4096
  *
@@ -68,8 +71,8 @@ extern "C" {
 /* ── Eventos de áudio ────────────────────────────────────────────────────── */
 
 typedef enum {
-    NB_AUDIO_EVT_VOICE_START,      /**< Atividade de voz detectada          */
-    NB_AUDIO_EVT_VOICE_END,        /**< Silêncio após atividade de voz      */
+    NB_AUDIO_EVT_VOICE_START,      /**< Fala detectada em sessão; data=1    */
+    NB_AUDIO_EVT_VOICE_END,        /**< Fim de fala em sessão; data=1       */
     NB_AUDIO_EVT_PLAYBACK_START,   /**< Reprodução iniciada; data=duration_ms */
     NB_AUDIO_EVT_PLAYBACK_END,     /**< Reprodução terminada (EOF ou stop)  */
 } nb_audio_event_t;
@@ -163,7 +166,7 @@ uint8_t audio_get_volume(void);
 /** Quem abriu a sessão de escuta. */
 typedef enum {
     NB_LISTEN_SOURCE_TOUCH,      /**< Legado: listen por toque desabilitado */
-    NB_LISTEN_SOURCE_WAKE_WORD,  /**< Ativado por wake-word (futuro)       */
+    NB_LISTEN_SOURCE_WAKE_WORD,  /**< Ativado por wake word                */
     NB_LISTEN_SOURCE_DEBUG,      /**< Ativado pelo VAD em modo de debug    */
 } nb_listen_source_t;
 
@@ -179,7 +182,7 @@ typedef enum {
  * @brief Abre uma sessão de escuta.
  *
  * Abre uma janela visual de escuta. O VOICE_ACTIVITY_START e o streaming para a
- * bridge começam apenas quando o VAD detectar fala; se não houver fala, a
+ * bridge começam apenas quando o ESP-SR VAD detectar fala; se não houver fala, a
  * sessão fecha por timeout curto sem enviar sessão vazia ao bridge.
  *
  * @return ESP_OK, ESP_ERR_INVALID_STATE se já há sessão ativa ou não iniciado.
@@ -215,10 +218,13 @@ bool audio_service_is_listening(void);
  */
 void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count);
 
-/* ── VAD ──────────────────────────────────────────────────────────────────── */
+/* ── VAD heurístico diagnóstico ───────────────────────────────────────────── */
 
 /**
- * @brief Ajusta o threshold de detecção de voz em runtime.
+ * @brief Ajusta o threshold da heurística local de diagnóstico em runtime.
+ *
+ * Não altera o threshold do ESP-SR VAD e não deve ser usado para controlar
+ * início/fim de sessão LLM quando esp_vad=1.
  *
  * @param threshold Valor de RMS (int32_t 24-bit). Ver NB_AUDIO_VAD_THRESHOLD_DEFAULT.
  */

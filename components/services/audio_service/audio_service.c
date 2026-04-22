@@ -51,6 +51,15 @@ extern void vad_destroy(nb_esp_vad_handle_t handle);
 #define ESP_SR_VAD_MIN_NOISE_MS   500
 #define ESP_SR_VAD_SPEECH           1
 
+/* 12.11: a heuristica local permanece para diagnostico/calibracao. Listening
+ * conversacional deve depender do ESP-SR VAD; este fallback so existe para
+ * bancada, quando explicitamente habilitado antes do build. */
+#ifndef NB_AUDIO_HEURISTIC_LISTEN_FALLBACK
+#define NB_AUDIO_HEURISTIC_LISTEN_FALLBACK 0
+#endif
+
+#define NB_AUDIO_EVT_DATA_SESSION 1U
+
 /* Pontuação para declarar VAD START (5 = ~80ms de fala forte ou ~160ms suave).
  * Frames fortes somam 2, soft somam 1, não-fala desconta 1. */
 #define VAD_ENTER_SCORE_START       5U
@@ -455,7 +464,8 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
     s.vad_enter_count          = 0;
     s.vad_silence_start_us     = 0;
 
-    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
+    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END,
+                               NB_AUDIO_EVT_DATA_SESSION);
 
     if (can_end && bridge_service_is_connected()) {
         if (s.bridge_flush_before_end || reason == NB_LISTEN_END_CANCELLED) {
@@ -568,8 +578,17 @@ static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
     bool heuristic_speech = soft_energy_ok && zcr_ok && spectral_ok && !muted;
     int esp_vad_state = esp_vad_update(pcm16, n, muted);
     bool esp_vad_speech = (esp_vad_state == ESP_SR_VAD_SPEECH);
-    bool speech_strong = s.esp_vad_enabled ? esp_vad_speech : heuristic_speech_strong;
-    bool is_speech = s.esp_vad_enabled ? esp_vad_speech : heuristic_speech;
+    bool speech_strong = esp_vad_speech;
+    bool is_speech = esp_vad_speech;
+#if NB_AUDIO_HEURISTIC_LISTEN_FALLBACK
+    if (!s.esp_vad_enabled) {
+        speech_strong = heuristic_speech_strong;
+        is_speech = heuristic_speech;
+    }
+#else
+    (void)heuristic_speech_strong;
+    (void)heuristic_speech;
+#endif
 
     int64_t now_us = esp_timer_get_time();
 
@@ -602,9 +621,12 @@ static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
                 s.vad_enter_count = 0;
                 s.vad_state = VAD_ACTIVE;
                 s.vad_silence_start_us = 0;
-                /* 12.4: VAD não abre sessão — sessão abre via touch/wake-word.
-                 * Emite apenas o callback local para vad_semantic_service. */
-                if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
+                /* 12.11: VAD nao abre sessao — sessao abre por wake word.
+                 * O callback so vira evento publico quando ha sessao ativa. */
+                if (s.event_cb) {
+                    s.event_cb(NB_AUDIO_EVT_VOICE_START,
+                               s.listen_session_active ? NB_AUDIO_EVT_DATA_SESSION : 0U);
+                }
                 if (s.listen_session_active) {
                     s.listen_voice_detected = true;
                     s.listen_phase = LISTEN_PHASE_CAPTURING_SPEECH;
@@ -670,7 +692,7 @@ static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
                     if (s.listen_session_active) {
                         listen_session_finish(NB_LISTEN_END_VAD_SILENCE);
                     } else if (s.event_cb) {
-                        s.event_cb(NB_AUDIO_EVT_VOICE_END, 0);
+                        s.event_cb(NB_AUDIO_EVT_VOICE_END, 0U);
                     }
                 }
             }
@@ -988,7 +1010,10 @@ esp_err_t audio_service_init(void)
     s.esp_vad_pos = 0;
     s.esp_vad_last_state = 0;
     if (!s.esp_vad_enabled) {
-        ESP_LOGW(TAG, "ESP-SR VAD indisponivel — usando VAD heuristico");
+        ESP_LOGW(TAG, "ESP-SR VAD indisponivel — listening LLM sem VAD primario");
+#if NB_AUDIO_HEURISTIC_LISTEN_FALLBACK
+        ESP_LOGW(TAG, "fallback heuristico de listening habilitado para bancada");
+#endif
     }
     s.play_state     = PLAY_IDLE;
     s.rec_state      = REC_IDLE;

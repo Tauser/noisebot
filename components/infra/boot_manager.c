@@ -355,20 +355,20 @@ static void on_idle_alone(void)
  * e depois publica no bus para o behavior_engine reagir. */
 static void on_audio_event(nb_audio_event_t evt, uint32_t data)
 {
+    bool session_voice_evt = (data != 0U) || audio_service_is_listening();
     nb_event_t bus_evt = {
         .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000LL),
         .data.u32     = data,
     };
     switch (evt) {
         case NB_AUDIO_EVT_VOICE_START:
+            if (!session_voice_evt) return;
             s_silence_ms = 0;
             state_machine_on_voice_start();
-            /* Só propaga ao bus se há sessão ativa: VAD ambiental sem toque
-             * não deve acionar o behavior_engine. */
-            if (!audio_service_is_listening()) return;
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_START;
             break;
         case NB_AUDIO_EVT_VOICE_END:
+            if (!session_voice_evt) return;
             state_machine_on_voice_end();
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;
             break;
