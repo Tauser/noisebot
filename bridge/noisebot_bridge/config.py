@@ -14,7 +14,7 @@ class BridgeConfig:
     llm: str = "gemini"
     fallback_llm: str = "none"
     whisper_model: str = os.environ.get("NOISEBOT_WHISPER_MODEL", "small")
-    whisper_backend: str = os.environ.get("NOISEBOT_WHISPER_BACKEND", "openai")
+    whisper_backend: str = os.environ.get("NOISEBOT_WHISPER_BACKEND", "faster")
     whisper_device: str = os.environ.get("NOISEBOT_WHISPER_DEVICE", "cpu")
     whisper_compute_type: str = os.environ.get("NOISEBOT_WHISPER_COMPUTE_TYPE", "int8")
     piper_model: str = os.environ.get("PIPER_MODEL", "pt_BR-faber-medium.onnx")
