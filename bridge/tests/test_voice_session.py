@@ -1,0 +1,57 @@
+import unittest
+
+import numpy as np
+
+from noisebot_bridge.protocol import MSG_SAY
+from noisebot_bridge.stt import SttResult
+from noisebot_bridge.transport import NullTransport
+from noisebot_bridge.voice_session import VoiceSessionRuntime, VoiceSnapshot
+
+
+class FakeStt:
+    ready = True
+
+    def empty_result(self):
+        return SttResult(backend="fake")
+
+    def transcribe(self, pcm):
+        return SttResult(
+            text="que horas sao agora",
+            no_speech_prob=0.01,
+            avg_logprob=-0.2,
+            compression_ratio=1.0,
+            elapsed_ms=1.0,
+            backend="fake",
+        )
+
+
+class NoneLlm:
+    ready = False
+
+
+class FakeTts:
+    def synthesize(self, text):
+        return np.zeros(256, dtype=np.int16)
+
+
+class VoiceSessionTests(unittest.TestCase):
+    def test_dry_run_transcribes_and_sends_single_ack(self):
+        transport = NullTransport()
+        runtime = VoiceSessionRuntime(transport, FakeStt(), NoneLlm(), FakeTts(), dry_run=True)
+        audio = np.full(9000, 1200, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=1200.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        runtime.handle_voice_end(snapshot)
+
+        self.assertEqual(len(transport.sent), 1)
+        self.assertIn(MSG_SAY.to_bytes(1, "little"), transport.sent[0][1])
+
+
+if __name__ == "__main__":
+    unittest.main()
