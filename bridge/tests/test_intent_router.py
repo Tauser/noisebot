@@ -83,6 +83,13 @@ class IntentRouterTests(unittest.TestCase):
         self.assertEqual(result.device_commands[0].name, "play_action")
         self.assertTrue(result.device_commands[0].supported)
 
+    def test_action_intent_accepts_whisper_head_action_artifact(self):
+        result = self.router.route("Balão se acabece.")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_action")
+        self.assertEqual(result.device_commands[0].name, "play_action")
+        self.assertTrue(result.device_commands[0].supported)
+
     def test_unknown_text_returns_none(self):
         self.assertIsNone(self.router.route("fale sobre isaac newton"))
 

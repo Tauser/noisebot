@@ -198,16 +198,22 @@ class LocalIntentRouter:
     @staticmethod
     def _action_command(text: str) -> LocalIntentResult | None:
         if _has_any(text, ("balance a cabeca", "balanca a cabeca", "mexa a cabeca", "cumprimente")):
-            return LocalIntentResult(
-                intent="local_device_action",
-                confidence=0.82,
-                reply="Claro.",
-                expression_id=2,
-                action=0,
-                emot_event=2,
-                device_commands=(DeviceCommand("play_action", {"action_id": 4}, supported=True),),
-            )
+            return LocalIntentRouter._head_action_result()
+        if _has_any(text, ("balan", "balao", "balaum")) and _has_any(text, ("cabec", "acabec")):
+            return LocalIntentRouter._head_action_result()
         return None
+
+    @staticmethod
+    def _head_action_result() -> LocalIntentResult:
+        return LocalIntentResult(
+            intent="local_device_action",
+            confidence=0.82,
+            reply="Claro.",
+            expression_id=2,
+            action=0,
+            emot_event=2,
+            device_commands=(DeviceCommand("play_action", {"action_id": 4}, supported=True),),
+        )
 
     @staticmethod
     def _movement_command(text: str) -> LocalIntentResult | None:

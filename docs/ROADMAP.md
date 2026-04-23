@@ -2127,7 +2127,7 @@ Regras:
 
 **Dependências:** 12.14 concluída; protocolo bridge 12.1 estável
 **Hardware necessário:** Robô completo para validação de face/LED/motion/audio
-**Status:** em andamento
+**Status:** em validação
 
 **Contexto:** StackChan documenta comandos para controlar speaker, motor, RGB, câmera e bateria. O NoiseBot deve começar pelo que já existe no protocolo atual e só ampliar o firmware quando houver necessidade concreta.
 
@@ -2161,11 +2161,11 @@ Regras:
 
 **Critérios de aceitação:**
 
-- [ ] "Olhe para a esquerda" envia `MSG_GAZE` ou ação equivalente sem LLM.
-- [ ] "Fique feliz" envia `MSG_EXPR` sem LLM.
+- [x] "Olhe para a esquerda" envia `MSG_GAZE` ou ação equivalente sem LLM.
+- [x] "Fique feliz" envia `MSG_EXPR` sem LLM.
 - [ ] Comando não suportado loga `unsupported_device_command`.
 - [ ] 20 comandos locais consecutivos não deixam socket, sessão ou estado presos.
-- [ ] O bridge diferencia `intent_local_text` de `intent_device_command` nos logs.
+- [x] O bridge diferencia `intent_local_text` de `intent_device_command` nos logs.
 
 **Início 12.15 (2026-04-23):**
 
@@ -2173,6 +2173,13 @@ Regras:
 - Router local passou a mapear "olhe para esquerda/direita/cima/baixo", "fique feliz/curioso/sonolento" e "balance a cabeça" para comandos suportados sem LLM.
 - Volume e LED continuam reconhecidos como comandos locais, mas permanecem `unsupported_device_command` até o firmware expor contrato específico.
 - Logs de sessão agora incluem `intent_kind=local_text|device_command` para separar resposta textual local de comando físico.
+
+**Validação parcial 12.15 (2026-04-23):**
+
+- Teste real com bridge conectado validou `local_device_move` para "Olhe para direita" e "Olha para a esquerda": ambos registraram `device_command_executed name=look` e `motivo=ok`, sem LLM.
+- Teste real validou `local_device_expression` para "Fique feliz": registrou `device_command_executed name=set_expression` e `motivo=ok`, sem LLM.
+- A frase "balance a cabeça" foi transcrita como `Balão se acabece`; o router passou a aceitar esse artefato fonético para despachar `play_action` sem cair no LLM.
+- Ainda falta rodada longa de 20 comandos consecutivos e validação explícita do log `unsupported_device_command`.
 
 ---
 
