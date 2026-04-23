@@ -36,6 +36,10 @@ desktop.ini
 *.elf
 *.map
 
+# Modelos locais do bridge/TTS
+bridge/*.onnx
+bridge/*.onnx.json
+
 # Documentação gerada
 docs/_build/
 
