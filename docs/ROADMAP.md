@@ -2036,7 +2036,7 @@ Testabilidade:
 
 ---
 
-### Etapa 12.14 — Local Intent Router v1
+### Etapa 12.14 — Local Intent Router v1 ✓
 
 **Dependências:** 12.13 concluída
 **Hardware necessário:** Não obrigatório para desenvolvimento; robô necessário para validação TTS real
@@ -2106,12 +2106,20 @@ Regras:
 
 **Critérios de aceitação:**
 
-- [ ] "Que horas são?" responde sem Gemini/OpenAI.
-- [ ] "E horas são agora" roteia para `local_time`.
-- [ ] `--dry-run` loga `route=local_intent intent=local_time` sem chamar Piper.
-- [ ] Modo real fala a hora via Piper.
-- [ ] Comando desconhecido cai para LLM somente quando `--llm` está ativo.
-- [ ] Zero chamadas LLM para hora/status/IP/teste bridge em 20 execuções.
+- [x] "Que horas são?" responde sem Gemini/OpenAI.
+- [x] "E horas são agora" roteia para `local_time`.
+- [x] `--dry-run` loga `route=local_intent intent=local_time` sem chamar Piper.
+- [x] Modo real fala a hora via Piper.
+- [x] Comando desconhecido cai para LLM somente quando `--llm` está ativo.
+- [x] Zero chamadas LLM para hora/status/IP/teste bridge em 20 execuções.
+
+**Validação pós-12.14 (2026-04-23):**
+
+- Router local validado em `--dry-run` com `route=local_intent`, `intent=local_time`, `llm=none/none/0ms` e `motivo=descartado:dry_run_ok`.
+- Modo real validado com Piper: robô falou resposta de hora sem chamar LLM.
+- Falha de Piper agora gera `tts_indisponivel` com ACK limpo, sem derrubar a sessão.
+- Voz Piper `pt_BR-faber-medium` normalizada para o contrato do firmware: reamostragem 22050 Hz → 16000 Hz e limiter de pico padrão em 8000 para evitar saturação.
+- Modelos locais `.onnx` do Piper ficam fora do Git; instalação de voz é dependência local do bridge.
 
 ---
 
