@@ -40,9 +40,14 @@ def _has_any(text: str, terms: tuple[str, ...]) -> bool:
 def _time_reply(now: datetime) -> str:
     hour = now.hour
     minute = now.minute
+    if hour == 0 and minute == 0:
+        return "Agora é meia-noite."
+    verb = "é" if hour == 1 else "são"
+    hour_unit = "hora" if hour == 1 else "horas"
     if minute == 0:
-        return f"Agora são {hour} horas."
-    return f"Agora são {hour} horas e {minute:02d} minutos."
+        return f"Agora {verb} {hour} {hour_unit}."
+    minute_unit = "minuto" if minute == 1 else "minutos"
+    return f"Agora {verb} {hour} {hour_unit} e {minute:02d} {minute_unit}."
 
 
 class LocalIntentRouter:
