@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from noisebot_bridge.protocol import MSG_SAY
+from noisebot_bridge.protocol import MSG_SAY, decode_frames
 from noisebot_bridge.stt import SttResult
 from noisebot_bridge.transport import NullTransport
 from noisebot_bridge.voice_session import VoiceSessionRuntime, VoiceSnapshot
@@ -79,6 +79,11 @@ class FakeTts:
         return np.zeros(256, dtype=np.int16)
 
 
+class FailingTts:
+    def synthesize(self, text):
+        raise RuntimeError("piper_falhou:voz_ausente")
+
+
 class VoiceSessionTests(unittest.TestCase):
     def test_dry_run_transcribes_and_sends_single_ack(self):
         transport = NullTransport()
@@ -121,6 +126,31 @@ class VoiceSessionTests(unittest.TestCase):
 
         self.assertEqual(llm.calls, 0)
         self.assertGreaterEqual(len(transport.sent), 4)
+
+    def test_local_intent_tts_failure_sends_ack(self):
+        transport = NullTransport()
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            NoneLlm(),
+            FailingTts(),
+            dry_run=False,
+            intent_router=FakeIntentRouter(),
+        )
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=1200.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        runtime.handle_voice_end(snapshot)
+
+        frames = decode_frames(bytearray(transport.sent[-1][1]))
+        self.assertEqual(frames[-1], (MSG_SAY, b""))
+
 
     def test_unknown_text_uses_llm_when_available(self):
         transport = NullTransport()

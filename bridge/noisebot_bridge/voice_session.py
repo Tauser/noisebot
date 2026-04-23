@@ -189,6 +189,19 @@ class VoiceSessionRuntime:
                 self.send_silent_ack()
                 silent_ack_sent = True
 
+        def speak_text(text_to_speak: str, action: int = 0) -> bool:
+            nonlocal discard_reason
+            try:
+                tts_pcm = self.tts.synthesize(text_to_speak)
+            except Exception as e:
+                discard_reason = "tts_indisponivel"
+                log.warning("TTS indisponivel session_id=%d: %s", session_id, e)
+                ack_once()
+                return False
+            self.send_msg(MSG_ACTION, struct.pack("<I", action))
+            self.send_say_pcm(tts_pcm)
+            return True
+
         try:
             if not snapshot.audio_chunks:
                 discard_reason = "buffer_vazio"
@@ -260,9 +273,7 @@ class VoiceSessionRuntime:
                         return
                     self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", local_intent.emot_event))
                     self.send_msg(MSG_EXPR, struct.pack("<BI", local_intent.expression_id, 4000))
-                    tts_pcm = self.tts.synthesize(local_intent.reply)
-                    self.send_msg(MSG_ACTION, struct.pack("<I", local_intent.action))
-                    self.send_say_pcm(tts_pcm)
+                    speak_text(local_intent.reply, local_intent.action)
                     return
 
             if self.dry_run:
@@ -277,9 +288,7 @@ class VoiceSessionRuntime:
                     return
                 self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", 2))
                 self.send_msg(MSG_EXPR, struct.pack("<BI", 2, 4000))
-                tts_pcm = self.tts.synthesize("Eu entendi, mas estou sem acesso ao cérebro online agora.")
-                self.send_msg(MSG_ACTION, struct.pack("<I", 0))
-                self.send_say_pcm(tts_pcm)
+                speak_text("Eu entendi, mas estou sem acesso ao cérebro online agora.")
                 return
 
             route = "llm"
@@ -293,12 +302,10 @@ class VoiceSessionRuntime:
             self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", llm_result.emot_event))
             self.send_msg(MSG_EXPR, struct.pack("<BI", llm_result.expression_id, 4000))
 
-            tts_pcm = self.tts.synthesize(reply)
-            self.send_msg(MSG_ACTION, struct.pack("<I", 0))
-            self.send_say_pcm(tts_pcm)
+            speak_text(reply)
 
         except Exception as e:
-            log.error("Pipeline LLM falhou session_id=%d: %s", session_id, e, exc_info=True)
+            log.error("Pipeline de voz falhou session_id=%d: %s", session_id, e, exc_info=True)
             discard_reason = "exception"
             try:
                 ack_once()
