@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 
 from noisebot_bridge.tts import limit_peak, resample_linear
+from noisebot_bridge.config import TTS_TARGET_PEAK
 
 
 class TtsAudioTests(unittest.TestCase):
@@ -21,6 +22,9 @@ class TtsAudioTests(unittest.TestCase):
 
         self.assertLessEqual(int(np.max(np.abs(out.astype(np.int32)))), 12000)
         self.assertEqual(out.dtype, np.int16)
+
+    def test_default_tts_peak_is_conservative(self):
+        self.assertLessEqual(TTS_TARGET_PEAK, 8000)
 
 
 if __name__ == "__main__":
