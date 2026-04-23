@@ -5,6 +5,7 @@ import logging
 import time
 
 from .config import BridgeConfig
+from .intent_router import LocalIntentRouter
 from .llm import FallbackLlmProvider, create_llm_provider
 from .replay import run_replay
 from .runtime import BridgeRuntime
@@ -24,6 +25,7 @@ def parse_args() -> BridgeConfig:
     parser.add_argument("--uart", default=None, metavar="PORT", help="Porta serial USB CDC")
     parser.add_argument("--dry-run", action="store_true", help="Transcreve com Whisper e não chama LLM/Piper")
     parser.add_argument("--replay", default=None, help="Arquivo WAV/PCM int16 16kHz para testar sem hardware")
+    parser.add_argument("--local-intents", choices=("on", "off"), default="on")
     parser.add_argument("--llm", choices=("gemini", "openai", "mock", "none"), default="gemini")
     parser.add_argument("--fallback-llm", choices=("gemini", "openai", "mock", "none"), default="none")
     parser.add_argument("--whisper-model", default=BridgeConfig.whisper_model, help="Modelo Whisper local")
@@ -40,6 +42,7 @@ def parse_args() -> BridgeConfig:
         uart=args.uart,
         dry_run=args.dry_run,
         replay=args.replay,
+        local_intents=args.local_intents == "on",
         llm=args.llm,
         fallback_llm=args.fallback_llm,
         whisper_model=args.whisper_model,
@@ -69,9 +72,10 @@ def main():
             log.warning("LLM %s indisponível — bridge seguirá em modo degradado/local-only", cfg.llm)
 
     tts = PiperTts(cfg.piper_model)
+    intent_router = LocalIntentRouter() if cfg.local_intents else None
 
     if cfg.replay:
-        run_replay(cfg.replay, stt, llm, tts, dry_run=cfg.dry_run)
+        run_replay(cfg.replay, stt, llm, tts, dry_run=cfg.dry_run, intent_router=intent_router)
         return
 
     while True:
@@ -96,7 +100,7 @@ def main():
                 continue
 
             log.info("Handshake OK")
-            runtime = BridgeRuntime(transport, stt, llm, tts, dry_run=cfg.dry_run)
+            runtime = BridgeRuntime(transport, stt, llm, tts, dry_run=cfg.dry_run, intent_router=intent_router)
             runtime.run()
         except KeyboardInterrupt:
             log.info("Encerrando bridge")

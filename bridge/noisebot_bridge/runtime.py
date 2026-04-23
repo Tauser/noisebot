@@ -19,11 +19,11 @@ log = logging.getLogger("noisebot_bridge.runtime")
 
 
 class BridgeRuntime:
-    def __init__(self, transport, stt, llm, tts, dry_run: bool = False):
+    def __init__(self, transport, stt, llm, tts, dry_run: bool = False, intent_router=None):
         self.transport = transport
         self.rx_buf = bytearray()
         self.state = "idle"
-        self.voice = VoiceSessionRuntime(transport, stt, llm, tts, dry_run=dry_run)
+        self.voice = VoiceSessionRuntime(transport, stt, llm, tts, dry_run=dry_run, intent_router=intent_router)
 
     def set_state(self, state: str):
         if self.state != state:

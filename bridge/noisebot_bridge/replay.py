@@ -28,14 +28,14 @@ def load_audio(path: str) -> np.ndarray:
     return np.fromfile(str(p), dtype=np.int16)
 
 
-def run_replay(path: str, stt, llm, tts, dry_run: bool):
+def run_replay(path: str, stt, llm, tts, dry_run: bool, intent_router=None):
     pcm = load_audio(path)
     chunks = [pcm[i : i + 256].copy() for i in range(0, len(pcm), 256)]
     if chunks and len(chunks[-1]) < 256:
         chunks[-1] = np.pad(chunks[-1], (0, 256 - len(chunks[-1]))).astype(np.int16)
     rms_values = [float(np.sqrt(np.mean(c.astype(np.float32) ** 2))) for c in chunks] if chunks else [0.0]
     transport = NullTransport()
-    runtime = VoiceSessionRuntime(transport, stt, llm, tts, dry_run=dry_run)
+    runtime = VoiceSessionRuntime(transport, stt, llm, tts, dry_run=dry_run, intent_router=intent_router)
     snapshot = VoiceSnapshot(
         session_id=1,
         audio_chunks=chunks,

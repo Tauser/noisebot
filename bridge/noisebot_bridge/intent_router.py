@@ -1,0 +1,232 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+import re
+import unicodedata
+
+
+@dataclass(frozen=True)
+class DeviceCommand:
+    name: str
+    args: dict = field(default_factory=dict)
+    supported: bool = False
+
+
+@dataclass(frozen=True)
+class LocalIntentResult:
+    intent: str
+    confidence: float
+    reply: str
+    expression_id: int = 2
+    action: int = 0
+    emot_event: int = 2
+    device_commands: tuple[DeviceCommand, ...] = ()
+
+
+def normalize_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFD", text or "")
+    without_accents = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    lowered = without_accents.lower()
+    lowered = re.sub(r"[^a-z0-9% ]+", " ", lowered)
+    lowered = re.sub(r"\s+", " ", lowered).strip()
+    return lowered
+
+
+def _has_any(text: str, terms: tuple[str, ...]) -> bool:
+    return any(term in text for term in terms)
+
+
+def _time_reply(now: datetime) -> str:
+    hour = now.hour
+    minute = now.minute
+    if minute == 0:
+        return f"Agora são {hour} horas."
+    return f"Agora são {hour} horas e {minute:02d} minutos."
+
+
+class LocalIntentRouter:
+    def route(self, text: str, status: dict | None = None, now: datetime | None = None) -> LocalIntentResult | None:
+        status = status or {}
+        now = now or datetime.now()
+        norm = normalize_text(text)
+        if not norm:
+            return None
+
+        if self._is_time(norm):
+            return LocalIntentResult(
+                intent="local_time",
+                confidence=0.92,
+                reply=_time_reply(now),
+                expression_id=2,
+                action=0,
+                emot_event=2,
+            )
+
+        if self._is_bridge_test(norm):
+            return LocalIntentResult(
+                intent="local_bridge_test",
+                confidence=0.90,
+                reply="Estou te ouvindo pelo bridge.",
+                expression_id=1,
+                action=1,
+                emot_event=2,
+            )
+
+        if self._is_status(norm):
+            health = status.get("health")
+            attention = status.get("attention")
+            details = []
+            if health is not None:
+                details.append(f"saúde {int(health)} de 100")
+            if attention is not None:
+                details.append(f"atenção {float(attention):.2f}")
+            suffix = f" Tenho {', '.join(details)}." if details else ""
+            return LocalIntentResult(
+                intent="local_status",
+                confidence=0.88,
+                reply=f"Estou operacional e atento.{suffix}",
+                expression_id=1,
+                action=1,
+                emot_event=2,
+            )
+
+        if self._is_network(norm):
+            return LocalIntentResult(
+                intent="local_network_status",
+                confidence=0.84,
+                reply="Estou conectado ao bridge. Ainda não recebo o IP do robô no status.",
+                expression_id=2,
+                action=0,
+                emot_event=2,
+            )
+
+        movement = self._movement_command(norm)
+        if movement is not None:
+            return movement
+
+        light = self._light_command(norm)
+        if light is not None:
+            return light
+
+        volume = self._volume_command(norm)
+        if volume is not None:
+            return volume
+
+        sleep = self._sleep_command(norm)
+        if sleep is not None:
+            return sleep
+
+        return None
+
+    @staticmethod
+    def _is_time(text: str) -> bool:
+        if "hora" in text and _has_any(text, ("que", "qual", "agora", "atual", "sao", "e ")):
+            return True
+        if "horas sao" in text or "ora sao" in text or "e horas sao" in text:
+            return True
+        return False
+
+    @staticmethod
+    def _is_bridge_test(text: str) -> bool:
+        return _has_any(text, ("teste o bridge", "testar bridge", "voce esta me ouvindo", "esta me ouvindo"))
+
+    @staticmethod
+    def _is_status(text: str) -> bool:
+        return _has_any(text, ("qual seu status", "como voce esta", "voce esta bem", "esta tudo bem", "status"))
+
+    @staticmethod
+    def _is_network(text: str) -> bool:
+        return _has_any(text, ("qual seu ip", "voce esta conectado", "esta conectado", "conexao", "rede"))
+
+    @staticmethod
+    def _movement_command(text: str) -> LocalIntentResult | None:
+        if not _has_any(text, ("olhe", "olha", "vire", "mexa", "cabeca")):
+            return None
+        directions = {
+            "esquerda": "esquerda",
+            "direita": "direita",
+            "cima": "cima",
+            "baixo": "baixo",
+        }
+        for key, direction in directions.items():
+            if key in text:
+                return LocalIntentResult(
+                    intent="local_device_move",
+                    confidence=0.82,
+                    reply=f"Entendi. Ainda estou ligando o controle de olhar para {direction}.",
+                    expression_id=2,
+                    action=0,
+                    emot_event=2,
+                    device_commands=(DeviceCommand("look", {"direction": direction}, supported=False),),
+                )
+        return None
+
+    @staticmethod
+    def _light_command(text: str) -> LocalIntentResult | None:
+        if not _has_any(text, ("luz", "led", "cor")):
+            return None
+        colors = ("azul", "vermelho", "verde", "branco", "roxo", "amarelo")
+        for color in colors:
+            if color in text:
+                return LocalIntentResult(
+                    intent="local_device_light",
+                    confidence=0.80,
+                    reply=f"Entendi a luz {color}, mas esse comando ainda não está conectado ao firmware.",
+                    expression_id=2,
+                    action=0,
+                    emot_event=2,
+                    device_commands=(DeviceCommand("set_led_color", {"color": color}, supported=False),),
+                )
+        return None
+
+    @staticmethod
+    def _volume_command(text: str) -> LocalIntentResult | None:
+        if "volume" not in text:
+            return None
+        match = re.search(r"\b(\d{1,3})\s*%?\b", text)
+        if match:
+            percent = max(0, min(100, int(match.group(1))))
+            reply = f"Entendi volume em {percent} por cento, mas o controle de volume ainda não está conectado."
+            args = {"percent": percent}
+        elif "aument" in text:
+            reply = "Entendi aumentar o volume, mas o controle ainda não está conectado."
+            args = {"delta": "up"}
+        elif "diminu" in text or "baix" in text:
+            reply = "Entendi diminuir o volume, mas o controle ainda não está conectado."
+            args = {"delta": "down"}
+        else:
+            reply = "Entendi volume, mas preciso de um valor ou direção."
+            args = {}
+        return LocalIntentResult(
+            intent="local_device_volume",
+            confidence=0.78,
+            reply=reply,
+            expression_id=2,
+            action=0,
+            emot_event=2,
+            device_commands=(DeviceCommand("set_volume", args, supported=False),),
+        )
+
+    @staticmethod
+    def _sleep_command(text: str) -> LocalIntentResult | None:
+        if _has_any(text, ("dorme", "vai dormir", "durma")):
+            return LocalIntentResult(
+                intent="local_sleep",
+                confidence=0.76,
+                reply="Entendi. Ainda vou ganhar o comando de sono pelo bridge.",
+                expression_id=3,
+                action=0,
+                emot_event=2,
+                device_commands=(DeviceCommand("sleep", {}, supported=False),),
+            )
+        if _has_any(text, ("acorda", "acorde")):
+            return LocalIntentResult(
+                intent="local_wake",
+                confidence=0.76,
+                reply="Estou acordado por aqui.",
+                expression_id=1,
+                action=1,
+                emot_event=2,
+            )
+        return None

@@ -11,6 +11,7 @@ class BridgeConfig:
     uart: str | None = None
     dry_run: bool = False
     replay: str | None = None
+    local_intents: bool = True
     llm: str = "gemini"
     fallback_llm: str = "none"
     whisper_model: str = os.environ.get("NOISEBOT_WHISPER_MODEL", "small")
