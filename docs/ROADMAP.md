@@ -1903,10 +1903,11 @@ Implementação:
 
 ---
 
-### Etapa 12.12 — Avaliação Dual Mic, BSS e AEC
+### Etapa 12.12 — Avaliação Dual Mic, BSS e AEC (adiada)
 
 **Dependências:** 12.10 validada com 1 mic; 12.11 concluída
 **Hardware necessário:** Protótipo com segundo microfone ou codec adequado
+**Status:** Adiada por decisão de produto — não desenvolver até haver hardware/necessidade real
 
 **Contexto:** StackChan/CoreS3 usa dual microphones e codec ES7210, mas dois microfones não corrigem bugs de sessão, bridge, wake rearm ou timeouts. A avaliação dual mic só deve acontecer depois que 1 mic + AFE/VADNet + bridge estiver estável.
 
@@ -1941,6 +1942,362 @@ Investigação:
 - [ ] BSS/AEC melhora transcrição ou reduz falso fim de fala de forma mensurável.
 - [ ] Sem regressão de wake word.
 - [ ] Sem queda de FPS/render ou instabilidade de áudio.
+
+---
+
+### Sub-bloco 12B — Bridge Agent Runtime e Comandos Locais
+
+**Objetivo:** Evoluir o `bridge.py` de protótipo funcional para um serviço de produto robusto, observável e extensível, seguindo a arquitetura validada em produtos como StackChan/XiaoZhi: wake local, ASR, roteamento de intenção, comandos locais para tarefas simples, LLM para diálogo complexo e TTS para resposta expressiva.
+
+**Princípios de produto:**
+
+- Comandos simples não devem depender de Gemini/OpenAI.
+- Falhas de LLM, STT ou TTS não podem parecer silêncio inexplicável.
+- Toda sessão deve terminar com motivo explícito e reproduzível.
+- O firmware atual deve continuar compatível durante a refatoração do bridge.
+- O bridge deve permitir teste offline com áudio gravado, sem precisar acordar o robô a cada ajuste.
+- A arquitetura deve preparar terreno para tools/MCP/Home Assistant sem acoplar essas integrações cedo demais.
+
+---
+
+### Etapa 12.13 — Bridge Runtime Profissional
+
+**Dependências:** 12.11 concluída; 12.12 explicitamente adiada
+**Hardware necessário:** Não obrigatório para desenvolvimento inicial; robô necessário para validação final
+
+**Contexto:** O `bridge.py` atual provou o pipeline, mas concentra transporte, sessão, STT, filtros, Gemini, Piper, dry-run, logs e tratamento de erro em um único arquivo. Antes de adicionar comandos locais, fallback OpenAI ou MCP, o bridge precisa virar um runtime modular e testável.
+
+**O que entra:**
+
+Reestruturar o bridge mantendo compatibilidade com a CLI atual:
+
+- `bridge.py`: entrada CLI fina, parse de args, inicialização do runtime.
+- `transport.py`: TCP/UART, frames, CRC8, handshake, recv/send, desconexão e reconexão.
+- `device_protocol.py`: constantes `MSG_*`, `NB_EVT_*`, encode/decode e helpers para `SAY`, `EXPR`, `ACTION`, `GAZE`, `TEXT_SCROLL`.
+- `voice_session.py`: buffer de áudio, `session_id`, timeout, métricas, snapshot imutável no `VOICE_END`.
+- `stt.py`: Whisper/faster-whisper, normalização de ganho, filtros de qualidade e resultado estruturado.
+- `tts.py`: Piper, checagem de binário/modelo e erros nomeados.
+- `llm.py`: interface comum para provedores futuros (`gemini`, `openai`, `mock`, `none`).
+- `runtime.py`: máquina de estados do bridge e orquestração da sessão.
+- `config.py`: defaults, env vars e validação de startup.
+
+Estados explícitos:
+
+- `connecting`
+- `idle`
+- `receiving_audio`
+- `transcribing`
+- `routing`
+- `thinking`
+- `speaking`
+- `degraded`
+- `offline`
+
+Observabilidade obrigatória:
+
+- `session_id`
+- duração total
+- samples
+- RMS/pico
+- tempo STT
+- backend/modelo STT
+- rota escolhida (`discard`, `local_intent`, `llm`, `error`)
+- provider/modelo LLM quando aplicável
+- tempo LLM
+- tempo TTS
+- motivo final sempre nomeado
+
+Robustez:
+
+- `Ctrl+C` fecha socket, timers e threads de forma limpa.
+- Reinício do ESP32 não exige reiniciar o bridge.
+- Falha de Gemini/OpenAI/Piper/Whisper não encerra o processo.
+- Sessão órfã expira e limpa buffers.
+- `--dry-run` nunca chama LLM/TTS.
+- `--llm none` permite operar somente com comandos locais.
+
+Testabilidade:
+
+- Testes unitários para encode/decode/CRC.
+- Testes unitários para snapshot de sessão.
+- Testes unitários para filtros de STT.
+- Modo `--replay <arquivo.wav|arquivo.pcm>` para testar STT/routing sem hardware.
+- Logs de replay devem ter o mesmo formato de uma sessão real.
+
+**Critérios de aceitação:**
+
+- [ ] O bridge novo substitui o antigo sem mudar firmware.
+- [ ] `python bridge.py --host 192.168.1.23 --dry-run --whisper-backend faster --whisper-model small` continua funcionando.
+- [ ] Uma sessão real gera uma linha final com `session_id`, rota e motivo.
+- [ ] Reiniciar o ESP32 com o bridge aberto reconecta sem matar o processo.
+- [ ] Falta de `GEMINI_API_KEY` inicia em modo degradado/local-only, não em falha opaca.
+- [ ] Piper ausente gera erro nomeado e ACK limpo, sem crash.
+- [ ] `--replay` permite reproduzir uma sessão STT sem robô.
+
+---
+
+### Etapa 12.14 — Local Intent Router v1
+
+**Dependências:** 12.13 concluída
+**Hardware necessário:** Não obrigatório para desenvolvimento; robô necessário para validação TTS real
+
+**Contexto:** A documentação do StackChan/XiaoZhi separa comandos simples de diálogo complexo. O NoiseBot deve responder localmente a comandos básicos de produto, reduzindo custo, latência e dependência de quota.
+
+**O que entra:**
+
+Normalização pt-BR:
+
+- minúsculas;
+- remoção de acentos;
+- remoção de pontuação;
+- compactação de espaços;
+- tolerância a erros comuns do Whisper;
+- aliases de comandos por intenção.
+
+Intenções locais v1:
+
+- Hora:
+  - "que horas são"
+  - "hora atual"
+  - "me diga as horas"
+  - variações ruins como "e horas são agora"
+- Status:
+  - "qual seu status"
+  - "você está bem"
+  - "como você está"
+- Rede/bridge:
+  - "qual seu ip"
+  - "você está conectado"
+  - "teste o bridge"
+  - "você está me ouvindo"
+- Sono:
+  - "dorme"
+  - "vai dormir"
+  - "acorda"
+- Volume lógico:
+  - "volume 80"
+  - "aumente o volume"
+  - "diminua o volume"
+- Luz básica:
+  - "mude a luz para azul/vermelho/verde"
+- Movimento básico:
+  - "olhe para esquerda/direita/cima/baixo"
+
+Contrato de resposta de intent:
+
+```python
+{
+    "intent": "local_time",
+    "confidence": 0.0,
+    "reply": "Agora são 23 horas e 42 minutos.",
+    "expression_id": 2,
+    "action": 0,
+    "emot_event": 2,
+    "device_commands": []
+}
+```
+
+Regras:
+
+- Intenção local com confiança alta não chama LLM.
+- Intenção local ambígua pode pedir confirmação curta.
+- Comando desconhecido cai para LLM se disponível.
+- Com LLM indisponível, comando desconhecido responde erro amigável via TTS se possível.
+
+**Critérios de aceitação:**
+
+- [ ] "Que horas são?" responde sem Gemini/OpenAI.
+- [ ] "E horas são agora" roteia para `local_time`.
+- [ ] `--dry-run` loga `route=local_intent intent=local_time` sem chamar Piper.
+- [ ] Modo real fala a hora via Piper.
+- [ ] Comando desconhecido cai para LLM somente quando `--llm` está ativo.
+- [ ] Zero chamadas LLM para hora/status/IP/teste bridge em 20 execuções.
+
+---
+
+### Etapa 12.15 — Device Commands v1
+
+**Dependências:** 12.14 concluída; protocolo bridge 12.1 estável
+**Hardware necessário:** Robô completo para validação de face/LED/motion/audio
+
+**Contexto:** StackChan documenta comandos para controlar speaker, motor, RGB, câmera e bateria. O NoiseBot deve começar pelo que já existe no protocolo atual e só ampliar o firmware quando houver necessidade concreta.
+
+**O que entra:**
+
+Dispatcher de comandos de dispositivo no bridge:
+
+- `set_expression(expression_id, duration_ms)`
+- `play_action(action_id)`
+- `set_gaze(x, y)`
+- `emit_emotion_event(event_id)`
+- `scroll_text(text)`
+- `set_volume(percent)` se o firmware expuser suporte.
+- `set_led_color(color)` se o protocolo atual suportar, ou planejar `MSG_LED` mínimo em etapa própria.
+
+Comandos v1:
+
+- "olhe para a esquerda/direita/cima/baixo"
+- "fique feliz/curioso/sonolento"
+- "balance a cabeça"
+- "diga que está ouvindo"
+- "volume X%" quando suportado
+- "luz azul/vermelha/verde" quando suportado
+
+Regras:
+
+- Comando suportado executa sem LLM.
+- Comando reconhecido mas ainda não suportado responde honestamente:
+  - "Eu entendi, mas ainda não tenho esse controle ligado."
+- Nenhum comando local deve deixar o robô preso em `RESPONDING`.
+
+**Critérios de aceitação:**
+
+- [ ] "Olhe para a esquerda" envia `MSG_GAZE` ou ação equivalente sem LLM.
+- [ ] "Fique feliz" envia `MSG_EXPR` sem LLM.
+- [ ] Comando não suportado loga `unsupported_device_command`.
+- [ ] 20 comandos locais consecutivos não deixam socket, sessão ou estado presos.
+- [ ] O bridge diferencia `intent_local_text` de `intent_device_command` nos logs.
+
+---
+
+### Etapa 12.16 — LLM Providers e Fallback
+
+**Dependências:** 12.13 concluída; 12.14 concluída
+**Hardware necessário:** Não obrigatório para desenvolvimento; robô para teste final
+
+**Contexto:** O Gemini funcionou, mas mostrou erro `429` de quota. O produto não deve depender de um único provedor. Ao mesmo tempo, ChatGPT Pro não cobre uso de API; a integração OpenAI deve ser opcional e explícita.
+
+**O que entra:**
+
+Interface comum:
+
+```python
+class LlmProvider:
+    def generate(self, prompt, status, tools=None) -> LlmResult:
+        ...
+```
+
+Providers:
+
+- `gemini`
+- `openai`
+- `mock`
+- `none`
+
+CLI/env:
+
+- `--llm gemini|openai|mock|none`
+- `--fallback-llm gemini|openai|mock|none`
+- `GEMINI_API_KEY`
+- `OPENAI_API_KEY`
+- `NOISEBOT_GEMINI_MODEL`
+- `NOISEBOT_OPENAI_MODEL`
+
+Tratamento:
+
+- `429`/quota: erro nomeado e fallback se configurado.
+- timeout: erro nomeado e fallback se configurado.
+- API key ausente: provider indisponível no startup, não durante a conversa.
+- resposta vazia: erro nomeado.
+
+**Critérios de aceitação:**
+
+- [ ] `--llm gemini` preserva comportamento atual.
+- [ ] `--llm none` funciona para intenções locais.
+- [ ] Gemini 429 não mata o bridge.
+- [ ] Gemini 429 cai para fallback quando `--fallback-llm openai` estiver configurado.
+- [ ] Logs incluem `llm_provider`, `llm_model`, `llm_ms`, `llm_error`.
+- [ ] Sem API keys, o bridge inicia em modo local-only com aviso claro.
+
+---
+
+### Etapa 12.17 — Feedback de Produto e Erros Sem Silêncio
+
+**Dependências:** 12.13 concluída; 12.15 desejável
+**Hardware necessário:** Robô completo
+
+**Contexto:** Um produto conversacional não pode deixar o usuário sem feedback quando está pensando, transcrevendo ou com erro de nuvem. StackChan usa LED para listening/speaking; NoiseBot deve usar face, LED, texto e sons curtos conforme seus recursos.
+
+**O que entra:**
+
+Feedback por estado:
+
+- `listening`: expressão focada/curiosa, LED de escuta.
+- `transcribing`: micro feedback visual curto.
+- `thinking`: expressão pensativa, ação leve ou LED.
+- `speaking`: expressão viva, LED de fala.
+- `error_api`: expressão confusa e fala curta.
+- `offline`: expressão curiosa/sonolenta e mensagem local.
+
+Respostas locais de erro:
+
+- STT baixa confiança:
+  - "Eu ouvi, mas não entendi direito."
+- LLM quota:
+  - "Entendi sua pergunta, mas meu cérebro online recusou a resposta agora."
+- LLM offline:
+  - "Estou sem acesso ao cérebro online agora."
+- TTS indisponível:
+  - log explícito e feedback visual sem crash.
+
+**Critérios de aceitação:**
+
+- [ ] Falha de Gemini 429 não termina em silêncio absoluto.
+- [ ] STT descartado por `logprob` ruim gera feedback visível ou sonoro controlado, sem chamar LLM.
+- [ ] `thinking` aparece quando LLM demora mais que 1s.
+- [ ] `speaking` inicia antes/durante envio de `SAY`.
+- [ ] Usuário consegue distinguir "não ouvi", "não entendi" e "nuvem falhou".
+
+---
+
+### Etapa 12.18 — Métricas de Produto e Harness de Regressão
+
+**Dependências:** 12.13 concluída; 12.14 concluída
+**Hardware necessário:** Robô para UAT; PC para replay offline
+
+**Contexto:** Para aproximar a experiência de StackChan/XiaoZhi, precisamos medir latência, estabilidade e qualidade de rota. Testes manuais isolados ajudam, mas não protegem contra regressões no bridge.
+
+**O que entra:**
+
+Métricas por sessão:
+
+- wake → `PODE FALAR` (firmware/log serial, quando disponível);
+- `VOICE_END` → fim STT;
+- `VOICE_END` → rota escolhida;
+- `VOICE_END` → início TTS;
+- `VOICE_END` → primeiro `SAY`;
+- duração TTS;
+- motivo final.
+
+Harness:
+
+- Pasta de fixtures com WAV/PCM curtos:
+  - hora;
+  - status;
+  - ruído;
+  - silêncio;
+  - comando de movimento;
+  - frase longa;
+  - fala baixa.
+- `--replay` com resultado estruturado.
+- Teste de regressão para local intents.
+- Checklist manual de hardware.
+
+Metas de produto:
+
+- Comando local simples: resposta começa em < 1.5s após `VOICE_END`.
+- STT faster/small: < 1.2s para frases curtas.
+- 20 comandos locais consecutivos: zero crash.
+- 10 sessões LLM consecutivas: zero sessão travada.
+- Falso comando local em ruído/silêncio: 0 em fixtures.
+
+**Critérios de aceitação:**
+
+- [ ] Fixtures offline cobrem hora, status, ruído, silêncio e comando de corpo.
+- [ ] `--replay` retorna rota esperada em todos os casos estáveis.
+- [ ] Métricas aparecem no log final de cada sessão.
+- [ ] Checklist de hardware documenta comandos, resultado esperado e logs-chave.
+- [ ] Antes de mexer em LLM ou protocolo, replay precisa continuar verde.
 
 ---
 
