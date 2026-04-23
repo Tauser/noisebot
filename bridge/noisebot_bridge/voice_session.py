@@ -21,6 +21,7 @@ from .config import (
     MIN_UTTERANCE_SAMPLES,
     VOICE_TIMEOUT_S,
 )
+from .device_commands import DeviceCommandDispatcher
 from .intent_router import LocalIntentResult
 from .llm import LlmResult
 from .protocol import MSG_ACTION, MSG_EMOT_EVENT, MSG_EXPR, MSG_SAY, encode_frame
@@ -39,13 +40,23 @@ class VoiceSnapshot:
 
 
 class VoiceSessionRuntime:
-    def __init__(self, transport, stt, llm, tts, dry_run: bool = False, intent_router=None):
+    def __init__(
+        self,
+        transport,
+        stt,
+        llm,
+        tts,
+        dry_run: bool = False,
+        intent_router=None,
+        device_dispatcher=None,
+    ):
         self.transport = transport
         self.stt = stt
         self.llm = llm
         self.tts = tts
         self.dry_run = dry_run
         self.intent_router = intent_router
+        self.device_dispatcher = device_dispatcher or DeviceCommandDispatcher(self.send_msg)
         self.audio_buf: list[np.ndarray] = []
         self.streaming = False
         self.last_status: dict = {}
@@ -178,6 +189,7 @@ class VoiceSessionRuntime:
         tr = self.stt.empty_result() if self.stt else SttResult()
         llm_result = LlmResult()
         local_intent: LocalIntentResult | None = None
+        intent_kind = "none"
         avg_rms = snapshot.avg_rms
         duration_s = snapshot.duration_s
         end_reason = snapshot.end_reason
@@ -261,9 +273,11 @@ class VoiceSessionRuntime:
                 local_intent = self.intent_router.route(text, self.last_status)
                 if local_intent is not None:
                     route = "local_intent"
+                    intent_kind = "device_command" if local_intent.device_commands else "local_text"
                     log.info(
-                        "INTENT session_id=%d intent=%s confidence=%.2f reply=%r",
+                        "INTENT session_id=%d kind=%s intent=%s confidence=%.2f reply=%r",
                         session_id,
+                        intent_kind,
                         local_intent.intent,
                         local_intent.confidence,
                         local_intent.reply,
@@ -273,6 +287,8 @@ class VoiceSessionRuntime:
                         return
                     self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", local_intent.emot_event))
                     self.send_msg(MSG_EXPR, struct.pack("<BI", local_intent.expression_id, 4000))
+                    for command in local_intent.device_commands:
+                        self.device_dispatcher.dispatch(command)
                     speak_text(local_intent.reply, local_intent.action)
                     return
 
@@ -319,7 +335,7 @@ class VoiceSessionRuntime:
             log.info(
                 "SESSAO session_id=%d route=%s dur=%.1fs samples=%d avg_rms=%.0f pcm_rms=%.0f peak=%d "
                 "stt=%s/%0.fms gain=%.1f peak_in=%.3f ns=%.2f logp=%.2f comp=%.2f "
-                "llm=%s/%s/%0.fms intent=%s texto=%r reason=%s motivo=%s",
+                "llm=%s/%s/%0.fms intent_kind=%s intent=%s texto=%r reason=%s motivo=%s",
                 session_id,
                 route,
                 duration_s,
@@ -337,6 +353,7 @@ class VoiceSessionRuntime:
                 llm_result.provider,
                 llm_result.model,
                 llm_result.elapsed_ms,
+                intent_kind,
                 local_intent.intent if local_intent else "none",
                 log_text,
                 end_reason,

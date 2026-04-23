@@ -2127,6 +2127,7 @@ Regras:
 
 **Dependências:** 12.14 concluída; protocolo bridge 12.1 estável
 **Hardware necessário:** Robô completo para validação de face/LED/motion/audio
+**Status:** em andamento
 
 **Contexto:** StackChan documenta comandos para controlar speaker, motor, RGB, câmera e bateria. O NoiseBot deve começar pelo que já existe no protocolo atual e só ampliar o firmware quando houver necessidade concreta.
 
@@ -2165,6 +2166,13 @@ Regras:
 - [ ] Comando não suportado loga `unsupported_device_command`.
 - [ ] 20 comandos locais consecutivos não deixam socket, sessão ou estado presos.
 - [ ] O bridge diferencia `intent_local_text` de `intent_device_command` nos logs.
+
+**Início 12.15 (2026-04-23):**
+
+- Dispatcher de comandos criado no bridge para o protocolo já existente: `MSG_GAZE`, `MSG_EXPR`, `MSG_ACTION`, `MSG_EMOT_EVENT` e `MSG_TEXT_SCROLL`.
+- Router local passou a mapear "olhe para esquerda/direita/cima/baixo", "fique feliz/curioso/sonolento" e "balance a cabeça" para comandos suportados sem LLM.
+- Volume e LED continuam reconhecidos como comandos locais, mas permanecem `unsupported_device_command` até o firmware expor contrato específico.
+- Logs de sessão agora incluem `intent_kind=local_text|device_command` para separar resposta textual local de comando físico.
 
 ---
 

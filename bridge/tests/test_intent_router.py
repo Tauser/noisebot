@@ -61,12 +61,27 @@ class IntentRouterTests(unittest.TestCase):
         self.assertEqual(result.device_commands[0].args["percent"], 100)
         self.assertFalse(result.device_commands[0].supported)
 
-    def test_movement_intent_is_recognized_as_unsupported_device_command(self):
+    def test_movement_intent_maps_to_supported_gaze_command(self):
         result = self.router.route("olhe para esquerda")
         self.assertIsNotNone(result)
         self.assertEqual(result.intent, "local_device_move")
         self.assertEqual(result.device_commands[0].args["direction"], "esquerda")
-        self.assertFalse(result.device_commands[0].supported)
+        self.assertTrue(result.device_commands[0].supported)
+
+    def test_expression_intent_maps_to_supported_expression_command(self):
+        result = self.router.route("fique feliz")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_expression")
+        self.assertEqual(result.device_commands[0].name, "set_expression")
+        self.assertEqual(result.device_commands[0].args["expression_id"], 1)
+        self.assertTrue(result.device_commands[0].supported)
+
+    def test_action_intent_maps_to_supported_action_command(self):
+        result = self.router.route("balance a cabeça")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_action")
+        self.assertEqual(result.device_commands[0].name, "play_action")
+        self.assertTrue(result.device_commands[0].supported)
 
     def test_unknown_text_returns_none(self):
         self.assertIsNone(self.router.route("fale sobre isaac newton"))

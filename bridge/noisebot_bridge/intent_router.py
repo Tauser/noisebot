@@ -106,6 +106,14 @@ class LocalIntentRouter:
                 emot_event=2,
             )
 
+        expression = self._expression_command(norm)
+        if expression is not None:
+            return expression
+
+        action = self._action_command(norm)
+        if action is not None:
+            return action
+
         movement = self._movement_command(norm)
         if movement is not None:
             return movement
@@ -134,7 +142,16 @@ class LocalIntentRouter:
 
     @staticmethod
     def _is_bridge_test(text: str) -> bool:
-        return _has_any(text, ("teste o bridge", "testar bridge", "voce esta me ouvindo", "esta me ouvindo"))
+        return _has_any(
+            text,
+            (
+                "teste o bridge",
+                "testar bridge",
+                "voce esta me ouvindo",
+                "esta me ouvindo",
+                "diga que esta ouvindo",
+            ),
+        )
 
     @staticmethod
     def _is_status(text: str) -> bool:
@@ -143,6 +160,54 @@ class LocalIntentRouter:
     @staticmethod
     def _is_network(text: str) -> bool:
         return _has_any(text, ("qual seu ip", "voce esta conectado", "esta conectado", "conexao", "rede"))
+
+    @staticmethod
+    def _expression_command(text: str) -> LocalIntentResult | None:
+        if not _has_any(text, ("fique", "fica", "expressao", "rosto", "cara")):
+            return None
+        expressions = {
+            "feliz": (1, "feliz"),
+            "curioso": (2, "curioso"),
+            "curiosa": (2, "curioso"),
+            "sonolento": (3, "sonolento"),
+            "sonolenta": (3, "sonolento"),
+            "focado": (4, "focado"),
+            "focada": (4, "focado"),
+            "surpreso": (6, "surpreso"),
+            "triste": (7, "triste"),
+        }
+        for key, (expression_id, label) in expressions.items():
+            if key in text:
+                return LocalIntentResult(
+                    intent="local_device_expression",
+                    confidence=0.84,
+                    reply=f"Pronto, expressão {label}.",
+                    expression_id=expression_id,
+                    action=0,
+                    emot_event=2,
+                    device_commands=(
+                        DeviceCommand(
+                            "set_expression",
+                            {"expression_id": expression_id, "duration_ms": 4000},
+                            supported=True,
+                        ),
+                    ),
+                )
+        return None
+
+    @staticmethod
+    def _action_command(text: str) -> LocalIntentResult | None:
+        if _has_any(text, ("balance a cabeca", "balanca a cabeca", "mexa a cabeca", "cumprimente")):
+            return LocalIntentResult(
+                intent="local_device_action",
+                confidence=0.82,
+                reply="Claro.",
+                expression_id=2,
+                action=0,
+                emot_event=2,
+                device_commands=(DeviceCommand("play_action", {"action_id": 4}, supported=True),),
+            )
+        return None
 
     @staticmethod
     def _movement_command(text: str) -> LocalIntentResult | None:
@@ -159,11 +224,11 @@ class LocalIntentRouter:
                 return LocalIntentResult(
                     intent="local_device_move",
                     confidence=0.82,
-                    reply=f"Entendi. Ainda estou ligando o controle de olhar para {direction}.",
+                    reply=f"Olhando para {direction}.",
                     expression_id=2,
                     action=0,
                     emot_event=2,
-                    device_commands=(DeviceCommand("look", {"direction": direction}, supported=False),),
+                    device_commands=(DeviceCommand("look", {"direction": direction}, supported=True),),
                 )
         return None
 

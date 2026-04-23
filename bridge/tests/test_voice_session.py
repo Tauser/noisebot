@@ -2,11 +2,11 @@ import unittest
 
 import numpy as np
 
-from noisebot_bridge.protocol import MSG_SAY, decode_frames
+from noisebot_bridge.protocol import MSG_GAZE, MSG_SAY, decode_frames
 from noisebot_bridge.stt import SttResult
 from noisebot_bridge.transport import NullTransport
 from noisebot_bridge.voice_session import VoiceSessionRuntime, VoiceSnapshot
-from noisebot_bridge.intent_router import LocalIntentResult
+from noisebot_bridge.intent_router import DeviceCommand, LocalIntentResult
 
 
 class FakeStt:
@@ -74,6 +74,19 @@ class FakeIntentRouter:
         )
 
 
+class FakeDeviceIntentRouter:
+    def route(self, text, status=None):
+        return LocalIntentResult(
+            intent="local_device_move",
+            confidence=0.9,
+            reply="Olhando para esquerda.",
+            expression_id=2,
+            action=0,
+            emot_event=2,
+            device_commands=(DeviceCommand("look", {"direction": "esquerda"}, supported=True),),
+        )
+
+
 class FakeTts:
     def synthesize(self, text):
         return np.zeros(256, dtype=np.int16)
@@ -126,6 +139,32 @@ class VoiceSessionTests(unittest.TestCase):
 
         self.assertEqual(llm.calls, 0)
         self.assertGreaterEqual(len(transport.sent), 4)
+
+    def test_real_mode_device_intent_dispatches_command(self):
+        transport = NullTransport()
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            NoneLlm(),
+            FakeTts(),
+            dry_run=False,
+            intent_router=FakeDeviceIntentRouter(),
+        )
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=1200.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        runtime.handle_voice_end(snapshot)
+
+        decoded = []
+        for _, frame in transport.sent:
+            decoded.extend(decode_frames(bytearray(frame)))
+        self.assertIn(MSG_GAZE, [msg_type for msg_type, _ in decoded])
 
     def test_local_intent_tts_failure_sends_ack(self):
         transport = NullTransport()
