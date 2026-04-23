@@ -271,7 +271,15 @@ class VoiceSessionRuntime:
 
             if not self.llm or not self.llm.ready:
                 discard_reason = "llm_indisponivel"
-                ack_once()
+                route = "error"
+                if self.dry_run:
+                    ack_once()
+                    return
+                self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", 2))
+                self.send_msg(MSG_EXPR, struct.pack("<BI", 2, 4000))
+                tts_pcm = self.tts.synthesize("Eu entendi, mas estou sem acesso ao cérebro online agora.")
+                self.send_msg(MSG_ACTION, struct.pack("<I", 0))
+                self.send_say_pcm(tts_pcm)
                 return
 
             route = "llm"

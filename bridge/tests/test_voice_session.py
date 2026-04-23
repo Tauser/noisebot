@@ -37,6 +37,31 @@ class NoneLlm:
         raise AssertionError("LLM nao deveria ser chamada")
 
 
+class ReadyLlm:
+    ready = True
+
+    def __init__(self):
+        self.calls = 0
+
+    def generate(self, text, status):
+        self.calls += 1
+        from noisebot_bridge.llm import LlmResult
+
+        return LlmResult(
+            reply="Resposta pela LLM.",
+            expression_id=2,
+            action=0,
+            emot_event=2,
+            provider="fake",
+            model="fake",
+        )
+
+
+class EmptyIntentRouter:
+    def route(self, text, status=None):
+        return None
+
+
 class FakeIntentRouter:
     def route(self, text, status=None):
         return LocalIntentResult(
@@ -95,6 +120,54 @@ class VoiceSessionTests(unittest.TestCase):
         runtime.handle_voice_end(snapshot)
 
         self.assertEqual(llm.calls, 0)
+        self.assertGreaterEqual(len(transport.sent), 4)
+
+    def test_unknown_text_uses_llm_when_available(self):
+        transport = NullTransport()
+        llm = ReadyLlm()
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            llm,
+            FakeTts(),
+            dry_run=False,
+            intent_router=EmptyIntentRouter(),
+        )
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=2000.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        runtime.handle_voice_end(snapshot)
+
+        self.assertEqual(llm.calls, 1)
+        self.assertGreaterEqual(len(transport.sent), 4)
+
+    def test_unknown_text_without_llm_speaks_degraded_error(self):
+        transport = NullTransport()
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            NoneLlm(),
+            FakeTts(),
+            dry_run=False,
+            intent_router=EmptyIntentRouter(),
+        )
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=2000.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        runtime.handle_voice_end(snapshot)
+
         self.assertGreaterEqual(len(transport.sent), 4)
 
 

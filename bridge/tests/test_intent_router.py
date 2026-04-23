@@ -44,6 +44,30 @@ class IntentRouterTests(unittest.TestCase):
         self.assertEqual(result.intent, "local_status")
         self.assertIn("saúde 99 de 100", result.reply)
 
+    def test_bridge_test_intent(self):
+        result = self.router.route("você está me ouvindo?")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_bridge_test")
+
+    def test_network_status_intent(self):
+        result = self.router.route("qual seu ip")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_network_status")
+
+    def test_volume_intent_clamps_percent(self):
+        result = self.router.route("coloque o volume em 150%")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_volume")
+        self.assertEqual(result.device_commands[0].args["percent"], 100)
+        self.assertFalse(result.device_commands[0].supported)
+
+    def test_movement_intent_is_recognized_as_unsupported_device_command(self):
+        result = self.router.route("olhe para esquerda")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_move")
+        self.assertEqual(result.device_commands[0].args["direction"], "esquerda")
+        self.assertFalse(result.device_commands[0].supported)
+
     def test_unknown_text_returns_none(self):
         self.assertIsNone(self.router.route("fale sobre isaac newton"))
 
