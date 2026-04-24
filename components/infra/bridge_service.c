@@ -52,9 +52,10 @@ static const char BRIDGE_HELLO_V2[] =
     "{\"protocol\":\"noisebot-bridge\",\"version\":2,\"role\":\"firmware\","
     "\"audio\":{\"format\":\"pcm16\",\"sample_rate\":16000,\"channels\":1,"
     "\"chunk_samples\":256},\"rx\":[\"say\",\"expr\",\"action\","
-    "\"emot_event\",\"gaze\",\"text_scroll\",\"hello\"],\"tx\":[\"audio_chunk\","
-    "\"event\",\"status\",\"hello\"],\"features\":[\"voice_events\","
-    "\"status\",\"device_commands_v1\"]}";
+    "\"emot_event\",\"gaze\",\"text_scroll\",\"hello\",\"session\"],"
+    "\"tx\":[\"audio_chunk\",\"event\",\"status\",\"hello\",\"session\"],"
+    "\"features\":[\"voice_events\",\"status\",\"device_commands_v1\","
+    "\"session_events_v2\"]}";
 
 /* ── TX queue ─────────────────────────────────────────────────────────────── */
 
@@ -232,6 +233,10 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
                 NB_LOGI(TAG, "HELLO v2 recebido — capabilities enviadas");
             }
         }
+        break;
+
+    case NB_BRIDGE_MSG_SESSION:
+        NB_LOGD(TAG, "SESSION v2 recebido do bridge (len=%u)", data_len);
         break;
 
     case NB_BRIDGE_MSG_SAY:

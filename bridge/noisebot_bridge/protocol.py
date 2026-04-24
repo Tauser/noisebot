@@ -15,6 +15,7 @@ MSG_HELLO = 0x00
 MSG_AUDIO_CHUNK = 0x01
 MSG_EVENT = 0x02
 MSG_STATUS = 0x03
+MSG_SESSION = 0x04
 MSG_SAY = 0x10
 MSG_EXPR = 0x11
 MSG_ACTION = 0x12
@@ -35,10 +36,16 @@ BRIDGE_HELLO_CAPABILITIES = {
         "channels": 1,
         "chunk_samples": 256,
     },
-    "rx": ["audio_chunk", "event", "status", "hello"],
-    "tx": ["say", "expr", "action", "emot_event", "gaze", "text_scroll", "hello"],
-    "features": ["local_intents", "device_commands", "session_metrics"],
+    "rx": ["audio_chunk", "event", "status", "hello", "session"],
+    "tx": ["say", "expr", "action", "emot_event", "gaze", "text_scroll", "hello", "session"],
+    "features": ["local_intents", "device_commands", "session_metrics", "session_events_v2"],
 }
+
+SESSION_WAKE_DETECTED = "WAKE_DETECTED"
+SESSION_LISTEN_START = "LISTEN_START"
+SESSION_LISTEN_STOP = "LISTEN_STOP"
+SESSION_SESSION_DONE = "SESSION_DONE"
+SESSION_SESSION_ERROR = "SESSION_ERROR"
 
 
 def crc8(data: bytes) -> int:
@@ -77,6 +84,27 @@ def decode_hello_payload(payload: bytes) -> dict[str, Any]:
     version = decoded.get("version")
     if not isinstance(version, int) or version < 1:
         raise ValueError("HELLO payload sem versao valida")
+    return decoded
+
+
+def encode_session_payload(event: str, session_id: int, **fields: Any) -> bytes:
+    payload = {"event": event, "session_id": session_id, **fields}
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+def decode_session_payload(payload: bytes) -> dict[str, Any]:
+    try:
+        decoded = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("SESSION payload invalido") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError("SESSION payload deve ser objeto JSON")
+    event = decoded.get("event")
+    session_id = decoded.get("session_id")
+    if not isinstance(event, str) or not event:
+        raise ValueError("SESSION payload sem evento valido")
+    if not isinstance(session_id, int) or session_id < 0:
+        raise ValueError("SESSION payload sem session_id valido")
     return decoded
 
 

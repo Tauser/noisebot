@@ -84,6 +84,7 @@ typedef enum {
     NB_BRIDGE_MSG_AUDIO_CHUNK  = 0x01,   /* PCM int16[], 256 samples          */
     NB_BRIDGE_MSG_EVENT        = 0x02,   /* nb_event_type_t + data[8]         */
     NB_BRIDGE_MSG_STATUS       = 0x03,   /* estado geral do robot             */
+    NB_BRIDGE_MSG_SESSION      = 0x04,   /* evento de sessão v2 em JSON       */
     /* Bridge → ESP32 */
     NB_BRIDGE_MSG_SAY          = 0x10,   /* chunk PCM int16[], 256 samples    */
     NB_BRIDGE_MSG_EXPR         = 0x11,   /* expressão + duração               */

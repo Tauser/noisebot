@@ -116,7 +116,7 @@ class VoiceSessionRuntime:
             return "cancelled"
         return "unknown"
 
-    def begin_voice(self):
+    def begin_voice(self) -> int:
         with self._lock:
             if self.streaming:
                 log.warning("VOICE_START recebido durante sessão ativa — resetando sessão anterior")
@@ -131,6 +131,7 @@ class VoiceSessionRuntime:
             session_id = self._session_id
             self.arm_voice_timer()
         log.info("VOICE_START recebido session_id=%d", session_id)
+        return session_id
 
     def append_audio_chunk(self, payload: bytes):
         with self._lock:

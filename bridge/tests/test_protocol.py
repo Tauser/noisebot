@@ -3,10 +3,13 @@ import unittest
 from noisebot_bridge.protocol import (
     MSG_HELLO,
     PROTOCOL_VERSION,
+    SESSION_LISTEN_START,
     decode_frames,
     decode_hello_payload,
+    decode_session_payload,
     encode_frame,
     encode_hello_payload,
+    encode_session_payload,
 )
 
 
@@ -50,6 +53,17 @@ class ProtocolTests(unittest.TestCase):
     def test_invalid_hello_payload_is_rejected(self):
         with self.assertRaises(ValueError):
             decode_hello_payload(b"{")
+
+    def test_session_payload_v2_round_trip(self):
+        payload = encode_session_payload(SESSION_LISTEN_START, 7, source="wake_word")
+        decoded = decode_session_payload(payload)
+        self.assertEqual(decoded["event"], SESSION_LISTEN_START)
+        self.assertEqual(decoded["session_id"], 7)
+        self.assertEqual(decoded["source"], "wake_word")
+
+    def test_invalid_session_payload_is_rejected(self):
+        with self.assertRaises(ValueError):
+            decode_session_payload(b'{"event":"","session_id":1}')
 
 
 if __name__ == "__main__":

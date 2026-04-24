@@ -9,11 +9,17 @@ from .protocol import (
     MSG_HELLO,
     MSG_AUDIO_CHUNK,
     MSG_EVENT,
+    MSG_SESSION,
     MSG_STATUS,
     NB_EVT_VOICE_ACTIVITY_END,
     NB_EVT_VOICE_ACTIVITY_START,
+    SESSION_LISTEN_START,
+    SESSION_LISTEN_STOP,
+    SESSION_SESSION_DONE,
+    SESSION_WAKE_DETECTED,
     decode_frames,
     decode_hello_payload,
+    decode_session_payload,
     encode_frame,
     encode_hello_payload,
 )
@@ -50,6 +56,21 @@ class BridgeRuntime:
             )
             return
 
+        if msg_type == MSG_SESSION:
+            try:
+                event = decode_session_payload(payload)
+            except ValueError as exc:
+                log.warning("SESSION v2 invalido — ignorando: %s", exc)
+                return
+            log.info(
+                "SESSION_EVENT event=%s session_id=%d reason=%s source=%s",
+                event.get("event"),
+                event.get("session_id"),
+                event.get("reason", "none"),
+                event.get("source", "firmware"),
+            )
+            return
+
         if msg_type == MSG_AUDIO_CHUNK:
             self.set_state("receiving_audio")
             self.voice.append_audio_chunk(payload)
@@ -62,13 +83,16 @@ class BridgeRuntime:
                 reason_code = struct.unpack_from("<I", payload, 4)[0] if len(payload) >= 8 else None
                 end_reason = self.voice.voice_end_reason_name(reason_code)
                 log.info("VOICE_END recebido — processando reason=%s session_id=%d", end_reason, self.voice.current_session_id)
+                self.log_session_event(SESSION_LISTEN_STOP, self.voice.current_session_id, reason=end_reason)
                 snapshot = self.voice.snapshot_voice_session(end_reason=end_reason)
                 if snapshot is not None:
                     self.set_state("transcribing")
                     threading.Thread(target=self._handle_voice_end_thread, args=(snapshot,), daemon=True).start()
             elif evt_type == NB_EVT_VOICE_ACTIVITY_START:
                 self.set_state("receiving_audio")
-                self.voice.begin_voice()
+                session_id = self.voice.begin_voice()
+                self.log_session_event(SESSION_WAKE_DETECTED, session_id, source="voice_start")
+                self.log_session_event(SESSION_LISTEN_START, session_id, source="voice_start")
             else:
                 log.debug("EVENT ignorado evt_type=%d", evt_type)
             return
@@ -85,8 +109,14 @@ class BridgeRuntime:
                 "health": health,
             }
 
+    def log_session_event(self, event: str, session_id: int, **fields):
+        reason = fields.get("reason", "none")
+        source = fields.get("source", "bridge")
+        log.info("SESSION_EVENT event=%s session_id=%d reason=%s source=%s", event, session_id, reason, source)
+
     def _handle_voice_end_thread(self, snapshot):
         self.voice.handle_voice_end(snapshot)
+        self.log_session_event(SESSION_SESSION_DONE, snapshot.session_id, reason=snapshot.end_reason)
         self.set_state("idle")
 
     def run(self):
