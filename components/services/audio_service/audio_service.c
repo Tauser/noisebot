@@ -95,8 +95,8 @@ extern void vad_destroy(nb_esp_vad_handle_t handle);
  * primeira fala; depois que começou, encerra por silêncio pós-fala ou teto de
  * segurança para ruído contínuo. */
 #define LISTEN_WAIT_SPEECH_TIMEOUT_MS   8000U
-#define LISTEN_END_SILENCE_MS           1400U
-#define LISTEN_EARLY_END_SILENCE_MS     2400U
+#define LISTEN_END_SILENCE_MS            900U
+#define LISTEN_EARLY_END_SILENCE_MS     1300U
 #define LISTEN_EARLY_GRACE_MS           6000U
 #define LISTEN_MAX_SPEECH_MS           30000U
 #define BRIDGE_TX_FAIL_ABORT_COUNT     4U
