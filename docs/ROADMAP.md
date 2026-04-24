@@ -2345,7 +2345,7 @@ Metas de produto:
 
 **Contexto:** XiaoZhi usa um contrato explícito de conversa (`hello`, `listen/detect`, `listen/start`, `listen/stop`) e audio channel sob demanda. O NoiseBot hoje usa um protocolo funcional, mas ainda muito próximo de PCM/eventos de protótipo. Esta etapa define uma versão v2 sem quebrar a v1.
 
-**Status atual:** implementada em software; aguardando validação de hardware do envio `MSG_SESSION` no commit `9f86b54`. O bridge mantém handshake v1 vazio e anuncia `HELLO` v2 em runtime; firmware atualizado responde com capabilities v2 quando recebe esse `HELLO`, preservando compatibilidade com bridge v1. A telemetria v2 de sessão já registra e envia via `MSG_SESSION` os eventos `WAKE_DETECTED`, `LISTEN_START`, `LISTEN_STOP`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `TTS_STOP`, `SESSION_DONE` e `SESSION_ERROR`; o firmware recebe/loga de forma passiva.
+**Status atual:** concluída e validada. O bridge mantém handshake v1 vazio e anuncia `HELLO` v2 em runtime; firmware atualizado responde com capabilities v2 quando recebe esse `HELLO`, preservando compatibilidade com bridge v1. A telemetria v2 de sessão já registra e envia via `MSG_SESSION` os eventos `WAKE_DETECTED`, `LISTEN_START`, `LISTEN_STOP`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `TTS_STOP`, `SESSION_DONE` e `SESSION_ERROR`; o firmware recebe/loga de forma passiva.
 
 **O que entra:**
 
@@ -2384,16 +2384,18 @@ Metas de produto:
 - [x] Uma sessão completa tem `WAKE_DETECTED -> LISTEN_START -> LISTEN_STOP -> SESSION_DONE`.
 - [x] Queda de bridge durante sessão gera `SESSION_ERROR` nomeado e estado limpo.
 - [x] O protocolo v2 pode ser testado em unidade sem hardware.
-- [ ] Firmware loga `MSG_SESSION` passivo em hardware após build/flash do commit `9f86b54`.
+- [x] Firmware loga `MSG_SESSION` passivo em hardware após build/flash do commit `9f86b54`.
 
 ---
 
 ### Etapa 12.20 — Robot Tools v2 e Schemas de Segurança
 
-**Dependências:** 12.15 validada; 12.19 iniciada
+**Dependências:** 12.15 validada; 12.19 concluída
 **Hardware necessário:** Robô para validação física
 
 **Contexto:** StackChan expõe capacidades do robô como tools com nomes e descrições claras. O NoiseBot já tem intents locais e comandos básicos, mas precisa formalizar ferramentas com schema, limites e integração segura com o firmware.
+
+**Status atual:** iniciada. Primeiro recorte implementa catálogo canônico no bridge, aliases para os comandos locais existentes e validação de schema antes de qualquer envio ao firmware.
 
 **O que entra:**
 
@@ -2422,7 +2424,7 @@ Metas de produto:
 
 - [ ] 10 comandos válidos executam sem LLM.
 - [ ] 10 comandos inválidos são rejeitados antes de chegar ao firmware.
-- [ ] Logs diferenciam `tool_call`, `tool_result`, `tool_rejected`.
+- [x] Logs diferenciam `tool_call`, `tool_result`, `tool_rejected`.
 - [ ] Tool de movimento não passa por cima de `motion_safety`.
 - [ ] Lembretes locais funcionam sem LLM.
 

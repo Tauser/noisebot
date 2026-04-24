@@ -21,6 +21,19 @@ class DeviceCommandDispatcherTests(unittest.TestCase):
         self.assertEqual(frames[-1][0], MSG_GAZE)
         self.assertLess(x, 0.0)
         self.assertEqual(y, 0.0)
+        self.assertEqual(result.name, "noisebot.robot.set_gaze")
+
+    def test_canonical_gaze_tool_sends_msg_gaze(self):
+        result = self.dispatcher.dispatch(
+            DeviceCommand("noisebot.robot.set_gaze", {"direction": "direita"}, supported=True)
+        )
+
+        frames = decode_frames(bytearray(self.transport.sent[-1][1]))
+        x, y = struct.unpack("<ff", frames[-1][1])
+        self.assertTrue(result.executed)
+        self.assertEqual(frames[-1][0], MSG_GAZE)
+        self.assertGreater(x, 0.0)
+        self.assertEqual(y, 0.0)
 
     def test_supported_expression_command_sends_msg_expr(self):
         result = self.dispatcher.dispatch(
@@ -48,6 +61,34 @@ class DeviceCommandDispatcherTests(unittest.TestCase):
 
         self.assertFalse(result.supported)
         self.assertFalse(result.executed)
+        self.assertEqual(self.transport.sent, [])
+
+    def test_invalid_gaze_direction_is_rejected_before_firmware(self):
+        result = self.dispatcher.dispatch(DeviceCommand("look", {"direction": "diagonal"}, supported=True))
+
+        self.assertTrue(result.supported)
+        self.assertFalse(result.executed)
+        self.assertEqual(result.error, "invalid_enum:direction")
+        self.assertEqual(self.transport.sent, [])
+
+    def test_expression_out_of_range_is_rejected_before_firmware(self):
+        result = self.dispatcher.dispatch(
+            DeviceCommand("set_expression", {"expression_id": 99, "duration_ms": 1200}, supported=True)
+        )
+
+        self.assertTrue(result.supported)
+        self.assertFalse(result.executed)
+        self.assertEqual(result.error, "above_max:expression_id")
+        self.assertEqual(self.transport.sent, [])
+
+    def test_future_led_tool_is_known_but_rejected_before_firmware(self):
+        result = self.dispatcher.dispatch(
+            DeviceCommand("noisebot.robot.set_led_mood", {"mood": "calmo"}, supported=True)
+        )
+
+        self.assertTrue(result.supported)
+        self.assertFalse(result.executed)
+        self.assertEqual(result.error, "unsupported_tool")
         self.assertEqual(self.transport.sent, [])
 
 

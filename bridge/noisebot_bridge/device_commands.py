@@ -6,6 +6,7 @@ import struct
 
 from .intent_router import DeviceCommand
 from .protocol import MSG_ACTION, MSG_EMOT_EVENT, MSG_EXPR, MSG_GAZE, MSG_TEXT_SCROLL
+from .tools import validate_tool_call
 
 log = logging.getLogger("noisebot_bridge.device_commands")
 
@@ -24,32 +25,52 @@ class DeviceCommandDispatcher:
 
     def dispatch(self, command: DeviceCommand) -> DeviceCommandResult:
         if not command.supported:
-            log.info("unsupported_device_command name=%s args=%r", command.name, command.args)
+            log.info("tool_rejected name=%s reason=unsupported_intent_command args=%r", command.name, command.args)
             return DeviceCommandResult(command.name, supported=False, executed=False)
 
-        try:
-            if command.name == "look":
-                self._look(command.args.get("direction", "center"))
-            elif command.name == "set_expression":
-                self._set_expression(
-                    int(command.args.get("expression_id", 2)),
-                    int(command.args.get("duration_ms", 4000)),
-                )
-            elif command.name == "play_action":
-                self._play_action(int(command.args.get("action_id", 0)))
-            elif command.name == "emit_emotion_event":
-                self._emit_emotion_event(int(command.args.get("event_id", 2)))
-            elif command.name == "scroll_text":
-                self._scroll_text(str(command.args.get("text", "")))
-            else:
-                log.info("unsupported_device_command name=%s args=%r", command.name, command.args)
-                return DeviceCommandResult(command.name, supported=False, executed=False)
-        except Exception as e:
-            log.warning("device_command_failed name=%s error=%s", command.name, e)
-            return DeviceCommandResult(command.name, supported=True, executed=False, error=str(e))
+        validation = validate_tool_call(command.name, command.args)
+        if not validation.ok:
+            log.info(
+                "tool_rejected name=%s reason=%s args=%r",
+                validation.tool_name,
+                validation.reason,
+                command.args,
+            )
+            return DeviceCommandResult(
+                validation.tool_name,
+                supported=validation.reason != "unknown_tool",
+                executed=False,
+                error=validation.reason,
+            )
 
-        log.info("device_command_executed name=%s args=%r", command.name, command.args)
-        return DeviceCommandResult(command.name, supported=True, executed=True)
+        tool_name = validation.tool_name
+        command_name = validation.command_name
+        args = validation.args
+        log.info("tool_call name=%s args=%r", tool_name, args)
+
+        try:
+            if command_name == "look":
+                self._look(str(args["direction"]))
+            elif command_name == "set_expression":
+                self._set_expression(
+                    int(args["expression_id"]),
+                    int(args.get("duration_ms", 4000)),
+                )
+            elif command_name == "play_action":
+                self._play_action(int(args["action_id"]))
+            elif command_name == "emit_emotion_event":
+                self._emit_emotion_event(int(args["event_id"]))
+            elif command_name == "scroll_text":
+                self._scroll_text(str(args["text"]))
+            else:
+                log.info("tool_rejected name=%s reason=no_firmware_command args=%r", tool_name, args)
+                return DeviceCommandResult(tool_name, supported=True, executed=False, error="no_firmware_command")
+        except Exception as e:
+            log.warning("tool_result name=%s status=error error=%s", tool_name, e)
+            return DeviceCommandResult(tool_name, supported=True, executed=False, error=str(e))
+
+        log.info("tool_result name=%s status=ok", tool_name)
+        return DeviceCommandResult(tool_name, supported=True, executed=True)
 
     def _look(self, direction: str):
         gaze = {
@@ -64,15 +85,13 @@ class DeviceCommandDispatcher:
         self.send_msg(MSG_GAZE, struct.pack("<ff", x, y))
 
     def _set_expression(self, expression_id: int, duration_ms: int):
-        expression_id = max(0, min(255, expression_id))
-        duration_ms = max(0, duration_ms)
         self.send_msg(MSG_EXPR, struct.pack("<BI", expression_id, duration_ms))
 
     def _play_action(self, action_id: int):
-        self.send_msg(MSG_ACTION, struct.pack("<I", max(0, action_id)))
+        self.send_msg(MSG_ACTION, struct.pack("<I", action_id))
 
     def _emit_emotion_event(self, event_id: int):
-        self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", max(0, event_id)))
+        self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", event_id))
 
     def _scroll_text(self, text: str):
         payload = text.encode("utf-8")[:160]
