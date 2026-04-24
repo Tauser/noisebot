@@ -140,6 +140,30 @@ class VoiceSessionTests(unittest.TestCase):
         self.assertEqual(llm.calls, 0)
         self.assertGreaterEqual(len(transport.sent), 4)
 
+    def test_llm_unavailable_returns_session_error_reason(self):
+        transport = NullTransport()
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            NoneLlm(),
+            FakeTts(),
+            dry_run=False,
+            intent_router=EmptyIntentRouter(),
+        )
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=2000.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        result = runtime.handle_voice_end(snapshot)
+
+        self.assertEqual(result.error_reason, "llm_indisponivel")
+        self.assertEqual(result.route, "error")
+
     def test_real_mode_device_intent_dispatches_command(self):
         transport = NullTransport()
         runtime = VoiceSessionRuntime(

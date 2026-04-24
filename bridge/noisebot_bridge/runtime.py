@@ -15,6 +15,7 @@ from .protocol import (
     NB_EVT_VOICE_ACTIVITY_START,
     SESSION_LISTEN_START,
     SESSION_LISTEN_STOP,
+    SESSION_SESSION_ERROR,
     SESSION_SESSION_DONE,
     SESSION_WAKE_DETECTED,
     decode_frames,
@@ -34,7 +35,15 @@ class BridgeRuntime:
         self.rx_buf = bytearray()
         self.state = "idle"
         self.peer_capabilities = None
-        self.voice = VoiceSessionRuntime(transport, stt, llm, tts, dry_run=dry_run, intent_router=intent_router)
+        self.voice = VoiceSessionRuntime(
+            transport,
+            stt,
+            llm,
+            tts,
+            dry_run=dry_run,
+            intent_router=intent_router,
+            session_event_cb=self.log_session_event,
+        )
 
     def set_state(self, state: str):
         if self.state != state:
@@ -115,8 +124,10 @@ class BridgeRuntime:
         log.info("SESSION_EVENT event=%s session_id=%d reason=%s source=%s", event, session_id, reason, source)
 
     def _handle_voice_end_thread(self, snapshot):
-        self.voice.handle_voice_end(snapshot)
-        self.log_session_event(SESSION_SESSION_DONE, snapshot.session_id, reason=snapshot.end_reason)
+        result = self.voice.handle_voice_end(snapshot)
+        if result.error_reason is not None:
+            self.log_session_event(SESSION_SESSION_ERROR, result.session_id, reason=result.error_reason)
+        self.log_session_event(SESSION_SESSION_DONE, result.session_id, reason=result.end_reason)
         self.set_state("idle")
 
     def run(self):
@@ -144,6 +155,12 @@ class BridgeRuntime:
                 raise
             except Exception as e:
                 log.error("Erro de I/O: %s", e)
+                if self.voice.current_session_id > 0:
+                    self.log_session_event(
+                        SESSION_SESSION_ERROR,
+                        self.voice.current_session_id,
+                        reason="transport_io_error",
+                    )
                 self.voice.cancel_voice_timer()
                 break
         log.info("Sessão bridge encerrada")

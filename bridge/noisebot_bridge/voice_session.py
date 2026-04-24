@@ -39,6 +39,15 @@ class VoiceSnapshot:
     end_reason: str
 
 
+@dataclass
+class VoiceSessionResult:
+    session_id: int
+    end_reason: str
+    route: str
+    outcome: str
+    error_reason: str | None = None
+
+
 class VoiceSessionRuntime:
     def __init__(
         self,
@@ -49,6 +58,7 @@ class VoiceSessionRuntime:
         dry_run: bool = False,
         intent_router=None,
         device_dispatcher=None,
+        session_event_cb=None,
     ):
         self.transport = transport
         self.stt = stt
@@ -57,6 +67,7 @@ class VoiceSessionRuntime:
         self.dry_run = dry_run
         self.intent_router = intent_router
         self.device_dispatcher = device_dispatcher or DeviceCommandDispatcher(self.send_msg)
+        self.session_event_cb = session_event_cb
         self.audio_buf: list[np.ndarray] = []
         self.streaming = False
         self.last_status: dict = {}
@@ -102,7 +113,14 @@ class VoiceSessionRuntime:
         snapshot = self.snapshot_voice_session(session_id, end_reason="bridge_watchdog_timeout")
         if snapshot is not None:
             log.warning("VOICE timeout — forçando VOICE_END após %.0fs session_id=%d", VOICE_TIMEOUT_S, session_id)
-            threading.Thread(target=self.handle_voice_end, args=(snapshot,), daemon=True).start()
+            threading.Thread(target=self._handle_timeout_voice_end, args=(snapshot,), daemon=True).start()
+
+    def _handle_timeout_voice_end(self, snapshot: VoiceSnapshot):
+        result = self.handle_voice_end(snapshot)
+        if self.session_event_cb is not None:
+            if result.error_reason is not None:
+                self.session_event_cb("SESSION_ERROR", result.session_id, reason=result.error_reason, source="bridge_watchdog")
+            self.session_event_cb("SESSION_DONE", result.session_id, reason=result.end_reason, source="bridge_watchdog")
 
     @staticmethod
     def voice_end_reason_name(reason_code: int | None) -> str:
@@ -179,7 +197,7 @@ class VoiceSessionRuntime:
             self._session_audio_seen = False
             return snapshot
 
-    def handle_voice_end(self, snapshot: VoiceSnapshot):
+    def handle_voice_end(self, snapshot: VoiceSnapshot) -> VoiceSessionResult:
         discard_reason = None
         silent_ack_sent = False
         route = "discard"
@@ -330,6 +348,13 @@ class VoiceSessionRuntime:
                 pass
         finally:
             outcome = "ok" if discard_reason is None else f"descartado:{discard_reason}"
+            error_reason = None
+            if discard_reason == "exception":
+                error_reason = "pipeline_exception"
+            elif end_reason == "bridge_watchdog_timeout":
+                error_reason = "bridge_watchdog_timeout"
+            elif route == "error":
+                error_reason = discard_reason or "route_error"
             log_text = text or ""
             if len(log_text) > LOG_TEXT_MAX_CHARS:
                 log_text = log_text[:LOG_TEXT_MAX_CHARS] + "..."
@@ -359,4 +384,11 @@ class VoiceSessionRuntime:
                 log_text,
                 end_reason,
                 outcome,
+            )
+            return VoiceSessionResult(
+                session_id=session_id,
+                end_reason=end_reason,
+                route=route,
+                outcome=outcome,
+                error_reason=error_reason,
             )
