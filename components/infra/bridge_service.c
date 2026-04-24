@@ -14,6 +14,7 @@
 #include "freertos/queue.h"
 
 #include "esp_log.h"
+#include "esp_err.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
 #include "driver/usb_serial_jtag.h"
@@ -46,6 +47,14 @@
 /* tamanho máximo de frame: maior payload é AUDIO_CHUNK = 256×2 = 512 bytes */
 #define FRAME_MAX_PAYLOAD  (NB_BRIDGE_AUDIO_CHUNK_SAMPLES * 2u)
 #define FRAME_MAX_SIZE     (FRAME_OVERHEAD + FRAME_MAX_PAYLOAD)
+
+static const char BRIDGE_HELLO_V2[] =
+    "{\"protocol\":\"noisebot-bridge\",\"version\":2,\"role\":\"firmware\","
+    "\"audio\":{\"format\":\"pcm16\",\"sample_rate\":16000,\"channels\":1,"
+    "\"chunk_samples\":256},\"rx\":[\"say\",\"expr\",\"action\","
+    "\"emot_event\",\"gaze\",\"text_scroll\",\"hello\"],\"tx\":[\"audio_chunk\","
+    "\"event\",\"status\",\"hello\"],\"features\":[\"voice_events\","
+    "\"status\",\"device_commands_v1\"]}";
 
 /* ── TX queue ─────────────────────────────────────────────────────────────── */
 
@@ -200,6 +209,9 @@ static void tx_queue_flush(void)
     s_tx_flush_seq++;
 }
 
+static esp_err_t enqueue_frame(nb_bridge_msg_type_t type,
+                               const void *payload, uint16_t payload_len);
+
 /* ── Dispatch mensagem recebida do bridge ─────────────────────────────────── */
 
 static void dispatch_incoming(nb_bridge_msg_type_t type,
@@ -210,7 +222,16 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
     switch (type) {
 
     case NB_BRIDGE_MSG_HELLO:
-        /* handshake reply — já processado na seleção de transporte, ignorar aqui */
+        if (data_len > 0u) {
+            esp_err_t err = enqueue_frame(NB_BRIDGE_MSG_HELLO,
+                                          BRIDGE_HELLO_V2,
+                                          (uint16_t)strlen(BRIDGE_HELLO_V2));
+            if (err != ESP_OK) {
+                NB_LOGW(TAG, "HELLO v2 resposta falhou: %s", esp_err_to_name(err));
+            } else {
+                NB_LOGI(TAG, "HELLO v2 recebido — capabilities enviadas");
+            }
+        }
         break;
 
     case NB_BRIDGE_MSG_SAY:

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 import logging
+from typing import Any
 
 log = logging.getLogger("noisebot_bridge.protocol")
 
 SOF = 0xAB
 FRAME_OVERHEAD = 5  # SOF(1)+LEN(2)+TYPE(1)+CRC(1)
+PROTOCOL_NAME = "noisebot-bridge"
+PROTOCOL_VERSION = 2
 
 MSG_HELLO = 0x00
 MSG_AUDIO_CHUNK = 0x01
@@ -20,6 +24,21 @@ MSG_TEXT_SCROLL = 0x15
 
 NB_EVT_VOICE_ACTIVITY_START = 9
 NB_EVT_VOICE_ACTIVITY_END = 10
+
+BRIDGE_HELLO_CAPABILITIES = {
+    "protocol": PROTOCOL_NAME,
+    "version": PROTOCOL_VERSION,
+    "role": "bridge",
+    "audio": {
+        "format": "pcm16",
+        "sample_rate": 16000,
+        "channels": 1,
+        "chunk_samples": 256,
+    },
+    "rx": ["audio_chunk", "event", "status", "hello"],
+    "tx": ["say", "expr", "action", "emot_event", "gaze", "text_scroll", "hello"],
+    "features": ["local_intents", "device_commands", "session_metrics"],
+}
 
 
 def crc8(data: bytes) -> int:
@@ -37,6 +56,28 @@ def encode_frame(msg_type: int, payload: bytes = b"") -> bytes:
     header = bytes([SOF, length & 0xFF, (length >> 8) & 0xFF, msg_type])
     crc_data = bytes([msg_type]) + payload
     return header + payload + bytes([crc8(crc_data)])
+
+
+def encode_hello_payload(capabilities: dict[str, Any] | None = None) -> bytes:
+    caps = capabilities or BRIDGE_HELLO_CAPABILITIES
+    return json.dumps(caps, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+def decode_hello_payload(payload: bytes) -> dict[str, Any]:
+    if not payload:
+        return {"protocol": PROTOCOL_NAME, "version": 1, "role": "unknown"}
+    try:
+        decoded = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("HELLO payload invalido") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError("HELLO payload deve ser objeto JSON")
+    if decoded.get("protocol") != PROTOCOL_NAME:
+        raise ValueError("HELLO payload de protocolo desconhecido")
+    version = decoded.get("version")
+    if not isinstance(version, int) or version < 1:
+        raise ValueError("HELLO payload sem versao valida")
+    return decoded
 
 
 def decode_frames(buf: bytearray) -> list[tuple[int, bytes]]:

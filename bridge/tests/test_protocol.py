@@ -1,6 +1,13 @@
 import unittest
 
-from noisebot_bridge.protocol import MSG_HELLO, decode_frames, encode_frame
+from noisebot_bridge.protocol import (
+    MSG_HELLO,
+    PROTOCOL_VERSION,
+    decode_frames,
+    decode_hello_payload,
+    encode_frame,
+    encode_hello_payload,
+)
 
 
 class ProtocolTests(unittest.TestCase):
@@ -26,6 +33,23 @@ class ProtocolTests(unittest.TestCase):
         buf = bytearray(frame)
         self.assertEqual(decode_frames(buf), [])
         self.assertEqual(buf, bytearray())
+
+    def test_hello_payload_v2_round_trip(self):
+        payload = encode_hello_payload()
+        decoded = decode_hello_payload(payload)
+        self.assertEqual(decoded["protocol"], "noisebot-bridge")
+        self.assertEqual(decoded["version"], PROTOCOL_VERSION)
+        self.assertEqual(decoded["role"], "bridge")
+        self.assertIn("audio_chunk", decoded["rx"])
+
+    def test_empty_hello_payload_is_v1_compatible(self):
+        decoded = decode_hello_payload(b"")
+        self.assertEqual(decoded["version"], 1)
+        self.assertEqual(decoded["role"], "unknown")
+
+    def test_invalid_hello_payload_is_rejected(self):
+        with self.assertRaises(ValueError):
+            decode_hello_payload(b"{")
 
 
 if __name__ == "__main__":

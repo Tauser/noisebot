@@ -2345,6 +2345,8 @@ Metas de produto:
 
 **Contexto:** XiaoZhi usa um contrato explícito de conversa (`hello`, `listen/detect`, `listen/start`, `listen/stop`) e audio channel sob demanda. O NoiseBot hoje usa um protocolo funcional, mas ainda muito próximo de PCM/eventos de protótipo. Esta etapa define uma versão v2 sem quebrar a v1.
 
+**Status atual:** iniciada. O bridge mantém handshake v1 vazio e anuncia `HELLO` v2 em runtime; firmware atualizado responde com capabilities v2 quando recebe esse `HELLO`, preservando compatibilidade com bridge v1.
+
 **O que entra:**
 
 - Manter compatibilidade com protocolo atual (`MSG_AUDIO_CHUNK`, `MSG_EVENT`, `MSG_SAY`, etc.).

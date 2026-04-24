@@ -6,12 +6,16 @@ import threading
 import time
 
 from .protocol import (
+    MSG_HELLO,
     MSG_AUDIO_CHUNK,
     MSG_EVENT,
     MSG_STATUS,
     NB_EVT_VOICE_ACTIVITY_END,
     NB_EVT_VOICE_ACTIVITY_START,
     decode_frames,
+    decode_hello_payload,
+    encode_frame,
+    encode_hello_payload,
 )
 from .voice_session import VoiceSessionRuntime
 
@@ -23,6 +27,7 @@ class BridgeRuntime:
         self.transport = transport
         self.rx_buf = bytearray()
         self.state = "idle"
+        self.peer_capabilities = None
         self.voice = VoiceSessionRuntime(transport, stt, llm, tts, dry_run=dry_run, intent_router=intent_router)
 
     def set_state(self, state: str):
@@ -31,6 +36,20 @@ class BridgeRuntime:
             self.state = state
 
     def process_msg(self, msg_type: int, payload: bytes):
+        if msg_type == MSG_HELLO:
+            try:
+                self.peer_capabilities = decode_hello_payload(payload)
+            except ValueError as exc:
+                log.warning("HELLO v2 invalido — ignorando: %s", exc)
+                return
+            log.info(
+                "PROTO peer role=%s version=%s features=%s",
+                self.peer_capabilities.get("role", "unknown"),
+                self.peer_capabilities.get("version", 1),
+                ",".join(self.peer_capabilities.get("features", [])),
+            )
+            return
+
         if msg_type == MSG_AUDIO_CHUNK:
             self.set_state("receiving_audio")
             self.voice.append_audio_chunk(payload)
@@ -72,6 +91,11 @@ class BridgeRuntime:
 
     def run(self):
         log.info("Sessão bridge ativa")
+        try:
+            self.transport.send(encode_frame(MSG_HELLO, encode_hello_payload()))
+            log.debug("HELLO v2 enviado")
+        except Exception as e:
+            log.warning("HELLO v2 falhou — seguindo em modo v1: %s", e)
         total_bytes = 0
         while True:
             try:
