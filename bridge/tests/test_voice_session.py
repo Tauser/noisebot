@@ -2,7 +2,15 @@ import unittest
 
 import numpy as np
 
-from noisebot_bridge.protocol import MSG_GAZE, MSG_SAY, decode_frames
+from noisebot_bridge.protocol import (
+    MSG_GAZE,
+    MSG_SAY,
+    SESSION_THINKING_START,
+    SESSION_TRANSCRIBE_START,
+    SESSION_TTS_START,
+    SESSION_TTS_STOP,
+    decode_frames,
+)
 from noisebot_bridge.stt import SttResult
 from noisebot_bridge.transport import NullTransport
 from noisebot_bridge.voice_session import VoiceSessionRuntime, VoiceSnapshot, classify_session_outcome
@@ -119,7 +127,15 @@ class VoiceSessionTests(unittest.TestCase):
 
     def test_dry_run_transcribes_and_sends_single_ack(self):
         transport = NullTransport()
-        runtime = VoiceSessionRuntime(transport, FakeStt(), NoneLlm(), FakeTts(), dry_run=True)
+        events = []
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            NoneLlm(),
+            FakeTts(),
+            dry_run=True,
+            session_event_cb=lambda event, session_id, **fields: events.append(event),
+        )
         audio = np.full(9000, 2000, dtype=np.int16)
         snapshot = VoiceSnapshot(
             session_id=1,
@@ -133,6 +149,8 @@ class VoiceSessionTests(unittest.TestCase):
 
         self.assertEqual(len(transport.sent), 1)
         self.assertIn(MSG_SAY.to_bytes(1, "little"), transport.sent[0][1])
+        self.assertIn(SESSION_TRANSCRIBE_START, events)
+        self.assertNotIn(SESSION_TTS_START, events)
 
     def test_real_mode_local_intent_skips_llm_and_speaks(self):
         transport = NullTransport()
@@ -158,6 +176,32 @@ class VoiceSessionTests(unittest.TestCase):
 
         self.assertEqual(llm.calls, 0)
         self.assertGreaterEqual(len(transport.sent), 4)
+
+    def test_local_intent_emits_tts_events(self):
+        transport = NullTransport()
+        events = []
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            NoneLlm(),
+            FakeTts(),
+            dry_run=False,
+            intent_router=FakeIntentRouter(),
+            session_event_cb=lambda event, session_id, **fields: events.append((event, fields.get("reason"))),
+        )
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=1200.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        runtime.handle_voice_end(snapshot)
+
+        self.assertIn((SESSION_TTS_START, None), events)
+        self.assertIn((SESSION_TTS_STOP, "ok"), events)
 
     def test_llm_unavailable_returns_session_error_reason(self):
         transport = NullTransport()
@@ -278,6 +322,32 @@ class VoiceSessionTests(unittest.TestCase):
 
         self.assertEqual(llm.calls, 1)
         self.assertGreaterEqual(len(transport.sent), 4)
+
+    def test_unknown_text_emits_thinking_start(self):
+        transport = NullTransport()
+        llm = ReadyLlm()
+        events = []
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            llm,
+            FakeTts(),
+            dry_run=False,
+            intent_router=EmptyIntentRouter(),
+            session_event_cb=lambda event, session_id, **fields: events.append(event),
+        )
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=2000.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        runtime.handle_voice_end(snapshot)
+
+        self.assertIn(SESSION_THINKING_START, events)
 
     def test_unknown_text_without_llm_speaks_degraded_error(self):
         transport = NullTransport()

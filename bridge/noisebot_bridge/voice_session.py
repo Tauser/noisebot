@@ -24,7 +24,17 @@ from .config import (
 from .device_commands import DeviceCommandDispatcher
 from .intent_router import LocalIntentResult
 from .llm import LlmResult
-from .protocol import MSG_ACTION, MSG_EMOT_EVENT, MSG_EXPR, MSG_SAY, encode_frame
+from .protocol import (
+    MSG_ACTION,
+    MSG_EMOT_EVENT,
+    MSG_EXPR,
+    MSG_SAY,
+    SESSION_THINKING_START,
+    SESSION_TRANSCRIBE_START,
+    SESSION_TTS_START,
+    SESSION_TTS_STOP,
+    encode_frame,
+)
 from .stt import SttResult
 
 log = logging.getLogger("noisebot_bridge.session")
@@ -62,7 +72,7 @@ def classify_session_outcome(discard_reason: str | None, route: str, end_reason:
         return "stt_unavailable", discard_reason, "stt_unavailable"
     if discard_reason == "llm_indisponivel":
         return "llm_unavailable", discard_reason, "llm_unavailable"
-    if discard_reason == "tts_indisponivel":
+    if discard_reason in ("tts_indisponivel", "tts_send_failed"):
         return "tts_failed", discard_reason, "tts_failed"
     if discard_reason.startswith(("audio_curto_", "audio_baixo_", "rms_baixo_", "buffer_vazio")):
         return "audio_rejected", discard_reason, None
@@ -105,6 +115,10 @@ class VoiceSessionRuntime:
         self._session_n_chunks = 0
         self._session_audio_seen = False
         self._session_id = 0
+
+    def emit_session_event(self, event: str, session_id: int, **fields):
+        if self.session_event_cb is not None:
+            self.session_event_cb(event, session_id, **fields)
 
     @property
     def current_session_id(self) -> int:
@@ -249,15 +263,24 @@ class VoiceSessionRuntime:
 
         def speak_text(text_to_speak: str, action: int = 0) -> bool:
             nonlocal discard_reason
+            self.emit_session_event(SESSION_TTS_START, session_id)
             try:
                 tts_pcm = self.tts.synthesize(text_to_speak)
             except Exception as e:
                 discard_reason = "tts_indisponivel"
                 log.warning("TTS indisponivel session_id=%d: %s", session_id, e)
                 ack_once()
+                self.emit_session_event(SESSION_TTS_STOP, session_id, reason="tts_failed")
                 return False
-            self.send_msg(MSG_ACTION, struct.pack("<I", action))
-            self.send_say_pcm(tts_pcm)
+            try:
+                self.send_msg(MSG_ACTION, struct.pack("<I", action))
+                self.send_say_pcm(tts_pcm)
+            except Exception as e:
+                discard_reason = "tts_send_failed"
+                log.warning("TTS envio falhou session_id=%d: %s", session_id, e)
+                self.emit_session_event(SESSION_TTS_STOP, session_id, reason="tts_send_failed")
+                return False
+            self.emit_session_event(SESSION_TTS_STOP, session_id, reason="ok")
             return True
 
         try:
@@ -294,6 +317,7 @@ class VoiceSessionRuntime:
             if self.dry_run:
                 ack_once()
 
+            self.emit_session_event(SESSION_TRANSCRIBE_START, session_id)
             tr = self.stt.transcribe(pcm)
             text = tr.text
             if not text:
@@ -354,6 +378,7 @@ class VoiceSessionRuntime:
                 return
 
             route = "llm"
+            self.emit_session_event(SESSION_THINKING_START, session_id, source="llm")
             llm_result = self.llm.generate(text, self.last_status)
             if llm_result.error:
                 discard_reason = llm_result.error
