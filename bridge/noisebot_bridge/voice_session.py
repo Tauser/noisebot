@@ -45,7 +45,34 @@ class VoiceSessionResult:
     end_reason: str
     route: str
     outcome: str
+    outcome_detail: str = "none"
     error_reason: str | None = None
+
+
+def classify_session_outcome(discard_reason: str | None, route: str, end_reason: str) -> tuple[str, str, str | None]:
+    if discard_reason is None:
+        return "ok", "none", None
+    if discard_reason == "dry_run_ok":
+        return "dry_run_ok", "none", None
+    if discard_reason == "exception":
+        return "pipeline_error", "exception", "pipeline_error"
+    if end_reason == "bridge_watchdog_timeout":
+        return "session_timeout", "bridge_watchdog_timeout", "bridge_watchdog_timeout"
+    if discard_reason == "whisper_nao_pronto":
+        return "stt_unavailable", discard_reason, "stt_unavailable"
+    if discard_reason == "llm_indisponivel":
+        return "llm_unavailable", discard_reason, "llm_unavailable"
+    if discard_reason == "tts_indisponivel":
+        return "tts_failed", discard_reason, "tts_failed"
+    if discard_reason.startswith(("audio_curto_", "audio_baixo_", "rms_baixo_", "buffer_vazio")):
+        return "audio_rejected", discard_reason, None
+    if discard_reason.startswith(("texto_vazio", "no_speech_", "logprob_", "compression_")):
+        return "stt_rejected", discard_reason, None
+    if route == "error":
+        return "route_error", discard_reason, "route_error"
+    if route == "llm":
+        return "llm_error", discard_reason, "llm_error"
+    return "discarded", discard_reason, None
 
 
 class VoiceSessionRuntime:
@@ -347,21 +374,14 @@ class VoiceSessionRuntime:
             except Exception:
                 pass
         finally:
-            outcome = "ok" if discard_reason is None else f"descartado:{discard_reason}"
-            error_reason = None
-            if discard_reason == "exception":
-                error_reason = "pipeline_exception"
-            elif end_reason == "bridge_watchdog_timeout":
-                error_reason = "bridge_watchdog_timeout"
-            elif route == "error":
-                error_reason = discard_reason or "route_error"
+            outcome, outcome_detail, error_reason = classify_session_outcome(discard_reason, route, end_reason)
             log_text = text or ""
             if len(log_text) > LOG_TEXT_MAX_CHARS:
                 log_text = log_text[:LOG_TEXT_MAX_CHARS] + "..."
             log.info(
                 "SESSAO session_id=%d route=%s dur=%.1fs samples=%d avg_rms=%.0f pcm_rms=%.0f peak=%d "
                 "stt=%s/%0.fms gain=%.1f peak_in=%.3f ns=%.2f logp=%.2f comp=%.2f "
-                "llm=%s/%s/%0.fms intent_kind=%s intent=%s texto=%r reason=%s motivo=%s",
+                "llm=%s/%s/%0.fms intent_kind=%s intent=%s texto=%r end_reason=%s outcome=%s detail=%s",
                 session_id,
                 route,
                 duration_s,
@@ -384,11 +404,13 @@ class VoiceSessionRuntime:
                 log_text,
                 end_reason,
                 outcome,
+                outcome_detail,
             )
             return VoiceSessionResult(
                 session_id=session_id,
                 end_reason=end_reason,
                 route=route,
                 outcome=outcome,
+                outcome_detail=outcome_detail,
                 error_reason=error_reason,
             )

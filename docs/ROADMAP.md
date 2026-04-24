@@ -2371,6 +2371,12 @@ Metas de produto:
 - Motivo final obrigatório e padronizado.
 - Compatibilidade v1/v2 negociada no handshake.
 
+**Taxonomia v2 atual:**
+
+- `end_reason`: motivo físico de encerramento (`silence`, `timeout`, `bridge_disconnected`, `cancelled`, `bridge_watchdog_timeout`).
+- `outcome`: resultado de pipeline (`ok`, `dry_run_ok`, `audio_rejected`, `stt_rejected`, `stt_unavailable`, `llm_unavailable`, `tts_failed`, `llm_error`, `pipeline_error`, `session_timeout`).
+- `detail`: detalhe diagnóstico preservado para tuning (`logprob_-1.43`, `audio_baixo_*`, `llm_indisponivel`, etc.).
+
 **Critérios de aceitação:**
 
 - [ ] Bridge v2 conecta em firmware v1 sem regressão.

@@ -5,7 +5,7 @@ import numpy as np
 from noisebot_bridge.protocol import MSG_GAZE, MSG_SAY, decode_frames
 from noisebot_bridge.stt import SttResult
 from noisebot_bridge.transport import NullTransport
-from noisebot_bridge.voice_session import VoiceSessionRuntime, VoiceSnapshot
+from noisebot_bridge.voice_session import VoiceSessionRuntime, VoiceSnapshot, classify_session_outcome
 from noisebot_bridge.intent_router import DeviceCommand, LocalIntentResult
 
 
@@ -20,6 +20,18 @@ class FakeStt:
             text="que horas sao agora",
             no_speech_prob=0.01,
             avg_logprob=-0.2,
+            compression_ratio=1.0,
+            elapsed_ms=1.0,
+            backend="fake",
+        )
+
+
+class LowConfidenceStt(FakeStt):
+    def transcribe(self, pcm):
+        return SttResult(
+            text="O que?",
+            no_speech_prob=0.01,
+            avg_logprob=-1.5,
             compression_ratio=1.0,
             elapsed_ms=1.0,
             backend="fake",
@@ -98,6 +110,13 @@ class FailingTts:
 
 
 class VoiceSessionTests(unittest.TestCase):
+    def test_classifies_stt_rejection_without_session_error(self):
+        outcome, detail, error = classify_session_outcome("logprob_-1.43", "discard", "silence")
+
+        self.assertEqual(outcome, "stt_rejected")
+        self.assertEqual(detail, "logprob_-1.43")
+        self.assertIsNone(error)
+
     def test_dry_run_transcribes_and_sends_single_ack(self):
         transport = NullTransport()
         runtime = VoiceSessionRuntime(transport, FakeStt(), NoneLlm(), FakeTts(), dry_run=True)
@@ -161,8 +180,28 @@ class VoiceSessionTests(unittest.TestCase):
 
         result = runtime.handle_voice_end(snapshot)
 
-        self.assertEqual(result.error_reason, "llm_indisponivel")
+        self.assertEqual(result.outcome, "llm_unavailable")
+        self.assertEqual(result.outcome_detail, "llm_indisponivel")
+        self.assertEqual(result.error_reason, "llm_unavailable")
         self.assertEqual(result.route, "error")
+
+    def test_low_confidence_stt_returns_standard_rejection(self):
+        transport = NullTransport()
+        runtime = VoiceSessionRuntime(transport, LowConfidenceStt(), NoneLlm(), FakeTts(), dry_run=True)
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=1200.0,
+            duration_s=0.6,
+            end_reason="silence",
+        )
+
+        result = runtime.handle_voice_end(snapshot)
+
+        self.assertEqual(result.outcome, "stt_rejected")
+        self.assertEqual(result.outcome_detail, "logprob_-1.50")
+        self.assertIsNone(result.error_reason)
 
     def test_real_mode_device_intent_dispatches_command(self):
         transport = NullTransport()
