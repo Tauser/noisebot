@@ -91,6 +91,16 @@ class DeviceCommandDispatcherTests(unittest.TestCase):
         self.assertEqual(result.error, "unsupported_tool")
         self.assertEqual(self.transport.sent, [])
 
+    def test_tool_logs_differentiate_call_result_and_rejected(self):
+        with self.assertLogs("noisebot_bridge.device_commands", level="INFO") as cm:
+            self.dispatcher.dispatch(DeviceCommand("look", {"direction": "centro"}, supported=True))
+            self.dispatcher.dispatch(DeviceCommand("look", {"direction": "diagonal"}, supported=True))
+
+        logs = "\n".join(cm.output)
+        self.assertIn("tool_call name=noisebot.robot.set_gaze", logs)
+        self.assertIn("tool_result name=noisebot.robot.set_gaze status=ok", logs)
+        self.assertIn("tool_rejected name=noisebot.robot.set_gaze reason=invalid_enum:direction", logs)
+
 
 if __name__ == "__main__":
     unittest.main()

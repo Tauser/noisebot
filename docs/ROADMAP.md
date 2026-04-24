@@ -2395,7 +2395,7 @@ Metas de produto:
 
 **Contexto:** StackChan expõe capacidades do robô como tools com nomes e descrições claras. O NoiseBot já tem intents locais e comandos básicos, mas precisa formalizar ferramentas com schema, limites e integração segura com o firmware.
 
-**Status atual:** iniciada. Primeiro recorte implementa catálogo canônico no bridge, aliases para os comandos locais existentes e validação de schema antes de qualquer envio ao firmware.
+**Status atual:** em validação. O bridge possui catálogo canônico, aliases para os comandos locais existentes, validação de schema antes de qualquer envio ao firmware e runtime local para status/lembretes sem LLM.
 
 **O que entra:**
 
@@ -2422,11 +2422,11 @@ Metas de produto:
 
 **Critérios de aceitação:**
 
-- [ ] 10 comandos válidos executam sem LLM.
-- [ ] 10 comandos inválidos são rejeitados antes de chegar ao firmware.
+- [x] 10 comandos válidos executam sem LLM.
+- [x] 10 comandos inválidos são rejeitados antes de chegar ao firmware.
 - [x] Logs diferenciam `tool_call`, `tool_result`, `tool_rejected`.
-- [ ] Tool de movimento não passa por cima de `motion_safety`.
-- [ ] Lembretes locais funcionam sem LLM.
+- [x] Tool de movimento não passa por cima de `motion_safety`.
+- [x] Lembretes locais funcionam sem LLM.
 
 ---
 
