@@ -21,6 +21,7 @@ class LocalIntentResult:
     expression_id: int = 2
     action: int = 0
     emot_event: int = 2
+    speak_reply: bool = True
     device_commands: tuple[DeviceCommand, ...] = ()
 
 
@@ -185,6 +186,7 @@ class LocalIntentRouter:
                     expression_id=expression_id,
                     action=0,
                     emot_event=2,
+                    speak_reply=False,
                     device_commands=(
                         DeviceCommand(
                             "set_expression",
@@ -212,6 +214,7 @@ class LocalIntentRouter:
             expression_id=2,
             action=0,
             emot_event=2,
+            speak_reply=False,
             device_commands=(DeviceCommand("play_action", {"action_id": 4}, supported=True),),
         )
 
@@ -234,6 +237,7 @@ class LocalIntentRouter:
                     expression_id=2,
                     action=0,
                     emot_event=2,
+                    speak_reply=False,
                     device_commands=(DeviceCommand("look", {"direction": direction}, supported=True),),
                 )
         return None

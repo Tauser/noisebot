@@ -67,6 +67,7 @@ class IntentRouterTests(unittest.TestCase):
         self.assertEqual(result.intent, "local_device_move")
         self.assertEqual(result.device_commands[0].args["direction"], "esquerda")
         self.assertTrue(result.device_commands[0].supported)
+        self.assertFalse(result.speak_reply)
 
     def test_expression_intent_maps_to_supported_expression_command(self):
         result = self.router.route("fique feliz")
@@ -75,6 +76,7 @@ class IntentRouterTests(unittest.TestCase):
         self.assertEqual(result.device_commands[0].name, "set_expression")
         self.assertEqual(result.device_commands[0].args["expression_id"], 1)
         self.assertTrue(result.device_commands[0].supported)
+        self.assertFalse(result.speak_reply)
 
     def test_action_intent_maps_to_supported_action_command(self):
         result = self.router.route("balance a cabeça")
@@ -82,6 +84,7 @@ class IntentRouterTests(unittest.TestCase):
         self.assertEqual(result.intent, "local_device_action")
         self.assertEqual(result.device_commands[0].name, "play_action")
         self.assertTrue(result.device_commands[0].supported)
+        self.assertFalse(result.speak_reply)
 
     def test_action_intent_accepts_whisper_head_action_artifact(self):
         result = self.router.route("Balão se acabece.")

@@ -359,6 +359,10 @@ class VoiceSessionRuntime:
                     self.send_msg(MSG_EXPR, struct.pack("<BI", local_intent.expression_id, 4000))
                     for command in local_intent.device_commands:
                         self.device_dispatcher.dispatch(command)
+                    if not local_intent.speak_reply:
+                        log.info("INTENT session_id=%d reply_suppressed intent=%s", session_id, local_intent.intent)
+                        ack_once()
+                        return
                     speak_text(local_intent.reply, local_intent.action)
                     return
 

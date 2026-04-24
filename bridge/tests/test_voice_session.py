@@ -104,6 +104,7 @@ class FakeDeviceIntentRouter:
             expression_id=2,
             action=0,
             emot_event=2,
+            speak_reply=False,
             device_commands=(DeviceCommand("look", {"direction": "esquerda"}, supported=True),),
         )
 
@@ -261,6 +262,7 @@ class VoiceSessionTests(unittest.TestCase):
 
     def test_real_mode_device_intent_dispatches_command(self):
         transport = NullTransport()
+        events = []
         runtime = VoiceSessionRuntime(
             transport,
             FakeStt(),
@@ -268,6 +270,7 @@ class VoiceSessionTests(unittest.TestCase):
             FakeTts(),
             dry_run=False,
             intent_router=FakeDeviceIntentRouter(),
+            session_event_cb=lambda event, session_id, **fields: events.append(event),
         )
         audio = np.full(9000, 2000, dtype=np.int16)
         snapshot = VoiceSnapshot(
@@ -284,6 +287,9 @@ class VoiceSessionTests(unittest.TestCase):
         for _, frame in transport.sent:
             decoded.extend(decode_frames(bytearray(frame)))
         self.assertIn(MSG_GAZE, [msg_type for msg_type, _ in decoded])
+        self.assertIn((MSG_SAY, b""), decoded)
+        self.assertNotIn(SESSION_TTS_START, events)
+        self.assertNotIn(SESSION_TTS_STOP, events)
 
     def test_local_intent_tts_failure_sends_ack(self):
         transport = NullTransport()
