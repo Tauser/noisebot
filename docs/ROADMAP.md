@@ -2345,7 +2345,7 @@ Metas de produto:
 
 **Contexto:** XiaoZhi usa um contrato explícito de conversa (`hello`, `listen/detect`, `listen/start`, `listen/stop`) e audio channel sob demanda. O NoiseBot hoje usa um protocolo funcional, mas ainda muito próximo de PCM/eventos de protótipo. Esta etapa define uma versão v2 sem quebrar a v1.
 
-**Status atual:** iniciada. O bridge mantém handshake v1 vazio e anuncia `HELLO` v2 em runtime; firmware atualizado responde com capabilities v2 quando recebe esse `HELLO`, preservando compatibilidade com bridge v1. A telemetria v2 de sessão já registra e envia via `MSG_SESSION` os eventos `WAKE_DETECTED`, `LISTEN_START`, `LISTEN_STOP`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `TTS_STOP`, `SESSION_DONE` e `SESSION_ERROR`; o firmware recebe/loga de forma passiva.
+**Status atual:** implementada em software; aguardando validação de hardware do envio `MSG_SESSION` no commit `9f86b54`. O bridge mantém handshake v1 vazio e anuncia `HELLO` v2 em runtime; firmware atualizado responde com capabilities v2 quando recebe esse `HELLO`, preservando compatibilidade com bridge v1. A telemetria v2 de sessão já registra e envia via `MSG_SESSION` os eventos `WAKE_DETECTED`, `LISTEN_START`, `LISTEN_STOP`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `TTS_STOP`, `SESSION_DONE` e `SESSION_ERROR`; o firmware recebe/loga de forma passiva.
 
 **O que entra:**
 
@@ -2379,11 +2379,12 @@ Metas de produto:
 
 **Critérios de aceitação:**
 
-- [ ] Bridge v2 conecta em firmware v1 sem regressão.
-- [ ] Firmware/bridge logam a versão negociada.
-- [ ] Uma sessão completa tem `WAKE_DETECTED -> LISTEN_START -> LISTEN_STOP -> SESSION_DONE`.
-- [ ] Queda de bridge durante sessão gera `SESSION_ERROR` nomeado e estado limpo.
-- [ ] O protocolo v2 pode ser testado em unidade sem hardware.
+- [x] Bridge v2 conecta em firmware v1 sem regressão.
+- [x] Firmware/bridge logam a versão negociada.
+- [x] Uma sessão completa tem `WAKE_DETECTED -> LISTEN_START -> LISTEN_STOP -> SESSION_DONE`.
+- [x] Queda de bridge durante sessão gera `SESSION_ERROR` nomeado e estado limpo.
+- [x] O protocolo v2 pode ser testado em unidade sem hardware.
+- [ ] Firmware loga `MSG_SESSION` passivo em hardware após build/flash do commit `9f86b54`.
 
 ---
 
@@ -2429,10 +2430,12 @@ Metas de produto:
 
 ### Etapa 12.21 — Expressive Modifiers e Overlays
 
-**Dependências:** 12.15 validada; conductor/expression/gaze estáveis
+**Dependências:** 12.15 validada; 12.19 validada em hardware; conductor/expression/gaze estáveis
 **Hardware necessário:** Robô completo
 
 **Contexto:** StackChan organiza expressividade em modificadores independentes (`Blink`, `Breath`, `IdleMotion`, `IdleExpression`, `HeadPet`, `Speaking`). O NoiseBot já tem serviços equivalentes, mas precisa formalizar overlays temporários para reduzir acoplamento e melhorar naturalidade.
+
+**Status atual:** próxima etapa recomendada após validar `MSG_SESSION` passivo. O contrato v2 da 12.19 já fornece os gatilhos necessários; esta etapa deve consumir esses eventos sem alterar o baseline obrigatório de `IDLE`.
 
 **O que entra:**
 
@@ -2453,6 +2456,16 @@ Metas de produto:
 - `IDLE` continua sendo baseline obrigatório.
 - Overlays nunca substituem permanentemente expressão/gaze/postura base.
 - Speaking overlay deve animar boca/expressão/LED/gaze sem depender de LLM.
+
+**Mapeamento inicial proposto:**
+
+- `LISTEN_START`: `listening_overlay` com expressão atenta/curiosa, LED de escuta e gaze estável.
+- `TRANSCRIBE_START`: micro overlay de processamento curto, discreto, sem parecer resposta.
+- `THINKING_START`: `thinking_overlay` com olhar/piscar de pensamento e LED suave.
+- `TTS_START`: `speaking_overlay` com prioridade acima de idle e abaixo de safety/error.
+- `TTS_STOP`: encerra `speaking_overlay` e devolve autoridade ao baseline do estado atual.
+- `SESSION_ERROR`: `error_overlay` curto e recuperável, retornando para `IDLE`/estado anterior.
+- `SESSION_DONE`: limpeza de overlays conversacionais transitórios.
 
 **Critérios de aceitação:**
 
