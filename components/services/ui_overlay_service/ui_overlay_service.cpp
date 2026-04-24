@@ -28,10 +28,12 @@ typedef enum {
     OVERLAY_NONE = 0,
     OVERLAY_VOLUME,
     OVERLAY_TEXT,
+    OVERLAY_TOAST,
 } overlay_kind_t;
 
 typedef struct {
     overlay_kind_t kind;
+    nb_ui_overlay_tone_t tone;
     uint8_t        percent;
     char           text[TEXT_MAX_LEN];
     int64_t        expires_us;
@@ -41,18 +43,29 @@ static bool              s_initialized = false;
 static SemaphoreHandle_t s_mutex = NULL;
 static overlay_state_t   s_state = {};
 static bool              s_was_visible = false;
+static int               s_prev_x = 0;
+static int               s_prev_y = 0;
+static int               s_prev_w = 0;
+static int               s_prev_h = 0;
 
-static void overlay_rect(int *x, int *y, int *w, int *h)
+static void overlay_rect(overlay_kind_t kind, int *x, int *y, int *w, int *h)
 {
     int dw = display_hal_width();
     int dh = display_hal_height();
     if (dw <= 0) dw = 320;
     if (dh <= 0) dh = 240;
 
-    *w = (dw < 280) ? (dw - 32) : 240;
-    *h = 52;
-    *x = (dw - *w) / 2;
-    *y = dh - *h - 16;
+    if (kind == OVERLAY_TOAST) {
+        *w = (dw < 308) ? (dw - 24) : 296;
+        *h = 52;
+        *x = (dw - *w) / 2;
+        *y = 12;
+    } else {
+        *w = (dw < 280) ? (dw - 32) : 240;
+        *h = 52;
+        *x = (dw - *w) / 2;
+        *y = dh - *h - 16;
+    }
 }
 
 static void copy_text(char *dst, size_t dst_size, const char *src)
@@ -126,6 +139,56 @@ static void draw_text_overlay(LGFX_Sprite *spr,
     spr->drawString(state->text, x + 16, y + 18);
 }
 
+static void toast_colors(LGFX_Sprite *spr,
+                         nb_ui_overlay_tone_t tone,
+                         uint16_t *bg,
+                         uint16_t *border,
+                         uint16_t *fg)
+{
+    switch (tone) {
+        case NB_UI_OVERLAY_SUCCESS:
+            *bg = spr->color565(13, 46, 31);
+            *border = spr->color565(72, 208, 129);
+            *fg = spr->color565(218, 255, 234);
+            break;
+        case NB_UI_OVERLAY_WARNING:
+            *bg = spr->color565(50, 39, 8);
+            *border = spr->color565(232, 184, 62);
+            *fg = spr->color565(255, 243, 198);
+            break;
+        case NB_UI_OVERLAY_ERROR:
+            *bg = spr->color565(54, 16, 28);
+            *border = spr->color565(242, 96, 135);
+            *fg = spr->color565(255, 224, 234);
+            break;
+        case NB_UI_OVERLAY_INFO:
+        default:
+            *bg = spr->color565(14, 31, 44);
+            *border = spr->color565(84, 181, 242);
+            *fg = spr->color565(226, 245, 255);
+            break;
+    }
+}
+
+static void draw_toast_overlay(LGFX_Sprite *spr,
+                               int x,
+                               int y,
+                               int w,
+                               int h,
+                               const overlay_state_t *state)
+{
+    uint16_t bg, border, fg;
+    toast_colors(spr, state->tone, &bg, &border, &fg);
+
+    spr->fillRoundRect(x, y, w, h, 8, bg);
+    spr->drawRoundRect(x, y, w, h, 8, border);
+    spr->fillCircle(x + 22, y + 26, 6, border);
+
+    spr->setTextColor(fg, bg);
+    spr->setTextSize(2);
+    spr->drawString(state->text, x + 40, y + 18);
+}
+
 static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
 {
     (void)ctx;
@@ -146,14 +209,18 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
     }
 
     int x, y, w, h;
-    overlay_rect(&x, &y, &w, &h);
+    overlay_rect(state.kind, &x, &y, &w, &h);
 
     if (!visible) {
         if (s_was_visible) {
-            render_service_mark_dirty(x, y, w, h);
+            render_service_mark_dirty(s_prev_x, s_prev_y, s_prev_w, s_prev_h);
             s_was_visible = false;
         }
         return;
+    }
+
+    if (s_was_visible) {
+        render_service_mark_dirty(s_prev_x, s_prev_y, s_prev_w, s_prev_h);
     }
 
     switch (state.kind) {
@@ -163,12 +230,19 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
         case OVERLAY_TEXT:
             draw_text_overlay(spr, x, y, w, h, &state);
             break;
+        case OVERLAY_TOAST:
+            draw_toast_overlay(spr, x, y, w, h, &state);
+            break;
         default:
             return;
     }
 
     render_service_mark_dirty(x, y, w, h);
     s_was_visible = true;
+    s_prev_x = x;
+    s_prev_y = y;
+    s_prev_w = w;
+    s_prev_h = h;
 }
 
 extern "C" esp_err_t ui_overlay_service_init(void)
@@ -205,6 +279,7 @@ extern "C" void ui_overlay_show_volume(uint8_t percent, uint32_t duration_ms)
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     s_state.kind = OVERLAY_VOLUME;
+    s_state.tone = NB_UI_OVERLAY_INFO;
     s_state.percent = percent;
     s_state.text[0] = '\0';
     s_state.expires_us = esp_timer_get_time() + ((int64_t)duration_ms * 1000LL);
@@ -220,9 +295,44 @@ extern "C" void ui_overlay_show_text(const char *text, uint32_t duration_ms)
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     s_state.kind = OVERLAY_TEXT;
+    s_state.tone = NB_UI_OVERLAY_INFO;
     s_state.percent = 0;
     copy_text(s_state.text, sizeof(s_state.text), text);
     s_state.expires_us = esp_timer_get_time() + ((int64_t)duration_ms * 1000LL);
+    xSemaphoreGive(s_mutex);
+
+    render_service_force_full_refresh();
+}
+
+extern "C" void ui_overlay_show_toast(const char *text,
+                                      nb_ui_overlay_tone_t tone,
+                                      uint32_t duration_ms)
+{
+    if (!s_initialized || !s_mutex || !text || text[0] == '\0') return;
+    if (duration_ms == 0U) duration_ms = 1600U;
+    if ((int)tone < (int)NB_UI_OVERLAY_INFO || (int)tone > (int)NB_UI_OVERLAY_ERROR) {
+        tone = NB_UI_OVERLAY_INFO;
+    }
+
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    s_state.kind = OVERLAY_TOAST;
+    s_state.tone = tone;
+    s_state.percent = 0;
+    copy_text(s_state.text, sizeof(s_state.text), text);
+    s_state.expires_us = esp_timer_get_time() + ((int64_t)duration_ms * 1000LL);
+    xSemaphoreGive(s_mutex);
+
+    render_service_force_full_refresh();
+}
+
+extern "C" void ui_overlay_clear(void)
+{
+    if (!s_initialized || !s_mutex) return;
+
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    s_state.kind = OVERLAY_NONE;
+    s_state.text[0] = '\0';
+    s_state.expires_us = 0;
     xSemaphoreGive(s_mutex);
 
     render_service_force_full_refresh();

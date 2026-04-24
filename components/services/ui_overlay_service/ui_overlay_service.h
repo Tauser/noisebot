@@ -17,8 +17,17 @@ extern "C" {
 
 esp_err_t ui_overlay_service_init(void);
 
+typedef enum {
+    NB_UI_OVERLAY_INFO = 0,
+    NB_UI_OVERLAY_SUCCESS,
+    NB_UI_OVERLAY_WARNING,
+    NB_UI_OVERLAY_ERROR,
+} nb_ui_overlay_tone_t;
+
 void ui_overlay_show_volume(uint8_t percent, uint32_t duration_ms);
 void ui_overlay_show_text(const char *text, uint32_t duration_ms);
+void ui_overlay_show_toast(const char *text, nb_ui_overlay_tone_t tone, uint32_t duration_ms);
+void ui_overlay_clear(void);
 
 #ifdef __cplusplus
 }

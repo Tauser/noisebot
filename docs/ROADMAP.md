@@ -2437,7 +2437,7 @@ Metas de produto:
 
 **Contexto:** StackChan organiza expressividade em modificadores independentes (`Blink`, `Breath`, `IdleMotion`, `IdleExpression`, `HeadPet`, `Speaking`). O NoiseBot já tem serviços equivalentes, mas precisa formalizar overlays temporários para reduzir acoplamento e melhorar naturalidade.
 
-**Status atual:** iniciada. `ui_overlay_service` v1 criado como layer visual independente no `render_service`; comandos de volume e texto vindos do bridge já geram feedback visual transitório sem substituir o baseline de `IDLE`.
+**Status atual:** iniciada. `ui_overlay_service` v1 criado como layer visual independente no `render_service`; comandos de volume/texto e eventos `SESSION v2` do bridge já geram feedback visual transitório sem substituir o baseline de `IDLE`.
 
 **O que entra:**
 
@@ -2475,6 +2475,7 @@ Metas de produto:
 - [ ] Ao entrar em `IDLE`, overlays transitórios são limpos.
 - [x] Volume local exibe barra/porcentagem transitória sem TTS obrigatório.
 - [x] Texto curto do bridge possui overlay visual transitório.
+- [x] Eventos `LISTEN_START`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `SESSION_ERROR` e queda/timeout do bridge geram toast visual curto.
 - [ ] Speaking overlay inicia com `TTS_START` e termina com `TTS_STOP`.
 - [ ] Touch afetivo não abre escuta e não remove baseline permanentemente.
 - [ ] Erro de LLM/TTS gera feedback visível curto e volta ao idle.

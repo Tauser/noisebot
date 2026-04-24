@@ -49,6 +49,9 @@
 
 #define TAG "nb_beng"
 
+#define BRIDGE_SESSION_TOAST_MS 1400U
+#define BRIDGE_ERROR_TOAST_MS   2400U
+
 /* ── Tipos internos ──────────────────────────────────────────────────────── */
 
 /** Número máximo de ações por regra. */
@@ -417,15 +420,38 @@ static void bridge_on_event(const nb_event_t *evt)
         break;
     }
 
+    case NB_EVT_BRIDGE_SESSION: {
+        const char *payload = (const char *)evt->data.ptr;
+        if (!payload) break;
+
+        if (strstr(payload, "\"event\":\"LISTEN_START\"")) {
+            ui_overlay_show_toast("Ouvindo...", NB_UI_OVERLAY_INFO, BRIDGE_SESSION_TOAST_MS);
+        } else if (strstr(payload, "\"event\":\"TRANSCRIBE_START\"")) {
+            ui_overlay_show_toast("Transcrevendo...", NB_UI_OVERLAY_INFO, BRIDGE_SESSION_TOAST_MS);
+        } else if (strstr(payload, "\"event\":\"THINKING_START\"")) {
+            ui_overlay_show_toast("Pensando...", NB_UI_OVERLAY_INFO, BRIDGE_SESSION_TOAST_MS);
+        } else if (strstr(payload, "\"event\":\"TTS_START\"")) {
+            ui_overlay_show_toast("Falando...", NB_UI_OVERLAY_SUCCESS, BRIDGE_SESSION_TOAST_MS);
+        } else if (strstr(payload, "\"event\":\"SESSION_ERROR\"")) {
+            ui_overlay_show_toast("Erro na conversa", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
+        } else if (strstr(payload, "\"event\":\"SESSION_DONE\"")
+                || strstr(payload, "\"event\":\"TTS_STOP\"")) {
+            ui_overlay_clear();
+        }
+        break;
+    }
+
     case NB_EVT_BRIDGE_DISCONNECTED:
         s_bridge_voice_pending = false;
         esp_timer_stop(s_bridge_resp_timer);
         expression_service_set(NB_EXPR_NEUTRAL, 500.0f);
+        ui_overlay_show_toast("Bridge offline", NB_UI_OVERLAY_WARNING, BRIDGE_ERROR_TOAST_MS);
         break;
 
     case NB_EVT_BRIDGE_RESPONSE_TIMEOUT:
         s_bridge_voice_pending = false;
         expression_service_set(NB_EXPR_NEUTRAL, 500.0f);
+        ui_overlay_show_toast("Sem resposta", NB_UI_OVERLAY_WARNING, BRIDGE_ERROR_TOAST_MS);
         NB_LOGW(TAG, "bridge sem resposta em 8s — retornando a idle");
         break;
 
@@ -514,6 +540,7 @@ esp_err_t behavior_engine_init(void)
         NB_EVT_BRIDGE_GAZE,
         NB_EVT_BRIDGE_TEXT_SCROLL,
         NB_EVT_BRIDGE_VOLUME,
+        NB_EVT_BRIDGE_SESSION,
         NB_EVT_BRIDGE_DISCONNECTED,
         NB_EVT_BRIDGE_RESPONSE_TIMEOUT,
         NB_EVT_STATE_CHANGED,

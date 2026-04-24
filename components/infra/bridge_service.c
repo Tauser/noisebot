@@ -247,6 +247,9 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
             NB_LOGI(TAG, "SESSION v2 recebido len=%u payload=%s%s",
                     data_len, s_session_buf,
                     (data_len > copy_len) ? "..." : "");
+            evt.type     = NB_EVT_BRIDGE_SESSION;
+            evt.data.ptr = s_session_buf;
+            nb_event_publish(&evt);
         }
         break;
 

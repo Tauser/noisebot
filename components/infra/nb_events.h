@@ -103,6 +103,7 @@ typedef enum {
     NB_EVT_BRIDGE_GAZE,             /* gaze override; data.bytes[0..3]=x f32, [4..7]=y f32   */
     NB_EVT_BRIDGE_TEXT_SCROLL,      /* texto para scroll; data.ptr = static string (≤128B)   */
     NB_EVT_BRIDGE_VOLUME,           /* volume do bridge; data.u32 = 0..100                   */
+    NB_EVT_BRIDGE_SESSION,          /* evento de sessão v2; data.ptr = JSON string estática  */
     NB_EVT_BRIDGE_RESPONSE_TIMEOUT, /* bridge não respondeu em 8s após VOICE_END             */
 
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
