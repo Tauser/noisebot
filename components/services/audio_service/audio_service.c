@@ -105,9 +105,11 @@ extern void vad_destroy(nb_esp_vad_handle_t handle);
  * alpha = RC / (RC + dt), fs=16kHz, fc≈180Hz. */
 #define MIC_HPF_ALPHA             0.934f
 
-/* Bridge TX: a fala enviada ao STT precisa sair em patamar semelhante ao da
- * gravação local, mas com limiter simples para evitar clipping duro. */
-#define BRIDGE_TX_GAIN_SHIFT         2   /* +12 dB */
+/* Bridge TX: AGC simples só no caminho enviado ao STT.
+ * Voz média ganha corpo; voz alta é atenuada antes de clipar. */
+#define BRIDGE_TX_TARGET_PEAK    12000
+#define BRIDGE_TX_MAX_GAIN_Q8     4096   /* 16.0x */
+#define BRIDGE_TX_MIN_GAIN_Q8       64   /* 0.25x */
 #define BRIDGE_TX_LOG_CHUNKS       125U /* ~2s em 16ms/chunk */
 
 /* ── Configuração da task ────────────────────────────────────────────────── */
@@ -379,18 +381,29 @@ static void bridge_prepare_tx_audio(const int16_t *in, int16_t *out, size_t n,
     }
 
     int64_t raw_sum_sq = 0;
-    int64_t tx_sum_sq = 0;
     uint16_t raw_peak = 0;
-    uint16_t tx_peak = 0;
-    uint16_t saturated = 0;
 
     for (size_t i = 0; i < n; i++) {
         int32_t raw16 = in[i];
         uint16_t raw_abs = (uint16_t)(raw16 < 0 ? -raw16 : raw16);
         if (raw_abs > raw_peak) raw_peak = raw_abs;
         raw_sum_sq += (int64_t)raw16 * (int64_t)raw16;
+    }
 
-        int32_t tx = raw16 << BRIDGE_TX_GAIN_SHIFT;
+    int32_t gain_q8 = 256;
+    if (raw_peak > 0U) {
+        gain_q8 = (int32_t)(((int64_t)BRIDGE_TX_TARGET_PEAK * 256LL) / (int64_t)raw_peak);
+        if (gain_q8 > BRIDGE_TX_MAX_GAIN_Q8) gain_q8 = BRIDGE_TX_MAX_GAIN_Q8;
+        if (gain_q8 < BRIDGE_TX_MIN_GAIN_Q8) gain_q8 = BRIDGE_TX_MIN_GAIN_Q8;
+    }
+
+    int64_t tx_sum_sq = 0;
+    uint16_t tx_peak = 0;
+    uint16_t saturated = 0;
+
+    for (size_t i = 0; i < n; i++) {
+        int32_t raw16 = in[i];
+        int32_t tx = (int32_t)(((int64_t)raw16 * (int64_t)gain_q8) >> 8);
         if (tx > 32767) {
             tx = 32767;
             saturated++;
