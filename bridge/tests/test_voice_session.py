@@ -5,6 +5,7 @@ import numpy as np
 from noisebot_bridge.protocol import (
     MSG_GAZE,
     MSG_SAY,
+    MSG_SESSION,
     SESSION_THINKING_START,
     SESSION_TRANSCRIBE_START,
     SESSION_TTS_START,
@@ -246,6 +247,17 @@ class VoiceSessionTests(unittest.TestCase):
         self.assertEqual(result.outcome, "stt_rejected")
         self.assertEqual(result.outcome_detail, "logprob_-1.50")
         self.assertIsNone(result.error_reason)
+
+    def test_session_events_can_be_sent_as_protocol_frames(self):
+        from noisebot_bridge.runtime import BridgeRuntime
+
+        transport = NullTransport()
+        runtime = BridgeRuntime(transport, FakeStt(), NoneLlm(), FakeTts(), dry_run=True)
+
+        runtime.log_session_event(SESSION_TRANSCRIBE_START, 3)
+
+        frames = decode_frames(bytearray(transport.sent[-1][1]))
+        self.assertEqual(frames[0][0], MSG_SESSION)
 
     def test_real_mode_device_intent_dispatches_command(self):
         transport = NullTransport()

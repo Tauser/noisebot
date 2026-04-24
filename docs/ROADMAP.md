@@ -2345,7 +2345,7 @@ Metas de produto:
 
 **Contexto:** XiaoZhi usa um contrato explícito de conversa (`hello`, `listen/detect`, `listen/start`, `listen/stop`) e audio channel sob demanda. O NoiseBot hoje usa um protocolo funcional, mas ainda muito próximo de PCM/eventos de protótipo. Esta etapa define uma versão v2 sem quebrar a v1.
 
-**Status atual:** iniciada. O bridge mantém handshake v1 vazio e anuncia `HELLO` v2 em runtime; firmware atualizado responde com capabilities v2 quando recebe esse `HELLO`, preservando compatibilidade com bridge v1. A telemetria v2 de sessão já registra `WAKE_DETECTED`, `LISTEN_START`, `LISTEN_STOP`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `TTS_STOP`, `SESSION_DONE` e `SESSION_ERROR` no bridge, derivada do fluxo v1 existente.
+**Status atual:** iniciada. O bridge mantém handshake v1 vazio e anuncia `HELLO` v2 em runtime; firmware atualizado responde com capabilities v2 quando recebe esse `HELLO`, preservando compatibilidade com bridge v1. A telemetria v2 de sessão já registra e envia via `MSG_SESSION` os eventos `WAKE_DETECTED`, `LISTEN_START`, `LISTEN_STOP`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `TTS_STOP`, `SESSION_DONE` e `SESSION_ERROR`; o firmware recebe/loga de forma passiva.
 
 **O que entra:**
 

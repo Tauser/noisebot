@@ -187,6 +187,7 @@ static decode_result_t frame_decode(const uint8_t *buf, uint16_t buf_len,
 static nb_bridge_say_chunk_t  s_say_buf;
 static nb_bridge_expr_cmd_t   s_expr_buf;
 static char                   s_text_buf[NB_BRIDGE_TEXT_MAX_LEN + 1u];
+static char                   s_session_buf[97u];
 static StaticQueue_t          s_tx_queue_static;
 static uint8_t               *s_tx_queue_storage;
 
@@ -236,7 +237,17 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
         break;
 
     case NB_BRIDGE_MSG_SESSION:
-        NB_LOGD(TAG, "SESSION v2 recebido do bridge (len=%u)", data_len);
+        {
+            uint16_t copy_len = (data_len < (sizeof(s_session_buf) - 1u))
+                                ? data_len : (uint16_t)(sizeof(s_session_buf) - 1u);
+            if (copy_len > 0u) {
+                memcpy(s_session_buf, data, copy_len);
+            }
+            s_session_buf[copy_len] = '\0';
+            NB_LOGI(TAG, "SESSION v2 recebido len=%u payload=%s%s",
+                    data_len, s_session_buf,
+                    (data_len > copy_len) ? "..." : "");
+        }
         break;
 
     case NB_BRIDGE_MSG_SAY:

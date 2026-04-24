@@ -23,6 +23,7 @@ from .protocol import (
     decode_session_payload,
     encode_frame,
     encode_hello_payload,
+    encode_session_payload,
 )
 from .voice_session import VoiceSessionRuntime
 
@@ -122,6 +123,11 @@ class BridgeRuntime:
         reason = fields.get("reason", "none")
         source = fields.get("source", "bridge")
         log.info("SESSION_EVENT event=%s session_id=%d reason=%s source=%s", event, session_id, reason, source)
+        try:
+            payload = encode_session_payload(event, session_id, source=source, reason=reason)
+            self.transport.send(encode_frame(MSG_SESSION, payload))
+        except Exception as exc:
+            log.warning("SESSION v2 envio falhou event=%s session_id=%d: %s", event, session_id, exc)
 
     def _handle_voice_end_thread(self, snapshot):
         result = self.voice.handle_voice_end(snapshot)
