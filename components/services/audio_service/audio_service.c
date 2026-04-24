@@ -105,6 +105,11 @@ extern void vad_destroy(nb_esp_vad_handle_t handle);
  * alpha = RC / (RC + dt), fs=16kHz, fc≈180Hz. */
 #define MIC_HPF_ALPHA             0.934f
 
+/* Bridge TX: a fala enviada ao STT precisa sair em patamar semelhante ao da
+ * gravação local, mas com limiter simples para evitar clipping duro. */
+#define BRIDGE_TX_GAIN_SHIFT         2   /* +12 dB */
+#define BRIDGE_TX_LOG_CHUNKS       125U /* ~2s em 16ms/chunk */
+
 /* ── Configuração da task ────────────────────────────────────────────────── */
 
 #define AUDIO_TASK_STACK    4096U
@@ -115,8 +120,9 @@ extern void vad_destroy(nb_esp_vad_handle_t handle);
 
 #define WAV_SAMPLES_PER_CHUNK  NB_AUDIO_CHUNK_FRAMES
 
-/* Pre-roll: 8 chunks × 16ms = 128ms. Evita saturar a fila TX ao abrir escuta. */
-#define PREROLL_CHUNKS         8U
+/* Pre-roll: 20 chunks × 16ms = 320ms. Dá folga para capturar o começo da fala
+ * quando o usuário emenda a frase imediatamente após o wake word. */
+#define PREROLL_CHUNKS         20U
 
 /* ── Cabeçalho WAV ───────────────────────────────────────────────────────── */
 
@@ -184,6 +190,7 @@ static struct {
     rec_state_t          rec_state;
     char                 rec_path[128];
     uint32_t             rec_samples_remaining;
+    bool                 rec_bridge_tx_source;
 
     /* Bridge (Etapa 12.2) */
     bool                 bridge_tx_active;   /* true = streaming mic para bridge */
@@ -229,6 +236,8 @@ static int16_t  s_wav_chunk[WAV_SAMPLES_PER_CHUNK];
 static int16_t  s_rec_chunk[NB_AUDIO_CHUNK_FRAMES];
 static int16_t  s_sa_buf   [NB_AUDIO_CHUNK_FRAMES]; /* buffer para sound_analysis_tick */
 static int16_t  s_wake_buf [NB_AUDIO_CHUNK_FRAMES]; /* mic cru 16-bit para WakeNet */
+static int16_t  s_bridge_buf[NB_AUDIO_CHUNK_FRAMES]; /* mic ganho/limit para bridge */
+static uint32_t s_bridge_diag_chunk_counter = 0;
 
 /* ── Helpers WAV ─────────────────────────────────────────────────────────── */
 
@@ -355,6 +364,54 @@ static const char *listen_end_reason_name(nb_listen_end_reason_t reason)
     }
 }
 
+static void bridge_prepare_tx_audio(const int16_t *in, int16_t *out, size_t n,
+                                    int32_t *raw_rms_out, uint16_t *raw_peak_out,
+                                    int32_t *tx_rms_out, uint16_t *tx_peak_out,
+                                    uint16_t *sat_out)
+{
+    if (!in || !out || n == 0U) {
+        if (raw_rms_out) *raw_rms_out = 0;
+        if (raw_peak_out) *raw_peak_out = 0;
+        if (tx_rms_out) *tx_rms_out = 0;
+        if (tx_peak_out) *tx_peak_out = 0;
+        if (sat_out) *sat_out = 0;
+        return;
+    }
+
+    int64_t raw_sum_sq = 0;
+    int64_t tx_sum_sq = 0;
+    uint16_t raw_peak = 0;
+    uint16_t tx_peak = 0;
+    uint16_t saturated = 0;
+
+    for (size_t i = 0; i < n; i++) {
+        int32_t raw16 = in[i];
+        uint16_t raw_abs = (uint16_t)(raw16 < 0 ? -raw16 : raw16);
+        if (raw_abs > raw_peak) raw_peak = raw_abs;
+        raw_sum_sq += (int64_t)raw16 * (int64_t)raw16;
+
+        int32_t tx = raw16 << BRIDGE_TX_GAIN_SHIFT;
+        if (tx > 32767) {
+            tx = 32767;
+            saturated++;
+        }
+        if (tx < -32768) {
+            tx = -32768;
+            saturated++;
+        }
+        out[i] = (int16_t)tx;
+        uint16_t tx_abs = (uint16_t)(tx < 0 ? -tx : tx);
+        if (tx_abs > tx_peak) tx_peak = tx_abs;
+        tx_sum_sq += (int64_t)tx * (int64_t)tx;
+    }
+
+    if (raw_rms_out) *raw_rms_out = (int32_t)sqrtf((float)(raw_sum_sq / (int64_t)n));
+    if (raw_peak_out) *raw_peak_out = raw_peak;
+    if (tx_rms_out) *tx_rms_out = (int32_t)sqrtf((float)(tx_sum_sq / (int64_t)n));
+    if (tx_peak_out) *tx_peak_out = tx_peak;
+    if (sat_out) *sat_out = saturated;
+}
+
 static const char *listen_source_name(nb_listen_source_t source)
 {
     switch (source) {
@@ -407,13 +464,14 @@ static int esp_vad_update(const int16_t *pcm, size_t n, bool muted)
     return s.esp_vad_last_state;
 }
 
-static void listen_start_bridge_capture(void)
+static bool listen_start_bridge_capture(void)
 {
-    if (s.bridge_start_sent || !s.listen_session_active) return;
+    if (s.bridge_start_sent) return true;
+    if (!s.listen_session_active) return false;
 
     if (!bridge_service_is_connected()) {
         ESP_LOGI(TAG, "captura local sem bridge conectada");
-        return;
+        return false;
     }
 
     bridge_service_flush_tx();
@@ -427,7 +485,7 @@ static void listen_start_bridge_capture(void)
     if (!s.bridge_start_sent) {
         ESP_LOGW(TAG, "VOICE_START nao entrou na fila da bridge: %s",
                  esp_err_to_name(start_rc));
-        return;
+        return false;
     }
 
     uint8_t pr_count = s_preroll_count;
@@ -435,7 +493,15 @@ static void listen_start_bridge_capture(void)
         uint8_t start = (uint8_t)((s_preroll_head + PREROLL_CHUNKS - pr_count) % PREROLL_CHUNKS);
         for (uint8_t i = 0; i < pr_count; i++) {
             uint8_t idx = (uint8_t)((start + i) % PREROLL_CHUNKS);
-            if (bridge_service_send_audio_chunk(s_preroll_buf[idx],
+            int32_t raw_rms = 0;
+            int32_t tx_rms = 0;
+            uint16_t raw_peak = 0;
+            uint16_t tx_peak = 0;
+            uint16_t saturated = 0;
+            bridge_prepare_tx_audio(s_preroll_buf[idx], s_bridge_buf,
+                                    NB_AUDIO_CHUNK_FRAMES,
+                                    &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
+            if (bridge_service_send_audio_chunk(s_bridge_buf,
                                                 NB_AUDIO_CHUNK_FRAMES) == ESP_OK) {
                 s.bridge_audio_sent = true;
             }
@@ -444,6 +510,7 @@ static void listen_start_bridge_capture(void)
 
     s.bridge_tx_active = true;
     ESP_LOGD(TAG, "bridge captura iniciada preroll=%u", (unsigned)pr_count);
+    return true;
 }
 
 static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
@@ -500,6 +567,7 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
     s.bridge_tx_fail_count = 0;
     s.bridge_flush_before_end = false;
     s.listen_voice_detected = false;
+    s_bridge_diag_chunk_counter = 0;
     esp_vad_reset();
     return ESP_OK;
 }
@@ -632,8 +700,11 @@ static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
                     s.listen_phase = LISTEN_PHASE_CAPTURING_SPEECH;
                     s.listen_wait_remaining_ms = 0;
                     s.listen_speech_elapsed_ms = 0;
-                    listen_start_bridge_capture();
-                    ESP_LOGI(TAG, "[ VOZ DETECTADA — capturando... ]");
+                    if (listen_start_bridge_capture()) {
+                        ESP_LOGI(TAG, "[ VOZ DETECTADA — capturando... ]");
+                    } else {
+                        listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
+                    }
                 }
             }
         } else {
@@ -644,8 +715,11 @@ static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
                     s.listen_voice_detected = true;
                     s.listen_wait_remaining_ms = 0;
                     s.listen_speech_elapsed_ms = 0;
-                    listen_start_bridge_capture();
-                    ESP_LOGI(TAG, "[ VOZ DETECTADA — capturando... ]");
+                    if (listen_start_bridge_capture()) {
+                        ESP_LOGI(TAG, "[ VOZ DETECTADA — capturando... ]");
+                    } else {
+                        listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
+                    }
                 }
                 s.listen_phase = LISTEN_PHASE_CAPTURING_SPEECH;
             }
@@ -888,10 +962,27 @@ static void audio_task(void *arg)
 
         /* ── 4c. Bridge mic streaming ────────────────────────────────────── */
         if (s.listen_session_active && s.bridge_tx_active && mic_n > 0) {
-            esp_err_t tx_rc = bridge_service_send_audio_chunk(s_sa_buf, (uint16_t)mic_n);
+            int32_t raw_rms = 0;
+            int32_t tx_rms = 0;
+            uint16_t raw_peak = 0;
+            uint16_t tx_peak = 0;
+            uint16_t saturated = 0;
+            bridge_prepare_tx_audio(s_sa_buf, s_bridge_buf, mic_n,
+                                    &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
+            esp_err_t tx_rc = bridge_service_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n);
             if (tx_rc == ESP_OK) {
                 s.bridge_audio_sent = true;
                 s.bridge_tx_fail_count = 0;
+                if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
+                    ESP_LOGI(TAG,
+                             "bridge tx diag: raw_rms=%ld raw_peak=%u tx_rms=%ld tx_peak=%u sat=%u/%u",
+                             (long)raw_rms,
+                             (unsigned)raw_peak,
+                             (long)tx_rms,
+                             (unsigned)tx_peak,
+                             (unsigned)saturated,
+                             (unsigned)mic_n);
+                }
             } else {
                 if (tx_rc == ESP_ERR_INVALID_STATE) {
                     ESP_LOGW(TAG, "bridge desconectou durante sessao — encerrando escuta");
@@ -952,17 +1043,22 @@ static void audio_task(void *arg)
             if (rec_file && s.rec_samples_remaining > 0) {
                 size_t to_write = mic_n < s.rec_samples_remaining
                                   ? mic_n : (size_t)s.rec_samples_remaining;
-                for (size_t i = 0; i < to_write; i++) {
-                    /*
-                     * s_mic_proc[i]: valor 24-bit condicionado (audio_hal já
-                     * fez >> 8 do raw 32-bit).
-                     * Shift >> 8 para descer ao range 16-bit antes do clamp.
-                     * Pico típico de voz direta ~400K–800K → ~1500–3000 em 16-bit.
-                     */
-                    int32_t v = (s_mic_proc[i] >> 8) << 3;  /* +18 dB de ganho de gravação */
-                    if (v >  32767) v =  32767;
-                    if (v < -32768) v = -32768;
-                    s_rec_chunk[i] = (int16_t)v;
+                if (s.rec_bridge_tx_source) {
+                    bridge_prepare_tx_audio(s_sa_buf, s_rec_chunk, to_write,
+                                            NULL, NULL, NULL, NULL, NULL);
+                } else {
+                    for (size_t i = 0; i < to_write; i++) {
+                        /*
+                         * s_mic_proc[i]: valor 24-bit condicionado (audio_hal já
+                         * fez >> 8 do raw 32-bit).
+                         * Shift >> 8 para descer ao range 16-bit antes do clamp.
+                         * Pico típico de voz direta ~400K–800K → ~1500–3000 em 16-bit.
+                         */
+                        int32_t v = (s_mic_proc[i] >> 8) << 3;  /* +18 dB de ganho de gravação */
+                        if (v >  32767) v =  32767;
+                        if (v < -32768) v = -32768;
+                        s_rec_chunk[i] = (int16_t)v;
+                    }
                 }
                 fwrite(s_rec_chunk, sizeof(int16_t), to_write, rec_file);
                 s.rec_samples_remaining -= (uint32_t)to_write;
@@ -1017,6 +1113,7 @@ esp_err_t audio_service_init(void)
     }
     s.play_state     = PLAY_IDLE;
     s.rec_state      = REC_IDLE;
+    s.rec_bridge_tx_source = false;
     s.bridge_tx_active            = false;
     s.bridge_say_playing          = false;
     s.listen_session_active       = false;
@@ -1124,9 +1221,25 @@ esp_err_t audio_record_diagnostic(const char *path, uint32_t duration_s)
 
     snprintf(s.rec_path, sizeof(s.rec_path), "%s", path);
     s.rec_samples_remaining = duration_s * 16000U;
+    s.rec_bridge_tx_source = false;
     s.rec_state = REC_ACTIVE;
 
     ESP_LOGI(TAG, "gravacao agendada: %s (%us)", path, (unsigned)duration_s);
+    return ESP_OK;
+}
+
+esp_err_t audio_record_bridge_tx_diagnostic(const char *path, uint32_t duration_s)
+{
+    if (!s.initialized || !path)             return ESP_ERR_INVALID_STATE;
+    if (s.rec_state == REC_ACTIVE)           return ESP_ERR_INVALID_STATE;
+    if (duration_s == 0 || duration_s > 10U) return ESP_ERR_INVALID_ARG;
+
+    snprintf(s.rec_path, sizeof(s.rec_path), "%s", path);
+    s.rec_samples_remaining = duration_s * 16000U;
+    s.rec_bridge_tx_source = true;
+    s.rec_state = REC_ACTIVE;
+
+    ESP_LOGI(TAG, "gravacao bridge tx agendada: %s (%us)", path, (unsigned)duration_s);
     return ESP_OK;
 }
 
@@ -1162,13 +1275,13 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
         s.vad_silence_start_us = 0;
     }
 
-    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_START, 0);
     if (source == NB_LISTEN_SOURCE_WAKE_WORD) {
         ESP_LOGI(TAG, "[ PODE FALAR ]");
     }
-    ESP_LOGI(TAG, "sessao listen aberta source=%s phase=%s wait=%ums preroll=%u",
+    ESP_LOGI(TAG, "sessao listen aberta source=%s phase=%s wait=%ums preroll=%u bridge_conn=%d",
              listen_source_name(source), listen_phase_name(s.listen_phase),
-             (unsigned)s.listen_wait_remaining_ms, (unsigned)s_preroll_count);
+             (unsigned)s.listen_wait_remaining_ms, (unsigned)s_preroll_count,
+             (int)bridge_service_is_connected());
     return ESP_OK;
 }
 

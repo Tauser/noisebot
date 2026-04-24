@@ -8,6 +8,10 @@ from .protocol import FRAME_OVERHEAD, MSG_HELLO, decode_frames, encode_frame
 
 log = logging.getLogger("noisebot_bridge.transport")
 
+TCP_CONNECT_TIMEOUT_S = 5.0
+TCP_RECV_TIMEOUT_S = 0.1
+TCP_SEND_TIMEOUT_S = 2.0
+
 
 class TcpTransport:
     def __init__(self, host: str, port: int):
@@ -15,10 +19,11 @@ class TcpTransport:
         self.port = port
         self.sock = None
 
-    def connect(self, timeout: float = 5.0) -> bool:
+    def connect(self, timeout: float = TCP_CONNECT_TIMEOUT_S) -> bool:
         try:
             self.sock = socket.create_connection((self.host, self.port), timeout=timeout)
-            self.sock.settimeout(0.1)
+            self.sock.settimeout(TCP_RECV_TIMEOUT_S)
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             return True
         except Exception as e:
             log.error("TCP connect %s:%d falhou: %s", self.host, self.port, e)
@@ -28,8 +33,15 @@ class TcpTransport:
         if self.sock is None:
             raise ConnectionError("TCP socket fechado")
         try:
+            self.sock.settimeout(TCP_SEND_TIMEOUT_S)
             self.sock.sendall(data)
+            self.sock.settimeout(TCP_RECV_TIMEOUT_S)
         except Exception as e:
+            if self.sock is not None:
+                try:
+                    self.sock.settimeout(TCP_RECV_TIMEOUT_S)
+                except Exception:
+                    pass
             log.warning("TCP send erro: %s", e)
             raise
 

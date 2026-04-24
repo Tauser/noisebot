@@ -2181,6 +2181,13 @@ Regras:
 - A frase "balance a cabeça" foi transcrita como `Balão se acabece`; o router passou a aceitar esse artefato fonético para despachar `play_action` sem cair no LLM.
 - Ainda falta rodada longa de 20 comandos consecutivos e validação explícita do log `unsupported_device_command`.
 
+**Estabilização de escuta/bridge (2026-04-24):**
+
+- Firmware validado com `preroll=20`, cobrindo melhor fala emendada logo após o wake word.
+- Sessão de escuta passou a logar `bridge_conn=0|1` na abertura; quando a fala começa sem bridge conectado, a sessão encerra como `bridge_disconnected` em vez de simular captura local descartável.
+- Áudio enviado ao bridge ficou em caminho próprio com ganho controlado de `+12 dB`, limiter e diagnóstico `bridge tx diag`.
+- Bridge local passou a reconectar em 1s e usar timeout de envio separado, reduzindo janela sem conexão após queda.
+
 ---
 
 ### Etapa 12.16 — LLM Providers e Fallback

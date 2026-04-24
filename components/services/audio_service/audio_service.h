@@ -244,6 +244,18 @@ void audio_service_set_vad_threshold(int32_t threshold);
  */
 esp_err_t audio_record_diagnostic(const char *path, uint32_t duration_s);
 
+/**
+ * @brief Inicia gravação diagnóstica do mesmo PCM preparado para a bridge.
+ *
+ * Salva exatamente o caminho com ganho/limiter usado no envio ao STT remoto,
+ * facilitando comparar "o que o robô ouviu" com "o que o bridge recebeu".
+ *
+ * @param path       Caminho de destino (ex: "/sdcard/logs/bridge_tx_diag.wav").
+ * @param duration_s Duração em segundos (1–10).
+ * @return           ESP_OK, ESP_ERR_INVALID_STATE ou ESP_ERR_INVALID_ARG.
+ */
+esp_err_t audio_record_bridge_tx_diagnostic(const char *path, uint32_t duration_s);
+
 #ifdef __cplusplus
 }
 #endif
