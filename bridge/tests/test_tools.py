@@ -17,7 +17,7 @@ class ToolValidationTests(unittest.TestCase):
         ):
             self.assertIn(name, TOOL_CATALOG)
 
-    def test_ten_valid_commands_pass_schema(self):
+    def test_valid_commands_pass_schema(self):
         cases = (
             ("noisebot.robot.get_status", {}),
             ("noisebot.robot.set_gaze", {"direction": "esquerda"}),
@@ -29,13 +29,14 @@ class ToolValidationTests(unittest.TestCase):
             ("noisebot.robot.emit_emotion_event", {"event_id": 2}),
             ("noisebot.robot.show_text", {"text": "Oi"}),
             ("noisebot.robot.create_reminder", {"text": "testar bridge", "due_at_epoch": 1800000000}),
+            ("noisebot.robot.set_volume", {"percent": 80}),
         )
 
         for name, args in cases:
             with self.subTest(name=name):
                 self.assertTrue(validate_tool_call(name, args).ok)
 
-    def test_ten_invalid_commands_are_rejected_by_schema(self):
+    def test_invalid_commands_are_rejected_by_schema(self):
         cases = (
             ("noisebot.robot.unknown", {}, "unknown_tool"),
             ("noisebot.robot.set_led_mood", {"mood": "calmo"}, "unsupported_tool"),
@@ -47,6 +48,7 @@ class ToolValidationTests(unittest.TestCase):
             ("noisebot.robot.show_text", {"text": "x" * 161}, "too_long:text"),
             ("noisebot.robot.create_reminder", {"text": "ok"}, "missing_arg:due_at_epoch"),
             ("noisebot.robot.stop_reminder", {"reminder_id": 0}, "below_min:reminder_id"),
+            ("noisebot.robot.set_volume", {"percent": 101}, "above_max:percent"),
         )
 
         for name, args, reason in cases:

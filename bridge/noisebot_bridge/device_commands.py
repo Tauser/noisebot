@@ -5,7 +5,7 @@ import logging
 import struct
 
 from .intent_router import DeviceCommand
-from .protocol import MSG_ACTION, MSG_EMOT_EVENT, MSG_EXPR, MSG_GAZE, MSG_TEXT_SCROLL
+from .protocol import MSG_ACTION, MSG_EMOT_EVENT, MSG_EXPR, MSG_GAZE, MSG_TEXT_SCROLL, MSG_VOLUME
 from .tools import validate_tool_call
 
 log = logging.getLogger("noisebot_bridge.device_commands")
@@ -62,6 +62,8 @@ class DeviceCommandDispatcher:
                 self._emit_emotion_event(int(args["event_id"]))
             elif command_name == "scroll_text":
                 self._scroll_text(str(args["text"]))
+            elif command_name == "set_volume":
+                self._set_volume(int(args["percent"]))
             else:
                 log.info("tool_rejected name=%s reason=no_firmware_command args=%r", tool_name, args)
                 return DeviceCommandResult(tool_name, supported=True, executed=False, error="no_firmware_command")
@@ -97,3 +99,7 @@ class DeviceCommandDispatcher:
         payload = text.encode("utf-8")[:160]
         if payload:
             self.send_msg(MSG_TEXT_SCROLL, payload)
+
+    def _set_volume(self, percent: int):
+        self.send_msg(MSG_VOLUME, struct.pack("<B", percent))
+        self._scroll_text(f"Volume {percent}%")

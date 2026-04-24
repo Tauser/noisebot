@@ -3,7 +3,7 @@ import unittest
 
 from noisebot_bridge.device_commands import DeviceCommandDispatcher
 from noisebot_bridge.intent_router import DeviceCommand
-from noisebot_bridge.protocol import MSG_ACTION, MSG_EXPR, MSG_GAZE, decode_frames, encode_frame
+from noisebot_bridge.protocol import MSG_ACTION, MSG_EXPR, MSG_GAZE, MSG_TEXT_SCROLL, MSG_VOLUME, decode_frames, encode_frame
 from noisebot_bridge.transport import NullTransport
 
 
@@ -90,6 +90,16 @@ class DeviceCommandDispatcherTests(unittest.TestCase):
         self.assertFalse(result.executed)
         self.assertEqual(result.error, "unsupported_tool")
         self.assertEqual(self.transport.sent, [])
+
+    def test_volume_command_sends_volume_and_visual_feedback(self):
+        result = self.dispatcher.dispatch(DeviceCommand("set_volume", {"percent": 60}, supported=True))
+
+        decoded = []
+        for _, frame in self.transport.sent:
+            decoded.extend(decode_frames(bytearray(frame)))
+        self.assertTrue(result.executed)
+        self.assertIn((MSG_VOLUME, b"\x3c"), decoded)
+        self.assertIn((MSG_TEXT_SCROLL, b"Volume 60%"), decoded)
 
     def test_tool_logs_differentiate_call_result_and_rejected(self):
         with self.assertLogs("noisebot_bridge.device_commands", level="INFO") as cm:

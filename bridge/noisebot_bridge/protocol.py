@@ -22,6 +22,7 @@ MSG_ACTION = 0x12
 MSG_EMOT_EVENT = 0x13
 MSG_GAZE = 0x14
 MSG_TEXT_SCROLL = 0x15
+MSG_VOLUME = 0x16
 
 NB_EVT_VOICE_ACTIVITY_START = 9
 NB_EVT_VOICE_ACTIVITY_END = 10
@@ -37,7 +38,7 @@ BRIDGE_HELLO_CAPABILITIES = {
         "chunk_samples": 256,
     },
     "rx": ["audio_chunk", "event", "status", "hello", "session"],
-    "tx": ["say", "expr", "action", "emot_event", "gaze", "text_scroll", "hello", "session"],
+    "tx": ["say", "expr", "action", "emot_event", "gaze", "text_scroll", "volume", "hello", "session"],
     "features": ["local_intents", "device_commands", "session_metrics", "session_events_v2"],
 }
 

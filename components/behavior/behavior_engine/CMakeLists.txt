@@ -16,5 +16,6 @@ idf_component_register(
         expression_service
         gaze_service
         audio_service
+        synth_service
         attention_service
 )

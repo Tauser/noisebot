@@ -34,6 +34,7 @@
 #include "expression_service.h"
 #include "gaze_service.h"
 #include "audio_service.h"
+#include "synth_service.h"
 #include "attention_service.h"
 #include "diagnostics_service.h"
 
@@ -397,6 +398,22 @@ static void bridge_on_event(const nb_event_t *evt)
         break;
     }
 
+    case NB_EVT_BRIDGE_VOLUME: {
+        uint8_t level = (evt->data.u32 > 100U) ? 100U : (uint8_t)evt->data.u32;
+        audio_set_volume(level);
+        synth_set_volume(level);
+        NB_LOGI(TAG, "volume via bridge: %u%%", (unsigned)level);
+        break;
+    }
+
+    case NB_EVT_BRIDGE_TEXT_SCROLL: {
+        const char *text = (const char *)evt->data.ptr;
+        if (text) {
+            NB_LOGI(TAG, "texto via bridge: %s", text);
+        }
+        break;
+    }
+
     case NB_EVT_BRIDGE_DISCONNECTED:
         s_bridge_voice_pending = false;
         esp_timer_stop(s_bridge_resp_timer);
@@ -492,6 +509,8 @@ esp_err_t behavior_engine_init(void)
         NB_EVT_BRIDGE_ACTION,
         NB_EVT_BRIDGE_EMOT_EVENT,
         NB_EVT_BRIDGE_GAZE,
+        NB_EVT_BRIDGE_TEXT_SCROLL,
+        NB_EVT_BRIDGE_VOLUME,
         NB_EVT_BRIDGE_DISCONNECTED,
         NB_EVT_BRIDGE_RESPONSE_TIMEOUT,
         NB_EVT_STATE_CHANGED,

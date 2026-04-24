@@ -40,6 +40,7 @@
  *   EMOT_EVENT → NB_EVT_BRIDGE_EMOT_EVENT(data.u32 = nb_emotion_event_t)
  *   GAZE       → NB_EVT_BRIDGE_GAZE      (data.bytes = float x,y)
  *   TEXT_SCROLL→ NB_EVT_BRIDGE_TEXT_SCROLL(data.ptr = static char[129])
+ *   VOLUME     → NB_EVT_BRIDGE_VOLUME    (data.u32 = 0..100)
  *
  * Thread-safety: todas as funções públicas são thread-safe via mutex.
  *
@@ -92,6 +93,7 @@ typedef enum {
     NB_BRIDGE_MSG_EMOT_EVENT   = 0x13,   /* nb_emotion_event_t                */
     NB_BRIDGE_MSG_GAZE         = 0x14,   /* float x, float y [-1..1]          */
     NB_BRIDGE_MSG_TEXT_SCROLL  = 0x15,   /* string UTF-8, máx 128 bytes       */
+    NB_BRIDGE_MSG_VOLUME       = 0x16,   /* volume 0..100                     */
     /* Handshake */
     NB_BRIDGE_MSG_HELLO        = 0x00,   /* handshake hello (ambas direções)  */
 } nb_bridge_msg_type_t;

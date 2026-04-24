@@ -44,6 +44,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(decoded["version"], PROTOCOL_VERSION)
         self.assertEqual(decoded["role"], "bridge")
         self.assertIn("audio_chunk", decoded["rx"])
+        self.assertIn("volume", decoded["tx"])
 
     def test_empty_hello_payload_is_v1_compatible(self):
         decoded = decode_hello_payload(b"")

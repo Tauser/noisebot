@@ -123,7 +123,7 @@ class LocalIntentRouter:
         if light is not None:
             return light
 
-        volume = self._volume_command(norm)
+        volume = self._volume_command(norm, status)
         if volume is not None:
             return volume
 
@@ -261,23 +261,35 @@ class LocalIntentRouter:
         return None
 
     @staticmethod
-    def _volume_command(text: str) -> LocalIntentResult | None:
+    def _volume_command(text: str, status: dict) -> LocalIntentResult | None:
         if "volume" not in text:
             return None
         match = re.search(r"\b(\d{1,3})\s*%?\b", text)
         if match:
             percent = max(0, min(100, int(match.group(1))))
-            reply = f"Entendi volume em {percent} por cento, mas o controle de volume ainda não está conectado."
+            reply = f"Volume em {percent} por cento."
             args = {"percent": percent}
         elif "aument" in text:
-            reply = "Entendi aumentar o volume, mas o controle ainda não está conectado."
-            args = {"delta": "up"}
+            percent = min(100, int(status.get("volume", 80)) + 10)
+            reply = f"Volume em {percent} por cento."
+            args = {"percent": percent}
         elif "diminu" in text or "baix" in text:
-            reply = "Entendi diminuir o volume, mas o controle ainda não está conectado."
-            args = {"delta": "down"}
+            percent = max(0, int(status.get("volume", 80)) - 10)
+            reply = f"Volume em {percent} por cento."
+            args = {"percent": percent}
         else:
             reply = "Entendi volume, mas preciso de um valor ou direção."
             args = {}
+            supported = False
+            return LocalIntentResult(
+                intent="local_device_volume",
+                confidence=0.78,
+                reply=reply,
+                expression_id=2,
+                action=0,
+                emot_event=2,
+                device_commands=(DeviceCommand("set_volume", args, supported=supported),),
+            )
         return LocalIntentResult(
             intent="local_device_volume",
             confidence=0.78,
@@ -285,7 +297,8 @@ class LocalIntentRouter:
             expression_id=2,
             action=0,
             emot_event=2,
-            device_commands=(DeviceCommand("set_volume", args, supported=False),),
+            speak_reply=False,
+            device_commands=(DeviceCommand("set_volume", args, supported=True),),
         )
 
     @staticmethod

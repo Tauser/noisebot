@@ -50,6 +50,7 @@ TOOL_ALIASES = {
     "emit_emotion_event": "noisebot.robot.emit_emotion_event",
     "scroll_text": "noisebot.robot.show_text",
     "set_led_color": "noisebot.robot.set_led_mood",
+    "set_volume": "noisebot.robot.set_volume",
 }
 
 
@@ -104,6 +105,12 @@ TOOL_CATALOG = {
         description="Futura tool para humor visual por LED.",
         args={"mood": ToolArgSpec(str, required=False, max_len=24)},
         supported=False,
+    ),
+    "noisebot.robot.set_volume": ToolSpec(
+        name="noisebot.robot.set_volume",
+        command_name="set_volume",
+        description="Ajusta o volume local do robo e mostra feedback visual.",
+        args={"percent": ToolArgSpec(int, minimum=0, maximum=100)},
     ),
     "noisebot.robot.create_reminder": ToolSpec(
         name="noisebot.robot.create_reminder",

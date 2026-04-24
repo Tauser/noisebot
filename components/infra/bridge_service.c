@@ -52,9 +52,9 @@ static const char BRIDGE_HELLO_V2[] =
     "{\"protocol\":\"noisebot-bridge\",\"version\":2,\"role\":\"firmware\","
     "\"audio\":{\"format\":\"pcm16\",\"sample_rate\":16000,\"channels\":1,"
     "\"chunk_samples\":256},\"rx\":[\"say\",\"expr\",\"action\","
-    "\"emot_event\",\"gaze\",\"text_scroll\",\"hello\",\"session\"],"
+    "\"emot_event\",\"gaze\",\"text_scroll\",\"volume\",\"hello\",\"session\"],"
     "\"tx\":[\"audio_chunk\",\"event\",\"status\",\"hello\",\"session\"],"
-    "\"features\":[\"voice_events\",\"status\",\"device_commands_v1\","
+    "\"features\":[\"voice_events\",\"status\",\"device_commands_v1\",\"volume_control\","
     "\"session_events_v2\"]}";
 
 /* ── TX queue ─────────────────────────────────────────────────────────────── */
@@ -308,6 +308,13 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
             evt.data.ptr = s_text_buf;
             nb_event_publish(&evt);
         }
+        break;
+
+    case NB_BRIDGE_MSG_VOLUME:
+        if (data_len < 1u) break;
+        evt.type     = NB_EVT_BRIDGE_VOLUME;
+        evt.data.u32 = (data[0] > 100u) ? 100u : data[0];
+        nb_event_publish(&evt);
         break;
 
     default:
