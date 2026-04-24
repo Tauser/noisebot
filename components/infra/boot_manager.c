@@ -29,6 +29,7 @@
 #include "display_hal.h"
 #include "render_service.h"
 #include "expression_service.h"
+#include "ui_overlay_service.h"
 #include "led_service.h"
 #include "touch_service.h"
 #include "audio_service.h"
@@ -845,6 +846,11 @@ static esp_err_t phase_services(void)
     /* expression_service (Etapa 1.3): face procedural + blink */
     err = expression_service_init();
     NB_ASSERT(err == ESP_OK, TAG, "expression_service_init falhou: %s",
+              esp_err_to_name(err));
+
+    /* ui_overlay_service: feedback visual local para tools/bridge */
+    err = ui_overlay_service_init();
+    NB_ASSERT(err == ESP_OK, TAG, "ui_overlay_service_init falhou: %s",
               esp_err_to_name(err));
 
     /* audio_service (Bloco 4) */

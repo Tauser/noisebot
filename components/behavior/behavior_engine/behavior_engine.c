@@ -33,6 +33,7 @@
 #include "persona_service.h"
 #include "expression_service.h"
 #include "gaze_service.h"
+#include "ui_overlay_service.h"
 #include "audio_service.h"
 #include "synth_service.h"
 #include "attention_service.h"
@@ -402,6 +403,7 @@ static void bridge_on_event(const nb_event_t *evt)
         uint8_t level = (evt->data.u32 > 100U) ? 100U : (uint8_t)evt->data.u32;
         audio_set_volume(level);
         synth_set_volume(level);
+        ui_overlay_show_volume(level, 1800U);
         NB_LOGI(TAG, "volume via bridge: %u%%", (unsigned)level);
         break;
     }
@@ -409,6 +411,7 @@ static void bridge_on_event(const nb_event_t *evt)
     case NB_EVT_BRIDGE_TEXT_SCROLL: {
         const char *text = (const char *)evt->data.ptr;
         if (text) {
+            ui_overlay_show_text(text, 1800U);
             NB_LOGI(TAG, "texto via bridge: %s", text);
         }
         break;

@@ -34,6 +34,7 @@ idf_component_register(
         nb_hal
         render_service
         expression_service
+        ui_overlay_service
         led_service
         touch_service
         audio_service
