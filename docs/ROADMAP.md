@@ -1958,6 +1958,13 @@ Investigação:
 - O bridge deve permitir teste offline com áudio gravado, sem precisar acordar o robô a cada ajuste.
 - A arquitetura deve preparar terreno para tools/MCP/Home Assistant sem acoplar essas integrações cedo demais.
 
+**Referências arquiteturais adotadas:**
+
+- Ver `docs/REFERENCE_ARCHITECTURES.md`.
+- StackChan confirma a separação desejada: motor conversacional emite estados/tools; a camada do robô traduz isso em avatar, movimento, LED, toque e produto.
+- XiaoZhi confirma o contrato de conversa desejado: wake local, listening/speaking explícitos, AFE/VAD separado, canal de áudio sob demanda, Opus/WebSocket e MCP/tools.
+- O NoiseBot não será refeito em cima desses firmwares. As ideias entram por etapas pequenas, com compatibilidade, critérios de aceite e respeito às camadas existentes.
+
 ---
 
 ### Etapa 12.13 — Bridge Runtime Profissional
@@ -2328,6 +2335,194 @@ Metas de produto:
 - [ ] Métricas aparecem no log final de cada sessão.
 - [ ] Checklist de hardware documenta comandos, resultado esperado e logs-chave.
 - [ ] Antes de mexer em LLM ou protocolo, replay precisa continuar verde.
+
+---
+
+### Etapa 12.19 — Conversation Protocol v2
+
+**Dependências:** 12.13 concluída; 12.15 validada; 12.18 desejável
+**Hardware necessário:** Robô + bridge local para validação; PC para testes de protocolo
+
+**Contexto:** XiaoZhi usa um contrato explícito de conversa (`hello`, `listen/detect`, `listen/start`, `listen/stop`) e audio channel sob demanda. O NoiseBot hoje usa um protocolo funcional, mas ainda muito próximo de PCM/eventos de protótipo. Esta etapa define uma versão v2 sem quebrar a v1.
+
+**O que entra:**
+
+- Manter compatibilidade com protocolo atual (`MSG_AUDIO_CHUNK`, `MSG_EVENT`, `MSG_SAY`, etc.).
+- Definir handshake v2:
+  - versão de protocolo;
+  - sample rate;
+  - formato de áudio (`pcm16` inicialmente, `opus` futuro);
+  - recursos do firmware (`say`, `expr`, `gaze`, `action`, `text_scroll`, `status`);
+  - recursos do bridge (`stt`, `llm`, `tts`, `local_intents`, `tools`).
+- Mensagens explícitas:
+  - `WAKE_DETECTED`;
+  - `LISTEN_START`;
+  - `LISTEN_AUDIO`;
+  - `LISTEN_STOP`;
+  - `TRANSCRIBE_START`;
+  - `THINKING_START`;
+  - `TTS_START`;
+  - `TTS_STOP`;
+  - `SESSION_ERROR`;
+  - `SESSION_DONE`.
+- Estado de sessão com `session_id` dos dois lados.
+- Motivo final obrigatório e padronizado.
+- Compatibilidade v1/v2 negociada no handshake.
+
+**Critérios de aceitação:**
+
+- [ ] Bridge v2 conecta em firmware v1 sem regressão.
+- [ ] Firmware/bridge logam a versão negociada.
+- [ ] Uma sessão completa tem `WAKE_DETECTED -> LISTEN_START -> LISTEN_STOP -> SESSION_DONE`.
+- [ ] Queda de bridge durante sessão gera `SESSION_ERROR` nomeado e estado limpo.
+- [ ] O protocolo v2 pode ser testado em unidade sem hardware.
+
+---
+
+### Etapa 12.20 — Robot Tools v2 e Schemas de Segurança
+
+**Dependências:** 12.15 validada; 12.19 iniciada
+**Hardware necessário:** Robô para validação física
+
+**Contexto:** StackChan expõe capacidades do robô como tools com nomes e descrições claras. O NoiseBot já tem intents locais e comandos básicos, mas precisa formalizar ferramentas com schema, limites e integração segura com o firmware.
+
+**O que entra:**
+
+- Definir catálogo de tools:
+  - `noisebot.robot.get_status`;
+  - `noisebot.robot.set_gaze`;
+  - `noisebot.robot.set_expression`;
+  - `noisebot.robot.set_led_mood`;
+  - `noisebot.robot.play_action`;
+  - `noisebot.robot.create_reminder`;
+  - `noisebot.robot.stop_reminder`;
+  - `noisebot.robot.get_reminders`.
+- Cada tool deve declarar:
+  - nome;
+  - descrição de uso;
+  - schema de entrada;
+  - limites físicos;
+  - se exige motion safety;
+  - se é local-only;
+  - resposta esperada.
+- Bridge valida schema antes de enviar comando.
+- Firmware continua validando do lado seguro.
+- Comandos de movimento só podem chegar ao `motion_service` por caminho autorizado e vetável.
+
+**Critérios de aceitação:**
+
+- [ ] 10 comandos válidos executam sem LLM.
+- [ ] 10 comandos inválidos são rejeitados antes de chegar ao firmware.
+- [ ] Logs diferenciam `tool_call`, `tool_result`, `tool_rejected`.
+- [ ] Tool de movimento não passa por cima de `motion_safety`.
+- [ ] Lembretes locais funcionam sem LLM.
+
+---
+
+### Etapa 12.21 — Expressive Modifiers e Overlays
+
+**Dependências:** 12.15 validada; conductor/expression/gaze estáveis
+**Hardware necessário:** Robô completo
+
+**Contexto:** StackChan organiza expressividade em modificadores independentes (`Blink`, `Breath`, `IdleMotion`, `IdleExpression`, `HeadPet`, `Speaking`). O NoiseBot já tem serviços equivalentes, mas precisa formalizar overlays temporários para reduzir acoplamento e melhorar naturalidade.
+
+**O que entra:**
+
+- Definir contrato de overlay:
+  - tipo;
+  - prioridade;
+  - duração;
+  - alvo (`expression`, `gaze`, `led`, `motion`, `text`);
+  - política de saída;
+  - se bloqueia ou compõe com idle.
+- Overlays v1:
+  - `listening_overlay`;
+  - `thinking_overlay`;
+  - `speaking_overlay`;
+  - `touch_pet_overlay`;
+  - `error_overlay`;
+  - `reminder_overlay`.
+- `IDLE` continua sendo baseline obrigatório.
+- Overlays nunca substituem permanentemente expressão/gaze/postura base.
+- Speaking overlay deve animar boca/expressão/LED/gaze sem depender de LLM.
+
+**Critérios de aceitação:**
+
+- [ ] Ao entrar em `IDLE`, overlays transitórios são limpos.
+- [ ] Speaking overlay inicia com `TTS_START` e termina com `TTS_STOP`.
+- [ ] Touch afetivo não abre escuta e não remove baseline permanentemente.
+- [ ] Erro de LLM/TTS gera feedback visível curto e volta ao idle.
+- [ ] 20 overlays consecutivos não deixam estado visual preso.
+
+---
+
+### Etapa 12.22 — Touch Semântico e Afetivo v2
+
+**Dependências:** 12.10 concluída; touch_service estável
+**Hardware necessário:** Touch de cobre do NoiseBot
+
+**Contexto:** StackChan trata toque de cabeça como gesto afetivo, com press/release/swipe. O NoiseBot tem apenas um touch, mas ainda pode extrair semântica temporal e intensidade para enriquecer interação sem virar gatilho de escuta.
+
+**O que entra:**
+
+- Classificar:
+  - tap curto;
+  - toque longo;
+  - carinho contínuo;
+  - duplo tap;
+  - sequência de taps;
+  - intensidade forte/fraca quando disponível.
+- Publicar eventos semânticos de touch.
+- Integrar com emotion_model, conductor, LTM e attention_service.
+- Touch não inicia listening.
+- Touch pode interromper overlay leve, mas não deve derrubar sessão crítica sem regra explícita.
+
+**Critérios de aceitação:**
+
+- [ ] Tap curto gera reação afetiva curta.
+- [ ] Toque longo gera reação diferente de tap.
+- [ ] Sequência de taps não abre bridge.
+- [ ] Touch durante listening não corrompe sessão de voz.
+- [ ] LTM registra interação semântica, não apenas contador bruto.
+
+---
+
+### Etapa 12.23 — Setup e Diagnóstico de Produto
+
+**Dependências:** 15.1 desejável; 12.18 desejável
+**Hardware necessário:** Robô completo
+
+**Contexto:** StackChan tem fluxo de setup e app de produto. Para o NoiseBot, o primeiro passo adequado é um dashboard local profissional para diagnóstico, calibração e testes repetíveis, sem depender de app mobile ou cloud.
+
+**O que entra:**
+
+- Dashboard de diagnóstico:
+  - estado atual;
+  - bridge conectado/desconectado;
+  - wake threshold/modelo;
+  - audio RMS/pico;
+  - último motivo de sessão;
+  - PSRAM/SRAM;
+  - FPS;
+  - saúde do watchdog;
+  - contadores de touch/wake/voice.
+- Testes guiados:
+  - touch;
+  - wake word;
+  - VAD/listening;
+  - bridge roundtrip;
+  - TTS/SAY;
+  - expression/gaze/LED;
+  - motion safety quando liberado.
+- Exportar snapshot de diagnóstico para SD.
+
+**Critérios de aceitação:**
+
+- [ ] Usuário consegue validar áudio/bridge sem ler 200 linhas de serial.
+- [ ] Snapshot de diagnóstico inclui versão, config e últimos erros.
+- [ ] Teste de wake word mostra modelo, threshold e resultado.
+- [ ] Teste de bridge mostra latência e versão de protocolo.
+- [ ] Nenhum teste de dashboard bloqueia boot ou tasks críticas.
 
 ---
 
