@@ -2437,7 +2437,7 @@ Metas de produto:
 
 **Contexto:** StackChan organiza expressividade em modificadores independentes (`Blink`, `Breath`, `IdleMotion`, `IdleExpression`, `HeadPet`, `Speaking`). O NoiseBot já tem serviços equivalentes, mas precisa formalizar overlays temporários para reduzir acoplamento e melhorar naturalidade.
 
-**Status atual:** iniciada. `ui_overlay_service` v1 criado como layer visual independente no `render_service`; comandos de volume/texto e eventos `SESSION v2` do bridge já geram feedback visual transitório sem substituir o baseline de `IDLE`.
+**Status atual:** em validação. `ui_overlay_service` v1 criado como layer visual independente no `render_service`; comandos de volume/texto e eventos `SESSION v2` do bridge já geram feedback visual transitório sem substituir o baseline de `IDLE`. Toasts de sessão validados em hardware em 24/04/2026.
 
 **O que entra:**
 
