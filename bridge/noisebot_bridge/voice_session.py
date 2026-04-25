@@ -72,6 +72,8 @@ def classify_session_outcome(discard_reason: str | None, route: str, end_reason:
         return "stt_unavailable", discard_reason, "stt_unavailable"
     if discard_reason == "llm_indisponivel":
         return "llm_unavailable", discard_reason, "llm_unavailable"
+    if discard_reason in ("gemini_429", "llm_quota_exceeded"):
+        return "llm_quota_exceeded", discard_reason, "llm_quota_exceeded"
     if discard_reason in ("tts_indisponivel", "tts_send_failed"):
         return "tts_failed", discard_reason, "tts_failed"
     if discard_reason.startswith(("audio_curto_", "audio_baixo_", "rms_baixo_", "buffer_vazio")):

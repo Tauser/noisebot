@@ -252,6 +252,13 @@ class VoiceSessionTests(unittest.TestCase):
         self.assertEqual(result.error_reason, "llm_unavailable")
         self.assertEqual(result.route, "error")
 
+    def test_gemini_quota_returns_specific_llm_error_reason(self):
+        outcome, detail, error = classify_session_outcome("gemini_429", "llm", "silence")
+
+        self.assertEqual(outcome, "llm_quota_exceeded")
+        self.assertEqual(detail, "gemini_429")
+        self.assertEqual(error, "llm_quota_exceeded")
+
     def test_low_confidence_stt_returns_standard_rejection(self):
         transport = NullTransport()
         runtime = VoiceSessionRuntime(transport, LowConfidenceStt(), NoneLlm(), FakeTts(), dry_run=True)

@@ -437,7 +437,14 @@ static void bridge_on_event(const nb_event_t *evt)
         } else if (strstr(payload, "\"event\":\"TTS_START\"")) {
             ui_overlay_show_toast("Falando...", NB_UI_OVERLAY_SUCCESS, 2200U);
         } else if (strstr(payload, "\"event\":\"SESSION_ERROR\"")) {
-            ui_overlay_show_toast("Erro na conversa", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
+            if (strstr(payload, "\"reason\":\"llm_quota_exceeded\"")) {
+                ui_overlay_show_toast("Cota da LLM", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
+            } else if (strstr(payload, "\"reason\":\"llm_unavailable\"") ||
+                       strstr(payload, "\"reason\":\"llm_error\"")) {
+                ui_overlay_show_toast("Erro na LLM", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
+            } else {
+                ui_overlay_show_toast("Erro na conversa", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
+            }
         }
         break;
     }
