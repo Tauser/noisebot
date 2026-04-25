@@ -149,6 +149,13 @@ class VoiceSessionTests(unittest.TestCase):
         self.assertEqual(detail, "logprob_-1.43")
         self.assertEqual(error, "stt_rejected")
 
+    def test_classifies_audio_rejection_with_session_error(self):
+        outcome, detail, error = classify_session_outcome("audio_baixo_rms20_peak90", "discard", "silence")
+
+        self.assertEqual(outcome, "audio_rejected")
+        self.assertEqual(detail, "audio_baixo_rms20_peak90")
+        self.assertEqual(error, "audio_rejected")
+
     def test_dry_run_transcribes_and_sends_single_ack(self):
         transport = NullTransport()
         events = []

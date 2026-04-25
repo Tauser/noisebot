@@ -444,6 +444,8 @@ static void bridge_on_event(const nb_event_t *evt)
                 ui_overlay_show_toast("Erro na LLM", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
             } else if (strstr(payload, "\"reason\":\"stt_rejected\"")) {
                 ui_overlay_show_toast("Nao entendi", NB_UI_OVERLAY_WARNING, BRIDGE_ERROR_TOAST_MS);
+            } else if (strstr(payload, "\"reason\":\"audio_rejected\"")) {
+                ui_overlay_show_toast("Nao ouvi", NB_UI_OVERLAY_WARNING, BRIDGE_ERROR_TOAST_MS);
             } else {
                 ui_overlay_show_toast("Erro na conversa", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
             }

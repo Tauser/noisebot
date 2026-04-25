@@ -2283,7 +2283,7 @@ Respostas locais de erro:
 - [x] STT descartado por `logprob` ruim gera feedback visível ou sonoro controlado, sem chamar LLM.
 - [x] `thinking` aparece quando LLM demora mais que 1s.
 - [ ] `speaking` inicia antes/durante envio de `SAY`.
-- [ ] Usuário consegue distinguir "não ouvi", "não entendi" e "nuvem falhou".
+- [x] Usuário consegue distinguir "não ouvi", "não entendi" e "nuvem falhou".
 
 ---
 

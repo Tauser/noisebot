@@ -79,7 +79,7 @@ def classify_session_outcome(discard_reason: str | None, route: str, end_reason:
     if discard_reason in ("tts_indisponivel", "tts_send_failed"):
         return "tts_failed", discard_reason, "tts_failed"
     if discard_reason.startswith(("audio_curto_", "audio_baixo_", "rms_baixo_", "buffer_vazio")):
-        return "audio_rejected", discard_reason, None
+        return "audio_rejected", discard_reason, "audio_rejected"
     if discard_reason.startswith(("texto_vazio", "no_speech_", "logprob_", "compression_")):
         return "stt_rejected", discard_reason, "stt_rejected"
     if route == "error":
