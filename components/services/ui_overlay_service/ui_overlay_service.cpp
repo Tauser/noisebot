@@ -31,6 +31,7 @@ typedef enum {
     OVERLAY_TEXT,
     OVERLAY_TOAST,
     OVERLAY_CLOCK,
+    OVERLAY_STATUS,
 } overlay_kind_t;
 
 typedef struct {
@@ -62,7 +63,7 @@ static void overlay_rect(overlay_kind_t kind, int *x, int *y, int *w, int *h)
         *h = 52;
         *x = (dw - *w) / 2;
         *y = 12;
-    } else if (kind == OVERLAY_CLOCK) {
+    } else if (kind == OVERLAY_CLOCK || kind == OVERLAY_STATUS) {
         *w = (dw < 286) ? (dw - 28) : 258;
         *h = 68;
         *x = (dw - *w) / 2;
@@ -115,6 +116,11 @@ static bool is_clock_text(const char *text)
     return text &&
            std::strstr(text, "Agora") == text &&
            (std::strstr(text, "hora") || std::strstr(text, "minuto"));
+}
+
+static bool is_status_text(const char *text)
+{
+    return text && std::strstr(text, "Status:") == text;
 }
 
 static void parse_clock_text(const char *text, int *hour, int *minute)
@@ -222,6 +228,45 @@ static void draw_clock_overlay(LGFX_Sprite *spr,
     spr->drawString("hora local", x + 64, y + 42);
 }
 
+static void draw_status_overlay(LGFX_Sprite *spr,
+                                int x,
+                                int y,
+                                int w,
+                                int h,
+                                const overlay_state_t *state)
+{
+    const uint16_t bg = spr->color565(9, 18, 16);
+    const uint16_t fg = TFT_WHITE;
+    const uint16_t dim = spr->color565(112, 132, 126);
+    const uint16_t accent = spr->color565(72, 208, 129);
+
+    int health = -1;
+    int attention = -1;
+    const char *health_p = std::strstr(state->text, "saude ");
+    const char *attn_p = std::strstr(state->text, "atencao ");
+    if (health_p) health = std::atoi(health_p + 6);
+    if (attn_p) attention = std::atoi(attn_p + 8);
+
+    spr->fillRoundRect(x, y, w, h, 8, bg);
+    spr->drawRoundRect(x, y, w, h, 8, accent);
+    spr->fillCircle(x + 28, y + 28, 12, accent);
+    spr->drawLine(x + 21, y + 28, x + 26, y + 34, bg);
+    spr->drawLine(x + 26, y + 34, x + 37, y + 21, bg);
+
+    spr->setTextColor(fg, bg);
+    spr->setTextSize(2);
+    spr->drawString("Status", x + 54, y + 10);
+    spr->setTextColor(dim, bg);
+    spr->setTextSize(1);
+    if (health >= 0 && attention >= 0) {
+        char line[32];
+        std::snprintf(line, sizeof(line), "saude %d%%  atencao %d%%", health, attention);
+        spr->drawString(line, x + 56, y + 39);
+    } else {
+        spr->drawString("operacional", x + 56, y + 39);
+    }
+}
+
 static void toast_colors(LGFX_Sprite *spr,
                          nb_ui_overlay_tone_t tone,
                          uint16_t *bg,
@@ -319,6 +364,9 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
         case OVERLAY_CLOCK:
             draw_clock_overlay(spr, x, y, w, h, &state);
             break;
+        case OVERLAY_STATUS:
+            draw_status_overlay(spr, x, y, w, h, &state);
+            break;
         default:
             return;
     }
@@ -387,6 +435,9 @@ extern "C" void ui_overlay_show_text(const char *text, uint32_t duration_ms)
         s_state.percent = percent;
     } else if (is_clock_text(text)) {
         s_state.kind = OVERLAY_CLOCK;
+        s_state.percent = 0;
+    } else if (is_status_text(text)) {
+        s_state.kind = OVERLAY_STATUS;
         s_state.percent = 0;
     } else {
         s_state.kind = OVERLAY_TEXT;

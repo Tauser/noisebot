@@ -2437,7 +2437,7 @@ Metas de produto:
 
 **Contexto:** StackChan organiza expressividade em modificadores independentes (`Blink`, `Breath`, `IdleMotion`, `IdleExpression`, `HeadPet`, `Speaking`). O NoiseBot já tem serviços equivalentes, mas precisa formalizar overlays temporários para reduzir acoplamento e melhorar naturalidade.
 
-**Status atual:** em validação. `ui_overlay_service` v1 criado como layer visual independente no `render_service`; comandos de volume/texto e eventos `SESSION v2` do bridge já geram feedback visual transitório sem substituir o baseline de `IDLE`. Toasts de sessão validados em hardware em 24/04/2026. Intents locais textuais agora também enviam feedback visual; respostas de hora usam card de relógio sem TTS redundante e textos `Volume NN%` reaproveitam o card de volume. Comandos de volume relativos aceitam `volume`/`som`, exibem porcentagem e disparam beep curto no nível final.
+**Status atual:** em validação. `ui_overlay_service` v1 criado como layer visual independente no `render_service`; comandos de volume/texto e eventos `SESSION v2` do bridge já geram feedback visual transitório sem substituir o baseline de `IDLE`. Toasts de sessão validados em hardware em 24/04/2026. Intents locais textuais agora também enviam feedback visual; respostas de hora usam card de relógio sem TTS redundante e textos `Volume NN%` reaproveitam o card de volume. Comandos de volume relativos aceitam `volume`/`som`, exibem porcentagem e disparam beep curto no nível final. Status local usa card visual com saúde/atenção quando disponíveis.
 
 **O que entra:**
 
@@ -2476,6 +2476,7 @@ Metas de produto:
 - [x] Volume local exibe barra/porcentagem transitória sem TTS obrigatório.
 - [x] Texto curto do bridge possui overlay visual transitório.
 - [x] Intent local de hora exibe relógio transitório na tela.
+- [x] Intent local de status exibe card visual sem TTS redundante.
 - [x] Eventos `LISTEN_START`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `SESSION_ERROR` e queda/timeout do bridge geram toast visual curto.
 - [ ] Speaking overlay inicia com `TTS_START` e termina com `TTS_STOP`.
 - [ ] Touch afetivo não abre escuta e não remove baseline permanentemente.

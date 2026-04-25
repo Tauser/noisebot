@@ -43,7 +43,8 @@ class IntentRouterTests(unittest.TestCase):
         result = self.router.route("qual seu status", status={"health": 99, "attention": 0.42})
         self.assertIsNotNone(result)
         self.assertEqual(result.intent, "local_status")
-        self.assertIn("saúde 99 de 100", result.reply)
+        self.assertEqual(result.reply, "Status: saude 99%, atencao 42%.")
+        self.assertFalse(result.speak_reply)
 
     def test_bridge_test_intent(self):
         result = self.router.route("você está me ouvindo?")

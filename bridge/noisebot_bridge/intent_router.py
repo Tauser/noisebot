@@ -85,17 +85,18 @@ class LocalIntentRouter:
             attention = status.get("attention")
             details = []
             if health is not None:
-                details.append(f"saúde {int(health)} de 100")
+                details.append(f"saude {int(health)}%")
             if attention is not None:
-                details.append(f"atenção {float(attention):.2f}")
-            suffix = f" Tenho {', '.join(details)}." if details else ""
+                details.append(f"atencao {int(float(attention) * 100.0)}%")
+            suffix = ", ".join(details) if details else "operacional"
             return LocalIntentResult(
                 intent="local_status",
                 confidence=0.88,
-                reply=f"Estou operacional e atento.{suffix}",
+                reply=f"Status: {suffix}.",
                 expression_id=1,
                 action=1,
                 emot_event=2,
+                speak_reply=False,
             )
 
         if self._is_network(norm):
