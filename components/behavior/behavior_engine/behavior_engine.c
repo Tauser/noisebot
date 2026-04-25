@@ -49,7 +49,6 @@
 
 #define TAG "nb_beng"
 
-#define BRIDGE_SESSION_TOAST_MS 1400U
 #define BRIDGE_ERROR_TOAST_MS   2400U
 
 /* ── Tipos internos ──────────────────────────────────────────────────────── */
@@ -336,6 +335,10 @@ static void bridge_resp_timeout_cb(void *arg)
 
 static void bridge_on_event(const nb_event_t *evt)
 {
+    if (evt->type == NB_EVT_WAKE_WORD_DETECTED) {
+        ui_overlay_show_toast("Ouvindo...", NB_UI_OVERLAY_INFO, 2200U);
+    }
+
     switch (evt->type) {
 
     case NB_EVT_WAKE_WORD_DETECTED:
@@ -425,18 +428,15 @@ static void bridge_on_event(const nb_event_t *evt)
         if (!payload) break;
 
         if (strstr(payload, "\"event\":\"LISTEN_START\"")) {
-            ui_overlay_show_toast("Ouvindo...", NB_UI_OVERLAY_INFO, BRIDGE_SESSION_TOAST_MS);
+            ui_overlay_show_toast("Ouvindo...", NB_UI_OVERLAY_INFO, 2200U);
         } else if (strstr(payload, "\"event\":\"TRANSCRIBE_START\"")) {
-            ui_overlay_show_toast("Transcrevendo...", NB_UI_OVERLAY_INFO, BRIDGE_SESSION_TOAST_MS);
+            ui_overlay_show_toast("Transcrevendo...", NB_UI_OVERLAY_INFO, 2200U);
         } else if (strstr(payload, "\"event\":\"THINKING_START\"")) {
-            ui_overlay_show_toast("Pensando...", NB_UI_OVERLAY_INFO, BRIDGE_SESSION_TOAST_MS);
+            ui_overlay_show_toast("Pensando...", NB_UI_OVERLAY_INFO, 2200U);
         } else if (strstr(payload, "\"event\":\"TTS_START\"")) {
-            ui_overlay_show_toast("Falando...", NB_UI_OVERLAY_SUCCESS, BRIDGE_SESSION_TOAST_MS);
+            ui_overlay_show_toast("Falando...", NB_UI_OVERLAY_SUCCESS, 2200U);
         } else if (strstr(payload, "\"event\":\"SESSION_ERROR\"")) {
             ui_overlay_show_toast("Erro na conversa", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
-        } else if (strstr(payload, "\"event\":\"SESSION_DONE\"")
-                || strstr(payload, "\"event\":\"TTS_STOP\"")) {
-            ui_overlay_clear();
         }
         break;
     }

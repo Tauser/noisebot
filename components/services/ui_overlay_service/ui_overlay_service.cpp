@@ -285,6 +285,7 @@ extern "C" void ui_overlay_show_volume(uint8_t percent, uint32_t duration_ms)
     s_state.expires_us = esp_timer_get_time() + ((int64_t)duration_ms * 1000LL);
     xSemaphoreGive(s_mutex);
 
+    ESP_LOGI(TAG, "volume overlay: %u%%", (unsigned)percent);
     render_service_force_full_refresh();
 }
 
@@ -301,6 +302,7 @@ extern "C" void ui_overlay_show_text(const char *text, uint32_t duration_ms)
     s_state.expires_us = esp_timer_get_time() + ((int64_t)duration_ms * 1000LL);
     xSemaphoreGive(s_mutex);
 
+    ESP_LOGI(TAG, "text overlay: %s", s_state.text);
     render_service_force_full_refresh();
 }
 
@@ -322,6 +324,7 @@ extern "C" void ui_overlay_show_toast(const char *text,
     s_state.expires_us = esp_timer_get_time() + ((int64_t)duration_ms * 1000LL);
     xSemaphoreGive(s_mutex);
 
+    ESP_LOGI(TAG, "toast overlay: %s", text);
     render_service_force_full_refresh();
 }
 
