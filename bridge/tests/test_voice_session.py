@@ -134,12 +134,12 @@ class FailingTts:
 
 
 class VoiceSessionTests(unittest.TestCase):
-    def test_classifies_stt_rejection_without_session_error(self):
+    def test_classifies_stt_rejection_with_session_error(self):
         outcome, detail, error = classify_session_outcome("logprob_-1.43", "discard", "silence")
 
         self.assertEqual(outcome, "stt_rejected")
         self.assertEqual(detail, "logprob_-1.43")
-        self.assertIsNone(error)
+        self.assertEqual(error, "stt_rejected")
 
     def test_dry_run_transcribes_and_sends_single_ack(self):
         transport = NullTransport()
@@ -275,7 +275,7 @@ class VoiceSessionTests(unittest.TestCase):
 
         self.assertEqual(result.outcome, "stt_rejected")
         self.assertEqual(result.outcome_detail, "logprob_-1.50")
-        self.assertIsNone(result.error_reason)
+        self.assertEqual(result.error_reason, "stt_rejected")
 
     def test_session_events_can_be_sent_as_protocol_frames(self):
         from noisebot_bridge.runtime import BridgeRuntime

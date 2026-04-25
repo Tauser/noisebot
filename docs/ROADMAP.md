@@ -2279,8 +2279,8 @@ Respostas locais de erro:
 
 **Critérios de aceitação:**
 
-- [ ] Falha de Gemini 429 não termina em silêncio absoluto.
-- [ ] STT descartado por `logprob` ruim gera feedback visível ou sonoro controlado, sem chamar LLM.
+- [x] Falha de Gemini 429 não termina em silêncio absoluto.
+- [x] STT descartado por `logprob` ruim gera feedback visível ou sonoro controlado, sem chamar LLM.
 - [ ] `thinking` aparece quando LLM demora mais que 1s.
 - [ ] `speaking` inicia antes/durante envio de `SAY`.
 - [ ] Usuário consegue distinguir "não ouvi", "não entendi" e "nuvem falhou".
@@ -2481,7 +2481,7 @@ Metas de produto:
 - [x] Eventos `LISTEN_START`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `SESSION_ERROR` e queda/timeout do bridge geram toast visual curto.
 - [ ] Speaking overlay inicia com `TTS_START` e termina com `TTS_STOP`.
 - [ ] Touch afetivo não abre escuta e não remove baseline permanentemente.
-- [ ] Erro de LLM/TTS gera feedback visível curto e volta ao idle.
+- [x] Erro de LLM/TTS gera feedback visível curto e volta ao idle.
 - [ ] 20 overlays consecutivos não deixam estado visual preso.
 
 ---
