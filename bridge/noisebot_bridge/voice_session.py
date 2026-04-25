@@ -22,7 +22,7 @@ from .config import (
     VOICE_TIMEOUT_S,
 )
 from .device_commands import DeviceCommandDispatcher
-from .intent_router import LocalIntentResult
+from .intent_router import DeviceCommand, LocalIntentResult
 from .llm import LlmResult
 from .protocol import (
     MSG_ACTION,
@@ -357,6 +357,10 @@ class VoiceSessionRuntime:
                         return
                     self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", local_intent.emot_event))
                     self.send_msg(MSG_EXPR, struct.pack("<BI", local_intent.expression_id, 4000))
+                    if not local_intent.device_commands and local_intent.reply:
+                        self.device_dispatcher.dispatch(
+                            DeviceCommand("scroll_text", {"text": local_intent.reply}, supported=True)
+                        )
                     for command in local_intent.device_commands:
                         self.device_dispatcher.dispatch(command)
                     if not local_intent.speak_reply:

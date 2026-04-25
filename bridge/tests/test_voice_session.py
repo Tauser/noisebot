@@ -6,6 +6,7 @@ from noisebot_bridge.protocol import (
     MSG_GAZE,
     MSG_SAY,
     MSG_SESSION,
+    MSG_TEXT_SCROLL,
     SESSION_THINKING_START,
     SESSION_TRANSCRIBE_START,
     SESSION_TTS_START,
@@ -178,6 +179,10 @@ class VoiceSessionTests(unittest.TestCase):
 
         self.assertEqual(llm.calls, 0)
         self.assertGreaterEqual(len(transport.sent), 4)
+        decoded = []
+        for _, frame in transport.sent:
+            decoded.extend(decode_frames(bytearray(frame)))
+        self.assertIn((MSG_TEXT_SCROLL, b"Agora s\xc3\xa3o 8 horas."), decoded)
 
     def test_local_intent_emits_tts_events(self):
         transport = NullTransport()
