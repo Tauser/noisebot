@@ -67,6 +67,7 @@ class LocalIntentRouter:
                 expression_id=2,
                 action=0,
                 emot_event=2,
+                speak_reply=False,
             )
 
         if self._is_bridge_test(norm):

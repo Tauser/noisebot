@@ -360,6 +360,10 @@ class VoiceSessionRuntime:
                     for command in local_intent.device_commands:
                         self.device_dispatcher.dispatch(command)
                     if not local_intent.speak_reply:
+                        if not local_intent.device_commands and local_intent.reply:
+                            self.device_dispatcher.dispatch(
+                                DeviceCommand("scroll_text", {"text": local_intent.reply}, supported=True)
+                            )
                         log.info("INTENT session_id=%d reply_suppressed intent=%s", session_id, local_intent.intent)
                         ack_once()
                         return

@@ -16,6 +16,7 @@ class IntentRouterTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.intent, "local_time")
         self.assertEqual(result.reply, "Agora são 8 horas e 05 minutos.")
+        self.assertFalse(result.speak_reply)
 
     def test_time_intent_handles_one_hour_singular(self):
         result = self.router.route("Que horas são?", now=datetime(2026, 4, 23, 1, 17))

@@ -93,6 +93,19 @@ class FakeIntentRouter:
             expression_id=2,
             action=0,
             emot_event=2,
+            speak_reply=False,
+        )
+
+
+class FakeSpeakingIntentRouter:
+    def route(self, text, status=None):
+        return LocalIntentResult(
+            intent="local_bridge_test",
+            confidence=0.9,
+            reply="Estou te ouvindo pelo bridge.",
+            expression_id=2,
+            action=0,
+            emot_event=2,
         )
 
 
@@ -155,9 +168,10 @@ class VoiceSessionTests(unittest.TestCase):
         self.assertIn(SESSION_TRANSCRIBE_START, events)
         self.assertNotIn(SESSION_TTS_START, events)
 
-    def test_real_mode_local_intent_skips_llm_and_speaks(self):
+    def test_real_mode_local_time_skips_llm_and_shows_card_without_tts(self):
         transport = NullTransport()
         llm = NoneLlm()
+        events = []
         runtime = VoiceSessionRuntime(
             transport,
             FakeStt(),
@@ -165,6 +179,7 @@ class VoiceSessionTests(unittest.TestCase):
             FakeTts(),
             dry_run=False,
             intent_router=FakeIntentRouter(),
+            session_event_cb=lambda event, session_id, **fields: events.append(event),
         )
         audio = np.full(9000, 2000, dtype=np.int16)
         snapshot = VoiceSnapshot(
@@ -178,12 +193,12 @@ class VoiceSessionTests(unittest.TestCase):
         runtime.handle_voice_end(snapshot)
 
         self.assertEqual(llm.calls, 0)
-        self.assertGreaterEqual(len(transport.sent), 4)
         decoded = []
         for _, frame in transport.sent:
             decoded.extend(decode_frames(bytearray(frame)))
         self.assertIn((MSG_TEXT_SCROLL, b"Agora s\xc3\xa3o 8 horas."), decoded)
-        self.assertEqual(decoded[-1], (MSG_TEXT_SCROLL, b"Agora s\xc3\xa3o 8 horas."))
+        self.assertEqual(decoded[-1], (MSG_SAY, b""))
+        self.assertNotIn(SESSION_TTS_START, events)
 
     def test_local_intent_emits_tts_events(self):
         transport = NullTransport()
@@ -194,7 +209,7 @@ class VoiceSessionTests(unittest.TestCase):
             NoneLlm(),
             FakeTts(),
             dry_run=False,
-            intent_router=FakeIntentRouter(),
+            intent_router=FakeSpeakingIntentRouter(),
             session_event_cb=lambda event, session_id, **fields: events.append((event, fields.get("reason"))),
         )
         audio = np.full(9000, 2000, dtype=np.int16)
@@ -305,7 +320,7 @@ class VoiceSessionTests(unittest.TestCase):
             NoneLlm(),
             FailingTts(),
             dry_run=False,
-            intent_router=FakeIntentRouter(),
+            intent_router=FakeSpeakingIntentRouter(),
         )
         audio = np.full(9000, 2000, dtype=np.int16)
         snapshot = VoiceSnapshot(
