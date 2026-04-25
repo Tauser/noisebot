@@ -2130,11 +2130,10 @@ Regras:
 
 ---
 
-### Etapa 12.15 — Device Commands v1
+### Etapa 12.15 — Device Commands v1 ✓
 
 **Dependências:** 12.14 concluída; protocolo bridge 12.1 estável
 **Hardware necessário:** Robô completo para validação de face/LED/motion/audio
-**Status:** em validação
 
 **Contexto:** StackChan documenta comandos para controlar speaker, motor, RGB, câmera e bateria. O NoiseBot deve começar pelo que já existe no protocolo atual e só ampliar o firmware quando houver necessidade concreta.
 
@@ -2170,8 +2169,8 @@ Regras:
 
 - [x] "Olhe para a esquerda" envia `MSG_GAZE` ou ação equivalente sem LLM.
 - [x] "Fique feliz" envia `MSG_EXPR` sem LLM.
-- [ ] Comando não suportado loga `unsupported_device_command`.
-- [ ] 20 comandos locais consecutivos não deixam socket, sessão ou estado presos.
+- [x] Comando não suportado loga `unsupported_device_command`.
+- [x] 20 comandos locais consecutivos não deixam socket, sessão ou estado presos.
 - [x] O bridge diferencia `intent_local_text` de `intent_device_command` nos logs.
 
 **Início 12.15 (2026-04-23):**
@@ -2248,7 +2247,7 @@ Tratamento:
 
 ---
 
-### Etapa 12.17 — Feedback de Produto e Erros Sem Silêncio
+### Etapa 12.17 — Feedback de Produto e Erros Sem Silêncio ✓
 
 **Dependências:** 12.13 concluída; 12.15 desejável
 **Hardware necessário:** Robô completo
@@ -2282,7 +2281,7 @@ Respostas locais de erro:
 - [x] Falha de Gemini 429 não termina em silêncio absoluto.
 - [x] STT descartado por `logprob` ruim gera feedback visível ou sonoro controlado, sem chamar LLM.
 - [x] `thinking` aparece quando LLM demora mais que 1s.
-- [ ] `speaking` inicia antes/durante envio de `SAY`.
+- [x] `speaking` inicia antes/durante envio de `SAY`.
 - [x] Usuário consegue distinguir "não ouvi", "não entendi" e "nuvem falhou".
 
 ---
@@ -2388,14 +2387,12 @@ Metas de produto:
 
 ---
 
-### Etapa 12.20 — Robot Tools v2 e Schemas de Segurança
+### Etapa 12.20 — Robot Tools v2 e Schemas de Segurança ✓
 
 **Dependências:** 12.15 validada; 12.19 concluída
 **Hardware necessário:** Robô para validação física
 
-**Contexto:** StackChan expõe capacidades do robô como tools com nomes e descrições claras. O NoiseBot já tem intents locais e comandos básicos, mas precisa formalizar ferramentas com schema, limites e integração segura com o firmware.
-
-**Status atual:** em validação. O bridge possui catálogo canônico, aliases para os comandos locais existentes, validação de schema antes de qualquer envio ao firmware e runtime local para status/lembretes sem LLM.
+**Contexto:** StackChan expõe capacidades do robô como tools com nomes e descrições claras. O NoiseBot já tem intents locais e comandos básicos, mas precisa formalizar ferramentas com schema, limites e integração segura com o firmware. O bridge possui catálogo canônico, aliases para os comandos locais existentes, validação de schema antes de qualquer envio ao firmware e runtime local para status/lembretes sem LLM.
 
 **O que entra:**
 
@@ -2430,14 +2427,12 @@ Metas de produto:
 
 ---
 
-### Etapa 12.21 — Expressive Modifiers e Overlays
+### Etapa 12.21 — Expressive Modifiers e Overlays ✓
 
 **Dependências:** 12.15 validada; 12.19 validada em hardware; conductor/expression/gaze estáveis
 **Hardware necessário:** Robô completo
 
-**Contexto:** StackChan organiza expressividade em modificadores independentes (`Blink`, `Breath`, `IdleMotion`, `IdleExpression`, `HeadPet`, `Speaking`). O NoiseBot já tem serviços equivalentes, mas precisa formalizar overlays temporários para reduzir acoplamento e melhorar naturalidade.
-
-**Status atual:** em validação. `ui_overlay_service` v1 criado como layer visual independente no `render_service`; comandos de volume/texto e eventos `SESSION v2` do bridge já geram feedback visual transitório sem substituir o baseline de `IDLE`. Toasts de sessão validados em hardware em 24/04/2026. Intents locais textuais agora também enviam feedback visual; respostas de hora usam card de relógio sem TTS redundante e textos `Volume NN%` reaproveitam o card de volume. Comandos de volume relativos aceitam `volume`/`som`, exibem porcentagem e disparam beep curto no nível final. Status local usa card visual com saúde/atenção quando disponíveis. Teste de bridge e status de rede/IP usam card visual sem TTS.
+**Contexto:** StackChan organiza expressividade em modificadores independentes (`Blink`, `Breath`, `IdleMotion`, `IdleExpression`, `HeadPet`, `Speaking`). O NoiseBot já tem serviços equivalentes, mas precisa formalizar overlays temporários para reduzir acoplamento e melhorar naturalidade. `ui_overlay_service` v1 criado como layer visual independente no `render_service`; comandos de volume/texto e eventos `SESSION v2` do bridge já geram feedback visual transitório sem substituir o baseline de `IDLE`. Toasts de sessão validados em hardware em 24/04/2026. Intents locais textuais agora também enviam feedback visual; respostas de hora usam card de relógio sem TTS redundante e textos `Volume NN%` reaproveitam o card de volume. Comandos de volume relativos aceitam `volume`/`som`, exibem porcentagem e disparam beep curto no nível final. Status local usa card visual com saúde/atenção quando disponíveis. Teste de bridge e status de rede/IP usam card visual sem TTS.
 
 **O que entra:**
 
@@ -2472,17 +2467,17 @@ Metas de produto:
 
 **Critérios de aceitação:**
 
-- [ ] Ao entrar em `IDLE`, overlays transitórios são limpos.
+- [x] Ao entrar em `IDLE`, overlays transitórios são limpos.
 - [x] Volume local exibe barra/porcentagem transitória sem TTS obrigatório.
 - [x] Texto curto do bridge possui overlay visual transitório.
 - [x] Intent local de hora exibe relógio transitório na tela.
 - [x] Intent local de status exibe card visual sem TTS redundante.
 - [x] Intents locais de bridge/rede exibem card visual sem TTS redundante.
 - [x] Eventos `LISTEN_START`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `SESSION_ERROR` e queda/timeout do bridge geram toast visual curto.
-- [ ] Speaking overlay inicia com `TTS_START` e termina com `TTS_STOP`.
-- [ ] Touch afetivo não abre escuta e não remove baseline permanentemente.
+- [x] Speaking overlay inicia com `TTS_START` e termina com `TTS_STOP`.
+- [x] Touch afetivo não abre escuta e não remove baseline permanentemente.
 - [x] Erro de LLM/TTS gera feedback visível curto e volta ao idle.
-- [ ] 20 overlays consecutivos não deixam estado visual preso.
+- [x] 20 overlays consecutivos não deixam estado visual preso.
 
 ---
 
