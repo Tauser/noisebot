@@ -39,6 +39,8 @@ from .stt import SttResult
 
 log = logging.getLogger("noisebot_bridge.session")
 
+THINKING_EVENT_DELAY_S = 1.0
+
 
 @dataclass
 class VoiceSnapshot:
@@ -285,6 +287,18 @@ class VoiceSessionRuntime:
             self.emit_session_event(SESSION_TTS_STOP, session_id, reason="ok")
             return True
 
+        def schedule_thinking_event() -> tuple[threading.Event, threading.Timer]:
+            cancelled = threading.Event()
+
+            def emit_if_pending():
+                if not cancelled.is_set():
+                    self.emit_session_event(SESSION_THINKING_START, session_id, source="llm")
+
+            timer = threading.Timer(THINKING_EVENT_DELAY_S, emit_if_pending)
+            timer.daemon = True
+            timer.start()
+            return cancelled, timer
+
         try:
             if not snapshot.audio_chunks:
                 discard_reason = "buffer_vazio"
@@ -392,8 +406,12 @@ class VoiceSessionRuntime:
                 return
 
             route = "llm"
-            self.emit_session_event(SESSION_THINKING_START, session_id, source="llm")
-            llm_result = self.llm.generate(text, self.last_status)
+            thinking_cancel, thinking_timer = schedule_thinking_event()
+            try:
+                llm_result = self.llm.generate(text, self.last_status)
+            finally:
+                thinking_cancel.set()
+                thinking_timer.cancel()
             if llm_result.error:
                 discard_reason = llm_result.error
                 ack_once()

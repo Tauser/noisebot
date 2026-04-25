@@ -79,6 +79,14 @@ class ReadyLlm:
         )
 
 
+class SlowLlm(ReadyLlm):
+    def generate(self, text, status):
+        import time
+
+        time.sleep(1.05)
+        return super().generate(text, status)
+
+
 class EmptyIntentRouter:
     def route(self, text, status=None):
         return None
@@ -369,9 +377,35 @@ class VoiceSessionTests(unittest.TestCase):
         self.assertEqual(llm.calls, 1)
         self.assertGreaterEqual(len(transport.sent), 4)
 
-    def test_unknown_text_emits_thinking_start(self):
+    def test_unknown_text_with_fast_llm_suppresses_thinking_start(self):
         transport = NullTransport()
         llm = ReadyLlm()
+        events = []
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            llm,
+            FakeTts(),
+            dry_run=False,
+            intent_router=EmptyIntentRouter(),
+            session_event_cb=lambda event, session_id, **fields: events.append(event),
+        )
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=2000.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        runtime.handle_voice_end(snapshot)
+
+        self.assertNotIn(SESSION_THINKING_START, events)
+
+    def test_unknown_text_with_slow_llm_emits_thinking_start(self):
+        transport = NullTransport()
+        llm = SlowLlm()
         events = []
         runtime = VoiceSessionRuntime(
             transport,

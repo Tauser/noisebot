@@ -2281,7 +2281,7 @@ Respostas locais de erro:
 
 - [x] Falha de Gemini 429 não termina em silêncio absoluto.
 - [x] STT descartado por `logprob` ruim gera feedback visível ou sonoro controlado, sem chamar LLM.
-- [ ] `thinking` aparece quando LLM demora mais que 1s.
+- [x] `thinking` aparece quando LLM demora mais que 1s.
 - [ ] `speaking` inicia antes/durante envio de `SAY`.
 - [ ] Usuário consegue distinguir "não ouvi", "não entendi" e "nuvem falhou".
 
