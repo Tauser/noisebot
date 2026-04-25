@@ -357,17 +357,17 @@ class VoiceSessionRuntime:
                         return
                     self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", local_intent.emot_event))
                     self.send_msg(MSG_EXPR, struct.pack("<BI", local_intent.expression_id, 4000))
-                    if not local_intent.device_commands and local_intent.reply:
-                        self.device_dispatcher.dispatch(
-                            DeviceCommand("scroll_text", {"text": local_intent.reply}, supported=True)
-                        )
                     for command in local_intent.device_commands:
                         self.device_dispatcher.dispatch(command)
                     if not local_intent.speak_reply:
                         log.info("INTENT session_id=%d reply_suppressed intent=%s", session_id, local_intent.intent)
                         ack_once()
                         return
-                    speak_text(local_intent.reply, local_intent.action)
+                    spoke_ok = speak_text(local_intent.reply, local_intent.action)
+                    if spoke_ok and not local_intent.device_commands and local_intent.reply:
+                        self.device_dispatcher.dispatch(
+                            DeviceCommand("scroll_text", {"text": local_intent.reply}, supported=True)
+                        )
                     return
 
             if self.dry_run:

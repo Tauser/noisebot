@@ -183,6 +183,7 @@ class VoiceSessionTests(unittest.TestCase):
         for _, frame in transport.sent:
             decoded.extend(decode_frames(bytearray(frame)))
         self.assertIn((MSG_TEXT_SCROLL, b"Agora s\xc3\xa3o 8 horas."), decoded)
+        self.assertEqual(decoded[-1], (MSG_TEXT_SCROLL, b"Agora s\xc3\xa3o 8 horas."))
 
     def test_local_intent_emits_tts_events(self):
         transport = NullTransport()
