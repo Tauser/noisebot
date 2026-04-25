@@ -141,6 +141,17 @@ class FailingTts:
         raise RuntimeError("piper_falhou:voz_ausente")
 
 
+class RecordingTransport(NullTransport):
+    def __init__(self, timeline):
+        super().__init__()
+        self.timeline = timeline
+
+    def send(self, data: bytes):
+        super().send(data)
+        for msg_type, _ in decode_frames(bytearray(data)):
+            self.timeline.append(("send", msg_type))
+
+
 class VoiceSessionTests(unittest.TestCase):
     def test_classifies_stt_rejection_with_session_error(self):
         outcome, detail, error = classify_session_outcome("logprob_-1.43", "discard", "silence")
@@ -240,6 +251,33 @@ class VoiceSessionTests(unittest.TestCase):
 
         self.assertIn((SESSION_TTS_START, None), events)
         self.assertIn((SESSION_TTS_STOP, "ok"), events)
+
+    def test_speaking_event_precedes_first_say_chunk(self):
+        timeline = []
+        transport = RecordingTransport(timeline)
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            NoneLlm(),
+            FakeTts(),
+            dry_run=False,
+            intent_router=FakeSpeakingIntentRouter(),
+            session_event_cb=lambda event, session_id, **fields: timeline.append(("event", event)),
+        )
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=1200.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        runtime.handle_voice_end(snapshot)
+
+        tts_start_index = timeline.index(("event", SESSION_TTS_START))
+        first_say_index = timeline.index(("send", MSG_SAY))
+        self.assertLess(tts_start_index, first_say_index)
 
     def test_llm_unavailable_returns_session_error_reason(self):
         transport = NullTransport()
