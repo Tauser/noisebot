@@ -11,6 +11,7 @@ class BridgeConfig:
     uart: str | None = None
     dry_run: bool = False
     replay: str | None = None
+    replay_json: bool = False
     local_intents: bool = True
     llm: str = "gemini"
     fallback_llm: str = "none"

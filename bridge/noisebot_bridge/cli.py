@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import time
 
@@ -25,6 +26,7 @@ def parse_args() -> BridgeConfig:
     parser.add_argument("--uart", default=None, metavar="PORT", help="Porta serial USB CDC")
     parser.add_argument("--dry-run", action="store_true", help="Transcreve com Whisper e não chama LLM/Piper")
     parser.add_argument("--replay", default=None, help="Arquivo WAV/PCM int16 16kHz para testar sem hardware")
+    parser.add_argument("--replay-json", action="store_true", help="Imprime resultado estruturado do replay em JSON")
     parser.add_argument("--local-intents", choices=("on", "off"), default="on")
     parser.add_argument("--llm", choices=("gemini", "openai", "mock", "none"), default="gemini")
     parser.add_argument("--fallback-llm", choices=("gemini", "openai", "mock", "none"), default="none")
@@ -42,6 +44,7 @@ def parse_args() -> BridgeConfig:
         uart=args.uart,
         dry_run=args.dry_run,
         replay=args.replay,
+        replay_json=args.replay_json,
         local_intents=args.local_intents == "on",
         llm=args.llm,
         fallback_llm=args.fallback_llm,
@@ -75,7 +78,9 @@ def main():
     intent_router = LocalIntentRouter() if cfg.local_intents else None
 
     if cfg.replay:
-        run_replay(cfg.replay, stt, llm, tts, dry_run=cfg.dry_run, intent_router=intent_router)
+        result = run_replay(cfg.replay, stt, llm, tts, dry_run=cfg.dry_run, intent_router=intent_router)
+        if cfg.replay_json:
+            print(json.dumps(result.to_dict(), ensure_ascii=False, sort_keys=True))
         return
 
     while True:

@@ -1,16 +1,30 @@
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
 import logging
 from pathlib import Path
-import time
 import wave
 
 import numpy as np
 
 from .transport import NullTransport
-from .voice_session import VoiceSessionRuntime, VoiceSnapshot
+from .voice_session import VoiceSessionResult, VoiceSessionRuntime, VoiceSnapshot
 
 log = logging.getLogger("noisebot_bridge.replay")
+
+
+@dataclass(frozen=True)
+class ReplayResult:
+    path: str
+    samples: int
+    duration_s: float
+    chunks: int
+    session: VoiceSessionResult
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        data["duration_s"] = round(self.duration_s, 3)
+        return data
 
 
 def load_audio(path: str) -> np.ndarray:
@@ -28,7 +42,7 @@ def load_audio(path: str) -> np.ndarray:
     return np.fromfile(str(p), dtype=np.int16)
 
 
-def run_replay(path: str, stt, llm, tts, dry_run: bool, intent_router=None):
+def run_replay(path: str, stt, llm, tts, dry_run: bool, intent_router=None) -> ReplayResult:
     pcm = load_audio(path)
     chunks = [pcm[i : i + 256].copy() for i in range(0, len(pcm), 256)]
     if chunks and len(chunks[-1]) < 256:
@@ -44,4 +58,20 @@ def run_replay(path: str, stt, llm, tts, dry_run: bool, intent_router=None):
         end_reason="replay",
     )
     log.info("REPLAY arquivo=%s samples=%d dur=%.1fs chunks=%d", path, len(pcm), snapshot.duration_s, len(chunks))
-    runtime.handle_voice_end(snapshot)
+    session = runtime.handle_voice_end(snapshot)
+    result = ReplayResult(
+        path=str(Path(path)),
+        samples=len(pcm),
+        duration_s=snapshot.duration_s,
+        chunks=len(chunks),
+        session=session,
+    )
+    log.info(
+        "REPLAY_RESULT session_id=%d route=%s outcome=%s detail=%s end_reason=%s",
+        session.session_id,
+        session.route,
+        session.outcome,
+        session.outcome_detail,
+        session.end_reason,
+    )
+    return result

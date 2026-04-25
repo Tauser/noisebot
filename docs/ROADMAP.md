@@ -2290,6 +2290,7 @@ Respostas locais de erro:
 
 **Dependências:** 12.13 concluída; 12.14 concluída
 **Hardware necessário:** Robô para UAT; PC para replay offline
+**Status:** em desenvolvimento
 
 **Contexto:** Para aproximar a experiência de StackChan/XiaoZhi, precisamos medir latência, estabilidade e qualidade de rota. Testes manuais isolados ajudam, mas não protegem contra regressões no bridge.
 
@@ -2330,7 +2331,7 @@ Metas de produto:
 **Critérios de aceitação:**
 
 - [ ] Fixtures offline cobrem hora, status, ruído, silêncio e comando de corpo.
-- [ ] `--replay` retorna rota esperada em todos os casos estáveis.
+- [x] `--replay` retorna resultado estruturado com rota, outcome e detalhe diagnóstico.
 - [ ] Métricas aparecem no log final de cada sessão.
 - [ ] Checklist de hardware documenta comandos, resultado esperado e logs-chave.
 - [ ] Antes de mexer em LLM ou protocolo, replay precisa continuar verde.
