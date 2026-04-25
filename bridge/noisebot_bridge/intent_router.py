@@ -263,7 +263,9 @@ class LocalIntentRouter:
 
     @staticmethod
     def _volume_command(text: str, status: dict) -> LocalIntentResult | None:
-        if "volume" not in text:
+        has_volume_term = _has_any(text, ("volume", "som", "audio"))
+        has_volume_direction = _has_any(text, ("aument", "diminu", "baix"))
+        if not has_volume_term or not has_volume_direction and "volume" not in text:
             return None
         match = re.search(r"\b(\d{1,3})\s*%?\b", text)
         if match:

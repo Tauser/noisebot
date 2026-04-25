@@ -69,6 +69,15 @@ class IntentRouterTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.device_commands[0].args["percent"], 65)
         self.assertTrue(result.device_commands[0].supported)
+        self.assertFalse(result.speak_reply)
+
+    def test_volume_intent_accepts_som_alias(self):
+        result = self.router.route("aumente o som", status={"volume": 40})
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_volume")
+        self.assertEqual(result.device_commands[0].args["percent"], 50)
+        self.assertFalse(result.speak_reply)
 
     def test_movement_intent_maps_to_supported_gaze_command(self):
         result = self.router.route("olhe para esquerda")
