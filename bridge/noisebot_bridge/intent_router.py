@@ -74,10 +74,11 @@ class LocalIntentRouter:
             return LocalIntentResult(
                 intent="local_bridge_test",
                 confidence=0.90,
-                reply="Estou te ouvindo pelo bridge.",
+                reply="Bridge: ouvindo.",
                 expression_id=1,
                 action=1,
                 emot_event=2,
+                speak_reply=False,
             )
 
         if self._is_status(norm):
@@ -100,13 +101,16 @@ class LocalIntentRouter:
             )
 
         if self._is_network(norm):
+            ip = status.get("ip")
+            detail = f"ip {ip}" if ip else "ip indisponivel"
             return LocalIntentResult(
                 intent="local_network_status",
                 confidence=0.84,
-                reply="Estou conectado ao bridge. Ainda não recebo o IP do robô no status.",
+                reply=f"Rede: bridge conectado, {detail}.",
                 expression_id=2,
                 action=0,
                 emot_event=2,
+                speak_reply=False,
             )
 
         expression = self._expression_command(norm)

@@ -50,11 +50,22 @@ class IntentRouterTests(unittest.TestCase):
         result = self.router.route("você está me ouvindo?")
         self.assertIsNotNone(result)
         self.assertEqual(result.intent, "local_bridge_test")
+        self.assertEqual(result.reply, "Bridge: ouvindo.")
+        self.assertFalse(result.speak_reply)
 
     def test_network_status_intent(self):
         result = self.router.route("qual seu ip")
         self.assertIsNotNone(result)
         self.assertEqual(result.intent, "local_network_status")
+        self.assertEqual(result.reply, "Rede: bridge conectado, ip indisponivel.")
+        self.assertFalse(result.speak_reply)
+
+    def test_network_status_uses_ip_when_available(self):
+        result = self.router.route("qual seu ip", status={"ip": "192.168.1.23"})
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.reply, "Rede: bridge conectado, ip 192.168.1.23.")
+        self.assertFalse(result.speak_reply)
 
     def test_volume_intent_clamps_percent(self):
         result = self.router.route("coloque o volume em 150%")

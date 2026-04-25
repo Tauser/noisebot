@@ -32,6 +32,7 @@ typedef enum {
     OVERLAY_TOAST,
     OVERLAY_CLOCK,
     OVERLAY_STATUS,
+    OVERLAY_CONNECTION,
 } overlay_kind_t;
 
 typedef struct {
@@ -63,7 +64,7 @@ static void overlay_rect(overlay_kind_t kind, int *x, int *y, int *w, int *h)
         *h = 52;
         *x = (dw - *w) / 2;
         *y = 12;
-    } else if (kind == OVERLAY_CLOCK || kind == OVERLAY_STATUS) {
+    } else if (kind == OVERLAY_CLOCK || kind == OVERLAY_STATUS || kind == OVERLAY_CONNECTION) {
         *w = (dw < 286) ? (dw - 28) : 258;
         *h = 68;
         *x = (dw - *w) / 2;
@@ -121,6 +122,12 @@ static bool is_clock_text(const char *text)
 static bool is_status_text(const char *text)
 {
     return text && std::strstr(text, "Status:") == text;
+}
+
+static bool is_connection_text(const char *text)
+{
+    return text &&
+           (std::strstr(text, "Rede:") == text || std::strstr(text, "Bridge:") == text);
 }
 
 static void parse_clock_text(const char *text, int *hour, int *minute)
@@ -267,6 +274,36 @@ static void draw_status_overlay(LGFX_Sprite *spr,
     }
 }
 
+static void draw_connection_overlay(LGFX_Sprite *spr,
+                                    int x,
+                                    int y,
+                                    int w,
+                                    int h,
+                                    const overlay_state_t *state)
+{
+    const uint16_t bg = spr->color565(12, 18, 30);
+    const uint16_t fg = TFT_WHITE;
+    const uint16_t dim = spr->color565(118, 136, 154);
+    const uint16_t accent = spr->color565(84, 181, 242);
+    const bool bridge = std::strstr(state->text, "Bridge:") == state->text;
+    const char *label = bridge ? "Bridge" : "Rede";
+    const char *line = bridge ? "ouvindo" : "bridge conectado";
+
+    spr->fillRoundRect(x, y, w, h, 8, bg);
+    spr->drawRoundRect(x, y, w, h, 8, accent);
+    spr->drawCircle(x + 30, y + 34, 16, accent);
+    spr->drawArc(x + 30, y + 34, 10, 8, 210, 330, fg);
+    spr->drawArc(x + 30, y + 34, 17, 15, 210, 330, accent);
+    spr->fillCircle(x + 30, y + 36, 3, fg);
+
+    spr->setTextColor(fg, bg);
+    spr->setTextSize(2);
+    spr->drawString(label, x + 58, y + 10);
+    spr->setTextColor(dim, bg);
+    spr->setTextSize(1);
+    spr->drawString(line, x + 60, y + 38);
+}
+
 static void toast_colors(LGFX_Sprite *spr,
                          nb_ui_overlay_tone_t tone,
                          uint16_t *bg,
@@ -367,6 +404,9 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
         case OVERLAY_STATUS:
             draw_status_overlay(spr, x, y, w, h, &state);
             break;
+        case OVERLAY_CONNECTION:
+            draw_connection_overlay(spr, x, y, w, h, &state);
+            break;
         default:
             return;
     }
@@ -438,6 +478,9 @@ extern "C" void ui_overlay_show_text(const char *text, uint32_t duration_ms)
         s_state.percent = 0;
     } else if (is_status_text(text)) {
         s_state.kind = OVERLAY_STATUS;
+        s_state.percent = 0;
+    } else if (is_connection_text(text)) {
+        s_state.kind = OVERLAY_CONNECTION;
         s_state.percent = 0;
     } else {
         s_state.kind = OVERLAY_TEXT;
