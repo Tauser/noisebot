@@ -253,6 +253,10 @@ static void draw_status_overlay(LGFX_Sprite *spr,
     const char *attn_p = std::strstr(state->text, "atencao ");
     if (health_p) health = std::atoi(health_p + 6);
     if (attn_p) attention = std::atoi(attn_p + 8);
+    if (health < 0) health = -1;
+    if (health > 100) health = 100;
+    if (attention < 0) attention = -1;
+    if (attention > 100) attention = 100;
 
     spr->fillRoundRect(x, y, w, h, 8, bg);
     spr->drawRoundRect(x, y, w, h, 8, accent);
