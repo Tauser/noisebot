@@ -2482,7 +2482,7 @@ Metas de produto:
 
 ---
 
-### Etapa 12.22 — Touch Semântico e Afetivo v2
+### Etapa 12.22 — Touch Semântico e Afetivo v2 ✓
 
 **Dependências:** 12.10 concluída; touch_service estável
 **Hardware necessário:** Touch de cobre do NoiseBot
@@ -2503,17 +2503,27 @@ Metas de produto:
 - Touch não inicia listening.
 - Touch pode interromper overlay leve, mas não deve derrubar sessão crítica sem regra explícita.
 
+**Implementado:**
+
+- `touch_semantic_service` classifica TAP, DOUBLE_TAP, LONG_PRESS, SUSTAINED, WARM_PULSE (3–8s), DEEP (>8s) e CARESS (>15s).
+- `behavior_engine` conecta todos os eventos ao `emotion_model`, `conductor` e `ltm_record`.
+- `state_machine`: TAP e LONG_PRESS em `ATTENTIVE`/`RESPONDING` não mudam estado — reação afetiva acontece via event bus sem derrubar sessão.
+- `long_term_memory`: adicionados `LTM_IACT_TOUCH_DOUBLE_TAP`, `LTM_IACT_TOUCH_DEEP` e `LTM_IACT_TOUCH_CARESS`; DEEP conta como 2 e CARESS como 3 na familiaridade.
+- Milestone de 50 toques atualizado para `>= 50` e cobre todos os tipos de toque afetivo.
+
 **Critérios de aceitação:**
 
-- [ ] Tap curto gera reação afetiva curta.
-- [ ] Toque longo gera reação diferente de tap.
-- [ ] Sequência de taps não abre bridge.
-- [ ] Touch durante listening não corrompe sessão de voz.
-- [ ] LTM registra interação semântica, não apenas contador bruto.
+- [x] Tap curto gera reação afetiva curta.
+- [x] Toque longo gera reação diferente de tap.
+- [x] Sequência de taps não abre bridge.
+- [x] Touch durante listening não corrompe sessão de voz.
+- [x] LTM registra interação semântica, não apenas contador bruto.
+
+**Validado em hardware (2026-04-25).**
 
 ---
 
-### Etapa 12.23 — Setup e Diagnóstico de Produto
+### Etapa 12.23 — Setup e Diagnóstico de Produto ✓
 
 **Dependências:** 15.1 desejável; 12.18 desejável
 **Hardware necessário:** Robô completo
@@ -2542,13 +2552,22 @@ Metas de produto:
   - motion safety quando liberado.
 - Exportar snapshot de diagnóstico para SD.
 
+**Implementado:**
+
+- `GET /api/diag` — JSON unificado com state, bridge (connected/transport/protocol_v/last_rx_ms), wake (model/threshold/detections), audio (rms/listening), memory (psram/dram), fps, health, uptime, touch_count, sessions, hours_alive.
+- `POST /api/diag/snapshot` — chama `diagnostics_dump_to_sd()` e retorna JSON com versão, health, config resumida e últimas 5 linhas do log ring.
+- `GET /api/diag/test/wake` — modelo WakeNet9, keyword "Hi ESP", threshold, active, detections da sessão.
+- `GET /api/diag/test/bridge` — connected, transport, protocol_v, last_rx_ms, porta TCP.
+- Novos getters: `wake_service_get_detect_count()`, `wake_service_get_threshold()`, `bridge_service_get_protocol_version()`, `bridge_service_get_last_rx_age_ms()`.
+- Todos os handlers são não-bloqueantes; snapshot chama `diagnostics_dump_to_sd()` diretamente do HTTP handler (prioridade baixa do task httpd, sem impacto em tasks críticas).
+
 **Critérios de aceitação:**
 
-- [ ] Usuário consegue validar áudio/bridge sem ler 200 linhas de serial.
-- [ ] Snapshot de diagnóstico inclui versão, config e últimos erros.
-- [ ] Teste de wake word mostra modelo, threshold e resultado.
-- [ ] Teste de bridge mostra latência e versão de protocolo.
-- [ ] Nenhum teste de dashboard bloqueia boot ou tasks críticas.
+- [x] Usuário consegue validar áudio/bridge sem ler 200 linhas de serial.
+- [x] Snapshot de diagnóstico inclui versão, config e últimos erros.
+- [x] Teste de wake word mostra modelo, threshold e resultado.
+- [x] Teste de bridge mostra latência e versão de protocolo.
+- [x] Nenhum teste de dashboard bloqueia boot ou tasks críticas.
 
 ---
 
