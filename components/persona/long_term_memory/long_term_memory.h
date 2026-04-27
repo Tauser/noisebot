@@ -29,13 +29,16 @@ extern "C" {
 /* ── Tipos de interação ──────────────────────────────────────────────────── */
 
 typedef enum {
-    LTM_IACT_TOUCH_TAP    = 0,   /**< Toque TAP                    */
-    LTM_IACT_TOUCH_LONG   = 1,   /**< Toque LONG_PRESS             */
-    LTM_IACT_VOICE_START  = 2,   /**< Início de atividade de voz   */
-    LTM_IACT_AUDIO_PLAYED = 3,   /**< Áudio reproduzido            */
-    LTM_IACT_SLEEP        = 4,   /**< Transição para SLEEPING      */
-    LTM_IACT_WAKE         = 5,   /**< Despertar de SLEEPING        */
-    LTM_IACT_COUNT        = 6,
+    LTM_IACT_TOUCH_TAP        = 0,   /**< Toque TAP                    */
+    LTM_IACT_TOUCH_LONG       = 1,   /**< Toque LONG_PRESS             */
+    LTM_IACT_VOICE_START      = 2,   /**< Início de atividade de voz   */
+    LTM_IACT_AUDIO_PLAYED     = 3,   /**< Áudio reproduzido            */
+    LTM_IACT_SLEEP            = 4,   /**< Transição para SLEEPING      */
+    LTM_IACT_WAKE             = 5,   /**< Despertar de SLEEPING        */
+    LTM_IACT_TOUCH_DOUBLE_TAP = 6,   /**< Duplo toque (semântico)      */
+    LTM_IACT_TOUCH_DEEP       = 7,   /**< Toque sustentado > 8s        */
+    LTM_IACT_TOUCH_CARESS     = 8,   /**< Carinho > 15s (afetivo)      */
+    LTM_IACT_COUNT            = 9,
 } ltm_iact_type_t;
 
 /* ── API ─────────────────────────────────────────────────────────────────── */

@@ -265,9 +265,17 @@ void ltm_record(ltm_iact_type_t type)
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
 
-    /* Atualizar contadores. */
-    if (type == LTM_IACT_TOUCH_TAP || type == LTM_IACT_TOUCH_LONG) {
+    /* Atualizar contadores. TAP/LONG contam como contato individual.
+     * CARESS conta como 3 (intimidade alta). DEEP conta como 2. */
+    if (type == LTM_IACT_TOUCH_TAP || type == LTM_IACT_TOUCH_LONG ||
+        type == LTM_IACT_TOUCH_DOUBLE_TAP) {
         s_main.total_touch_count++;
+        recalc_familiarity();
+    } else if (type == LTM_IACT_TOUCH_DEEP) {
+        s_main.total_touch_count += 2;
+        recalc_familiarity();
+    } else if (type == LTM_IACT_TOUCH_CARESS) {
+        s_main.total_touch_count += 3;
         recalc_familiarity();
     }
 
