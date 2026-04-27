@@ -1,8 +1,9 @@
 /*
  * touch_semantic_service.c — Touch semântico (Layer 5)
  *
- * Double-tap: primeiro TAP inicia janela de 400ms. Segundo TAP dentro da
- * janela → DOUBLE_TAP (TAP único suprimido). Sem segundo TAP → TAP publicado.
+ * Double-tap: primeiro toque curto aguarda release e então inicia janela de
+ * 800ms. Segundo TAP dentro da janela → DOUBLE_TAP (TAP único suprimido).
+ * Sem segundo TAP → TAP publicado.
  *
  * Sustained progression (poll em tick via touch_service_get_duration_ms):
  *   3000–8000ms: NB_EVT_TOUCH_WARM_PULSE a cada 1s
@@ -25,7 +26,8 @@
 
 #define TAG "nb_touchsem"
 
-#define DOUBLE_TAP_WINDOW_MS  400U
+#define DOUBLE_TAP_WINDOW_MS  800U
+#define TAP_MAX_MS            700U
 #define WARM_PULSE_PERIOD_MS  1000U
 #define PULSE_START_MS        3000U
 #define PULSE_END_MS          8000U
@@ -41,9 +43,11 @@ static portMUX_TYPE  s_mux = portMUX_INITIALIZER_UNLOCKED;
 static bool     s_initialized;
 static uint32_t s_uptime_ms;
 
-/* Double-tap */
-static bool     s_tap_pending;
-static uint32_t s_tap_pending_ms;  /* countdown para single-tap publish */
+/* Tap/double-tap */
+static bool     s_tap_active;       /* primeiro toque ainda pressionado */
+static uint32_t s_tap_active_ms;    /* duração do toque candidato       */
+static bool     s_tap_pending;      /* release feito; aguardando 2º tap */
+static uint32_t s_tap_pending_ms;   /* countdown para single-tap publish */
 
 /* Sustained progression */
 static bool     s_sustained_active;
@@ -98,22 +102,43 @@ void touch_semantic_tick(uint32_t dt_ms)
     got_sustained = s_sustained_flag; s_sustained_flag = false;
     taskEXIT_CRITICAL(&s_mux);
 
-    /* ── Double-tap ────────────────────────────────────────────────────────── */
+    /* ── Tap / double-tap ─────────────────────────────────────────────────── */
     if (got_tap) {
         if (s_tap_pending) {
-            /* Segundo tap dentro da janela → DOUBLE_TAP */
+            /* Segundo tap dentro da janela pós-release → DOUBLE_TAP */
+            s_tap_active     = false;
+            s_tap_active_ms  = 0;
             s_tap_pending    = false;
             s_tap_pending_ms = 0;
             ESP_LOGD(TAG, "TOUCH_DOUBLE_TAP");
             publish(NB_EVT_TOUCH_DOUBLE_TAP);
+        } else if (!s_tap_active) {
+            /* Primeiro tap: só abre janela quando o toque soltar. */
+            s_tap_active    = true;
+            s_tap_active_ms = 0;
         } else {
-            /* Primeiro tap: aguarda possível segundo */
-            s_tap_pending    = true;
-            s_tap_pending_ms = DOUBLE_TAP_WINDOW_MS;
+            /* TAP duplicado durante o mesmo contato: ignora. */
         }
     }
 
-    /* Expiração da janela: publica single TAP */
+    if (s_tap_active) {
+        if (!touch_service_is_pressed()) {
+            if (s_tap_active_ms <= TAP_MAX_MS) {
+                s_tap_pending    = true;
+                s_tap_pending_ms = DOUBLE_TAP_WINDOW_MS;
+            }
+            s_tap_active    = false;
+            s_tap_active_ms = 0;
+        } else if (s_tap_active_ms <= TAP_MAX_MS) {
+            s_tap_active_ms += dt_ms;
+        } else {
+            /* Toque longo não vira TAP simples nem primeiro tap de double-tap. */
+            s_tap_active = false;
+            s_tap_active_ms = 0;
+        }
+    }
+
+    /* Expiração da janela pós-release: publica single TAP */
     if (s_tap_pending) {
         if (s_tap_pending_ms <= dt_ms) {
             s_tap_pending    = false;

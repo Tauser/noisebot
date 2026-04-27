@@ -4,8 +4,8 @@
  * Intercepta TAP e SUSTAINED do on_touch_event (boot_manager) antes da
  * publicação no bus, adicionando semântica de alto nível:
  *
- *   NB_EVT_TOUCH_DOUBLE_TAP  — 2 taps em < 400ms
- *   NB_EVT_TOUCH_TAP         — tap único (publicado com delay de 400ms)
+ *   NB_EVT_TOUCH_DOUBLE_TAP  — 2 toques curtos, 2º em < 800ms após release
+ *   NB_EVT_TOUCH_TAP         — tap único após janela de double-tap
  *   NB_EVT_TOUCH_SUSTAINED   — publicado pelo serviço (não pelo boot_manager)
  *   NB_EVT_TOUCH_WARM_PULSE  — a cada 1s durante toque 3–8s
  *   NB_EVT_TOUCH_DEEP        — toque > 8s (dispara uma vez)
