@@ -179,6 +179,7 @@ void idle_service_update(uint32_t dt_ms)
         if (s_was_active) {
             reset_timers_and_center();
             s_alone_timer_ms = 0;
+            expression_service_set_breath_enabled(false);
         }
         s_was_active = false;
         s_was_idle   = false;
@@ -192,6 +193,7 @@ void idle_service_update(uint32_t dt_ms)
 
     s_was_active = true;
     s_was_idle   = is_idle;
+    expression_service_set_breath_enabled(true);
 
     /* ── Micro-saccade (IDLE e ATTENTIVE) ── */
     if (s_saccade_timer_ms <= dt_ms) {

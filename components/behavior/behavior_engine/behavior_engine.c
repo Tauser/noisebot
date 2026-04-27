@@ -34,6 +34,7 @@
 #include "expression_service.h"
 #include "gaze_service.h"
 #include "ui_overlay_service.h"
+#include "led_service.h"
 #include "audio_service.h"
 #include "synth_service.h"
 #include "attention_service.h"
@@ -231,16 +232,17 @@ static const nb_be_rule_t k_rules[] = {
 
     /* ── Touch Semântico (Etapa 10.4) ───────────────────────────────────────── */
     { NB_EVT_TOUCH_DOUBLE_TAP, NULL, {
-        ACT_EMOT(TOUCH_LONG), ACT_PLAY(TOUCH_STARTLE) }},  /* susto/surpresa   */
+        ACT_EMOT(TOUCH_TAP), ACT_PLAY(TOUCH_WARM),
+        ACT_LTM(TOUCH_DOUBLE_TAP) }},                       /* alegria breve    */
 
     { NB_EVT_TOUCH_WARM_PULSE, NULL, {
         ACT_EMOT(TOUCH_WARM_PULSE) }},                      /* calor acumulando */
 
     { NB_EVT_TOUCH_DEEP, NULL, {
-        ACT_EMOT(TOUCH_DEEP) }},                            /* calor intenso    */
+        ACT_EMOT(TOUCH_DEEP), ACT_LTM(TOUCH_DEEP) }},      /* calor intenso    */
 
     { NB_EVT_TOUCH_CARESS, NULL, {
-        ACT_EMOT(TOUCH_CARESS) }},                          /* satisfação       */
+        ACT_EMOT(TOUCH_CARESS), ACT_LTM(TOUCH_CARESS) }},  /* satisfação       */
 
     /* ── VAD Semântico (Etapa 10.3) ─────────────────────────────────────────── */
     { NB_EVT_VOICE_LONG, NULL, {
@@ -265,11 +267,59 @@ static bool s_touch_50_milestone = false;
 
 /* ── Helpers de execução ─────────────────────────────────────────────────── */
 
+static void apply_expression_overlay_for_emotion(nb_emotion_event_t event)
+{
+    switch (event) {
+        case NB_EMOT_EVT_TOUCH_TAP:
+            expression_service_overlay_blush(42U, 900U);
+            break;
+        case NB_EMOT_EVT_TOUCH_WARM_PULSE:
+            expression_service_overlay_blush(80U, 1800U);
+            break;
+        case NB_EMOT_EVT_TOUCH_DEEP:
+            expression_service_overlay_blush(150U, 4200U);
+            break;
+        case NB_EMOT_EVT_TOUCH_CARESS:
+            expression_service_overlay_blush(230U, 5200U);
+            expression_service_overlay_heart(1800U);
+            break;
+        default:
+            break;
+    }
+}
+
+static void apply_touch_feedback_for_event(nb_event_type_t event)
+{
+    switch (event) {
+        case NB_EVT_TOUCH_DOUBLE_TAP:
+            led_effect_heartbeat();
+            expression_service_overlay_heart(1200U);
+            synth_blip(740.0f, 70U);
+            break;
+        case NB_EVT_TOUCH_LONG_PRESS:
+            led_blink(1U);
+            break;
+        case NB_EVT_TOUCH_WARM_PULSE:
+            led_effect_touch();
+            break;
+        case NB_EVT_TOUCH_DEEP:
+            led_effect_heartbeat();
+            break;
+        case NB_EVT_TOUCH_CARESS:
+            led_effect_heartbeat();
+            expression_service_overlay_heart(2400U);
+            break;
+        default:
+            break;
+    }
+}
+
 static void execute_action(const nb_be_action_t *act)
 {
     switch (act->type) {
         case NB_BE_ACT_EMIT_EMOTION:
             emotion_model_on_event(act->arg.emotion);
+            apply_expression_overlay_for_emotion(act->arg.emotion);
             break;
         case NB_BE_ACT_PLAY_CONDUCTOR:
             conductor_play(act->arg.conductor);
@@ -277,8 +327,12 @@ static void execute_action(const nb_be_action_t *act)
         case NB_BE_ACT_LTM_RECORD:
             ltm_record(act->arg.ltm);
             if (!s_touch_50_milestone &&
-                act->arg.ltm == LTM_IACT_TOUCH_TAP &&
-                ltm_get_total_touch_count() == 50U) {
+                (act->arg.ltm == LTM_IACT_TOUCH_TAP        ||
+                 act->arg.ltm == LTM_IACT_TOUCH_LONG       ||
+                 act->arg.ltm == LTM_IACT_TOUCH_DOUBLE_TAP ||
+                 act->arg.ltm == LTM_IACT_TOUCH_DEEP       ||
+                 act->arg.ltm == LTM_IACT_TOUCH_CARESS) &&
+                ltm_get_total_touch_count() >= 50U) {
                 s_touch_50_milestone = true;
                 nb_event_t ms = { .type = NB_EVT_MILESTONE_TOUCH_50 };
                 nb_event_publish_async(&ms);
@@ -393,7 +447,9 @@ static void bridge_on_event(const nb_event_t *evt)
 
     case NB_EVT_BRIDGE_EMOT_EVENT:
         if (evt->data.u32 < NB_EMOT_EVT_COUNT) {
-            emotion_model_on_event((nb_emotion_event_t)evt->data.u32);
+            nb_emotion_event_t event = (nb_emotion_event_t)evt->data.u32;
+            emotion_model_on_event(event);
+            apply_expression_overlay_for_emotion(event);
         }
         break;
 
@@ -511,6 +567,8 @@ static void on_bus_event(const nb_event_t *evt, void *ctx)
             execute_rule(&k_rules[i]);
         }
     }
+
+    apply_touch_feedback_for_event(evt->type);
 
     /* Passa 3: wiring do bridge (Etapa 12.2) — independente das regras. */
     bridge_on_event(evt);

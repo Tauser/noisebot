@@ -400,6 +400,9 @@ esp_err_t conductor_init(void)
 void conductor_play(nb_action_t action)
 {
     if (!s_initialized) return;
+    if (action == NB_ACTION_CELEBRATE) {
+        expression_service_overlay_heart(2200U);
+    }
 
     taskENTER_CRITICAL(&s_mux);
     bool was_running = (s_current_action != NB_ACTION_NONE);

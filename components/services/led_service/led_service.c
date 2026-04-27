@@ -451,15 +451,12 @@ static void service_tick(uint32_t dt_ms)
     for (int i = 0; i < NB_LED_COUNT; i++) {
         if (overlay_active) {
             frame[i] = render_color_overlay(compute_overlay_color());
+        } else if (s_svc.manual_active) {
+            frame[i] = render_color(s_svc.manual_color[i]);
         } else {
-            nb_led_color_t c;
-            if (priority >= 0) {
-                c = compute_base_color(priority, (uint8_t)i);
-            } else if (s_svc.manual_active) {
-                c = s_svc.manual_color[i];
-            } else {
-                c = NB_LED_COLOR_BLACK;
-            }
+            nb_led_color_t c = (priority >= 0)
+                ? compute_base_color(priority, (uint8_t)i)
+                : NB_LED_COLOR_BLACK;
             frame[i] = render_color(c);
         }
 
