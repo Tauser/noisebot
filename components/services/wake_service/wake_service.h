@@ -61,6 +61,17 @@ void wake_service_feed(const int16_t *pcm, uint16_t n);
 bool wake_service_is_active(void);
 
 /**
+ * @brief Número de wake words detectadas nesta sessão (desde o boot).
+ * Thread-safe.
+ */
+uint32_t wake_service_get_detect_count(void);
+
+/**
+ * @brief Threshold de detecção configurado (0.0–1.0).
+ */
+float wake_service_get_threshold(void);
+
+/**
  * @brief Suspende temporariamente o WakeNet e limpa o buffer do AFE.
  *
  * Usado enquanto uma sessão de escuta está ativa para que a fala do comando

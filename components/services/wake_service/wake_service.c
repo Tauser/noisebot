@@ -72,6 +72,7 @@ static struct {
     uint16_t                     cur_saturated;
     SemaphoreHandle_t            mutex;
     StaticSemaphore_t            mutex_buf;
+    volatile uint32_t            detect_count;
 } s;
 
 static uint16_t abs_i16(int16_t v)
@@ -170,6 +171,7 @@ static void wake_task(void *arg)
                      (unsigned)s.last_post_peak,
                      (unsigned)s.last_saturated,
                      s.feed_chunksize);
+            s.detect_count++;
             wake_service_set_suspended(true, true);
             nb_event_t evt = {
                 .type         = NB_EVT_WAKE_WORD_DETECTED,
@@ -445,4 +447,14 @@ void wake_service_rearm(void)
 
     wake_service_set_suspended(false, false);
     ESP_LOGI(TAG, "WakeNet rearmado");
+}
+
+uint32_t wake_service_get_detect_count(void)
+{
+    return s.detect_count;
+}
+
+float wake_service_get_threshold(void)
+{
+    return WAKE_WAKENET_THRESHOLD;
 }
