@@ -3,666 +3,749 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>NoiseBot</title>
+<title>NoiseBot Console</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:monospace;background:#080808;color:#d0d0d0;padding:10px;font-size:13px}
-h1{color:#4fc3f7;font-size:15px;display:flex;align-items:center;gap:8px;margin-bottom:10px}
-h2{color:#81d4fa;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:7px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
-.card{background:#0f0f0f;border:1px solid #1c1c1c;border-radius:5px;padding:9px}
-.row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-.val{color:#4fc3f7;font-weight:bold}
-.bar-wrap{background:#181818;border-radius:2px;height:6px;flex:1;margin:0 7px}
-.bar{height:6px;border-radius:2px;background:#4fc3f7;transition:width .4s}
-.btn{background:#141414;border:1px solid #252525;color:#bbb;padding:4px 8px;
-     border-radius:3px;cursor:pointer;font:11px monospace;white-space:nowrap}
-.btn:hover{border-color:#4fc3f7;color:#fff}
-.btn:active{background:#1a2a3a}
-.btn-danger{border-color:#5a1a1a;color:#ef9a9a}
-.btn-danger:hover{border-color:#ef5350;color:#fff}
-.btn-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
-input[type=text],input[type=number],input[type=password]{
-  background:#111;border:1px solid #252525;color:#ddd;
-  padding:3px 6px;border-radius:3px;font:11px monospace;width:100%}
-input:focus{outline:none;border-color:#4fc3f7}
-.cfg-row{display:grid;grid-template-columns:85px 1fr 48px;gap:3px;align-items:center;margin-bottom:3px;font-size:11px}
-.srv-row{display:grid;grid-template-columns:55px 1fr 1fr 1fr 48px;gap:3px;align-items:center;margin-bottom:3px;font-size:11px}
-#ws-dot{width:7px;height:7px;border-radius:50%;background:#333;flex-shrink:0}
-.expr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
-.expr-btn{background:#141414;border:1px solid #252525;color:#bbb;padding:5px 4px;
-          border-radius:3px;cursor:pointer;font:10px monospace;text-align:center}
-.expr-btn:hover{border-color:#4fc3f7;color:#fff}
-.expr-btn.active{border-color:#4fc3f7;background:#0d2030;color:#4fc3f7}
-/* Gaze joystick */
-#gaze-pad{width:100%;aspect-ratio:1;background:#111;border:1px solid #252525;
-          border-radius:4px;position:relative;cursor:crosshair;user-select:none}
-#gaze-dot{width:12px;height:12px;border-radius:50%;background:#4fc3f7;
-          position:absolute;transform:translate(-50%,-50%);pointer-events:none;
-          transition:left .2s,top .2s}
-#gaze-cx{position:absolute;left:50%;top:0;bottom:0;width:1px;background:#1e1e1e}
-#gaze-cy{position:absolute;top:50%;left:0;right:0;height:1px;background:#1e1e1e}
-/* Emotion plane */
-#emo-plane{width:100%;aspect-ratio:1;background:#111;border:1px solid #252525;
-           border-radius:4px;position:relative}
-#emo-dot{width:10px;height:10px;border-radius:50%;background:#ff9800;
-         position:absolute;transform:translate(-50%,-50%);transition:left .4s,top .4s}
-#emo-cx{position:absolute;left:50%;top:0;bottom:0;width:1px;background:#1e1e1e}
-#emo-cy{position:absolute;top:50%;left:0;right:0;height:1px;background:#1e1e1e}
-.emo-label{position:absolute;font-size:9px;color:#444}
-/* Health bars */
-.health-row{margin-bottom:5px;font-size:11px}
-.hbar-wrap{background:#181818;border-radius:2px;height:5px;margin-top:2px}
-.hbar{height:5px;border-radius:2px;transition:width .4s}
-.hbar-ok{background:#66bb6a}
-.hbar-warn{background:#ffa726}
-.hbar-crit{background:#ef5350}
-/* OTA */
-.ota-row{display:flex;gap:5px;margin-bottom:6px}
-.ota-row input{flex:1}
-#ota-wrap{display:none;margin-top:5px}
-#ota-bg{background:#181818;border-radius:2px;height:5px}
-#ota-bar{height:5px;border-radius:2px;background:#ff9800;width:0%;transition:width .2s}
-#ota-msg{font-size:10px;color:#888;margin-top:3px}
-/* Logs */
-#log-box{background:#050505;border:1px solid #1c1c1c;border-radius:3px;
-         height:140px;overflow-y:auto;padding:5px;font-size:10px;color:#888;
-         white-space:pre-wrap;word-break:break-all}
-/* WiFi RSSI bars */
-.rssi-bars{display:flex;gap:2px;align-items:flex-end;height:14px}
-.rssi-bar{width:4px;background:#252525;border-radius:1px}
-.rssi-on{background:#66bb6a}
-/* Phase badge */
-.phase-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;font-weight:bold}
-.phase-dawn{background:#1a1a2e;color:#9575cd}
-.phase-day {background:#1a2a1a;color:#66bb6a}
-.phase-dusk{background:#2a1a0a;color:#ffa726}
-.section-btn-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
-@media(max-width:600px){.grid2,.grid3{grid-template-columns:1fr}}
+:root{
+  --bg:#f4f6f8;
+  --panel:#ffffff;
+  --panel-2:#eef2f5;
+  --text:#17212b;
+  --muted:#657282;
+  --line:#d9e0e7;
+  --accent:#0b7fab;
+  --accent-2:#16a085;
+  --warn:#b7791f;
+  --danger:#b42318;
+  --shadow:0 12px 32px rgba(23,33,43,.08);
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);
+  font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input{font:inherit}
+button{cursor:pointer}
+.app{max-width:1180px;margin:0 auto;padding:20px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.mark{width:42px;height:42px;border-radius:8px;background:linear-gradient(145deg,#12202b,#0b7fab);
+  display:grid;place-items:center;color:#fff;font-weight:800;letter-spacing:.04em;box-shadow:var(--shadow)}
+.brand h1{font-size:22px;line-height:1.1;margin:0;font-weight:760;letter-spacing:0}
+.subtitle{color:var(--muted);font-size:12px;margin-top:3px}
+.connection{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;white-space:nowrap}
+#ws-dot{width:10px;height:10px;border-radius:50%;background:#9aa6b2;box-shadow:0 0 0 4px rgba(154,166,178,.18)}
+.tabs{display:flex;gap:6px;padding:4px;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:8px;margin-bottom:16px;overflow:auto}
+.tab{border:0;background:transparent;color:var(--muted);border-radius:6px;padding:9px 12px;white-space:nowrap}
+.tab.active{background:var(--panel);color:var(--text);box-shadow:0 1px 2px rgba(23,33,43,.08)}
+.view{display:none}
+.view.active{display:block}
+.grid{display:grid;gap:14px}
+.grid-main{grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr)}
+.grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+.panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 16px 0}
+.panel h2{font-size:13px;margin:0;color:#2a3947;text-transform:uppercase;letter-spacing:.06em}
+.panel-body{padding:14px 16px 16px}
+.hero-state{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center}
+.status-word{font-size:36px;line-height:1;font-weight:780;letter-spacing:0}
+.status-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#f8fafb;
+  color:#394756;border-radius:999px;padding:5px 9px;font-size:12px}
+.metric-list{display:grid;gap:9px}
+.metric{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.metric:last-child{border-bottom:0;padding-bottom:0}
+.metric span:first-child{color:var(--muted)}
+.value{font-weight:700;color:#1d3345;text-align:right}
+.health-ring{width:94px;height:94px;border-radius:50%;display:grid;place-items:center;
+  background:conic-gradient(var(--accent-2) calc(var(--p,0)*1%),#e3e8ed 0)}
+.health-ring span{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;background:#fff;font-weight:780}
+.actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.btn{border:1px solid var(--line);background:#fff;color:var(--text);border-radius:6px;min-height:38px;
+  padding:8px 10px;display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:.15s ease}
+.btn:hover{border-color:#9fb2c4;box-shadow:0 4px 12px rgba(23,33,43,.08)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.good{background:var(--accent-2);border-color:var(--accent-2);color:#fff}
+.btn.warn{border-color:#e7c47b;color:#7c520d;background:#fff9eb}
+.btn.danger{border-color:#f0aaa3;color:var(--danger);background:#fff5f4}
+.expr-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.expr-btn.active{border-color:var(--accent);background:#e8f5fa;color:#075f80;font-weight:760}
+.gaze-wrap{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:16px;align-items:center}
+#gaze-pad{width:100%;aspect-ratio:1;border:1px solid var(--line);border-radius:8px;background:
+  linear-gradient(90deg,transparent calc(50% - .5px),#d5dde5 50%,transparent calc(50% + .5px)),
+  linear-gradient(0deg,transparent calc(50% - .5px),#d5dde5 50%,transparent calc(50% + .5px)),#f8fafb;
+  position:relative;cursor:crosshair;user-select:none;overflow:hidden}
+#gaze-dot{width:22px;height:22px;border-radius:50%;background:var(--accent);position:absolute;
+  transform:translate(-50%,-50%);left:50%;top:50%;box-shadow:0 4px 16px rgba(11,127,171,.32);
+  transition:left .18s,top .18s}
+.swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.swatch{height:38px;border-radius:6px;border:1px solid rgba(0,0,0,.08)}
+.swatch[data-color="#ffc878"]{background:#ffc878}
+.swatch[data-color="#4fc3f7"]{background:#4fc3f7}
+.swatch[data-color="#66bb6a"]{background:#66bb6a}
+.swatch[data-color="#ff8a65"]{background:#ff8a65}
+.swatch[data-color="#000000"]{background:#111}
+.segmented{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.seg{border:1px solid var(--line);background:#fff;border-radius:6px;padding:8px 6px;color:var(--muted)}
+.seg.active{border-color:var(--accent);background:#e8f5fa;color:#075f80;font-weight:760}
+.color-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin-bottom:10px}
+input[type=color]{width:100%;height:38px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:3px}
+.form-grid{display:grid;gap:10px}
+.field{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:8px;align-items:center}
+.field label{color:var(--muted)}
+input[type=number],input[type=text],input[type=password]{width:100%;border:1px solid var(--line);border-radius:6px;
+  padding:8px 9px;background:#fff;color:var(--text)}
+input:focus{outline:2px solid rgba(11,127,171,.18);border-color:var(--accent)}
+.bar-track{height:7px;border-radius:999px;background:#e4e9ee;overflow:hidden}
+.bar-fill{height:100%;border-radius:999px;background:var(--accent-2);width:0%;transition:width .3s}
+.bar-fill.bar-warn{background:#d99422}
+.bar-fill.bar-crit{background:var(--danger)}
+.logbox{height:230px;overflow:auto;background:#101820;color:#dbe7ef;border-radius:8px;padding:12px;
+  font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap}
+details{border:1px solid var(--line);border-radius:8px;background:#fff}
+summary{padding:12px 14px;cursor:pointer;font-weight:700}
+details .panel-body{padding-top:0}
+.note{color:var(--muted);font-size:13px}
+#cmd-msg,#expr-msg,#cfg-msg,#wifi-msg,#persona-msg,#ota-msg,#led-msg{min-height:18px;color:var(--muted);font-size:12px;margin-top:10px}
+.persona-row{display:grid;grid-template-columns:74px minmax(0,1fr) 48px;gap:9px;align-items:center}
+.persona-row span:first-child{color:var(--muted);font-size:13px}
+.persona-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.hidden-file{display:none}
+.ota-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+#ota-wrap{display:none;margin-top:10px}
+.touch-head{display:flex;align-items:center;gap:10px}
+.touch-dot{width:12px;height:12px;border-radius:50%;background:#9aa6b2;box-shadow:0 0 0 4px rgba(154,166,178,.16)}
+.touch-dot.on{background:var(--accent-2);box-shadow:0 0 0 4px rgba(22,160,133,.16)}
+.touch-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.touch-box{border:1px solid var(--line);border-radius:8px;padding:10px;background:#f8fafb}
+.touch-box span{display:block;color:var(--muted);font-size:12px}
+.touch-box strong{display:block;font-size:18px;margin-top:3px;color:#1d3345}
+@media(max-width:840px){
+  .app{padding:14px}
+  .topbar{align-items:flex-start;flex-direction:column}
+  .grid-main,.grid-2,.grid-3,.gaze-wrap{grid-template-columns:1fr}
+  .actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .field{grid-template-columns:1fr}
+  .touch-grid{grid-template-columns:1fr}
+  .status-word{font-size:30px}
+}
 </style>
 </head>
 <body>
-<h1>NoiseBot <div id="ws-dot" title="WebSocket"></div> <span id="h-version" style="font-size:10px;color:#444;font-weight:normal"></span></h1>
-
-<!-- Row 1: Status + Persona -->
-<div class="grid2">
-  <div class="card">
-    <h2>Status</h2>
-    <div class="row"><span>State</span>      <span class="val" id="s-state">—</span></div>
-    <div class="row"><span>Expression</span> <span class="val" id="s-expr">—</span></div>
-    <div class="row"><span>Attention</span>  <span class="val" id="s-att">—</span></div>
-    <div class="row"><span>Health</span>     <span class="val" id="s-health">—</span></div>
-    <div class="row"><span>Uptime</span>     <span class="val" id="s-uptime">—</span></div>
-    <div class="row"><span>FPS</span>        <span class="val" id="s-fps">—</span></div>
-    <div class="row"><span>Circadian</span>  <span id="s-circadian">—</span></div>
-  </div>
-  <div class="card">
-    <h2>Persona</h2>
-    <div class="row"><span>Warmth</span>   <div class="bar-wrap"><div class="bar" id="pb-warmth"   style="width:0%"></div></div><span class="val" id="pv-warmth">—</span></div>
-    <div class="row"><span>Energy</span>   <div class="bar-wrap"><div class="bar" id="pb-energy"   style="width:0%"></div></div><span class="val" id="pv-energy">—</span></div>
-    <div class="row"><span>Curiosity</span><div class="bar-wrap"><div class="bar" id="pb-curiosity" style="width:0%"></div></div><span class="val" id="pv-curiosity">—</span></div>
-    <div class="row"><span>Trust</span>    <div class="bar-wrap"><div class="bar" id="pb-trust"    style="width:0%"></div></div><span class="val" id="pv-trust">—</span></div>
-    <div style="margin-top:7px;display:flex;gap:5px;flex-wrap:wrap">
-      <button class="btn" onclick="exportPersona()">Export</button>
-      <button class="btn" onclick="document.getElementById('pfile').click()">Import</button>
-      <button class="btn btn-danger" onclick="confirmDeletePersona()">Reset</button>
-      <input type="file" id="pfile" accept=".json" style="display:none" onchange="importPersona(this)">
-    </div>
-  </div>
-</div>
-
-<!-- Row 2: Expressions + Emotion plane -->
-<div class="grid2">
-  <div class="card">
-    <h2>Expressions</h2>
-    <div class="expr-grid" id="expr-grid"></div>
-    <div style="margin-top:6px;font-size:10px;color:#444" id="expr-msg"></div>
-  </div>
-  <div class="card">
-    <h2>Emotion Vec <span id="emo-label" style="font-size:10px;font-weight:normal;color:#666"></span></h2>
-    <div id="emo-plane">
-      <div id="emo-cx"></div><div id="emo-cy"></div>
-      <div id="emo-dot" style="left:50%;top:50%"></div>
-      <span class="emo-label" style="left:2px;top:2px">+V</span>
-      <span class="emo-label" style="right:2px;top:2px">+A</span>
-      <span class="emo-label" style="left:2px;bottom:2px">−V</span>
-      <span class="emo-label" style="right:2px;bottom:2px">−A</span>
-    </div>
-    <div style="margin-top:6px">
-      <h2 style="margin-bottom:4px">Emot Events</h2>
-      <div class="btn-grid" id="emot-grid"></div>
-    </div>
-  </div>
-</div>
-
-<!-- Row 3: LED + Gaze -->
-<div class="grid2">
-  <div class="card">
-    <h2>LED Control</h2>
-    <div class="row" style="margin-bottom:6px">
-      <span style="font-size:11px">LED 0</span>
-      <input type="color" id="led0-color" value="#ff6400" style="width:48px;height:24px;border:none;background:none;cursor:pointer">
-      <button class="btn" onclick="setLed(0)">Set</button>
-    </div>
-    <div class="row" style="margin-bottom:6px">
-      <span style="font-size:11px">LED 1</span>
-      <input type="color" id="led1-color" value="#ff6400" style="width:48px;height:24px;border:none;background:none;cursor:pointer">
-      <button class="btn" onclick="setLed(1)">Set</button>
-    </div>
-    <div class="row" style="margin-bottom:6px">
-      <span style="font-size:11px">Both</span>
-      <input type="color" id="led-all-color" value="#ffc878" style="width:48px;height:24px;border:none;background:none;cursor:pointer">
-      <button class="btn" onclick="setLedAll()">Set All</button>
-    </div>
-    <div class="cfg-row">
-      <label>Brightness</label>
-      <input type="number" id="led-brightness" min="0" max="255" value="128">
-      <button class="btn" onclick="setLedBrightness()">Set</button>
-    </div>
-    <div style="margin-top:6px">
-      <h2 style="margin-bottom:4px">Audio</h2>
-      <div class="row"><span>BPM</span>   <span class="val" id="a-bpm">—</span></div>
-      <div class="row"><span>Conf</span>  <span class="val" id="a-conf">—</span></div>
-      <div class="row"><span>RMS</span>   <span class="val" id="a-rms">—</span></div>
-    </div>
-  </div>
-  <div class="card">
-    <h2>Gaze <span id="gaze-xy" style="font-size:10px;font-weight:normal;color:#555"></span></h2>
-    <div id="gaze-pad" onmousedown="gazeClick(event)" ontouchstart="gazeTouch(event)">
-      <div id="gaze-cx"></div><div id="gaze-cy"></div>
-      <div id="gaze-dot" style="left:50%;top:50%"></div>
-    </div>
-    <div style="margin-top:6px">
-      <h2 style="margin-bottom:4px">Idle Behavior</h2>
-      <div class="cfg-row">
-        <label>Saccade</label>
-        <input type="number" id="idle-sacc" step="0.1" min="0.1" max="3" value="1.0">
-        <button class="btn" onclick="saveIdle()">Set</button>
-      </div>
-      <div class="cfg-row">
-        <label>Yawn</label>
-        <input type="number" id="idle-yawn" step="0.1" min="0.1" max="3" value="1.0">
+<main class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">NB</div>
+      <div>
+        <h1>NoiseBot Console</h1>
+        <div class="subtitle">Painel local de operacao e diagnostico</div>
       </div>
     </div>
-  </div>
-</div>
+    <div class="connection">
+      <div id="ws-dot" title="WebSocket"></div>
+      <span id="h-version">conectando...</span>
+    </div>
+  </header>
 
-<!-- Row 4: System + Config -->
-<div class="grid2">
-  <div class="card">
-    <h2>System</h2>
-    <div class="health-row">
-      <div class="row"><span>DRAM free</span><span class="val" id="h-dram">—</span></div>
-      <div class="hbar-wrap"><div class="hbar" id="hb-dram" style="width:0%"></div></div>
-    </div>
-    <div class="health-row">
-      <div class="row"><span>PSRAM free</span><span class="val" id="h-psram">—</span></div>
-      <div class="hbar-wrap"><div class="hbar" id="hb-psram" style="width:0%"></div></div>
-    </div>
-    <div class="row"><span>Tasks</span>   <span class="val" id="h-tasks">—</span></div>
-    <div class="row"><span>Build</span>   <span class="val" id="h-build" style="font-size:10px">—</span></div>
-    <div class="section-btn-row">
-      <button class="btn" onclick="fetchHealth()">Refresh</button>
-      <button class="btn btn-danger" onclick="confirmRestart()">Restart</button>
-    </div>
-    <div style="margin-top:8px">
-      <h2 style="margin-bottom:4px">LTM</h2>
-      <div class="row"><span>Touches</span>   <span class="val" id="ltm-touch">—</span></div>
-      <div class="row"><span>Sessions</span>  <span class="val" id="ltm-sess">—</span></div>
-      <div class="row"><span>Hours alive</span><span class="val" id="ltm-hrs">—</span></div>
-      <div class="row"><span>Familiar</span>  <span class="val" id="ltm-fam">—</span></div>
-      <div class="row"><span>Voice events</span><span class="val" id="ltm-voice">—</span></div>
-    </div>
-  </div>
-  <div class="card">
-    <h2>Config</h2>
-    <div class="cfg-row"><label>Volume</label>      <input type="number" id="c-volume"      min="0"  max="100"><button class="btn" onclick="saveOne('volume','c-volume')">Save</button></div>
-    <div class="cfg-row"><label>Brightness</label>  <input type="number" id="c-brightness"  min="0"  max="255"><button class="btn" onclick="saveOne('brightness','c-brightness')">Save</button></div>
-    <div class="cfg-row"><label>Touch Sens</label>  <input type="number" id="c-touch_sens"  min="0"  max="100"><button class="btn" onclick="saveOne('touch_sens','c-touch_sens')">Save</button></div>
-    <div class="cfg-row"><label>Idle (s)</label>    <input type="number" id="c-idle_timeout" min="10"        ><button class="btn" onclick="saveOne('idle_timeout','c-idle_timeout')">Save</button></div>
-    <div class="srv-row">
-      <label>Srv1</label>
-      <input type="number" id="c-srv1_min" placeholder="min">
-      <input type="number" id="c-srv1_max" placeholder="max">
-      <input type="number" id="c-srv1_ctr" placeholder="ctr">
-      <button class="btn" onclick="saveServos(1)">Save</button>
-    </div>
-    <div class="srv-row">
-      <label>Srv2</label>
-      <input type="number" id="c-srv2_min" placeholder="min">
-      <input type="number" id="c-srv2_max" placeholder="max">
-      <input type="number" id="c-srv2_ctr" placeholder="ctr">
-      <button class="btn" onclick="saveServos(2)">Save</button>
-    </div>
-  </div>
-</div>
+  <nav class="tabs" aria-label="Navegacao">
+    <button class="tab active" data-view="op">Operacao</button>
+    <button class="tab" data-view="settings">Ajustes</button>
+    <button class="tab" data-view="system">Sistema</button>
+  </nav>
 
-<!-- Row 5: Commands + WiFi -->
-<div class="grid2">
-  <div class="card">
-    <h2>Commands</h2>
-    <div class="btn-grid">
-      <button class="btn" onclick="cmd('GREET')">GREET</button>
-      <button class="btn" onclick="cmd('AGREE')">AGREE</button>
-      <button class="btn" onclick="cmd('DISAGREE')">DISAGREE</button>
-      <button class="btn" onclick="cmd('CURIOUS')">CURIOUS</button>
-      <button class="btn" onclick="cmd('TOUCH_WARM')">TOUCH WARM</button>
-      <button class="btn" onclick="cmd('TOUCH_STARTLE')">STARTLE</button>
-      <button class="btn" onclick="cmd('SPEAK_LOOP')">SPEAK</button>
-      <button class="btn" onclick="cmd('SLEEP')">SLEEP</button>
-      <button class="btn" onclick="cmd('WAKE_UP')">WAKE UP</button>
-      <button class="btn" onclick="cmd('STRETCH')">STRETCH</button>
-      <button class="btn" onclick="cmd('CELEBRATE')">CELEBRATE</button>
-    </div>
-    <div id="cmd-msg" style="margin-top:5px;font-size:10px;color:#888;min-height:14px"></div>
-  </div>
-  <div class="card">
-    <h2>WiFi</h2>
-    <div class="row"><span>Status</span>  <span class="val" id="w-status">—</span></div>
-    <div class="row"><span>SSID</span>    <span class="val" id="w-ssid">—</span></div>
-    <div class="row"><span>IP</span>      <span class="val" id="w-ip" style="cursor:pointer" onclick="copyIP()" title="Click to copy">—</span></div>
-    <div class="row"><span>RSSI</span>    <span id="w-rssi-bars" class="rssi-bars"></span></div>
-    <hr style="border:none;border-top:1px solid #1c1c1c;margin:7px 0">
-    <h2 style="margin-bottom:5px">Provisioning</h2>
-    <div style="margin-bottom:3px"><input type="text" id="w-new-ssid" placeholder="SSID"></div>
-    <div style="margin-bottom:5px"><input type="password" id="w-new-pass" placeholder="Password"></div>
-    <div style="display:flex;gap:5px">
-      <button class="btn" onclick="setWifi()">Save &amp; Connect</button>
-      <button class="btn btn-danger" onclick="clearWifi()">Disconnect</button>
-    </div>
-    <div id="w-msg" style="margin-top:4px;font-size:10px;color:#888;min-height:14px"></div>
-  </div>
-</div>
+  <section id="view-op" class="view active">
+    <div class="grid grid-main">
+      <div class="grid">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Estado vivo</h2>
+            <span class="pill" id="s-circadian">fase --</span>
+          </div>
+          <div class="panel-body hero-state">
+            <div>
+              <div class="status-word" id="s-state">--</div>
+              <div class="status-meta">
+                <span class="pill">expressao <strong id="s-expr">--</strong></span>
+                <span class="pill">atencao <strong id="s-att">--</strong></span>
+                <span class="pill">fps <strong id="s-fps">--</strong></span>
+                <span class="pill">uptime <strong id="s-uptime">--</strong></span>
+              </div>
+            </div>
+            <div class="health-ring" id="health-ring" style="--p:0"><span id="s-health">--</span></div>
+          </div>
+        </article>
 
-<!-- Row 6: OTA -->
-<div class="card" style="margin-bottom:8px">
-  <h2>OTA Firmware Update</h2>
-  <div class="ota-row">
-    <input type="text" id="ota-url" placeholder="http://192.168.x.x:8000/noisebot.bin">
-    <button class="btn" onclick="startOta()">Flash</button>
-  </div>
-  <div id="ota-wrap">
-    <div id="ota-bg"><div id="ota-bar"></div></div>
-    <div id="ota-msg"></div>
-  </div>
-</div>
+        <article class="panel">
+          <div class="panel-head"><h2>Persona</h2></div>
+          <div class="panel-body metric-list">
+            <div class="persona-row"><span>Warmth</span><div class="bar-track"><div class="bar-fill" id="pb-warmth"></div></div><strong class="value" id="pv-warmth">--</strong></div>
+            <div class="persona-row"><span>Energy</span><div class="bar-track"><div class="bar-fill" id="pb-energy"></div></div><strong class="value" id="pv-energy">--</strong></div>
+            <div class="persona-row"><span>Curiosity</span><div class="bar-track"><div class="bar-fill" id="pb-curiosity"></div></div><strong class="value" id="pv-curiosity">--</strong></div>
+            <div class="persona-row"><span>Trust</span><div class="bar-track"><div class="bar-fill" id="pb-trust"></div></div><strong class="value" id="pv-trust">--</strong></div>
+            <div class="persona-actions">
+              <button class="btn" onclick="exportPersona()">Exportar</button>
+              <button class="btn" onclick="document.getElementById('pfile').click()">Importar</button>
+              <button class="btn danger" onclick="confirmDeletePersona()">Reset</button>
+              <input class="hidden-file" type="file" id="pfile" accept=".json" onchange="importPersona(this)">
+            </div>
+            <div id="persona-msg"></div>
+          </div>
+        </article>
 
-<!-- Row 7: Logs -->
-<div class="card">
-  <h2 style="display:flex;justify-content:space-between">
-    <span>Logs</span>
-    <button class="btn" onclick="fetchLogs()" style="font-size:9px;padding:2px 6px">Refresh</button>
-  </h2>
-  <div id="log-box">Aguardando...</div>
-</div>
+        <article class="panel">
+          <div class="panel-head"><h2>Acoes rapidas</h2></div>
+          <div class="panel-body">
+            <div class="actions">
+              <button class="btn primary" onclick="cmd('GREET')">Cumprir</button>
+              <button class="btn" onclick="cmd('CURIOUS')">Curioso</button>
+              <button class="btn" onclick="cmd('AGREE')">Concordar</button>
+              <button class="btn" onclick="cmd('DISAGREE')">Discordar</button>
+              <button class="btn" onclick="cmd('SPEAK_LOOP')">Falar</button>
+              <button class="btn good" onclick="cmd('CELEBRATE')">Celebrar</button>
+              <button class="btn warn" onclick="cmd('SLEEP')">Dormir</button>
+              <button class="btn" onclick="cmd('WAKE_UP')">Acordar</button>
+            </div>
+            <div id="cmd-msg"></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Expressao</h2></div>
+          <div class="panel-body">
+            <div class="expr-grid" id="expr-grid"></div>
+            <div id="expr-msg"></div>
+          </div>
+        </article>
+      </div>
+
+      <aside class="grid">
+        <article class="panel">
+          <div class="panel-head"><h2>Olhar</h2><span class="note" id="gaze-xy">x:0 y:0</span></div>
+          <div class="panel-body gaze-wrap">
+            <div id="gaze-pad" onmousedown="gazeClick(event)" ontouchstart="gazeTouch(event)">
+              <div id="gaze-dot"></div>
+            </div>
+            <div class="metric-list">
+              <button class="btn" onclick="setGaze(0,0)">Centralizar</button>
+              <button class="btn" onclick="setGaze(-.55,-.05)">Olhar esquerda</button>
+              <button class="btn" onclick="setGaze(.55,-.05)">Olhar direita</button>
+              <button class="btn" onclick="setGaze(0,-.55)">Olhar acima</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>LEDs</h2></div>
+          <div class="panel-body">
+            <div class="segmented" aria-label="Alvo dos LEDs">
+              <button class="seg active" id="led-target-all" onclick="setLedTarget('all')">Todos</button>
+              <button class="seg" id="led-target-0" onclick="setLedTarget('0')">LED 0</button>
+              <button class="seg" id="led-target-1" onclick="setLedTarget('1')">LED 1</button>
+            </div>
+            <div class="color-row">
+              <input type="color" id="led-color" value="#ffc878">
+              <button class="btn primary" onclick="applyLedColor()">Aplicar</button>
+            </div>
+            <div class="swatches">
+              <button class="swatch" data-color="#ffc878" onclick="presetLedColor('#ffc878')" title="Idle quente"></button>
+              <button class="swatch" data-color="#4fc3f7" onclick="presetLedColor('#4fc3f7')" title="Foco"></button>
+              <button class="swatch" data-color="#66bb6a" onclick="presetLedColor('#66bb6a')" title="OK"></button>
+              <button class="swatch" data-color="#ff8a65" onclick="presetLedColor('#ff8a65')" title="Alerta leve"></button>
+              <button class="swatch" data-color="#000000" onclick="presetLedColor('#000000')" title="Apagar"></button>
+            </div>
+            <div class="field" style="margin-top:12px">
+              <label for="led-brightness">Brilho</label>
+              <input type="number" id="led-brightness" min="0" max="255" value="128">
+              <button class="btn" onclick="setLedBrightness()">Aplicar</button>
+            </div>
+            <div id="led-msg"></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Audio ambiente</h2></div>
+          <div class="panel-body metric-list">
+            <div class="metric"><span>BPM</span><strong class="value" id="a-bpm">--</strong></div>
+            <div class="metric"><span>Confianca</span><strong class="value" id="a-conf">--</strong></div>
+            <div class="metric"><span>RMS</span><strong class="value" id="a-rms">--</strong></div>
+          </div>
+        </article>
+      </aside>
+    </div>
+  </section>
+
+  <section id="view-settings" class="view">
+    <div class="grid grid-2">
+      <article class="panel">
+        <div class="panel-head"><h2>Ajustes basicos</h2></div>
+        <div class="panel-body form-grid">
+          <div class="field"><label for="c-volume">Volume</label><input type="number" id="c-volume" min="0" max="100"><button class="btn" onclick="saveOne('volume','c-volume')">Salvar</button></div>
+          <div class="field"><label for="c-brightness">Brilho display</label><input type="number" id="c-brightness" min="0" max="255"><button class="btn" onclick="saveOne('brightness','c-brightness')">Salvar</button></div>
+          <div class="field"><label for="c-touch_sens">Sensibilidade touch</label><input type="number" id="c-touch_sens" min="0" max="100"><button class="btn" onclick="saveOne('touch_sens','c-touch_sens')">Salvar</button></div>
+          <div class="field"><label for="c-idle_timeout">Timeout idle (s)</label><input type="number" id="c-idle_timeout" min="10"><button class="btn" onclick="saveOne('idle_timeout','c-idle_timeout')">Salvar</button></div>
+          <div id="cfg-msg"></div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head"><h2>Idle</h2></div>
+        <div class="panel-body form-grid">
+          <div class="field"><label for="idle-sacc">Micro saccade</label><input type="number" id="idle-sacc" step="0.1" min="0.1" max="3" value="1.0"><button class="btn" onclick="saveIdle()">Aplicar</button></div>
+          <div class="field"><label for="idle-yawn">Bocejo</label><input type="number" id="idle-yawn" step="0.1" min="0.1" max="3" value="1.0"><span></span></div>
+          <p class="note">IDLE continua sendo o baseline: expressao neutra, olhar central e LEDs em modo idle depois dos momentos transitórios.</p>
+        </div>
+      </article>
+    </div>
+
+    <div style="height:14px"></div>
+
+    <article class="panel">
+      <div class="panel-head">
+        <div class="touch-head">
+          <div class="touch-dot" id="touch-dot"></div>
+          <h2>Debug touch</h2>
+        </div>
+        <button class="btn" onclick="fetchTouch()">Atualizar</button>
+      </div>
+      <div class="panel-body">
+        <div class="touch-grid">
+          <div class="touch-box"><span>Estado</span><strong id="t-state">--</strong></div>
+          <div class="touch-box"><span>Duração</span><strong id="t-duration">--</strong></div>
+          <div class="touch-box"><span>Ultimo evento</span><strong id="t-event">--</strong></div>
+          <div class="touch-box"><span>Raw</span><strong id="t-raw">--</strong></div>
+          <div class="touch-box"><span>Filtrado</span><strong id="t-filtered">--</strong></div>
+          <div class="touch-box"><span>Baseline</span><strong id="t-baseline">--</strong></div>
+          <div class="touch-box"><span>Threshold on</span><strong id="t-th-on">--</strong></div>
+          <div class="touch-box"><span>Threshold off</span><strong id="t-th-off">--</strong></div>
+          <div class="touch-box"><span>Margem</span><strong id="t-margin">--</strong></div>
+        </div>
+        <div style="height:10px"></div>
+        <div class="bar-track"><div class="bar-fill" id="tb-signal"></div></div>
+      </div>
+    </article>
+
+    <div style="height:14px"></div>
+
+    <details>
+      <summary>Ajustes tecnicos de servo</summary>
+      <div class="panel-body form-grid">
+        <p class="note">Use apenas para limites persistidos de calibracao. Movimento continua sujeito ao veto de motion_safety.</p>
+        <div class="field"><label>Servo 1 min</label><input type="number" id="c-srv1_min"><button class="btn" onclick="saveOne('srv1_min','c-srv1_min')">Salvar</button></div>
+        <div class="field"><label>Servo 1 max</label><input type="number" id="c-srv1_max"><button class="btn" onclick="saveOne('srv1_max','c-srv1_max')">Salvar</button></div>
+        <div class="field"><label>Servo 1 centro</label><input type="number" id="c-srv1_ctr"><button class="btn" onclick="saveOne('srv1_ctr','c-srv1_ctr')">Salvar</button></div>
+        <div class="field"><label>Servo 2 min</label><input type="number" id="c-srv2_min"><button class="btn" onclick="saveOne('srv2_min','c-srv2_min')">Salvar</button></div>
+        <div class="field"><label>Servo 2 max</label><input type="number" id="c-srv2_max"><button class="btn" onclick="saveOne('srv2_max','c-srv2_max')">Salvar</button></div>
+        <div class="field"><label>Servo 2 centro</label><input type="number" id="c-srv2_ctr"><button class="btn" onclick="saveOne('srv2_ctr','c-srv2_ctr')">Salvar</button></div>
+      </div>
+    </details>
+  </section>
+
+  <section id="view-system" class="view">
+    <div class="grid grid-2">
+      <article class="panel">
+        <div class="panel-head"><h2>Saude</h2><button class="btn" onclick="fetchHealth()">Atualizar</button></div>
+        <div class="panel-body metric-list">
+          <div class="metric"><span>DRAM livre</span><strong class="value" id="h-dram">--</strong></div>
+          <div class="bar-track"><div class="bar-fill" id="hb-dram"></div></div>
+          <div class="metric"><span>PSRAM livre</span><strong class="value" id="h-psram">--</strong></div>
+          <div class="bar-track"><div class="bar-fill" id="hb-psram"></div></div>
+          <div class="metric"><span>Tasks</span><strong class="value" id="h-tasks">--</strong></div>
+          <div class="metric"><span>Build</span><strong class="value" id="h-build">--</strong></div>
+          <button class="btn danger" onclick="confirmRestart()">Reiniciar</button>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head"><h2>Conexao local</h2></div>
+        <div class="panel-body metric-list">
+          <div class="metric"><span>Status</span><strong class="value" id="w-status">--</strong></div>
+          <div class="metric"><span>SSID</span><strong class="value" id="w-ssid">--</strong></div>
+          <div class="metric"><span>IP</span><strong class="value" id="w-ip" onclick="copyIP()" title="Copiar IP">--</strong></div>
+          <div class="metric"><span>RSSI</span><strong class="value" id="w-rssi">--</strong></div>
+          <p class="note">WiFi e OTA ficam fora da tela principal porque o produto e offline-first. Esta area serve para diagnostico do link local.</p>
+          <details>
+            <summary>Provisionamento WiFi</summary>
+            <div class="panel-body form-grid">
+              <input type="text" id="w-new-ssid" placeholder="SSID">
+              <input type="password" id="w-new-pass" placeholder="Senha">
+              <div class="actions" style="grid-template-columns:1fr 1fr">
+                <button class="btn" onclick="setWifi()">Salvar e conectar</button>
+                <button class="btn danger" onclick="clearWifi()">Desconectar</button>
+              </div>
+              <div id="wifi-msg"></div>
+            </div>
+          </details>
+        </div>
+      </article>
+    </div>
+
+    <div style="height:14px"></div>
+
+    <details>
+      <summary>OTA firmware update</summary>
+      <div class="panel-body form-grid">
+        <p class="note">Use uma URL HTTP local para o binario do firmware. Durante OTA o robot deve ficar em modo protegido.</p>
+        <div class="ota-row">
+          <input type="text" id="ota-url" placeholder="http://192.168.x.x:8000/noisebot.bin">
+          <button class="btn warn" onclick="startOta()">Flash</button>
+        </div>
+        <div id="ota-wrap">
+          <div class="bar-track"><div class="bar-fill bar-warn" id="ota-bar"></div></div>
+          <div id="ota-msg"></div>
+        </div>
+      </div>
+    </details>
+
+    <div style="height:14px"></div>
+
+    <article class="panel">
+      <div class="panel-head"><h2>Logs recentes</h2><button class="btn" onclick="fetchLogs()">Atualizar</button></div>
+      <div class="panel-body"><div class="logbox" id="log-box">Aguardando...</div></div>
+    </article>
+  </section>
+</main>
 
 <script>
 var ws;
+var ledTarget = 'all';
 var EXPRS = ['NEUTRAL','HAPPY','CURIOUS','SLEEPY','FOCUSED','SUSPICIOUS','SURPRISED','SAD','ALARMED'];
-var EMOTS = ['TOUCH_TAP','TOUCH_LONG','VOICE_START','AUDIO_STARTED','ENTERING_SLEEP',
-             'WAKING_UP','MOTION_FAULT','IDLE_LONG','VOICE_LOUD','VOICE_SOFT',
-             'TOUCH_WARM_PULSE','TOUCH_DEEP','TOUCH_CARESS'];
 
-/* ── Init UI elements ─────────────────────────────────────────────── */
-(function(){
+(function init(){
+  document.querySelectorAll('.tab').forEach(function(tab){
+    tab.onclick = function(){ setView(tab.dataset.view); };
+  });
   var eg = document.getElementById('expr-grid');
-  EXPRS.forEach(function(e) {
+  EXPRS.forEach(function(e){
     var b = document.createElement('button');
-    b.className = 'expr-btn'; b.id = 'eb-'+e; b.textContent = e;
+    b.className = 'btn expr-btn';
+    b.id = 'eb-' + e;
+    b.textContent = e;
     b.onclick = function(){ setExpr(e); };
     eg.appendChild(b);
   });
-  var mg = document.getElementById('emot-grid');
-  EMOTS.forEach(function(e) {
-    var b = document.createElement('button');
-    b.className = 'btn'; b.textContent = e.replace(/_/g,' ');
-    b.onclick = function(){ sendEmotEvent(e); };
-    mg.appendChild(b);
-  });
-  // RSSI bars
-  var rb = document.getElementById('w-rssi-bars');
-  for(var i=0;i<4;i++){
-    var d=document.createElement('div');
-    d.className='rssi-bar';
-    d.style.height=(4+(i*4))+'px';
-    d.id='rssi-'+i;
-    rb.appendChild(d);
-  }
 })();
 
-/* ── WebSocket ──────────────────────────────────────────────────── */
-function connect() {
+function setView(name){
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.view === name); });
+  document.querySelectorAll('.view').forEach(function(v){ v.classList.toggle('active', v.id === 'view-' + name); });
+}
+
+function connect(){
   var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(proto + '//' + location.host + '/ws');
-  ws.onopen = function() {
-    dot('#66bb6a');
-    fetchAll();
-  };
-  ws.onclose = function() { dot('#ef5350'); setTimeout(connect, 3000); };
-  ws.onerror = function() { dot('#ef5350'); };
-  ws.onmessage = function(e) {
+  ws.onopen = function(){ dot('#16a085'); fetchAll(); };
+  ws.onclose = function(){ dot('#b42318'); setTimeout(connect, 3000); };
+  ws.onerror = function(){ dot('#b42318'); };
+  ws.onmessage = function(e){
     var d; try { d = JSON.parse(e.data); } catch(_) { return; }
-    if (d.type === 'ota')       { onOta(d); return; }
+    if (d.type === 'ota') { onOta(d); return; }
     if (d.type === 'telemetry') { onTelemetry(d); return; }
-    if (d.state !== undefined)  { onStatus(d); }
+    if (d.state !== undefined) onStatus(d);
   };
 }
 
-function dot(c) { document.getElementById('ws-dot').style.background = c; }
+function dot(c){ document.getElementById('ws-dot').style.background = c; }
+function set(id,v){ var el=document.getElementById(id); if(el) el.textContent = v; }
 
-/* ── Status ───────────────────────────────────────────────────── */
-function onStatus(d) {
-  set('s-state',  d.state);
-  set('s-expr',   d.expression);
-  set('s-att',    (d.attention*100).toFixed(0)+'%');
-  set('s-health', d.health+'%');
-  set('s-uptime', fmtTime(d.uptime_s));
-  set('s-fps',    d.fps.toFixed(1));
-  EXPRS.forEach(function(e) {
-    var b = document.getElementById('eb-'+e);
+function onStatus(d){
+  set('s-state', d.state || '--');
+  set('s-expr', d.expression || '--');
+  set('s-att', pct(d.attention));
+  set('s-health', (d.health === undefined ? '--' : d.health + '%'));
+  document.getElementById('health-ring').style.setProperty('--p', d.health || 0);
+  set('s-uptime', fmtTime(d.uptime_s || 0));
+  set('s-fps', d.fps === undefined ? '--' : d.fps.toFixed(1));
+  EXPRS.forEach(function(e){
+    var b=document.getElementById('eb-'+e);
     if(b) b.classList.toggle('active', e === d.expression);
   });
 }
 
-function onTelemetry(d) {
-  if (d.valence !== undefined) {
-    updateEmoDot(d.valence, d.activation);
-    set('emo-label', 'V:'+d.valence.toFixed(2)+' A:'+d.activation.toFixed(2));
-  }
-  if (d.circadian) {
-    var ph = d.circadian;
-    var cls = ph==='DAWN'?'phase-dawn':ph==='DAY'?'phase-day':'phase-dusk';
-    document.getElementById('s-circadian').innerHTML =
-      '<span class="phase-badge '+cls+'">'+ph+'</span>';
-  }
-  if (d.bpm !== undefined) {
-    set('a-bpm',  d.bpm.toFixed(1));
-    set('a-conf', (d.bpm_conf*100).toFixed(0)+'%');
-    set('a-rms',  d.rms.toFixed(3));
+function onTelemetry(d){
+  if(d.circadian) set('s-circadian', 'fase ' + d.circadian);
+  if(d.bpm !== undefined){
+    set('a-bpm', d.bpm.toFixed(1));
+    set('a-conf', pct(d.bpm_conf));
+    set('a-rms', d.rms.toFixed(3));
   }
 }
 
-function updateEmoDot(v, a) {
-  var el = document.getElementById('emo-dot');
-  var pct_x = ((v + 1) / 2 * 100).toFixed(1) + '%';
-  var pct_y = ((1 - (a + 1) / 2) * 100).toFixed(1) + '%';
-  el.style.left = pct_x; el.style.top = pct_y;
+function fetchAll(){
+  fetchPersona();
+  fetchConfig();
+  fetchHealth();
+  fetchWifi();
+  fetchTouch();
+  fetchLogs();
+  fetchVersion();
+  get('/api/gaze', function(d){ updateGazeDot(+d.x || 0, +d.y || 0); });
 }
 
-function fmtTime(s) {
-  var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
-  return (h?h+'h ':'')+m+'m '+ss+'s';
-}
-
-function set(id, v) {
-  var el = document.getElementById(id);
-  if(el) el.textContent = v;
-}
-
-/* ── Fetch all ──────────────────────────────────────────────────── */
-function fetchAll() {
-  fetchPersona(); fetchConfig(); fetchHealth();
-  fetchWifi(); fetchLtm(); fetchLogs(); fetchVersion();
-}
-
-function fetchPersona() {
-  get('/api/persona', function(d) {
-    ['warmth','energy','curiosity','trust'].forEach(function(k) {
-      document.getElementById('pb-'+k).style.width = (d[k]*100).toFixed(1)+'%';
-      document.getElementById('pv-'+k).textContent  = (+d[k]).toFixed(3);
+function fetchPersona(){
+  get('/api/persona', function(d){
+    ['warmth','energy','curiosity','trust'].forEach(function(k){
+      var v = +d[k] || 0;
+      set('pv-' + k, v.toFixed(3));
+      setBar('pb-' + k, v * 100);
     });
   });
 }
 
-function fetchConfig() {
-  get('/api/config/all', function(d) {
-    var keys = ['volume','brightness','touch_sens','idle_timeout',
-                'srv1_min','srv1_max','srv1_ctr','srv2_min','srv2_max','srv2_ctr'];
-    keys.forEach(function(k) {
-      var el = document.getElementById('c-'+k);
-      if(el) el.value = d[k];
+function fetchConfig(){
+  get('/api/config/all', function(d){
+    ['volume','brightness','touch_sens','idle_timeout','srv1_min','srv1_max','srv1_ctr','srv2_min','srv2_max','srv2_ctr'].forEach(function(k){
+      var el = document.getElementById('c-' + k);
+      if(el && d[k] !== undefined) el.value = d[k];
     });
   });
 }
 
-function fetchHealth() {
-  get('/api/health', function(d) {
+function fetchHealth(){
+  get('/api/health', function(d){
     var dPct = d.heap_dram_free / (512*1024) * 100;
     var pPct = d.heap_psram_free / (8*1024*1024) * 100;
-    set('h-dram',  fmtBytes(d.heap_dram_free)+' / min:'+fmtBytes(d.heap_dram_min));
-    set('h-psram', fmtBytes(d.heap_psram_free)+' / min:'+fmtBytes(d.heap_psram_min));
+    set('h-dram', fmtBytes(d.heap_dram_free) + ' / min ' + fmtBytes(d.heap_dram_min));
+    set('h-psram', fmtBytes(d.heap_psram_free) + ' / min ' + fmtBytes(d.heap_psram_min));
     set('h-tasks', d.task_count);
-    setHbar('hb-dram',  dPct);
-    setHbar('hb-psram', pPct);
+    setBar('hb-dram', dPct);
+    setBar('hb-psram', pPct);
   });
 }
 
-function fetchVersion() {
-  get('/api/version', function(d) {
-    document.getElementById('h-version').textContent = 'v'+d.version;
-    set('h-build', d.project_name+' '+d.build_date+' '+d.build_time+' ('+d.idf_ver+')');
+function fetchVersion(){
+  get('/api/version', function(d){
+    set('h-version', 'v' + d.version);
+    set('h-build', d.project_name + ' ' + d.build_date + ' ' + d.build_time + ' (' + d.idf_ver + ')');
   });
 }
 
-function fetchWifi() {
-  get('/api/wifi', function(d) {
-    set('w-status', d.connected ? 'Connected' : 'Disconnected');
-    set('w-ssid',   d.ssid || '—');
-    set('w-ip',     d.ip   || '—');
-    var bars = rssiToBars(d.rssi);
-    for(var i=0;i<4;i++) {
-      var el = document.getElementById('rssi-'+i);
-      if(el) el.classList.toggle('rssi-on', i < bars);
-    }
+function fetchWifi(){
+  get('/api/wifi', function(d){
+    set('w-status', d.connected ? 'Conectado' : 'Desconectado');
+    set('w-ssid', d.ssid || '--');
+    set('w-ip', d.ip || '--');
+    set('w-rssi', d.rssi ? d.rssi + ' dBm' : '--');
   });
 }
 
-function fetchLtm() {
-  get('/api/ltm', function(d) {
-    set('ltm-touch', d.total_touch);
-    set('ltm-sess',  d.sessions);
-    set('ltm-hrs',   d.hours_alive+'h');
-    set('ltm-fam',   d.familiar ? 'Yes ★' : 'No');
-    set('ltm-voice', d.voice_count);
+function fetchTouch(){
+  get('/api/touch', function(d){
+    var pressed = !!d.pressed;
+    var margin = (+d.filtered || 0) - (+d.baseline || 0);
+    var span = Math.max(1, (+d.threshold_on || 0) - (+d.baseline || 0));
+    var pctSignal = Math.max(0, Math.min(100, margin / span * 100));
+    var age = +d.last_event_age_ms;
+    document.getElementById('touch-dot').classList.toggle('on', pressed);
+    set('t-state', d.state || '--');
+    set('t-duration', (d.duration_ms || 0) + ' ms');
+    set('t-event', (d.last_event || 'NONE') + (age >= 0 ? ' · ' + age + ' ms' : ''));
+    set('t-raw', d.raw);
+    set('t-filtered', d.filtered);
+    set('t-baseline', d.baseline);
+    set('t-th-on', d.threshold_on);
+    set('t-th-off', d.threshold_off);
+    set('t-margin', margin);
+    setSignalBar('tb-signal', pctSignal, pressed);
   });
 }
 
-function fetchLogs() {
-  get('/api/logs', function(arr) {
+function fetchLogs(){
+  get('/api/logs', function(arr){
     var box = document.getElementById('log-box');
-    if(!arr || !arr.length) { box.textContent = '(no logs)'; return; }
+    if(!arr || !arr.length){ box.textContent = '(sem logs recentes)'; return; }
     box.textContent = arr.join('\n');
     box.scrollTop = box.scrollHeight;
   });
 }
 
-/* ── Expression control ────────────────────────────────────────── */
-function setExpr(expr) {
-  post('/api/expression', {expression: expr, transition_ms: 300}, function(d) {
-    var el = document.getElementById('expr-msg');
-    el.textContent = d.ok ? '✓ '+expr : '✗ '+(d.error||'err');
-    setTimeout(function(){ el.textContent=''; }, 1500);
+function setExpr(expr){
+  post('/api/expression', {expression:expr, transition_ms:300}, function(d){
+    flash('expr-msg', d.ok ? 'Expressao aplicada: ' + expr : 'Erro: ' + (d.error || 'falha'));
   });
 }
 
-function sendEmotEvent(ev) {
-  post('/api/emot_event', {event: ev}, function(){});
+function cmd(action){
+  post('/api/command', {type:'ACTION', value:action}, function(d){
+    flash('cmd-msg', d.ok ? 'Acao enviada: ' + action : 'Erro: ' + (d.error || 'falha'));
+  });
 }
 
-/* ── LED ──────────────────────────────────────────────────────── */
-function hexToRgb(hex) {
-  var r = parseInt(hex.slice(1,3),16);
-  var g = parseInt(hex.slice(3,5),16);
-  var b = parseInt(hex.slice(5,7),16);
-  return {r:r,g:g,b:b};
-}
-function setLed(idx) {
-  var c = hexToRgb(document.getElementById('led'+idx+'-color').value);
-  post('/api/led', {idx:idx, r:c.r, g:c.g, b:c.b}, function(){});
-}
-function setLedAll() {
-  var c = hexToRgb(document.getElementById('led-all-color').value);
-  post('/api/led', {all:true, r:c.r, g:c.g, b:c.b}, function(){});
-}
-function setLedBrightness() {
-  var v = parseInt(document.getElementById('led-brightness').value);
-  post('/api/led', {brightness:v}, function(){});
-}
-
-/* ── Gaze ─────────────────────────────────────────────────────── */
-function gazeClick(e) {
+function gazeClick(e){
   var pad = document.getElementById('gaze-pad');
   var rect = pad.getBoundingClientRect();
-  var x = ((e.clientX - rect.left) / rect.width)  * 2 - 1;
-  var y = ((e.clientY - rect.top)  / rect.height) * 2 - 1;
-  x = Math.max(-1, Math.min(1, x));
-  y = Math.max(-1, Math.min(1, y));
-  updateGazeDot(x, y);
-  post('/api/gaze', {x:+x.toFixed(3), y:+y.toFixed(3)}, function(){});
+  var x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  var y = ((e.clientY - rect.top) / rect.height) * 2 - 1;
+  setGaze(x,y);
 }
-function gazeTouch(e) {
+function gazeTouch(e){
   e.preventDefault();
   var t = e.touches[0];
-  gazeClick({clientX: t.clientX, clientY: t.clientY});
+  gazeClick({clientX:t.clientX, clientY:t.clientY});
 }
-function updateGazeDot(x, y) {
+function setGaze(x,y){
+  x = Math.max(-1, Math.min(1, x));
+  y = Math.max(-1, Math.min(1, y));
+  updateGazeDot(x,y);
+  post('/api/gaze', {x:+x.toFixed(3), y:+y.toFixed(3)}, function(){});
+}
+function updateGazeDot(x,y){
   var d = document.getElementById('gaze-dot');
-  d.style.left = ((x+1)/2*100).toFixed(1)+'%';
-  d.style.top  = ((y+1)/2*100).toFixed(1)+'%';
-  set('gaze-xy', 'x:'+x.toFixed(2)+' y:'+y.toFixed(2));
+  d.style.left = ((x + 1) / 2 * 100).toFixed(1) + '%';
+  d.style.top = ((y + 1) / 2 * 100).toFixed(1) + '%';
+  set('gaze-xy', 'x:' + x.toFixed(2) + ' y:' + y.toFixed(2));
 }
 
-/* ── Idle ─────────────────────────────────────────────────────── */
-function saveIdle() {
+function setLedTarget(target){
+  ledTarget = target;
+  ['all','0','1'].forEach(function(t){
+    var el = document.getElementById('led-target-' + t);
+    if(el) el.classList.toggle('active', t === target);
+  });
+}
+function presetLedColor(hex){
+  document.getElementById('led-color').value = hex;
+  sendLedColor(hex);
+}
+function applyLedColor(){
+  sendLedColor(document.getElementById('led-color').value);
+}
+function sendLedColor(hex){
+  var c = hexToRgb(hex);
+  var payload = {r:c.r, g:c.g, b:c.b};
+  if(ledTarget !== 'all') payload.idx = parseInt(ledTarget, 10);
+  post('/api/led', payload, function(d){
+    flash('led-msg', d.ok ? 'LED atualizado' : 'Erro LED: ' + (d.error || 'falha'));
+  });
+}
+function setLedBrightness(){
+  var v = parseInt(document.getElementById('led-brightness').value, 10);
+  post('/api/led', {brightness:v}, function(d){
+    if(d.ok) post('/api/config', {key:'brightness', value:v}, function(){});
+    flash('led-msg', d.ok ? 'Brilho salvo' : 'Erro LED: ' + (d.error || 'falha'));
+  });
+}
+function hexToRgb(hex){
+  return {r:parseInt(hex.slice(1,3),16), g:parseInt(hex.slice(3,5),16), b:parseInt(hex.slice(5,7),16)};
+}
+
+function saveIdle(){
   var s = parseFloat(document.getElementById('idle-sacc').value);
   var y = parseFloat(document.getElementById('idle-yawn').value);
-  post('/api/idle', {saccade_mult:s, yawn_mult:y}, function(){});
+  post('/api/idle', {saccade_mult:s, yawn_mult:y}, function(){ flash('cfg-msg', 'Idle atualizado'); });
 }
-
-/* ── Config ───────────────────────────────────────────────────── */
-function saveOne(key, elId) {
+function saveOne(key, elId){
   var val = parseFloat(document.getElementById(elId).value);
-  post('/api/config', {key:key, value:val}, function(d) {
-    if(!d.ok) alert('Erro: '+(d.error||'?'));
-  });
-}
-function saveServos(n) {
-  ['min','max','ctr'].forEach(function(s){ saveOne('srv'+n+'_'+s,'c-srv'+n+'_'+s); });
-}
-
-/* ── Commands ─────────────────────────────────────────────────── */
-function cmd(action) {
-  post('/api/command', {type:'ACTION', value:action}, function(d) {
-    var el = document.getElementById('cmd-msg');
-    el.textContent = d.ok ? '✓ '+action : '✗ '+(d.error||'erro');
-    setTimeout(function(){ el.textContent=''; }, 2000);
+  post('/api/config', {key:key, value:val}, function(d){
+    flash('cfg-msg', d.ok ? 'Ajuste salvo: ' + key : 'Erro: ' + (d.error || 'falha'));
   });
 }
 
-/* ── WiFi ─────────────────────────────────────────────────────── */
-function setWifi() {
+function setWifi(){
   var ssid = document.getElementById('w-new-ssid').value.trim();
   var pass = document.getElementById('w-new-pass').value;
-  if(!ssid){ alert('Informe o SSID'); return; }
-  post('/api/wifi', {ssid:ssid, pass:pass}, function(d) {
-    var el = document.getElementById('w-msg');
-    el.textContent = d.ok ? 'Conectando...' : 'Erro: '+(d.error||'?');
+  if(!ssid){ flash('wifi-msg','Informe o SSID'); return; }
+  post('/api/wifi', {ssid:ssid, pass:pass}, function(d){
+    flash('wifi-msg', d.ok ? 'Conectando...' : 'Erro: ' + (d.error || 'falha'));
     if(d.ok) setTimeout(fetchWifi, 4000);
   });
 }
-function clearWifi() {
+function clearWifi(){
   if(!confirm('Limpar credenciais WiFi?')) return;
-  del('/api/wifi', function(d) {
-    set('w-msg', d.ok ? 'Desconectado' : 'Erro');
+  del('/api/wifi', function(d){
+    flash('wifi-msg', d.ok ? 'Credenciais removidas' : 'Erro');
     setTimeout(fetchWifi, 1000);
   });
 }
-function copyIP() {
+function copyIP(){
   var ip = document.getElementById('w-ip').textContent;
-  if(ip && ip !== '—') navigator.clipboard && navigator.clipboard.writeText(ip);
+  if(ip && ip !== '--' && navigator.clipboard) navigator.clipboard.writeText(ip);
 }
-function rssiToBars(rssi) {
-  if(!rssi || rssi >= 0) return 0;
-  if(rssi > -50) return 4;
-  if(rssi > -65) return 3;
-  if(rssi > -75) return 2;
-  if(rssi > -85) return 1;
-  return 0;
-}
-
-/* ── Persona export/import/delete ──────────────────────────────── */
-function exportPersona() { window.location = '/api/persona/export'; }
-function importPersona(input) {
-  var f = input.files[0]; if(!f) return;
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    post('/api/persona/import', JSON.parse(e.target.result), function(d) {
-      alert(d.ok ? 'Importado! Reinicie para aplicar.' : 'Erro: '+(d.error||'?'));
-      input.value = '';
-    });
-  };
-  reader.readAsText(f);
-}
-function confirmDeletePersona() {
-  if(!confirm('Resetar dimensões de persona para 0.5?')) return;
-  del('/api/persona', function(d) {
-    alert(d.ok ? 'Resetado! Reinicie para aplicar.' : 'Erro: '+(d.error||'?'));
-  });
-}
-
-/* ── OTA ──────────────────────────────────────────────────────── */
-function startOta() {
-  var url = document.getElementById('ota-url').value.trim();
-  if(!url){ alert('Informe a URL do firmware'); return; }
-  document.getElementById('ota-wrap').style.display = 'block';
-  document.getElementById('ota-msg').textContent = 'Iniciando...';
-  post('/api/ota', {url:url}, function(){});
-}
-function onOta(d) {
-  document.getElementById('ota-wrap').style.display = 'block';
-  document.getElementById('ota-bar').style.width = d.progress+'%';
-  document.getElementById('ota-msg').textContent =
-    d.status+(d.message?': '+d.message:'')+'  ('+d.progress+'%)';
-}
-
-/* ── System ───────────────────────────────────────────────────── */
-function confirmRestart() {
+function confirmRestart(){
   if(!confirm('Reiniciar o NoiseBot agora?')) return;
   post('/api/restart', {}, function(){});
 }
 
-/* ── Helpers ──────────────────────────────────────────────────── */
-function fmtBytes(n) {
-  if(n >= 1048576) return (n/1048576).toFixed(1)+'MB';
-  if(n >= 1024)    return (n/1024).toFixed(0)+'KB';
-  return n+'B';
+function exportPersona(){
+  window.location = '/api/persona/export';
 }
-function setHbar(id, pct) {
-  var el = document.getElementById(id);
-  if(!el) return;
-  el.style.width = Math.min(100,pct).toFixed(1)+'%';
-  el.className = 'hbar '+(pct>40?'hbar-ok':pct>15?'hbar-warn':'hbar-crit');
+function importPersona(input){
+  var f = input.files[0];
+  if(!f) return;
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var body;
+    try { body = JSON.parse(e.target.result); }
+    catch(_) { flash('persona-msg','JSON invalido'); input.value=''; return; }
+    post('/api/persona/import', body, function(d){
+      flash('persona-msg', d.ok ? 'Persona importada. Reinicie para aplicar.' : 'Erro: ' + (d.error || 'falha'));
+      input.value = '';
+      fetchPersona();
+    });
+  };
+  reader.readAsText(f);
 }
-function get(url, cb) {
-  fetch(url).then(function(r){ return r.json(); }).then(cb).catch(function(){});
-}
-function post(url, body, cb) {
-  fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(body)}).then(function(r){return r.json();}).then(cb).catch(function(){});
-}
-function del(url, cb) {
-  fetch(url,{method:'DELETE'}).then(function(r){return r.json();}).then(cb).catch(function(){});
+function confirmDeletePersona(){
+  if(!confirm('Resetar dimensoes de persona para 0.5?')) return;
+  del('/api/persona', function(d){
+    flash('persona-msg', d.ok ? 'Persona resetada. Reinicie para aplicar.' : 'Erro');
+    fetchPersona();
+  });
 }
 
-/* ── Start ────────────────────────────────────────────────────── */
+function startOta(){
+  var url = document.getElementById('ota-url').value.trim();
+  if(!url){ showOta('Informe a URL do firmware', 0); return; }
+  showOta('Iniciando...', 0);
+  post('/api/ota', {url:url}, function(d){
+    if(!d.ok) showOta('Erro: ' + (d.error || 'falha'), 0);
+  });
+}
+function onOta(d){
+  showOta((d.status || 'ota') + (d.message ? ': ' + d.message : '') + ' (' + (d.progress || 0) + '%)', d.progress || 0);
+}
+function showOta(msg,pct){
+  document.getElementById('ota-wrap').style.display = 'block';
+  set('ota-msg', msg);
+  setBar('ota-bar', pct);
+}
+
+function pct(v){ return v === undefined ? '--' : (v * 100).toFixed(0) + '%'; }
+function fmtTime(s){
+  var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=s%60;
+  return (h ? h + 'h ' : '') + m + 'm ' + ss + 's';
+}
+function fmtBytes(n){
+  if(n >= 1048576) return (n/1048576).toFixed(1) + 'MB';
+  if(n >= 1024) return (n/1024).toFixed(0) + 'KB';
+  return n + 'B';
+}
+function setBar(id,pct){
+  var el = document.getElementById(id);
+  if(!el) return;
+  var p = Math.max(0, Math.min(100, pct || 0));
+  el.style.width = p.toFixed(1) + '%';
+  el.classList.toggle('bar-warn', p <= 40 && p > 15);
+  el.classList.toggle('bar-crit', p <= 15);
+}
+function setSignalBar(id,pct,active){
+  var el = document.getElementById(id);
+  if(!el) return;
+  var p = Math.max(0, Math.min(100, pct || 0));
+  el.style.width = p.toFixed(1) + '%';
+  el.classList.toggle('bar-warn', !active && p >= 70);
+  el.classList.toggle('bar-crit', active && p < 100);
+}
+function flash(id,msg){
+  set(id,msg);
+  setTimeout(function(){ set(id,''); }, 2200);
+}
+function get(url,cb){ fetch(url).then(function(r){return r.json();}).then(cb).catch(function(){}); }
+function post(url,body,cb){ fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(cb).catch(function(){ cb && cb({ok:false,error:'rede'}); }); }
+function del(url,cb){ fetch(url,{method:'DELETE'}).then(function(r){return r.json();}).then(cb).catch(function(){ cb && cb({ok:false}); }); }
+
 connect();
-// Fetch gaze position on load
-get('/api/gaze', function(d){ updateGazeDot(d.x, d.y); });
-// Auto-refresh health e wifi a cada 10s
-setInterval(function(){ fetchHealth(); fetchWifi(); fetchLtm(); }, 10000);
-// Auto-refresh logs a cada 5s
-setInterval(fetchLogs, 5000);
+setInterval(function(){ fetchHealth(); fetchWifi(); }, 10000);
+setInterval(fetchTouch, 500);
+setInterval(fetchLogs, 7000);
 </script>
 </body>
 </html>

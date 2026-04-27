@@ -202,6 +202,12 @@ esp_err_t bridge_service_send_event(const nb_event_t *evt);
  */
 void bridge_service_update_status(const nb_bridge_status_t *status);
 
+/** Versão do protocolo negociada no handshake (1 ou 2; 0 = nunca conectou). Thread-safe. */
+uint8_t bridge_service_get_protocol_version(void);
+
+/** Tempo desde o último frame recebido do bridge (ms). UINT32_MAX se nunca conectou. Thread-safe. */
+uint32_t bridge_service_get_last_rx_age_ms(void);
+
 #ifdef __cplusplus
 }
 #endif

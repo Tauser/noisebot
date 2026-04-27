@@ -732,6 +732,7 @@ static esp_err_t phase_hal(void)
     if (err != ESP_OK) {
         NB_LOGW(TAG, "led_service_init falhou: %s — LEDs desativados", esp_err_to_name(err));
     } else {
+        led_set_brightness(config_get_brightness());
         BaseType_t rc = xTaskCreate(led_update_task, "led_task",
                                     2048, NULL, 3, NULL);
         NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate led_task falhou");

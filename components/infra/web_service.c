@@ -35,6 +35,10 @@
 #include "nvs.h"
 #include "long_term_memory.h"
 #include "nb_config_keys.h"
+#include "bridge_service.h"
+#include "wake_service.h"
+#include "audio_service.h"
+#include "touch_service.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -80,6 +84,8 @@ static httpd_handle_t     s_server     = NULL;
 static int                s_ws_fd      = -1;
 static portMUX_TYPE       s_mux        = portMUX_INITIALIZER_UNLOCKED;
 static esp_timer_handle_t s_audio_tmr  = NULL;
+static nb_event_type_t    s_last_touch_event = NB_EVT_NONE;
+static int64_t            s_last_touch_us    = 0;
 
 /* ── Tabelas de nomes ────────────────────────────────────────────────────── */
 
@@ -135,6 +141,32 @@ static const char *expr_name(nb_expression_t e)
     if ((unsigned)e < sizeof(k_expr_names) / sizeof(k_expr_names[0]))
         return k_expr_names[(unsigned)e];
     return "UNKNOWN";
+}
+
+static const char *touch_state_name(nb_touch_state_t state)
+{
+    switch (state) {
+        case NB_TOUCH_STATE_IDLE:             return "IDLE";
+        case NB_TOUCH_STATE_TOUCHING:         return "TOUCHING";
+        case NB_TOUCH_STATE_LONG_PRESSING:    return "LONG_PRESSING";
+        case NB_TOUCH_STATE_SUSTAINED_ACTIVE: return "SUSTAINED_ACTIVE";
+        default:                              return "UNKNOWN";
+    }
+}
+
+static const char *touch_event_name(nb_event_type_t event)
+{
+    switch (event) {
+        case NB_EVT_TOUCH_TAP:          return "TAP";
+        case NB_EVT_TOUCH_LONG_PRESS:   return "LONG_PRESS";
+        case NB_EVT_TOUCH_SUSTAINED:    return "SUSTAINED";
+        case NB_EVT_TOUCH_WAKE:         return "WAKE";
+        case NB_EVT_TOUCH_DOUBLE_TAP:   return "DOUBLE_TAP";
+        case NB_EVT_TOUCH_DEEP:         return "DEEP";
+        case NB_EVT_TOUCH_CARESS:       return "CARESS";
+        case NB_EVT_TOUCH_WARM_PULSE:   return "WARM_PULSE";
+        default:                        return "NONE";
+    }
 }
 
 /* ── Construção de JSON de status ────────────────────────────────────────── */
@@ -926,9 +958,15 @@ static esp_err_t handle_api_led_post(httpd_req_t *req)
             .b = (uint8_t)b_j->valuedouble,
         };
         if (cJSON_IsTrue(all_j) || !cJSON_IsNumber(idx_j)) {
+            NB_LOGI(TAG, "api LED all=%u,%u,%u",
+                    (unsigned)color.r, (unsigned)color.g, (unsigned)color.b);
             led_set_all(color);
         } else {
-            led_set_color((uint8_t)idx_j->valuedouble, color);
+            uint8_t idx = (uint8_t)idx_j->valuedouble;
+            NB_LOGI(TAG, "api LED[%u]=%u,%u,%u",
+                    (unsigned)idx, (unsigned)color.r,
+                    (unsigned)color.g, (unsigned)color.b);
+            led_set_color(idx, color);
         }
         cJSON_Delete(root);
         httpd_resp_set_type(req, "application/json");
@@ -937,7 +975,9 @@ static esp_err_t handle_api_led_post(httpd_req_t *req)
 
     const cJSON *brightness_j = cJSON_GetObjectItemCaseSensitive(root, "brightness");
     if (cJSON_IsNumber(brightness_j)) {
-        led_set_brightness((uint8_t)brightness_j->valuedouble);
+        uint8_t brightness = (uint8_t)brightness_j->valuedouble;
+        NB_LOGI(TAG, "api LED brightness=%u", (unsigned)brightness);
+        led_set_brightness(brightness);
         cJSON_Delete(root);
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":true}");
@@ -1151,7 +1191,200 @@ static esp_err_t handle_api_persona_delete(httpd_req_t *req)
         "{\"ok\":true,\"note\":\"effective after restart\"}");
 }
 
+static esp_err_t handle_api_touch_get(httpd_req_t *req)
+{
+    nb_touch_debug_t dbg;
+    touch_service_get_debug(&dbg);
+
+    nb_event_type_t last_event;
+    int64_t last_us;
+    taskENTER_CRITICAL(&s_mux);
+    last_event = s_last_touch_event;
+    last_us    = s_last_touch_us;
+    taskEXIT_CRITICAL(&s_mux);
+
+    int64_t now_us = esp_timer_get_time();
+    int64_t age_ms = (last_us > 0) ? ((now_us - last_us) / 1000) : -1;
+    bool pressed = dbg.state != NB_TOUCH_STATE_IDLE;
+
+    char buf[320];
+    snprintf(buf, sizeof(buf),
+        "{\"raw\":%lu,\"filtered\":%lu,\"baseline\":%lu,"
+        "\"threshold_on\":%lu,\"threshold_off\":%lu,"
+        "\"state\":\"%s\",\"pressed\":%s,\"duration_ms\":%lu,"
+        "\"last_event\":\"%s\",\"last_event_age_ms\":%lld}",
+        (unsigned long)dbg.raw,
+        (unsigned long)dbg.filtered_raw,
+        (unsigned long)dbg.baseline,
+        (unsigned long)dbg.threshold_on,
+        (unsigned long)dbg.threshold_off,
+        touch_state_name(dbg.state),
+        pressed ? "true" : "false",
+        (unsigned long)dbg.touch_duration_ms,
+        touch_event_name(last_event),
+        (long long)age_ms);
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
 /* ── Registro de handlers ────────────────────────────────────────────────── */
+
+/* ── Etapa 12.23 — Diagnóstico de Produto ────────────────────────────────── */
+
+static const char *transport_name(nb_bridge_transport_t t)
+{
+    switch (t) {
+        case NB_BRIDGE_TRANSPORT_TCP:  return "tcp";
+        case NB_BRIDGE_TRANSPORT_UART: return "uart";
+        default:                       return "offline";
+    }
+}
+
+static esp_err_t handle_api_diag(httpd_req_t *req)
+{
+    const esp_app_desc_t *d  = esp_app_get_description();
+    nb_bridge_transport_t bt = bridge_service_get_transport();
+    uint32_t rx_age          = bridge_service_get_last_rx_age_ms();
+    char rx_buf[16];
+    if (rx_age == UINT32_MAX) {
+        snprintf(rx_buf, sizeof(rx_buf), "null");
+    } else {
+        snprintf(rx_buf, sizeof(rx_buf), "%lu", (unsigned long)rx_age);
+    }
+
+    char buf[640];
+    snprintf(buf, sizeof(buf),
+        "{"
+        "\"version\":\"%.31s\","
+        "\"state\":\"%s\","
+        "\"bridge\":{\"connected\":%s,\"transport\":\"%s\","
+                    "\"protocol_v\":%u,\"last_rx_ms\":%s},"
+        "\"wake\":{\"active\":%s,\"model\":\"WakeNet9/Hi ESP\","
+                  "\"threshold\":%.2f,\"detections\":%lu},"
+        "\"audio\":{\"rms\":%.4f,\"listening\":%s},"
+        "\"memory\":{\"psram_free\":%lu,\"dram_free\":%lu},"
+        "\"fps\":%.1f,"
+        "\"health\":%u,"
+        "\"uptime_s\":%lu,"
+        "\"touch_count\":%lu,"
+        "\"sessions\":%lu,"
+        "\"hours_alive\":%lu"
+        "}",
+        d->version,
+        state_machine_state_name(state_machine_get_state()),
+        bridge_service_is_connected() ? "true" : "false",
+        transport_name(bt),
+        (unsigned)bridge_service_get_protocol_version(),
+        rx_buf,
+        wake_service_is_active() ? "true" : "false",
+        (double)wake_service_get_threshold(),
+        (unsigned long)wake_service_get_detect_count(),
+        (double)sound_analysis_get_rms(),
+        audio_service_is_listening() ? "true" : "false",
+        (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+        (unsigned long)esp_get_free_heap_size(),
+        (double)diagnostics_get_fps(),
+        (unsigned)diagnostics_get_health_score(),
+        (unsigned long)diagnostics_get_uptime_s(),
+        (unsigned long)ltm_get_total_touch_count(),
+        (unsigned long)ltm_get_total_sessions(),
+        (unsigned long)ltm_get_hours_alive());
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_diag_snapshot(httpd_req_t *req)
+{
+    diagnostics_dump_to_sd();
+
+    const esp_app_desc_t *d = esp_app_get_description();
+    uint8_t vol = config_get_volume();
+
+    /* Coleta últimas 5 linhas do log ring como erros recentes. */
+    taskENTER_CRITICAL(&s_log_mux);
+    uint32_t count = s_log_count;
+    uint32_t head  = s_log_head;
+    taskEXIT_CRITICAL(&s_log_mux);
+
+    uint32_t n = (count < 5u) ? count : 5u;
+    uint32_t start = (count < LOG_RING_SIZE)
+                     ? ((count > n) ? count - n : 0u)
+                     : ((head + LOG_RING_SIZE - n) % LOG_RING_SIZE);
+
+    char buf[768];
+    int pos = snprintf(buf, sizeof(buf),
+        "{\"ok\":true,\"version\":\"%.31s\","
+        "\"health\":%u,\"uptime_s\":%lu,"
+        "\"config\":{\"volume\":%u},"
+        "\"recent_logs\":[",
+        d->version,
+        (unsigned)diagnostics_get_health_score(),
+        (unsigned long)diagnostics_get_uptime_s(),
+        (unsigned)vol);
+
+    for (uint32_t i = 0; i < n && pos < (int)sizeof(buf) - 8; i++) {
+        uint32_t idx = (start + i) % LOG_RING_SIZE;
+        char line[LOG_LINE_MAX + 4];
+        /* Escapa aspas simples para JSON seguro. */
+        const char *src = s_log_ring[idx];
+        int lp = 0;
+        line[lp++] = '"';
+        for (int j = 0; src[j] && lp < (int)sizeof(line) - 3; j++) {
+            if (src[j] == '"' || src[j] == '\\') line[lp++] = '\\';
+            line[lp++] = src[j];
+        }
+        line[lp++] = '"';
+        line[lp]   = '\0';
+        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos,
+                        "%s%s", (i > 0 ? "," : ""), line);
+    }
+    if (pos < (int)sizeof(buf) - 4) {
+        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "]}");
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_diag_wake(httpd_req_t *req)
+{
+    char buf[192];
+    snprintf(buf, sizeof(buf),
+        "{\"active\":%s,\"model\":\"WakeNet9\",\"keyword\":\"Hi ESP\","
+        "\"threshold\":%.2f,\"detections\":%lu}",
+        wake_service_is_active() ? "true" : "false",
+        (double)wake_service_get_threshold(),
+        (unsigned long)wake_service_get_detect_count());
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_diag_bridge(httpd_req_t *req)
+{
+    nb_bridge_transport_t bt = bridge_service_get_transport();
+    uint32_t rx_age          = bridge_service_get_last_rx_age_ms();
+    char rx_buf[16];
+    if (rx_age == UINT32_MAX) {
+        snprintf(rx_buf, sizeof(rx_buf), "null");
+    } else {
+        snprintf(rx_buf, sizeof(rx_buf), "%lu", (unsigned long)rx_age);
+    }
+
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "{\"connected\":%s,\"transport\":\"%s\","
+        "\"protocol_v\":%u,\"last_rx_ms\":%s,"
+        "\"port\":%d}",
+        bridge_service_is_connected() ? "true" : "false",
+        transport_name(bt),
+        (unsigned)bridge_service_get_protocol_version(),
+        rx_buf,
+        NB_BRIDGE_TCP_PORT);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
 
 static const httpd_uri_t k_uris[] = {
     { .uri = "/",            .method = HTTP_GET,  .handler = handle_root },
@@ -1189,6 +1422,12 @@ static const httpd_uri_t k_uris[] = {
     /* 15.6 — LTM e persona */
     { .uri = "/api/ltm",            .method = HTTP_GET,    .handler = handle_api_ltm_get },
     { .uri = "/api/persona",        .method = HTTP_DELETE, .handler = handle_api_persona_delete },
+    { .uri = "/api/touch",          .method = HTTP_GET,    .handler = handle_api_touch_get },
+    /* 12.23 — Diagnóstico de produto */
+    { .uri = "/api/diag",               .method = HTTP_GET,  .handler = handle_api_diag },
+    { .uri = "/api/diag/snapshot",      .method = HTTP_POST, .handler = handle_api_diag_snapshot },
+    { .uri = "/api/diag/test/wake",     .method = HTTP_GET,  .handler = handle_api_diag_wake },
+    { .uri = "/api/diag/test/bridge",   .method = HTTP_GET,  .handler = handle_api_diag_bridge },
     {
         .uri          = "/ws",
         .method       = HTTP_GET,
@@ -1248,6 +1487,15 @@ static void on_state_changed(const nb_event_t *ev, void *ctx)
     ws_push_status();
 }
 
+static void on_touch_debug_event(const nb_event_t *ev, void *ctx)
+{
+    (void)ctx;
+    taskENTER_CRITICAL(&s_mux);
+    s_last_touch_event = ev->type;
+    s_last_touch_us    = esp_timer_get_time();
+    taskEXIT_CRITICAL(&s_mux);
+}
+
 /* ── API pública ─────────────────────────────────────────────────────────── */
 
 esp_err_t web_service_init(void)
@@ -1257,6 +1505,14 @@ esp_err_t web_service_init(void)
 
     nb_event_subscribe(NB_EVT_WIFI_IP_ACQUIRED, on_ip_acquired,  NULL, NULL);
     nb_event_subscribe(NB_EVT_STATE_CHANGED,    on_state_changed, NULL, NULL);
+    nb_event_subscribe(NB_EVT_TOUCH_TAP,         on_touch_debug_event, NULL, NULL);
+    nb_event_subscribe(NB_EVT_TOUCH_LONG_PRESS,  on_touch_debug_event, NULL, NULL);
+    nb_event_subscribe(NB_EVT_TOUCH_SUSTAINED,   on_touch_debug_event, NULL, NULL);
+    nb_event_subscribe(NB_EVT_TOUCH_WAKE,        on_touch_debug_event, NULL, NULL);
+    nb_event_subscribe(NB_EVT_TOUCH_DOUBLE_TAP,  on_touch_debug_event, NULL, NULL);
+    nb_event_subscribe(NB_EVT_TOUCH_DEEP,        on_touch_debug_event, NULL, NULL);
+    nb_event_subscribe(NB_EVT_TOUCH_CARESS,      on_touch_debug_event, NULL, NULL);
+    nb_event_subscribe(NB_EVT_TOUCH_WARM_PULSE,  on_touch_debug_event, NULL, NULL);
     NB_LOGI(TAG, "web_service registrado — aguardando IP");
     return ESP_OK;
 }

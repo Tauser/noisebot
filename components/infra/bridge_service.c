@@ -96,6 +96,10 @@ static struct {
 
     /* Reconexão */
     int64_t                 disconnect_time_us;
+
+    /* Diagnóstico */
+    uint8_t                 proto_version;   /* versão negociada no handshake */
+    int64_t                 last_rx_time_us; /* timestamp do último frame recebido */
 } s;
 
 /* ── CRC-8/SMBUS (poly 0x07, init 0x00) ──────────────────────────────────── */
@@ -219,19 +223,38 @@ static esp_err_t enqueue_frame(nb_bridge_msg_type_t type,
 static void dispatch_incoming(nb_bridge_msg_type_t type,
                                const uint8_t *data, uint16_t data_len)
 {
-    nb_event_t evt = { .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000) };
+    int64_t now_us = esp_timer_get_time();
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s.last_rx_time_us = now_us;
+    xSemaphoreGive(s.mutex);
+
+    nb_event_t evt = { .timestamp_ms = (uint32_t)(now_us / 1000) };
 
     switch (type) {
 
     case NB_BRIDGE_MSG_HELLO:
         if (data_len > 0u) {
+            /* Detecta versão anunciada pelo bridge no payload JSON. */
+            if (data_len >= 2u) {
+                const char *ver = (const char *)data;
+                if (strstr(ver, "\"version\":2") || strstr(ver, "\"version\": 2")) {
+                    xSemaphoreTake(s.mutex, portMAX_DELAY);
+                    s.proto_version = 2;
+                    xSemaphoreGive(s.mutex);
+                } else {
+                    xSemaphoreTake(s.mutex, portMAX_DELAY);
+                    s.proto_version = 1;
+                    xSemaphoreGive(s.mutex);
+                }
+            }
             esp_err_t err = enqueue_frame(NB_BRIDGE_MSG_HELLO,
                                           BRIDGE_HELLO_V2,
                                           (uint16_t)strlen(BRIDGE_HELLO_V2));
             if (err != ESP_OK) {
                 NB_LOGW(TAG, "HELLO v2 resposta falhou: %s", esp_err_to_name(err));
             } else {
-                NB_LOGI(TAG, "HELLO v2 recebido — capabilities enviadas");
+                NB_LOGI(TAG, "HELLO v2 recebido — capabilities enviadas (proto_v=%u)",
+                        (unsigned)s.proto_version);
             }
         }
         break;
@@ -1035,4 +1058,22 @@ void bridge_service_update_status(const nb_bridge_status_t *status)
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     s.status = *status;
     xSemaphoreGive(s.mutex);
+}
+
+uint8_t bridge_service_get_protocol_version(void)
+{
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    uint8_t v = s.proto_version;
+    xSemaphoreGive(s.mutex);
+    return v;
+}
+
+uint32_t bridge_service_get_last_rx_age_ms(void)
+{
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    int64_t last = s.last_rx_time_us;
+    xSemaphoreGive(s.mutex);
+    if (last == 0) return UINT32_MAX;
+    int64_t age_ms = (esp_timer_get_time() - last) / 1000LL;
+    return (age_ms < 0) ? 0u : (uint32_t)age_ms;
 }
