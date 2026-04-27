@@ -96,7 +96,7 @@ static constexpr int16_t BLINK_BAR_EXTRA_HW  = 3;    /* px de padding além das 
 static constexpr int FACE_DIRTY_X0 = (int)BASE_L_CX  - (int)HW_I - (int)X_OFF_TRAVEL - 8 - (int)BLINK_BAR_EXTRA_HW;
 static constexpr int FACE_DIRTY_X1 = (int)BASE_R_CX  + (int)HW_I + (int)X_OFF_TRAVEL + 8 + (int)BLINK_BAR_EXTRA_HW;
 static constexpr int FACE_DIRTY_Y0 = (int)EYE_CY_BASE - (int)MAX_HH_F - (int)Y_TRAVEL_PX - (int)MAX_CURVE_PX - 2;
-static constexpr int FACE_DIRTY_Y1 = (int)EYE_CY_BASE + (int)MAX_HH_F + (int)Y_TRAVEL_PX + (int)MAX_CURVE_PX + 2;
+static constexpr int FACE_DIRTY_Y1 = (int)EYE_CY_BASE + (int)MAX_HH_F + (int)Y_TRAVEL_PX + (int)MAX_CURVE_PX + 16;
 
 typedef enum {
     BLINK_IDLE,
@@ -178,6 +178,27 @@ static volatile float     s_gaze_y            = 0.0f;
 
 /* Pixels de deslocamento horizontal por unidade de gaze_x (translation bilateral). */
 static constexpr float GAZE_X_TRAVEL_PX = 12.0f;
+
+typedef struct {
+    bool     active;
+    uint8_t  intensity;
+    uint32_t duration_ms;
+    int64_t  start_us;
+} blush_overlay_t;
+
+typedef struct {
+    bool     active;
+    uint32_t duration_ms;
+    int64_t  start_us;
+} heart_overlay_t;
+
+static blush_overlay_t    s_blush_overlay      = {};
+static heart_overlay_t    s_heart_overlay      = {};
+static volatile bool      s_breath_enabled     = false;
+
+static constexpr float BREATH_PERIOD_MS = 5200.0f;
+static constexpr float BREATH_AMP       = 0.045f;
+static constexpr float NB_PI_F          = 3.14159265358979323846f;
 
 /* ── 6 Expressões base ───────────────────────────────────────────────────── */
 /*
@@ -362,6 +383,72 @@ static inline uint32_t blend_with_black(uint32_t color, float alpha)
     uint8_t g = (uint8_t)((float)((color >> 8)  & 0xFFu) * alpha);
     uint8_t b = (uint8_t)((float)(color          & 0xFFu) * alpha);
     return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+}
+
+static inline float overlay_alpha(int64_t now_us, int64_t start_us, uint32_t duration_ms)
+{
+    if (duration_ms == 0U) return 0.0f;
+    int64_t elapsed_us = now_us - start_us;
+    if (elapsed_us < 0) return 0.0f;
+    float elapsed_ms = (float)elapsed_us / 1000.0f;
+    if (elapsed_ms >= (float)duration_ms) return 0.0f;
+
+    float t = elapsed_ms / (float)duration_ms;
+    if (t < 0.15f) {
+        return t / 0.15f;
+    }
+    if (t > 0.70f) {
+        return (1.0f - t) / 0.30f;
+    }
+    return 1.0f;
+}
+
+static void draw_blush_overlay(LGFX_Sprite *spr, int64_t now_us)
+{
+    if (!s_blush_overlay.active) return;
+
+    float alpha = overlay_alpha(now_us, s_blush_overlay.start_us,
+                                s_blush_overlay.duration_ms);
+    if (alpha <= 0.0f) {
+        s_blush_overlay.active = false;
+        return;
+    }
+
+    alpha *= (float)s_blush_overlay.intensity / 255.0f;
+    uint32_t c1 = blend_with_black(0xFF6FA3u, alpha * 0.42f);
+    uint32_t c2 = blend_with_black(0xFF8AB5u, alpha * 0.26f);
+    int16_t y = 166;
+
+    spr->fillEllipse(80,  y, 25, 9, c1);
+    spr->fillEllipse(240, y, 25, 9, c1);
+    spr->fillEllipse(80,  y, 16, 5, c2);
+    spr->fillEllipse(240, y, 16, 5, c2);
+}
+
+static void draw_heart_overlay(LGFX_Sprite *spr, int64_t now_us)
+{
+    if (!s_heart_overlay.active) return;
+
+    float alpha = overlay_alpha(now_us, s_heart_overlay.start_us,
+                                s_heart_overlay.duration_ms);
+    if (alpha <= 0.0f) {
+        s_heart_overlay.active = false;
+        return;
+    }
+
+    int64_t elapsed_us = now_us - s_heart_overlay.start_us;
+    float elapsed_ms = elapsed_us > 0 ? (float)elapsed_us / 1000.0f : 0.0f;
+    float pulse = 1.0f + 0.10f * sinf(elapsed_ms * 0.018f);
+    int16_t r = (int16_t)(11.0f * pulse);
+    int16_t cx = 160;
+    int16_t cy = 166;
+    uint32_t color = blend_with_black(0xFF4F7Bu, alpha);
+
+    spr->fillCircle(cx - r, cy - 3, r, color);
+    spr->fillCircle(cx + r, cy - 3, r, color);
+    spr->fillTriangle(cx - (r * 2), cy + 1,
+                      cx + (r * 2), cy + 1,
+                      cx,           cy + (r * 3), color);
 }
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
@@ -697,20 +784,33 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
     /* Blink (atualiza fase de cada olho) */
     blink_update(now_us);
 
+    nb_face_state_t face = s_current;
+    if (s_breath_enabled) {
+        float t_ms = (float)(now_us % (int64_t)(BREATH_PERIOD_MS * 1000.0f)) / 1000.0f;
+        float breath = sinf((t_ms / BREATH_PERIOD_MS) * 2.0f * NB_PI_F);
+        float scale = 1.0f + breath * BREATH_AMP;
+        face.open_l *= scale;
+        face.open_r *= scale;
+        if (face.open_l < 0.05f) face.open_l = 0.05f;
+        if (face.open_r < 0.05f) face.open_r = 0.05f;
+        if (face.open_l > 1.5f) face.open_l = 1.5f;
+        if (face.open_r > 1.5f) face.open_r = 1.5f;
+    }
+
     /* Centros X dos olhos com x_off (convergência) e gaze_x (translation) aplicados */
     float   gx        = s_gaze_x;
     float   gy        = s_gaze_y;
     int16_t gaze_shift = (int16_t)(gx * GAZE_X_TRAVEL_PX + (gx >= 0.0f ? 0.5f : -0.5f));
     int16_t left_cx   = BASE_L_CX
-                      + (int16_t)(s_current.x_off * X_OFF_TRAVEL + 0.5f)
+                      + (int16_t)(face.x_off * X_OFF_TRAVEL + 0.5f)
                       + gaze_shift;
     int16_t right_cx  = BASE_R_CX
-                      - (int16_t)(s_current.x_off * X_OFF_TRAVEL + 0.5f)
+                      - (int16_t)(face.x_off * X_OFF_TRAVEL + 0.5f)
                       + gaze_shift;
 
     /* Offsets Y combinados com gaze_y */
-    float y_l = s_current.y_l + gy;
-    float y_r = s_current.y_r + gy;
+    float y_l = face.y_l + gy;
+    float y_r = face.y_r + gy;
 
     /* Canvas já limpo em TFT_BLACK pelo render_service */
 
@@ -729,36 +829,39 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
         int16_t bx       = left_cx  - HW_I - BLINK_BAR_EXTRA_HW;
         int16_t bw       = (right_cx + HW_I + BLINK_BAR_EXTRA_HW) - bx;
 
-        spr->drawFastHLine(bx, bar_cy - 1, bw, s_current.color);
-        spr->drawFastHLine(bx, bar_cy,     bw, s_current.color);
-        spr->drawFastHLine(bx, bar_cy + 1, bw, s_current.color);
+        spr->drawFastHLine(bx, bar_cy - 1, bw, face.color);
+        spr->drawFastHLine(bx, bar_cy,     bw, face.color);
+        spr->drawFastHLine(bx, bar_cy + 1, bw, face.color);
 
     } else {
 
         /* Olho esquerdo */
         draw_emo_eye(spr,
                      left_cx, y_l,
-                     s_current.open_l,
-                     s_current.tl_l, s_current.tr_l,
-                     s_current.bl_l, s_current.br_l,
-                     s_current.squint_l,
-                     s_current.rt_top, s_current.rb_bot,
-                     s_current.cv_top, s_current.cv_bot,
+                     face.open_l,
+                     face.tl_l, face.tr_l,
+                     face.bl_l, face.br_l,
+                     face.squint_l,
+                     face.rt_top, face.rb_bot,
+                     face.cv_top, face.cv_bot,
                      s_blink[0].phase,
-                     s_current.color);
+                     face.color);
 
         /* Olho direito — tl_r/bl_r = lados internos, tr_r/br_r = externos. */
         draw_emo_eye(spr,
                      right_cx, y_r,
-                     s_current.open_r,
-                     s_current.tl_r, s_current.tr_r,
-                     s_current.bl_r, s_current.br_r,
-                     s_current.squint_r,
-                     s_current.rt_top, s_current.rb_bot,
-                     s_current.cv_top, s_current.cv_bot,
+                     face.open_r,
+                     face.tl_r, face.tr_r,
+                     face.bl_r, face.br_r,
+                     face.squint_r,
+                     face.rt_top, face.rb_bot,
+                     face.cv_top, face.cv_bot,
                      s_blink[1].phase,
-                     s_current.color);
+                     face.color);
     }
+
+    draw_blush_overlay(spr, now_us);
+    draw_heart_overlay(spr, now_us);
 
     /* Declara região suja. Rect conservador cobre todos os pixels possíveis
      * dos olhos (gaze shift, x_off, blink bar). Ser fixo garante que pixels
@@ -904,6 +1007,32 @@ void expression_combo_play(const nb_expr_frame_t *frames, uint8_t count)
     for (uint8_t i = 0; i < n; i++) {
         expression_play(frames[i].expr, frames[i].duration_ms, frames[i].transition_ms);
     }
+}
+
+void expression_service_overlay_blush(uint8_t intensity, uint32_t duration_ms)
+{
+    if (!s_initialized || duration_ms == 0U || intensity == 0U) return;
+    xSemaphoreTake(s_set_mutex, portMAX_DELAY);
+    s_blush_overlay.active      = true;
+    s_blush_overlay.intensity   = intensity;
+    s_blush_overlay.duration_ms = duration_ms;
+    s_blush_overlay.start_us    = esp_timer_get_time();
+    xSemaphoreGive(s_set_mutex);
+}
+
+void expression_service_overlay_heart(uint32_t duration_ms)
+{
+    if (!s_initialized || duration_ms == 0U) return;
+    xSemaphoreTake(s_set_mutex, portMAX_DELAY);
+    s_heart_overlay.active      = true;
+    s_heart_overlay.duration_ms = duration_ms;
+    s_heart_overlay.start_us    = esp_timer_get_time();
+    xSemaphoreGive(s_set_mutex);
+}
+
+void expression_service_set_breath_enabled(bool enabled)
+{
+    s_breath_enabled = enabled;
 }
 
 } /* extern "C" */

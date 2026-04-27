@@ -41,6 +41,7 @@
 #define NB_EXPRESSION_SERVICE_H
 
 #include "esp_err.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -195,6 +196,28 @@ typedef struct {
  * @param count   Número de frames (máx 4).
  */
 void expression_combo_play(const nb_expr_frame_t *frames, uint8_t count);
+
+/**
+ * @brief Mostra blush temporário sobre a expressão atual.
+ *
+ * @param intensity   Intensidade 0..255.
+ * @param duration_ms Duração total incluindo fade-out.
+ */
+void expression_service_overlay_blush(uint8_t intensity, uint32_t duration_ms);
+
+/**
+ * @brief Mostra um coração temporário no centro inferior da face.
+ *
+ * @param duration_ms Duração total incluindo fade-out.
+ */
+void expression_service_overlay_heart(uint32_t duration_ms);
+
+/**
+ * @brief Habilita/desabilita respiração sutil dos olhos em IDLE/ATTENTIVE.
+ *
+ * O efeito modula a abertura dos olhos no render, sem alterar a expressão base.
+ */
+void expression_service_set_breath_enabled(bool enabled);
 
 void expression_service_set_gaze(float x, float y);
 
