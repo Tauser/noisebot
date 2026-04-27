@@ -71,7 +71,7 @@
 #endif
 
 /* ── WS2812 LEDs (RMT) ───────────────────────────────────────────────────── */
-#define NB_LED_PIN_DATA     19      /* RMT canal 0 — 2 LEDs em série          */
+#define NB_LED_PIN_DATA     3       /* RMT canal 0 — 2 LEDs em série (GPIO19=USB-D-, disputado pelo USB PHY) */
 #define NB_LED_COUNT        2
 #define NB_LED_RMT_CHANNEL  0
 

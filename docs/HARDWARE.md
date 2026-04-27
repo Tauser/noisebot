@@ -108,12 +108,17 @@ GPIO 39/40 também são pinos JTAG (TCK/TDO) — JTAG externo incompatível com 
 
 | Sinal | GPIO | Notas                        |
 | ----- | ---- | ---------------------------- |
-| DATA  | 19   | RMT canal 0, 2 LEDs em série |
+| DATA  | 3    | RMT canal 0, 2 LEDs em série |
 
 Alimentação: 5V direto. Corrente máxima: ~120mA a 100% RGB (não usar 100% em operação normal).
 
-> GPIO 19 = USB D- (OTG nativo do ESP32-S3). USB OTG inutilizável enquanto
-> WS2812 estiver inicializado — aceitável; NoiseBot não usa OTG.
+> **GPIO 3** é Touch Pad T3, sem conflito (touch do projeto usa GPIO 2/T2).
+> Câmera DVP não usa GPIO 3 — seguro para uso permanente.
+>
+> **Por que não GPIO 19:** GPIO 19 = USB D- do ESP32-S3. Funcionava antes da
+> ativação do WiFi (etapa 9.6), mas o stack WiFi usa `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND`
+> que reconfigura o bloco USB PHY ao conectar a um AP — isso contesta o GPIO 19
+> com o RMT e trava as atualizações dos LEDs. GPIO 3 não tem essa restrição.
 
 ### INMP441 — Microfone + MAX98357A — Amplificador (I2S0 full-duplex)
 

@@ -66,6 +66,13 @@ CONFIG_NVS_ENCRYPTION=n
 CONFIG_FATFS_LFN_HEAP=y
 CONFIG_FATFS_MAX_LFN=255
 
+# ── USB Serial/JTAG — DESABILITADO ──────────────────────────────────────────
+# O periférico USB Serial/JTAG toma posse de GPIO 19 (D-) e GPIO 20 (D+) no
+# silício, independente de cabo conectado. GPIO 19 é o pino de dados WS2812
+# (RMT). Com USB JTAG ativo, o RMT não consegue controlar os LEDs.
+# Console está em UART0 — desabilitar USB JTAG não causa perda funcional.
+CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n
+
 # ── SPI / Display ─────────────────────────────────────────────────────────────
 # LovyanGFX controla o SPI diretamente via driver de baixo nível.
 # Não usar CONFIG_SPI_MASTER_IN_ISR — LovyanGFX gerencia DMA.
