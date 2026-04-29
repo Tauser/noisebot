@@ -11,7 +11,8 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:stack-chan.github.io)",
       "WebFetch(domain:docs.m5stack.com)",
-      "Bash(xargs head *)"
+      "Bash(xargs head *)",
+      "Bash(xargs wc *)"
     ]
   }
 }
