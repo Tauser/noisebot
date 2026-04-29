@@ -73,7 +73,7 @@
 /* ── WS2812 LEDs (RMT) ───────────────────────────────────────────────────── */
 #define NB_LED_PIN_DATA     3       /* RMT canal 0 — 2 LEDs em série (GPIO19=USB-D-, disputado pelo USB PHY) */
 #define NB_LED_COUNT        2
-#define NB_LED_RMT_CHANNEL  0
+#define NB_LED_RMT_CHANNEL  0 
 
 /* ── Áudio Full-Duplex (I2S0 — mic RX + speaker TX compartilhados) ──────── */
 /*
@@ -122,6 +122,26 @@
 #define NB_SERVO_BAUD_RATE  1000000 /* 1Mbps padrão Feetech */
 #define NB_SERVO_ID_PAN     1
 #define NB_SERVO_ID_TILT    2
+
+/* ── I2C Master (GPIO 4/5) — barramento compartilhado de sensores ────────── */
+/*
+ * Inicializado pelo nb_i2c_hal. Todos os HALs de sensor usam este barramento.
+ * Sensores com pino INT (IMU, APDS-9960) usam polling — não há GPIO livre
+ * para interrupção (GPIO 3 está ocupado pelo WS2812 RMT).
+ *
+ * Endereços no barramento:
+ *   0x3C  OV2640 câmera (SCCB)      — etapa 8.1
+ *   0x68  MPU-6050 IMU              — etapa 8.2
+ *   0x44  SHT40 temp/humidade       — etapa 8.3
+ *   0x39  APDS-9960 proximidade     — etapa 8.4
+ *   0x6B  bq25185 charger           — etapa 8.5
+ *   0x36  MAX17048 fuel gauge        — etapa 8.5
+ *   0x5A  MPR121 touch zones        — etapa 8.6
+ */
+#define NB_I2C_PORT         I2C_NUM_0
+#define NB_I2C_PIN_SDA      4
+#define NB_I2C_PIN_SCL      5
+#define NB_I2C_FREQ_HZ      400000      /* Fast Mode 400kHz */
 
 /* ── Touch — fita de cobre ───────────────────────────────────────────────── */
 #define NB_TOUCH_PIN        2       /* GPIO com função touch ESP32-S3        */

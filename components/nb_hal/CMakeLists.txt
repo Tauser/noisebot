@@ -6,6 +6,7 @@ idf_component_register(
         "touch_hal.c"
         "servo_hal.c"
         "audio_hal.c"
+        "i2c_hal.c"
     INCLUDE_DIRS "."
     REQUIRES
         log
@@ -15,6 +16,7 @@ idf_component_register(
         esp_psram
         driver
         esp_driver_i2s
+        esp_driver_i2c
         led_strip
         LovyanGFX
 )
