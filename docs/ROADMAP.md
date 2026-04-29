@@ -737,18 +737,54 @@ Critérios adicionais de integração do Bloco 0:
 
 ## BLOCO 8 — Expansões de Hardware
 
-> Objetivo: Ativar periféricos adiados que já estão fisicamente conectados na placa.
+> Objetivo: Ativar periféricos adiados e novos sensores sobre uma fundação I2C compartilhada.
+> Todos os HALs de sensor dependem do `nb_i2c_hal` (8.0) — nunca inicializam I2C por conta própria.
+
+---
+
+### Etapa 8.0 — `nb_i2c_hal` — Barramento I2C Compartilhado
+
+**Dependências:** Bloco 7 concluído
+**Hardware necessário:** Não (só firmware)
+
+**O que entra:**
+
+- `nb_i2c_hal`: inicializa `i2c_master_bus_create()` uma única vez nos GPIO 4 (SDA) e 5 (SCL).
+- `nb_i2c_hal_init()`: configura bus, pull-ups internos, clock 400kHz, retorna `esp_err_t`.
+- `nb_i2c_hal_get_bus()`: retorna `i2c_master_bus_handle_t` para uso pelos HALs de sensor.
+- `nb_i2c_hal_scan()`: detecta endereços ativos no barramento — usado em boot debug e diagnósticos.
+- Sensores com pino INT (IMU, APDS-9960) usam polling via schedule_service — GPIO 3 está ocupado pelo WS2812 RMT.
+- `nb_i2c_hal_deinit()`: desmonta bus de forma segura (usado em power-off / safe mode).
+
+**Endereços esperados no barramento (referência):**
+
+| Dispositivo | Endereço | Etapa |
+|-------------|----------|-------|
+| OV2640 (SCCB) | 0x3C | 8.1 |
+| MPU-6050 IMU | 0x68 | 8.2 |
+| SHT40 temp/humid | 0x44 | 8.3 |
+| APDS-9960 proximidade | 0x39 | 8.4 |
+| bq25185 charger | 0x6B | 8.5 |
+| MAX17048 fuel gauge | 0x36 | 8.5 |
+
+**Critérios de aceitação:**
+
+- [ ] `nb_i2c_hal_init()` retorna `ESP_OK` no boot
+- [ ] `nb_i2c_hal_scan()` lista os endereços dos dispositivos conectados sem erro
+- [ ] Dois HALs usando `nb_i2c_hal_get_bus()` simultaneamente: sem colisão de barramento
+- [ ] `nb_i2c_hal_deinit()` libera recursos sem leak
 
 ---
 
 ### Etapa 8.1 — Câmera OV2640
 
-**Dependências:** Bloco 7 concluído, 300KB PSRAM headroom verificado
+**Dependências:** 8.0 concluída, 300KB PSRAM headroom verificado
 **Hardware necessário:** Sim (FPC câmera conectado — pinos já reservados)
 
 **O que entra:**
 
 - `camera_hal`: driver ESP-IDF esp32-camera, DVP, QVGA (320×240), 15fps.
+- Usa `nb_i2c_hal_get_bus()` para comunicação SCCB — não inicializa I2C próprio.
 - Frame buffer único em PSRAM (~150KB). Sem double-buffer — não é display, é análise.
 - API: `camera_hal_capture()`, `camera_hal_get_frame()`, `camera_hal_release_frame()`.
 - Task de captura separada: Core 1, prio 4 (abaixo de safety e render).
@@ -764,13 +800,14 @@ Critérios adicionais de integração do Bloco 0:
 
 ### Etapa 8.2 — IMU MPU-6050
 
-**Dependências:** 8.1 concluída (I2C0 iniciado pela câmera, endereço 0x68 disponível)
-**Hardware necessário:** Sim (MPU-6050 conectado via I2C0 — GPIO 4/5)
+**Dependências:** 8.0 concluída
+**Hardware necessário:** Sim (MPU-6050 conectado via I2C — GPIO 4/5)
 
 **O que entra:**
 
-- `imu_hal`: driver I2C0 para MPU-6050. Leitura de acelerômetro + giroscópio a 50Hz.
-- Tap detection via DMP do MPU-6050 (interrupt em GPIO spare ou polling).
+- `imu_hal`: driver I2C para MPU-6050 (0x68). Leitura de acelerômetro + giroscópio a 50Hz.
+- Usa `nb_i2c_hal_get_bus()` — sem inicialização I2C própria.
+- Tap detection via interrupt no GPIO 3 (sem polling).
 - `NB_EVT_IMU_TAP`: batida física detectada pelo acelerômetro.
 - `NB_EVT_IMU_SHAKE`: agitação detectada (threshold em NVS).
 - Detecção de pouso: robot colocado na mesa após ser carregado → greet.
@@ -780,18 +817,66 @@ Critérios adicionais de integração do Bloco 0:
 - [ ] Tap na mesa: `NB_EVT_IMU_TAP` publicado em <50ms
 - [ ] Shake (sacudir o robot): `NB_EVT_IMU_SHAKE` publicado
 - [ ] 5 minutos de leitura contínua: zero interferência com render e áudio
-- [ ] I2C compartilhado com câmera (0x3C e 0x68): sem colisão de barramento
+- [ ] I2C compartilhado com outros HALs: sem colisão de barramento
 
 ---
 
-### Etapa 8.3 — Bateria e Gestão de Energia
+### Etapa 8.3 — Sensor de Temperatura e Humidade SHT40
 
-**Dependências:** Hardware de bateria presente (nova versão de placa)
+**Dependências:** 8.0 concluída
+**Hardware necessário:** Sim (SHT40 conectado via I2C — GPIO 4/5)
+
+**O que entra:**
+
+- `nb_env_hal`: driver I2C para SHT40 (0x44). Leitura a 0.5Hz via schedule_service.
+- Usa `nb_i2c_hal_get_bus()` — sem task dedicada, sem polling manual.
+- `NB_EVT_ENV_UPDATE`: payload com `float temp_c` e `float humidity_pct`.
+- Behavior reage: temp > 35°C → expressão de desconforto; humid > 80% → comportamento letárgico.
+- Valores persistidos em NVS para baseline de ambiente.
+
+**Critérios de aceitação:**
+
+- [ ] Leitura de temperatura dentro de ±0.5°C vs termômetro de referência
+- [ ] `NB_EVT_ENV_UPDATE` publicado a cada 2s sem falhas em 10 minutos
+- [ ] Behavior muda expressão ao simular temp alta via mock
+- [ ] Zero interferência com outros HALs no barramento
+
+---
+
+### Etapa 8.4 — Sensor de Proximidade APDS-9960
+
+**Dependências:** 8.0 concluída
+**Hardware necessário:** Sim (APDS-9960 conectado via I2C — GPIO 4/5, INT → GPIO 3)
+
+**O que entra:**
+
+- `nb_prox_hal`: driver I2C para APDS-9960 (0x39). Modo proximidade + luz ambiente.
+- Usa `nb_i2c_hal_get_bus()`. Polling a 10Hz via schedule_service — GPIO 3 ocupado pelo WS2812.
+- `NB_EVT_PRESENCE_NEAR`: objeto/pessoa a menos de ~20cm.
+- `NB_EVT_PRESENCE_FAR`: proximidade volta ao baseline.
+- `NB_EVT_AMBIENT_LIGHT`: nível de luz ambiente (lux) atualizado a 1Hz.
+- Behavior reage: SLEEPING → acorda ao detectar presença antes de qualquer touch.
+- Gesture recognition reservado para etapa futura.
+
+**Critérios de aceitação:**
+
+- [ ] Mão a ~15cm: `NB_EVT_PRESENCE_NEAR` publicado em <200ms
+- [ ] Mão removida: `NB_EVT_PRESENCE_FAR` publicado em <300ms
+- [ ] Robot em SLEEPING acorda via proximidade sem touch físico
+- [ ] Polling 10Hz: CPU overhead < 1% medido com task monitor
+- [ ] Zero colisão com IMU no barramento I2C compartilhado
+
+---
+
+### Etapa 8.5 — Bateria e Gestão de Energia
+
+**Dependências:** 8.0 concluída, hardware de bateria presente (nova versão de placa)
 **Hardware necessário:** bq25185 (0x6B), MAX17048 (0x36), TPS61088 (boost 5V)
 
 **O que entra:**
 
-- `battery_hal`: driver I2C para bq25185 (charger) e MAX17048 (fuel gauge).
+- `battery_hal`: driver I2C para bq25185 (charger, 0x6B) e MAX17048 (fuel gauge, 0x36).
+- Usa `nb_i2c_hal_get_bus()` — sem inicialização I2C própria.
 - `power_manager` (expansão): modos de economia com níveis de bateria.
   - `BATTERY_LOW` (< 20%): desabilita LEDs, reduz FPS para 20, reduz idle_timeout.
   - `BATTERY_CRITICAL` (< 5%): entra em SLEEPING imediatamente, flush LTM.
@@ -804,6 +889,47 @@ Critérios adicionais de integração do Bloco 0:
 - [ ] `BATTERY_LOW`: comportamento de economia ativado
 - [ ] `BATTERY_CRITICAL`: sistema dorme antes de corte de energia
 - [ ] Carga detectada: expressão de contentamento ao plugar carregador
+
+---
+
+### Etapa 8.6 — Touch Zones MPR121
+
+**Dependências:** 8.0 concluída
+**Hardware necessário:** Sim (MPR121 conectado via I2C — GPIO 4/5, eletrodos de fita de cobre no corpo do robô)
+
+**O que entra:**
+
+- `nb_touch_zone_hal`: driver I2C para MPR121 (0x5A). Polling a 20Hz via schedule_service.
+- Usa `nb_i2c_hal_get_bus()` — sem inicialização I2C própria.
+- 12 canais independentes reportados como bitmask. Cada canal mapeado a uma zona do corpo.
+- Eletrodos: fita de cobre embutida no enclosure, funciona através de plástico fino (≤ 3mm).
+- Coexiste com o touch nativo ESP32-S3 (GPIO 2) — são sistemas independentes.
+
+**Mapeamento de zonas (ELE0–ELE4 ativos, ELE5–11 reserva):**
+
+| Eletrodo | Zona | Evento |
+|----------|------|--------|
+| ELE0 | Cabeça (topo) | `NB_EVT_TOUCH_ZONE_HEAD` |
+| ELE1 | Lado esquerdo | `NB_EVT_TOUCH_ZONE_LEFT` |
+| ELE2 | Lado direito | `NB_EVT_TOUCH_ZONE_RIGHT` |
+| ELE3 | Costas | `NB_EVT_TOUCH_ZONE_BACK` |
+| ELE4 | Barriga/frente | `NB_EVT_TOUCH_ZONE_BELLY` |
+| ELE5–11 | — | Reserva para expansão |
+
+**Comportamentos via behavior_engine:**
+
+- `TOUCH_ZONE_HEAD` → HAPPY + `synth_purr()`
+- `TOUCH_ZONE_LEFT` / `RIGHT` → CURIOUS + gaze vira para o lado tocado
+- `TOUCH_ZONE_BACK` → SURPRISED (toque inesperado)
+- `TOUCH_ZONE_BELLY` → HAPPY máximo + expressão satisfeita
+
+**Critérios de aceitação:**
+
+- [ ] Toque em cada zona: evento correto publicado em < 100ms
+- [ ] Dois toques simultâneos em zonas diferentes: ambos os eventos publicados
+- [ ] 10 minutos de polling a 20Hz: CPU overhead < 1% no task monitor
+- [ ] Touch nativo GPIO 2 não interfere com MPR121 e vice-versa
+- [ ] Eletrodo coberto por plástico 2mm: detecção mantida
 
 ---
 
@@ -1967,7 +2093,7 @@ Investigação:
 
 ---
 
-### Etapa 12.13 — Bridge Runtime Profissional
+### Etapa 12.13 — Bridge Runtime Profissional ✓
 
 **Dependências:** 12.11 concluída; 12.12 explicitamente adiada
 **Hardware necessário:** Não obrigatório para desenvolvimento inicial; robô necessário para validação final
@@ -2196,7 +2322,7 @@ Regras:
 
 ---
 
-### Etapa 12.16 — LLM Providers e Fallback
+### Etapa 12.16 — LLM Providers e Fallback ✓
 
 **Dependências:** 12.13 concluída; 12.14 concluída
 **Hardware necessário:** Não obrigatório para desenvolvimento; robô para teste final
@@ -2286,11 +2412,10 @@ Respostas locais de erro:
 
 ---
 
-### Etapa 12.18 — Métricas de Produto e Harness de Regressão
+### Etapa 12.18 — Métricas de Produto e Harness de Regressão ✓
 
 **Dependências:** 12.13 concluída; 12.14 concluída
 **Hardware necessário:** Robô para UAT; PC para replay offline
-**Status:** em desenvolvimento
 
 **Contexto:** Para aproximar a experiência de StackChan/XiaoZhi, precisamos medir latência, estabilidade e qualidade de rota. Testes manuais isolados ajudam, mas não protegem contra regressões no bridge.
 
