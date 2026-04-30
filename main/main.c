@@ -11,6 +11,7 @@
 
 #include "boot_manager.h"
 #include "watchdog_service.h"
+#include "servo_test.h"     /* TEMPORÁRIO — remover após validação */
 
 static const char *TAG = "nb_main";
 
@@ -21,6 +22,8 @@ void app_main(void)
      * Quando todas as tasks FreeRTOS estiverem rodando (Blocos 1-5),
      * esta função retornará e app_main poderá ser deletada.
      */
+    nb_servo_test_ping();   /* TEMPORÁRIO — remover após validação */
+
     esp_err_t err = boot_manager_run();
 
     if (err != ESP_OK) {
