@@ -51,8 +51,8 @@
 | 16    | RESERVADO\_CAMERA | DVP D7 (Y9)                                              |
 | 17    | RESERVADO\_CAMERA | DVP D6 (Y8)                                              |
 | 18    | RESERVADO\_CAMERA | DVP D5 (Y7)                                              |
-| 19    | LIVRE ⚠           | USB D+ — inoperante com WiFi ativo (não usar)            |
-| 20    | EM USO            | UART1 half-duplex — FE-TTLinker TX+RX (USB D-)           |
+| 19    | EM USO ⚠          | UART1 RX ← TTLinker RX0 (USB D+, pulsos esporádicos WiFi)|
+| 20    | EM USO            | UART1 TX → TTLinker TX1 (USB D-)                         |
 | 21    | EM USO            | SPI2 MOSI — display ST7789                              |
 | 22–25 | N/A               | Não existem no ESP32-S3                                  |
 | 26–32 | INACESSÍVEL       | Octal PSRAM (SPI0/1 interno, N16R8)                     |
@@ -145,20 +145,18 @@ GPIO 48: LED onboard azul da placa Freenove — reservado para status visual, n�
 
 | Sinal | GPIO | Notas                      |
 | ----- | ---- | -------------------------- |
-| TX+RX | 20   | UART1 half-duplex — GPIO 20 único com 1kΩ externo         |
+| TX  | 20   | UART1 TX → TTLinker TX1 (USB D-)                          |
+| RX  | 19   | UART1 RX ← TTLinker RX0 (USB D+) ⚠ pulsos WiFi PHY       |
 
-Ligação física: TTLinker TX1 e RX0 unidos com resistor 1kΩ ao GPIO 20.
+O FE-TTLinker é full-duplex no lado MCU — TX1 e RX0 são pinos separados.
+A conversão para half-duplex ocorre internamente no barramento dos servos.
 
 > **GPIO 33 ausente no header** da placa Freenove N16R8.
 >
-> **GPIO 19 (USB D+) descartado:** confirmado inoperante com WiFi ativo — o
-> `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND` contesta o pino ao conectar a um AP.
->
-> **GPIO 20 (USB D-)** pertence ao mesmo bloco USB PHY mas o periférico UART
-> tolera os glitches melhor que o RMT. Validar com WiFi ativo na implementação.
->
-> **Echo no RX:** em half-duplex, o ESP32 recebe eco dos próprios bytes durante TX.
-> O driver servo deve descartar o buffer RX após cada transmissão.
+> **GPIO 19 como RX (entrada):** o `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND`
+> pode injetar pulsos esporádicos ao conectar a um AP. Como RX de UART, o
+> checksum Feetech descarta pacotes corrompidos e o driver faz retry automático.
+> Risco muito menor do que GPIO 19 como saída (RMT falhava completamente).
 
 Baud rate: 1Mbps (padrão Feetech SCS0009).
 IDs de servo: NECK\_PAN = 1, NECK\_TILT = 2.
