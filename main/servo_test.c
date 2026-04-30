@@ -1,8 +1,13 @@
 /*
- * servo_test.c — Diagnóstico de conectividade UART1 half-duplex / FE-TTLinker
+ * servo_test.c — Diagnóstico de conectividade UART1 / FE-TTLinker
  *
  * TEMPORÁRIO: remover após validação do hardware.
- * Envia PING para servo ID 1 e ID 2, loga resposta.
+ *
+ * Dois testes em sequência:
+ *   1. LOOPBACK: confirma que o UART1 TX/RX funciona isolado do TTLinker.
+ *      Requer jumper físico entre GPIO 20 (TX) e GPIO 19 (RX).
+ *   2. PING: envia PING para servo ID 1 e 2 via TTLinker.
+ *      Requer TTLinker ligado e servos energizados.
  */
 
 #include "servo_test.h"
@@ -15,7 +20,9 @@
 
 static const char *TAG = "servo_test";
 
-void nb_servo_test_ping(void)
+/* ── helpers ──────────────────────────────────────────────────────────────── */
+
+static void uart_init_test(void)
 {
     uart_config_t cfg = {
         .baud_rate  = NB_SERVO_BAUD_RATE,
@@ -31,34 +38,89 @@ void nb_servo_test_ping(void)
                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     uart_driver_install(NB_SERVO_UART_PORT, 256, 256, 0, NULL, 0);
 
-    ESP_LOGI(TAG, "iniciando ping — UART%d GPIO%d half-duplex @ %dbps",
-             NB_SERVO_UART_PORT, NB_SERVO_PIN_TX, NB_SERVO_BAUD_RATE);
+    ESP_LOGI(TAG, "UART%d: TX=GPIO%d RX=GPIO%d @ %dbps",
+             NB_SERVO_UART_PORT, NB_SERVO_PIN_TX, NB_SERVO_PIN_RX,
+             NB_SERVO_BAUD_RATE);
+}
 
-    for (uint8_t id = 1; id <= 2; id++) {
-        uint8_t checksum = (~(id + 0x02u + 0x01u)) & 0xFFu;
-        uint8_t ping[]   = {0xFF, 0xFF, id, 0x02, 0x01, checksum};
+/* ── Teste 1: loopback ────────────────────────────────────────────────────── */
 
-        uart_write_bytes(NB_SERVO_UART_PORT, ping, sizeof(ping));
-        uart_wait_tx_done(NB_SERVO_UART_PORT, pdMS_TO_TICKS(10));
-        uart_flush_input(NB_SERVO_UART_PORT);   /* descarta eco half-duplex */
+/*
+ * Requer jumper entre GPIO 20 (TX) e GPIO 19 (RX).
+ * Se passar: UART TX/RX funcionam corretamente.
+ * Se falhar: problema de GPIO, driver ou ligação do jumper.
+ */
+static void test_loopback(void)
+{
+    ESP_LOGI(TAG, "--- LOOPBACK (jumper GPIO%d <-> GPIO%d) ---",
+             NB_SERVO_PIN_TX, NB_SERVO_PIN_RX);
 
-        uint8_t resp[6] = {0};
-        int len = uart_read_bytes(NB_SERVO_UART_PORT, resp, sizeof(resp),
-                                  pdMS_TO_TICKS(50));
+    const uint8_t send[] = {0xAA, 0x55, 0x01, 0xFF};
+    uart_write_bytes(NB_SERVO_UART_PORT, send, sizeof(send));
+    uart_wait_tx_done(NB_SERVO_UART_PORT, pdMS_TO_TICKS(10));
 
-        if (len >= 6 && resp[0] == 0xFF && resp[1] == 0xFF &&
-            resp[2] == id  && resp[4] == 0x00) {
-            ESP_LOGI(TAG, "SERVO ID %d: OK (erro=0x%02X)", id, resp[4]);
-        } else {
-            ESP_LOGW(TAG, "SERVO ID %d: sem resposta (len=%d)", id, len);
-            for (int i = 0; i < len; i++) {
-                ESP_LOGW(TAG, "  byte[%d] = 0x%02X", i, resp[i]);
-            }
+    uint8_t recv[sizeof(send)] = {0};
+    int len = uart_read_bytes(NB_SERVO_UART_PORT, recv, sizeof(recv),
+                              pdMS_TO_TICKS(20));
+
+    if (len == (int)sizeof(send) &&
+        memcmp(send, recv, sizeof(send)) == 0) {
+        ESP_LOGI(TAG, "LOOPBACK: OK — UART TX/RX funcionando");
+    } else {
+        ESP_LOGW(TAG, "LOOPBACK: FALHOU (recebidos %d/%d bytes)", len, (int)sizeof(send));
+        for (int i = 0; i < len; i++) {
+            ESP_LOGW(TAG, "  recv[%d] = 0x%02X (esperado 0x%02X)", i, recv[i], send[i]);
         }
+        ESP_LOGW(TAG, "  -> Verificar jumper entre GPIO%d e GPIO%d",
+                 NB_SERVO_PIN_TX, NB_SERVO_PIN_RX);
+    }
+}
 
+/* ── Teste 2: ping servo ──────────────────────────────────────────────────── */
+
+static void test_ping_servo(uint8_t id)
+{
+    uint8_t checksum = (~(id + 0x02u + 0x01u)) & 0xFFu;
+    uint8_t ping[]   = {0xFF, 0xFF, id, 0x02, 0x01, checksum};
+
+    uart_flush_input(NB_SERVO_UART_PORT);
+    uart_write_bytes(NB_SERVO_UART_PORT, ping, sizeof(ping));
+    uart_wait_tx_done(NB_SERVO_UART_PORT, pdMS_TO_TICKS(10));
+    uart_flush_input(NB_SERVO_UART_PORT);   /* descarta eco half-duplex do TTLinker */
+
+    uint8_t resp[6] = {0};
+    int len = uart_read_bytes(NB_SERVO_UART_PORT, resp, sizeof(resp),
+                              pdMS_TO_TICKS(50));
+
+    if (len >= 6 && resp[0] == 0xFF && resp[1] == 0xFF &&
+        resp[2] == id  && resp[4] == 0x00) {
+        ESP_LOGI(TAG, "PING servo %d: OK", id);
+    } else {
+        ESP_LOGW(TAG, "PING servo %d: sem resposta (len=%d)", id, len);
+        for (int i = 0; i < len; i++) {
+            ESP_LOGW(TAG, "  byte[%d] = 0x%02X", i, resp[i]);
+        }
+    }
+}
+
+/* ── API pública ──────────────────────────────────────────────────────────── */
+
+void nb_servo_test_ping(void)
+{
+    uart_init_test();
+
+    /* Teste 1: loopback — requer jumper GPIO20 <-> GPIO19 */
+    test_loopback();
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    /* Teste 2: ping servo — remover jumper, ligar TTLinker */
+    ESP_LOGI(TAG, "--- PING SERVO (TTLinker conectado) ---");
+    for (uint8_t id = 1; id <= 2; id++) {
+        test_ping_servo(id);
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     uart_driver_delete(NB_SERVO_UART_PORT);
-    ESP_LOGI(TAG, "ping concluido");
+    ESP_LOGI(TAG, "diagnostico concluido");
 }

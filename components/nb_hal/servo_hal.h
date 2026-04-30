@@ -4,7 +4,7 @@
  * Protocolo: SCSCL (pacote binário com header 0xFF 0xFF, checksum ~OR).
  * Etapa 3.1: apenas leitura e ping. Nenhum comando de movimento é emitido.
  *
- * UART1: TX=GPIO20, RX=GPIO33, 1Mbps.
+ * UART1: TX=GPIO20, RX=GPIO19, 1Mbps.
  * IDs:   PAN=1 (pescoço esquerda/direita), TILT=2 (inclinação).
  *
  * Task: sem task própria — funções síncronas chamadas pelo boot_manager ou
