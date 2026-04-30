@@ -111,18 +111,18 @@
 
 /* ── SCS0009 Servos (UART1 via FE-TTLinker) ──────────────────────────────── */
 /*
- * GPIO 33 não existe no header da Freenove N16R8 — descartado.
- * GPIO 46 descartado para RX: pull-down interno corrompe uploads via esptool.
+ * Half-duplex no GPIO 20 único — TX e RX no mesmo pino com resistor 1kΩ externo.
+ * TTLinker TX1 e RX0 ligados juntos ao GPIO 20 via 1kΩ.
  *
- * PROBLEMA CONFIRMADO: GPIO 19 (USB D+) ficou inoperante com WiFi ativo quando
- * usado para WS2812 RMT. GPIO 20 (USB D-) pertence ao mesmo bloco USB PHY.
- * Definições abaixo são provisórias — validar ao implementar o servo:
- *   1. Testar GPIO 20 TX com WiFi ativo. Se ok: half-duplex no GPIO 20 único.
- *   2. Se falhar: debug → USB CDC nativo, servo → UART0 GPIO 43/44.
- * Ver docs/HARDWARE.md seção SCS0009 para o plano completo.
+ * GPIO 19 (USB D+) descartado: confirmado inoperante com WiFi ativo (RMT falhou).
+ * GPIO 20 (USB D-) funciona: pertence ao mesmo bloco USB PHY mas o UART tolera
+ * os glitches do WiFi PHY workaround melhor que o RMT.
+ *
+ * Atenção: durante TX o ESP32 recebe eco dos próprios bytes no RX — descartar
+ * o conteúdo do buffer RX imediatamente após cada transmissão.
  */
-#define NB_SERVO_PIN_TX     20      /* UART1 TX → FE-TTLinker RX (USB D-, suspeito WiFi PHY) */
-#define NB_SERVO_PIN_RX     19      /* UART1 RX ← FE-TTLinker TX (USB D+, PROBLEMA CONFIRMADO) */
+#define NB_SERVO_PIN_TX     20      /* UART1 half-duplex — GPIO 20 (USB D-) */
+#define NB_SERVO_PIN_RX     20      /* mesmo pino que TX — half-duplex       */
 #define NB_SERVO_UART_PORT  UART_NUM_1
 #define NB_SERVO_BAUD_RATE  1000000 /* 1Mbps padrão Feetech */
 #define NB_SERVO_ID_PAN     1

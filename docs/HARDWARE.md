@@ -51,8 +51,8 @@
 | 16    | RESERVADO\_CAMERA | DVP D7 (Y9)                                              |
 | 17    | RESERVADO\_CAMERA | DVP D6 (Y8)                                              |
 | 18    | RESERVADO\_CAMERA | DVP D5 (Y7)                                              |
-| 19    | EM USO ⚠          | UART1 RX — FE-TTLinker (servo) — USB D+, risco WiFi PHY |
-| 20    | EM USO            | UART1 TX — FE-TTLinker (servo) — USB D-                 |
+| 19    | LIVRE ⚠           | USB D+ — inoperante com WiFi ativo (não usar)            |
+| 20    | EM USO            | UART1 half-duplex — FE-TTLinker TX+RX (USB D-)           |
 | 21    | EM USO            | SPI2 MOSI — display ST7789                              |
 | 22–25 | N/A               | Não existem no ESP32-S3                                  |
 | 26–32 | INACESSÍVEL       | Octal PSRAM (SPI0/1 interno, N16R8)                     |
@@ -145,25 +145,20 @@ GPIO 48: LED onboard azul da placa Freenove — reservado para status visual, n�
 
 | Sinal | GPIO | Notas                      |
 | ----- | ---- | -------------------------- |
-| TX    | 20   | UART1 TX → FE-TTLinker RX (USB D-)                        |
-| RX    | 19   | UART1 RX ← FE-TTLinker TX (USB D+) ⚠ PROBLEMA CONFIRMADO |
+| TX+RX | 20   | UART1 half-duplex — GPIO 20 único com 1kΩ externo         |
 
-> **GPIO 33 ausente no header** da placa Freenove N16R8 — não usar.
+Ligação física: TTLinker TX1 e RX0 unidos com resistor 1kΩ ao GPIO 20.
+
+> **GPIO 33 ausente no header** da placa Freenove N16R8.
 >
-> **GPIO 46 descartado para RX:** pull-down interno em reset habilita debug UART0
-> em download mode, corrompendo uploads via esptool.
+> **GPIO 19 (USB D+) descartado:** confirmado inoperante com WiFi ativo — o
+> `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND` contesta o pino ao conectar a um AP.
 >
-> **⚠ GPIO 19/20 e WiFi — problema confirmado em hardware:**
-> GPIO 19 (USB D+) ficou inoperante com WiFi ativo quando usado para WS2812 RMT.
-> GPIO 20 (USB D-) pertence ao mesmo bloco USB PHY — suspeito mas não testado.
-> O `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND` reconfigura o bloco USB PHY
-> ao conectar a um AP, contestando ambos os pinos.
+> **GPIO 20 (USB D-)** pertence ao mesmo bloco USB PHY mas o periférico UART
+> tolera os glitches melhor que o RMT. Validar com WiFi ativo na implementação.
 >
-> **Plano de resolução (servo ainda não implementado):**
-> 1. Testar GPIO 20 como UART TX com WiFi ativo — se funcionar, usar half-duplex
->    UART no GPIO 20 único (`UART_MODE_RS485_HALF_DUPLEX`), eliminando GPIO 19.
-> 2. Se GPIO 20 também falhar: redirecionar debug para USB CDC nativo do ESP32-S3
->    e usar UART0 (GPIO 43/44) para o servo — decidir quando confirmado em hardware.
+> **Echo no RX:** em half-duplex, o ESP32 recebe eco dos próprios bytes durante TX.
+> O driver servo deve descartar o buffer RX após cada transmissão.
 
 Baud rate: 1Mbps (padrão Feetech SCS0009).
 IDs de servo: NECK\_PAN = 1, NECK\_TILT = 2.
