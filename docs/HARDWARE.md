@@ -35,7 +35,7 @@
 | 0     | EVITAR            | Strapping: boot mode (LOW = download mode)               |
 | 1     | EM USO            | I2S0 DIN — speaker MAX98357A TX (sacrifica T1)          |
 | 2     | EM USO            | Touch T2 — fita de cobre                                |
-| 3     | SPARE             | Touch T3, JTAG — reserva para expansão                  |
+| 3     | EM USO            | WS2812 RMT — 2 LEDs externos (T3/JTAG sacrificados)     |
 | 4     | RESERVADO\_CAMERA | DVP SIOD (SDA câmera + I2C IMU futuro)                  |
 | 5     | RESERVADO\_CAMERA | DVP SIOC (SCL câmera + I2C IMU futuro)                  |
 | 6     | RESERVADO\_CAMERA | DVP VSYNC                                                |
@@ -51,13 +51,14 @@
 | 16    | RESERVADO\_CAMERA | DVP D7 (Y9)                                              |
 | 17    | RESERVADO\_CAMERA | DVP D6 (Y8)                                              |
 | 18    | RESERVADO\_CAMERA | DVP D5 (Y7)                                              |
-| 19    | EM USO            | WS2812 RMT — 2 LEDs externos (= USB OTG D-)             |
-| 20    | EM USO            | UART1 TX — FE-TTLinker (servo)                          |
+| 19    | EM USO ⚠          | UART1 RX — FE-TTLinker (servo) — USB D+, risco WiFi PHY |
+| 20    | EM USO            | UART1 TX — FE-TTLinker (servo) — USB D-                 |
 | 21    | EM USO            | SPI2 MOSI — display ST7789                              |
 | 22–25 | N/A               | Não existem no ESP32-S3                                  |
 | 26–32 | INACESSÍVEL       | Octal PSRAM (SPI0/1 interno, N16R8)                     |
-| 33    | EM USO            | UART1 RX — FE-TTLinker (servo)                          |
-| 34–37 | INACESSÍVEL       | Flash (SPI0/1 interno, N16R8)                           |
+| 33    | AUSENTE           | Não existe no header da placa Freenove N16R8             |
+| 34    | INACESSÍVEL       | Flash interno (N16R8)                                    |
+| 35–37 | INACESSÍVEL       | PSRAM octal — presentes no header mas internamente usados|
 | 38    | EM USO            | SDMMC CMD — microSD                                     |
 | 39    | EM USO            | SDMMC CLK — microSD                                     |
 | 40    | EM USO            | SDMMC DATA0 — microSD                                   |
@@ -112,13 +113,13 @@ GPIO 39/40 também são pinos JTAG (TCK/TDO) — JTAG externo incompatível com 
 
 Alimentação: 5V direto. Corrente máxima: ~120mA a 100% RGB (não usar 100% em operação normal).
 
-> **GPIO 3** é Touch Pad T3, sem conflito (touch do projeto usa GPIO 2/T2).
-> Câmera DVP não usa GPIO 3 — seguro para uso permanente.
+> **GPIO 3** sacrifica Touch T3 e JTAG. Câmera DVP não usa GPIO 3 — seguro para uso permanente.
 >
-> **Por que não GPIO 19:** GPIO 19 = USB D- do ESP32-S3. Funcionava antes da
-> ativação do WiFi (etapa 9.6), mas o stack WiFi usa `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND`
-> que reconfigura o bloco USB PHY ao conectar a um AP — isso contesta o GPIO 19
-> com o RMT e trava as atualizações dos LEDs. GPIO 3 não tem essa restrição.
+> **Por que não GPIO 19:** GPIO 19 = USB D+ do ESP32-S3. O stack WiFi usa
+> `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND` que reconfigura o bloco USB PHY ao
+> conectar a um AP — isso contesta GPIO 19 com o RMT e trava as atualizações dos
+> LEDs. GPIO 3 não tem essa restrição. GPIO 19 foi realocado para UART1 RX (servo),
+> onde o risco de contenção com WiFi PHY é menor (UART tem maior tolerância a glitches).
 
 ### INMP441 — Microfone + MAX98357A — Amplificador (I2S0 full-duplex)
 
@@ -144,17 +145,19 @@ GPIO 48: LED onboard azul da placa Freenove — reservado para status visual, n�
 
 | Sinal | GPIO | Notas                      |
 | ----- | ---- | -------------------------- |
-| TX    | 20   | UART1 TX → FE-TTLinker RX  |
-| RX    | 33   | UART1 RX ← FE-TTLinker TX  |
+| TX    | 20   | UART1 TX → FE-TTLinker RX (USB D-)                        |
+| RX    | 19   | UART1 RX ← FE-TTLinker TX (USB D+) ⚠ risco WiFi PHY      |
 
-Nenhum strapping pin em uso. Uploads via UART funcionam sem interferência.
-
-> **Por que não GPIO 46 para RX:**  
-> GPIO 46 tem pull-down interno durante reset. Com pull-up externo (para manter
-> idle UART HIGH), o pino lê HIGH em download mode. Isso faz o ROM do ESP32-S3
-> habilitar mensagens de debug na UART0, corrompendo o handshake do esptool.
-> Resistores de 4.7kΩ ou 10kΩ não resolvem — o problema é o nível lógico, não
-> a impedância. GPIO 33 não tem essa restrição.
+> **GPIO 33 ausente no header** da placa Freenove N16R8 — não usar.
+>
+> **GPIO 46 descartado para RX:** pull-down interno em reset habilita debug UART0
+> em download mode, corrompendo uploads via esptool.
+>
+> **GPIO 19 (RX) e WiFi:** GPIO 19 = USB D+ do ESP32-S3. O `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND`
+> pode interferir ao conectar a um AP. Para RMT (WS2812) o efeito era fatal;
+> para UART RX o risco é menor pois o periférico UART tem tolerância a glitches.
+> **Testar com WiFi ativo antes de usar servo em produção.** Se houver falhas,
+> a única alternativa é substituir o FE-TTLinker por um módulo com interface SPI ou I2C.
 
 Baud rate: 1Mbps (padrão Feetech SCS0009).
 IDs de servo: NECK\_PAN = 1, NECK\_TILT = 2.

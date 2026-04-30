@@ -71,7 +71,7 @@
 #endif
 
 /* ── WS2812 LEDs (RMT) ───────────────────────────────────────────────────── */
-#define NB_LED_PIN_DATA     3       /* RMT canal 0 — 2 LEDs em série (GPIO19=USB-D-, disputado pelo USB PHY) */
+#define NB_LED_PIN_DATA     3       /* RMT canal 0 — 2 LEDs em série (GPIO19=USB-D+, disputado pelo USB PHY) */
 #define NB_LED_COUNT        2
 #define NB_LED_RMT_CHANNEL  0 
 
@@ -111,13 +111,15 @@
 
 /* ── SCS0009 Servos (UART1 via FE-TTLinker) ──────────────────────────────── */
 /*
- * GPIO 20 (TX) e GPIO 33 (RX): nenhum é strapping pin.
- * GPIO 46 foi descartado para RX: seu pull-down interno em reset faz o ROM
- * habilitar mensagens de debug na UART0 (download mode), corrompendo uploads.
- * Com GPIO 33, uploads via UART funcionam sem interferência e sem pull-up externo.
+ * GPIO 20 (TX) e GPIO 19 (RX): únicos GPIOs livres no header da placa.
+ * GPIO 33 não existe no header da Freenove ESP32-S3-WROOM CAM — descartado.
+ * GPIO 46 descartado para RX: pull-down interno habilita debug UART0 em download
+ * mode, corrompendo uploads.
+ * GPIO 19 = USB D+ — risco de contenção com WiFi PHY na etapa 9.6. Reavaliar
+ * quando WiFi for ativado (CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND).
  */
 #define NB_SERVO_PIN_TX     20      /* UART1 TX → FE-TTLinker RX */
-#define NB_SERVO_PIN_RX     33      /* UART1 RX ← FE-TTLinker TX */
+#define NB_SERVO_PIN_RX     19      /* UART1 RX ← FE-TTLinker TX (único GPIO livre no header) */
 #define NB_SERVO_UART_PORT  UART_NUM_1
 #define NB_SERVO_BAUD_RATE  1000000 /* 1Mbps padrão Feetech */
 #define NB_SERVO_ID_PAN     1
@@ -189,15 +191,17 @@
 
 /* ── GPIOs Livres / Reserva ───────────────────────────────────────────────── */
 /*
- * GPIO 3  (T3): spare — touch futuro ou periférico adicional
- * GPIO 46:      spare — strapping (pull-down interno); não usar como saída
+ * Não há GPIOs livres no header da placa Freenove ESP32-S3-WROOM CAM N16R8.
+ * GPIO 19 (UART1 RX servo) é o último disponível — nenhuma reserva restante.
+ *
  * GPIO 48:      LED onboard azul da placa Freenove — reservado para status visual
  *               NÃO repurposear: útil em debug e diferencia estados de boot
  *
  * GPIOs que NUNCA devem ser usados:
  *   GPIO 0        — strapping boot mode (pull-down = download mode)
+ *   GPIO 33       — NÃO existe no header da placa (ausente no conector físico)
  *   GPIO 43/44    — UART0 TX/RX (debug/programming)
- *   GPIO 26–37    — PSRAM/Flash interno (inacessíveis no N16R8)
+ *   GPIO 26–37    — PSRAM/Flash interno (inacessíveis no N16R8; 35–37 no header mas em uso pelo PSRAM)
  *
  * GPIO 45 (display DC): strapping VDD_SPI — já comprometido, funcional.
  *   Verificar com osciloscópio se há glitch LOW durante power-on.
