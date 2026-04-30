@@ -111,15 +111,18 @@
 
 /* ── SCS0009 Servos (UART1 via FE-TTLinker) ──────────────────────────────── */
 /*
- * GPIO 20 (TX) e GPIO 19 (RX): únicos GPIOs livres no header da placa.
- * GPIO 33 não existe no header da Freenove ESP32-S3-WROOM CAM — descartado.
- * GPIO 46 descartado para RX: pull-down interno habilita debug UART0 em download
- * mode, corrompendo uploads.
- * GPIO 19 = USB D+ — risco de contenção com WiFi PHY na etapa 9.6. Reavaliar
- * quando WiFi for ativado (CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND).
+ * GPIO 33 não existe no header da Freenove N16R8 — descartado.
+ * GPIO 46 descartado para RX: pull-down interno corrompe uploads via esptool.
+ *
+ * PROBLEMA CONFIRMADO: GPIO 19 (USB D+) ficou inoperante com WiFi ativo quando
+ * usado para WS2812 RMT. GPIO 20 (USB D-) pertence ao mesmo bloco USB PHY.
+ * Definições abaixo são provisórias — validar ao implementar o servo:
+ *   1. Testar GPIO 20 TX com WiFi ativo. Se ok: half-duplex no GPIO 20 único.
+ *   2. Se falhar: debug → USB CDC nativo, servo → UART0 GPIO 43/44.
+ * Ver docs/HARDWARE.md seção SCS0009 para o plano completo.
  */
-#define NB_SERVO_PIN_TX     20      /* UART1 TX → FE-TTLinker RX */
-#define NB_SERVO_PIN_RX     19      /* UART1 RX ← FE-TTLinker TX (único GPIO livre no header) */
+#define NB_SERVO_PIN_TX     20      /* UART1 TX → FE-TTLinker RX (USB D-, suspeito WiFi PHY) */
+#define NB_SERVO_PIN_RX     19      /* UART1 RX ← FE-TTLinker TX (USB D+, PROBLEMA CONFIRMADO) */
 #define NB_SERVO_UART_PORT  UART_NUM_1
 #define NB_SERVO_BAUD_RATE  1000000 /* 1Mbps padrão Feetech */
 #define NB_SERVO_ID_PAN     1

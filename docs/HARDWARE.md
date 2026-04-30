@@ -146,18 +146,24 @@ GPIO 48: LED onboard azul da placa Freenove — reservado para status visual, n�
 | Sinal | GPIO | Notas                      |
 | ----- | ---- | -------------------------- |
 | TX    | 20   | UART1 TX → FE-TTLinker RX (USB D-)                        |
-| RX    | 19   | UART1 RX ← FE-TTLinker TX (USB D+) ⚠ risco WiFi PHY      |
+| RX    | 19   | UART1 RX ← FE-TTLinker TX (USB D+) ⚠ PROBLEMA CONFIRMADO |
 
 > **GPIO 33 ausente no header** da placa Freenove N16R8 — não usar.
 >
 > **GPIO 46 descartado para RX:** pull-down interno em reset habilita debug UART0
 > em download mode, corrompendo uploads via esptool.
 >
-> **GPIO 19 (RX) e WiFi:** GPIO 19 = USB D+ do ESP32-S3. O `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND`
-> pode interferir ao conectar a um AP. Para RMT (WS2812) o efeito era fatal;
-> para UART RX o risco é menor pois o periférico UART tem tolerância a glitches.
-> **Testar com WiFi ativo antes de usar servo em produção.** Se houver falhas,
-> a única alternativa é substituir o FE-TTLinker por um módulo com interface SPI ou I2C.
+> **⚠ GPIO 19/20 e WiFi — problema confirmado em hardware:**
+> GPIO 19 (USB D+) ficou inoperante com WiFi ativo quando usado para WS2812 RMT.
+> GPIO 20 (USB D-) pertence ao mesmo bloco USB PHY — suspeito mas não testado.
+> O `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND` reconfigura o bloco USB PHY
+> ao conectar a um AP, contestando ambos os pinos.
+>
+> **Plano de resolução (servo ainda não implementado):**
+> 1. Testar GPIO 20 como UART TX com WiFi ativo — se funcionar, usar half-duplex
+>    UART no GPIO 20 único (`UART_MODE_RS485_HALF_DUPLEX`), eliminando GPIO 19.
+> 2. Se GPIO 20 também falhar: redirecionar debug para USB CDC nativo do ESP32-S3
+>    e usar UART0 (GPIO 43/44) para o servo — decidir quando confirmado em hardware.
 
 Baud rate: 1Mbps (padrão Feetech SCS0009).
 IDs de servo: NECK\_PAN = 1, NECK\_TILT = 2.
