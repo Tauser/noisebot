@@ -52,6 +52,13 @@
 
 #define BRIDGE_ERROR_TOAST_MS   2400U
 
+/* Cooldown mínimo entre triggers de VOICE_ACTIVITY_START → conductor.
+ * Previne o loop: servo move → vibração → VAD hit → conductor_play(CURIOUS)
+ * → servo move → ... A cada hit dentro do cooldown só o bridge é notificado. */
+#define VOICE_ACT_COOLDOWN_US   4000000LL   /* 4s ≥ duração máx de CURIOUS */
+
+static int64_t s_voice_act_last_us = INT64_MIN;
+
 /* ── Tipos internos ──────────────────────────────────────────────────────── */
 
 /** Número máximo de ações por regra. */
@@ -547,6 +554,17 @@ static void bridge_on_event(const nb_event_t *evt)
 static void on_bus_event(const nb_event_t *evt, void *ctx)
 {
     (void)ctx;
+
+    /* Cooldown para VOICE_ACTIVITY_START: previne loop VAD→servo→vibração→VAD.
+     * Dentro do cooldown notifica apenas o bridge (STT/LLM continuam normais). */
+    if (evt->type == NB_EVT_VOICE_ACTIVITY_START) {
+        int64_t now = esp_timer_get_time();
+        if ((now - s_voice_act_last_us) < VOICE_ACT_COOLDOWN_US) {
+            bridge_on_event(evt);
+            return;
+        }
+        s_voice_act_last_us = now;
+    }
 
     /* Passa 1: executa regras com condition que satisfazem a condição. */
     bool any_cond_fired = false;

@@ -35,7 +35,7 @@ extern "C" {
 /* ── Parâmetros de comunicação ───────────────────────────────────────────── */
 
 #define NB_SERVO_RETRY_MAX           3       /* tentativas antes de retornar erro */
-#define NB_SERVO_TIMEOUT_MS          50      /* timeout de resposta por tentativa */
+#define NB_SERVO_TIMEOUT_MS          100     /* timeout de resposta por tentativa */
 
 /* ── API pública ─────────────────────────────────────────────────────────── */
 

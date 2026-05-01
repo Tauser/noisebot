@@ -111,17 +111,23 @@
 
 /* ── SCS0009 Servos (UART1 via FE-TTLinker) ──────────────────────────────── */
 /*
- * Full-duplex UART para o FE-TTLinker — TX e RX são pinos separados.
+ * Full-duplex UART1 para o FE-TTLinker — TX e RX são pinos separados.
  * O TTLinker converte internamente para half-duplex no barramento dos servos.
- *   GPIO 20 (USB D-) → TTLinker TX1  (ESP32 envia comandos)
- *   GPIO 19 (USB D+) → TTLinker RX0  (ESP32 recebe respostas)
+ *   GPIO 20 → TTLinker TXD  (ESP32 envia comandos)
+ *   GPIO 19 ← TTLinker RXD  (ESP32 recebe respostas)
  *
- * GPIO 19 = USB D+: o WiFi PHY workaround pode injetar pulsos esporádicos,
- * mas como é RX (entrada), o checksum Feetech descarta pacotes ruins e o
- * driver faz retry. Risco muito menor que GPIO 19 como saída RMT.
+ * GPIO 19/20 = USB D+/D- do ESP32-S3. Limitação conhecida:
+ *   - servo_hal_init() chama usb_serial_jtag_ll_phy_enable_pad(false) para
+ *     desconectar o PHY USB do GPIO matrix.
+ *   - WiFi PM desabilitado (WIFI_PS_NONE) para evitar USB PHY workaround.
+ *   - Resultado: writes (TX) funcionam corretamente; reads (RX) podem falhar
+ *     durante bursts de WiFi RF — motion_safety trata como best-effort.
+ * Alternativas testadas e descartadas: GPIO 8/9 (DVP push-pull), 4/5 (SIOD/SIOC
+ * em estado indeterminado sem XCLK), 43/44 (conflita com CP2102/console).
+ * Fix permanente requer PCB customizado com GPIOs dedicados para servo UART.
  */
-#define NB_SERVO_PIN_TX     20      /* UART1 TX → TTLinker TX1 (USB D-) */
-#define NB_SERVO_PIN_RX     19      /* UART1 RX ← TTLinker RX0 (USB D+) */
+#define NB_SERVO_PIN_TX     20      /* UART1 TX → TTLinker TXD (USB D-) */
+#define NB_SERVO_PIN_RX     19      /* UART1 RX ← TTLinker RXD (USB D+) */
 #define NB_SERVO_UART_PORT  UART_NUM_1
 #define NB_SERVO_BAUD_RATE  1000000 /* 1Mbps padrão Feetech */
 #define NB_SERVO_ID_PAN     1

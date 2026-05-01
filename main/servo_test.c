@@ -18,7 +18,14 @@
 #include "freertos/task.h"
 #include "nb_hw_config.h"
 
+#include <string.h>
+
 static const char *TAG = "servo_test";
+
+/* Escolha um modo por firmware: loopback exige jumper GPIO TX/RX; ping exige
+ * TTLinker + servos. Os dois setups físicos não podem coexistir no mesmo boot. */
+#define NB_SERVO_TEST_ENABLE_LOOPBACK 0
+#define NB_SERVO_TEST_ENABLE_PING     1
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 
@@ -50,6 +57,7 @@ static void uart_init_test(void)
  * Se passar: UART TX/RX funcionam corretamente.
  * Se falhar: problema de GPIO, driver ou ligação do jumper.
  */
+#if NB_SERVO_TEST_ENABLE_LOOPBACK
 static void test_loopback(void)
 {
     ESP_LOGI(TAG, "--- LOOPBACK (jumper GPIO%d <-> GPIO%d) ---",
@@ -75,6 +83,7 @@ static void test_loopback(void)
                  NB_SERVO_PIN_TX, NB_SERVO_PIN_RX);
     }
 }
+#endif
 
 /* ── Teste 2: ping servo ──────────────────────────────────────────────────── */
 
@@ -86,19 +95,31 @@ static void test_ping_servo(uint8_t id)
     uart_flush_input(NB_SERVO_UART_PORT);
     uart_write_bytes(NB_SERVO_UART_PORT, ping, sizeof(ping));
     uart_wait_tx_done(NB_SERVO_UART_PORT, pdMS_TO_TICKS(10));
-    uart_flush_input(NB_SERVO_UART_PORT);   /* descarta eco half-duplex do TTLinker */
 
-    uint8_t resp[6] = {0};
-    int len = uart_read_bytes(NB_SERVO_UART_PORT, resp, sizeof(resp),
+    /* O TTLinker pode ou não ecoar o pacote transmitido. Lemos a janela toda
+     * e procuramos a resposta válida: FF FF ID 02 ERROR CHECKSUM. */
+    uint8_t rx[16] = {0};
+    int len = uart_read_bytes(NB_SERVO_UART_PORT, rx, sizeof(rx),
                               pdMS_TO_TICKS(50));
 
-    if (len >= 6 && resp[0] == 0xFF && resp[1] == 0xFF &&
-        resp[2] == id  && resp[4] == 0x00) {
+    bool ok = false;
+    for (int i = 0; i <= len - 6; i++) {
+        uint8_t sum = (uint8_t)(rx[i + 2] + rx[i + 3] + rx[i + 4]);
+        uint8_t chk = (uint8_t)(~sum & 0xFFu);
+        if (rx[i] == 0xFF && rx[i + 1] == 0xFF &&
+            rx[i + 2] == id && rx[i + 3] == 0x02 &&
+            rx[i + 4] == 0x00 && rx[i + 5] == chk) {
+            ok = true;
+            break;
+        }
+    }
+
+    if (ok) {
         ESP_LOGI(TAG, "PING servo %d: OK", id);
     } else {
         ESP_LOGW(TAG, "PING servo %d: sem resposta (len=%d)", id, len);
         for (int i = 0; i < len; i++) {
-            ESP_LOGW(TAG, "  byte[%d] = 0x%02X", i, resp[i]);
+            ESP_LOGW(TAG, "  byte[%d] = 0x%02X", i, rx[i]);
         }
     }
 }
@@ -109,17 +130,20 @@ void nb_servo_test_ping(void)
 {
     uart_init_test();
 
+#if NB_SERVO_TEST_ENABLE_LOOPBACK
     /* Teste 1: loopback — requer jumper GPIO20 <-> GPIO19 */
     test_loopback();
-
     vTaskDelay(pdMS_TO_TICKS(100));
+#endif
 
+#if NB_SERVO_TEST_ENABLE_PING
     /* Teste 2: ping servo — remover jumper, ligar TTLinker */
     ESP_LOGI(TAG, "--- PING SERVO (TTLinker conectado) ---");
     for (uint8_t id = 1; id <= 2; id++) {
         test_ping_servo(id);
         vTaskDelay(pdMS_TO_TICKS(100));
     }
+#endif
 
     uart_driver_delete(NB_SERVO_UART_PORT);
     ESP_LOGI(TAG, "diagnostico concluido");

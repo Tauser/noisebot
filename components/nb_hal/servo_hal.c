@@ -11,7 +11,7 @@
  * FE-TTLinker: bridge UART full-duplex → half-duplex TTL bidirecional.
  * O TX do ESP32 vai para o barramento; o RX recebe respostas dos servos.
  * Após transmitir, há eco dos bytes enviados no RX. Descartamos o eco
- * com uart_flush_input() antes de ler a resposta.
+ * lendo-o explicitamente (uart_read_bytes) antes de ler a resposta.
  *
  * Etapa 3.2: WRITE exposto para motion_safety (parking + torque disable).
  */
@@ -20,10 +20,13 @@
 #include "nb_hw_config.h"
 
 #include "driver/uart.h"
+#include "driver/gpio.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "hal/usb_serial_jtag_ll.h"
 
 #include <string.h>
 
@@ -39,14 +42,23 @@
 /* Tamanho máximo de um pacote de resposta (header + id + len + error + 8 bytes + chk) */
 #define SCS_PKT_BUF_SIZE     16u
 
-/* Tempo de espera após TX para flush do eco antes de ler resposta (ms) */
-#define SCS_ECHO_FLUSH_MS    5u
+/* Tempo máximo para o eco chegar no RX após TX completo (ms).
+ * A 1Mbps, 6 bytes = 60µs; TTLinker acrescenta uns µs de latência.
+ * 5ms é mais do que suficiente. */
+#define SCS_ECHO_READ_MS     5u
 
 /* UART RX buffer — suficiente para eco + resposta */
 #define UART_RX_BUF_SIZE     256
 #define UART_TX_BUF_SIZE     0   /* TX síncrono */
 
-static bool s_initialized = false;
+/* Timeout do mutex: maior que um ciclo de motion_task (20ms) + margem */
+#define BUS_MUTEX_TIMEOUT_MS 50u
+
+static bool              s_initialized = false;
+static SemaphoreHandle_t s_bus_mutex   = NULL;
+
+#define BUS_LOCK()   (xSemaphoreTake(s_bus_mutex, pdMS_TO_TICKS(BUS_MUTEX_TIMEOUT_MS)) == pdTRUE)
+#define BUS_UNLOCK() xSemaphoreGive(s_bus_mutex)
 
 /* ── Helpers de protocolo ────────────────────────────────────────────────── */
 
@@ -94,17 +106,22 @@ static int send_packet(uint8_t id, uint8_t instr,
 
     int total = (int)(6 + param_len);
 
-    /* Limpa RX antes de enviar para não misturar com eco de chamada anterior */
-    uart_flush_input(NB_SERVO_UART_PORT);
-
     int written = uart_write_bytes(NB_SERVO_UART_PORT, (const char *)pkt, (size_t)total);
     if (written != total) {
         ESP_LOGE(TAG, "uart_write_bytes: esperado %d, escreveu %d", total, written);
         return -1;
     }
 
-    /* Aguarda TX completo e descarta eco (FE-TTLinker loopback) */
-    uart_wait_tx_done(NB_SERVO_UART_PORT, pdMS_TO_TICKS(SCS_ECHO_FLUSH_MS));
+    /* Descarta eco (FE-TTLinker loopback) lendo-o explicitamente.
+     * uart_flush_input() tem race condition com a resposta do servo quando
+     * tasks de alta prioridade preemptam entre uart_wait_tx_done e o flush:
+     * echo + resposta chegam durante a preempção e flush joga os dois fora.
+     * uart_read_bytes() lê exatamente `total` bytes (o eco), deixando a
+     * resposta do servo no ring buffer para recv_response(). */
+    /* Aguarda TX e descarta eco com flush — mesma abordagem do servo_test.
+     * uart_read_bytes para eco deixa o ring buffer em estado que impede
+     * leituras subsequentes em recv_response; uart_flush_input funciona. */
+    uart_wait_tx_done(NB_SERVO_UART_PORT, pdMS_TO_TICKS(10));
     uart_flush_input(NB_SERVO_UART_PORT);
 
     return written;
@@ -225,7 +242,11 @@ static esp_err_t attempt_ping(uint8_t id)
         return ESP_FAIL;
     }
     /* Resposta de PING: 0xFF 0xFF ID 2 ERROR CHECKSUM — payload_len=0 */
-    return recv_response(id, NULL, 0, NB_SERVO_TIMEOUT_MS);
+    esp_err_t ret = recv_response(id, NULL, 0, NB_SERVO_TIMEOUT_MS);
+    if (ret != ESP_OK) {
+        uart_flush_input(NB_SERVO_UART_PORT);
+    }
+    return ret;
 }
 
 /*
@@ -248,6 +269,12 @@ esp_err_t servo_hal_init(void)
         ESP_LOGW(TAG, "servo_hal já inicializado");
         return ESP_OK;
     }
+
+    /* GPIO 19/20 são USB D-/D+ no ESP32-S3. O PHY USB hardware fica ativo
+     * por padrão após reset e briga com UART1 nesses pinos mesmo sem driver
+     * instalado. usb_serial_jtag_ll_phy_enable_pad(false) desconecta o PHY
+     * do GPIO matrix; a placa usa CP2102 (UART0) para debug — sem impacto. */
+    usb_serial_jtag_ll_phy_enable_pad(false);
 
     const uart_config_t uart_cfg = {
         .baud_rate  = NB_SERVO_BAUD_RATE,
@@ -283,6 +310,20 @@ esp_err_t servo_hal_init(void)
         return ret;
     }
 
+    /* Desabilita GPIO sleep auto-switch para TX e RX do servo.
+     * wifi:pm type=1 usa light sleep; sleep_gpio isolate desconecta GPIO 19
+     * do UART1 RX nesses microsleeps — gpio_sleep_sel_dis() mantém a config
+     * ativa (GPIO matrix → UART1) mesmo durante light sleep. */
+    gpio_sleep_sel_dis(NB_SERVO_PIN_TX);
+    gpio_sleep_sel_dis(NB_SERVO_PIN_RX);
+
+    s_bus_mutex = xSemaphoreCreateMutex();
+    if (!s_bus_mutex) {
+        ESP_LOGE(TAG, "xSemaphoreCreateMutex falhou");
+        uart_driver_delete(NB_SERVO_UART_PORT);
+        return ESP_ERR_NO_MEM;
+    }
+
     s_initialized = true;
     ESP_LOGI(TAG, "UART%d inicializado: TX=GPIO%d RX=GPIO%d %dbps",
             NB_SERVO_UART_PORT, NB_SERVO_PIN_TX, NB_SERVO_PIN_RX,
@@ -292,47 +333,41 @@ esp_err_t servo_hal_init(void)
 
 esp_err_t servo_hal_ping(uint8_t id)
 {
-    if (!s_initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
+    if (!s_initialized) return ESP_ERR_INVALID_STATE;
+    if (!BUS_LOCK())    return ESP_ERR_TIMEOUT;
 
     esp_err_t ret = ESP_ERR_TIMEOUT;
     for (int attempt = 0; attempt < NB_SERVO_RETRY_MAX; attempt++) {
         ret = attempt_ping(id);
         if (ret == ESP_OK) {
             ESP_LOGD(TAG, "PING servo %u: OK (tentativa %d)", id, attempt + 1);
-            return ESP_OK;
+            break;
         }
-        ESP_LOGD(TAG, "PING servo %u: falhou (tentativa %d/%d): %s",
-                id, attempt + 1, NB_SERVO_RETRY_MAX, esp_err_to_name(ret));
     }
-
-    ESP_LOGW(TAG, "PING servo %u: sem resposta após %d tentativas",
-            id, NB_SERVO_RETRY_MAX);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "PING servo %u: sem resposta após %d tentativas",
+                id, NB_SERVO_RETRY_MAX);
+    }
+    BUS_UNLOCK();
     return ret;
 }
 
 esp_err_t servo_hal_read_raw(uint8_t id, uint8_t addr, uint8_t len, uint8_t *buf)
 {
-    if (!s_initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    if (buf == NULL || len == 0u || len > 8u) {
-        return ESP_ERR_INVALID_ARG;
-    }
+    if (!s_initialized) return ESP_ERR_INVALID_STATE;
+    if (buf == NULL || len == 0u || len > 8u) return ESP_ERR_INVALID_ARG;
+    if (!BUS_LOCK())    return ESP_ERR_TIMEOUT;
 
     esp_err_t ret = ESP_ERR_TIMEOUT;
     for (int attempt = 0; attempt < NB_SERVO_RETRY_MAX; attempt++) {
         ret = attempt_read(id, addr, len, buf);
-        if (ret == ESP_OK) {
-            return ESP_OK;
-        }
-        ESP_LOGD(TAG, "READ servo %u addr=0x%02X: falhou (tentativa %d/%d): %s",
-                id, addr, attempt + 1, NB_SERVO_RETRY_MAX, esp_err_to_name(ret));
+        if (ret == ESP_OK) break;
     }
-
-    ESP_LOGW(TAG, "READ servo %u addr=0x%02X: falhou após %d tentativas",
-            id, addr, NB_SERVO_RETRY_MAX);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "READ servo %u addr=0x%02X: falhou após %d tentativas",
+                id, addr, NB_SERVO_RETRY_MAX);
+    }
+    BUS_UNLOCK();
     return ret;
 }
 
@@ -389,54 +424,52 @@ esp_err_t servo_hal_read_voltage(uint8_t id, uint8_t *voltage)
 
 esp_err_t servo_hal_write_position(uint8_t id, uint16_t pos, uint16_t time_ms)
 {
-    if (!s_initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
+    if (!s_initialized) return ESP_ERR_INVALID_STATE;
+    if (!BUS_LOCK())    return ESP_ERR_TIMEOUT;
 
-    /*
-     * Escrita em bloco de 4 bytes a partir de GOAL_POSITION_L (0x2A):
-     *   [pos_L, pos_H, time_L, time_H]
-     * Formato little-endian (low byte primeiro no protocolo SCS).
-     */
-    uint8_t params[5];  /* addr(1) + data(4) */
+    uint8_t params[5];
     params[0] = SCS_REG_GOAL_POSITION_L;
     params[1] = (uint8_t)(pos & 0xFFu);
     params[2] = (uint8_t)((pos >> 8u) & 0xFFu);
     params[3] = (uint8_t)(time_ms & 0xFFu);
     params[4] = (uint8_t)((time_ms >> 8u) & 0xFFu);
 
-    /* Fire-and-forget: envia o pacote, não lê resposta.
-     * A resposta fica no RX buffer; o próximo send_packet() fará flush. */
+    esp_err_t ret = ESP_OK;
     if (send_packet(id, SCS_INSTR_WRITE, params, (uint8_t)sizeof(params)) < 0) {
-        return ESP_FAIL;
+        ret = ESP_FAIL;
     }
     ESP_LOGD(TAG, "WRITE pos servo %u: pos=%u time=%ums", id, pos, time_ms);
-    return ESP_OK;
+    BUS_UNLOCK();
+    return ret;
 }
 
 esp_err_t servo_hal_disable_torque(uint8_t id)
 {
-    if (!s_initialized) {
-        return ESP_ERR_INVALID_STATE;
-    }
+    if (!s_initialized) return ESP_ERR_INVALID_STATE;
+    if (!BUS_LOCK())    return ESP_ERR_TIMEOUT;
 
-    uint8_t params[2];  /* addr(1) + data(1) */
+    uint8_t params[2];
     params[0] = SCS_REG_TORQUE_ENABLE;
     params[1] = 0x00u;
 
+    esp_err_t ret = ESP_OK;
     if (send_packet(id, SCS_INSTR_WRITE, params, (uint8_t)sizeof(params)) < 0) {
-        return ESP_FAIL;
+        ret = ESP_FAIL;
+    } else {
+        ESP_LOGI(TAG, "torque DISABLED servo %u", id);
     }
-    ESP_LOGI(TAG, "torque DISABLED servo %u", id);
-    return ESP_OK;
+    BUS_UNLOCK();
+    return ret;
 }
 
 void servo_hal_deinit(void)
 {
-    if (!s_initialized) {
-        return;
-    }
+    if (!s_initialized) return;
     uart_driver_delete(NB_SERVO_UART_PORT);
+    if (s_bus_mutex) {
+        vSemaphoreDelete(s_bus_mutex);
+        s_bus_mutex = NULL;
+    }
     s_initialized = false;
     ESP_LOGI(TAG, "UART%d liberado", NB_SERVO_UART_PORT);
 }

@@ -75,6 +75,11 @@ static void on_wifi_event(void *arg, esp_event_base_t base,
 
         case WIFI_EVENT_STA_CONNECTED:
             NB_LOGI(TAG, "associado ao AP (aguardando DHCP)");
+            /* Desabilita WiFi power management (light sleep).
+             * CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND reativa usb_pad_enable
+             * durante micro-sleeps do PM type=1, corrompendo UART1 RX (GPIO 19).
+             * Com fonte 5V/3A não há restrição de energia — PM desativado. */
+            esp_wifi_set_ps(WIFI_PS_NONE);
             {
                 nb_event_t e = { .type = NB_EVT_WIFI_CONNECTED };
                 nb_event_publish_async(&e);

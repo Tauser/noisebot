@@ -770,10 +770,11 @@ static esp_err_t phase_hal(void)
         }
     }
 
-    /* Servo HAL — inicializa UART apenas. PINGs e verificação acontecem
-     * em motion_safety_arm() durante PHASE_MOTION. Sem servos conectados:
-     * init UART é inofensivo, arm() falha silenciosamente e o sistema
-     * continua operando normalmente sem motion. */
+    /* Servo HAL — inicializado aqui, antes de PHASE_SERVICES.
+     * bridge_service (PHASE_SERVICES) instala usb_serial_jtag_driver que toma
+     * GPIO 19/20 (USB D+/D-). servo_hal_init() precisa rodar antes disso para
+     * garantir que uart_set_pin() + gpio_sleep_sel_dis() sejam a configuração
+     * vencedora sobre esses pinos. */
     if (!s_status.safe_mode) {
         err = servo_hal_init();
         if (err != ESP_OK) {

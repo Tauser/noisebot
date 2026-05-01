@@ -152,6 +152,14 @@ typedef struct {
 esp_err_t bridge_service_init(void);
 
 /**
+ * @brief Habilita USB CDC (usb_serial_jtag) como fallback de transporte.
+ *
+ * Desabilitado por padrão — GPIO 19/20 são usados pelo servo HAL (UART1).
+ * Chamar antes de bridge_service_init() se GPIO 19/20 estiverem livres.
+ */
+void bridge_service_enable_usb_cdc(void);
+
+/**
  * @brief Retorna o transporte ativo atual.
  * Thread-safe.
  */

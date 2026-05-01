@@ -51,8 +51,8 @@
 | 16    | RESERVADO\_CAMERA | DVP D7 (Y9)                                              |
 | 17    | RESERVADO\_CAMERA | DVP D6 (Y8)                                              |
 | 18    | RESERVADO\_CAMERA | DVP D5 (Y7)                                              |
-| 19    | EM USO ⚠          | UART1 RX ← TTLinker RX0 (USB D+, pulsos esporádicos WiFi)|
-| 20    | EM USO            | UART1 TX → TTLinker TX1 (USB D-)                         |
+| 4     | RESERVADO\_CAMERA | DVP SIOD (SDA câmera + I2C IMU futuro)                                  |
+| 5     | RESERVADO\_CAMERA | DVP SIOC (SCL câmera + I2C IMU futuro)                                  |
 | 21    | EM USO            | SPI2 MOSI — display ST7789                              |
 | 22–25 | N/A               | Não existem no ESP32-S3                                  |
 | 26–32 | INACESSÍVEL       | Octal PSRAM (SPI0/1 interno, N16R8)                     |
@@ -143,20 +143,26 @@ GPIO 48: LED onboard azul da placa Freenove — reservado para status visual, n�
 
 ### SCS0009 Servos (UART1 via FE-TTLinker)
 
-| Sinal | GPIO | Notas                      |
-| ----- | ---- | -------------------------- |
-| TX  | 20   | UART1 TX → TTLinker TX1 (USB D-)                          |
-| RX  | 19   | UART1 RX ← TTLinker RX0 (USB D+) ⚠ pulsos WiFi PHY       |
+| Sinal | GPIO | Notas                                                    |
+| ----- | ---- | -------------------------------------------------------- |
+| TX    | 20   | UART1 TX → TTLinker TXD (USB D-)                         |
+| RX    | 19   | UART1 RX ← TTLinker RXD (USB D+)                         |
 
-O FE-TTLinker é full-duplex no lado MCU — TX1 e RX0 são pinos separados.
+O FE-TTLinker é full-duplex no lado MCU — TX e RX são pinos separados.
 A conversão para half-duplex ocorre internamente no barramento dos servos.
 
-> **GPIO 33 ausente no header** da placa Freenove N16R8.
+> **Limitação conhecida — GPIO 19/20 = USB D+/D-.**
+> `servo_hal_init()` chama `usb_serial_jtag_ll_phy_enable_pad(false)` e o
+> WiFi usa `WIFI_PS_NONE` para minimizar interferência. TX (GPIO 20) funciona
+> corretamente. RX (GPIO 19) pode receber 0 bytes durante bursts de WiFi RF
+> (`CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND`); motion_safety trata como
+> best-effort (loga warning, não falha). Writes/movimentos não são afetados.
 >
-> **GPIO 19 como RX (entrada):** o `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND`
-> pode injetar pulsos esporádicos ao conectar a um AP. Como RX de UART, o
-> checksum Feetech descarta pacotes corrompidos e o driver faz retry automático.
-> Risco muito menor do que GPIO 19 como saída (RMT falhava completamente).
+> **Alternativas testadas e descartadas:**
+> GPIO 8/9 (DVP D2/D1): OV2640 drive push-pull sem XCLK — brigariam com UART.
+> GPIO 4/5 (SIOD/SIOC): OV2640 em estado indeterminado sem XCLK — sem resposta.
+> GPIO 43/44: conflita com CP2102/UART0 console.
+> **Fix permanente requer PCB customizado** com GPIOs dedicados para servo UART.
 
 Baud rate: 1Mbps (padrão Feetech SCS0009).
 IDs de servo: NECK\_PAN = 1, NECK\_TILT = 2.

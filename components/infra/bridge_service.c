@@ -102,6 +102,10 @@ static struct {
     int64_t                 last_rx_time_us; /* timestamp do último frame recebido */
 } s;
 
+/* USB CDC desabilitado por padrão: GPIO 19/20 são usados pelo servo HAL (UART1).
+ * Habilitar apenas se GPIO 19/20 estiverem livres de periféricos concorrentes. */
+static bool s_usb_cdc_enabled = false;
+
 /* ── CRC-8/SMBUS (poly 0x07, init 0x00) ──────────────────────────────────── */
 
 static uint8_t crc8(const uint8_t *data, size_t len)
@@ -837,8 +841,10 @@ static void nb_bridge_task(void *arg)
 {
     (void)arg;
 
-    /* Instalar UART (USB CDC) independente do transporte escolhido */
-    if (uart_install() != ESP_OK) {
+    /* Instalar UART (USB CDC) apenas se habilitado.
+     * Desabilitado por padrão: usb_serial_jtag_driver_install() toma GPIO 19/20
+     * (USB D+/D-) no nível de hardware, conflitando com UART1 (servos). */
+    if (s_usb_cdc_enabled && uart_install() != ESP_OK) {
         NB_LOGW(TAG, "USB CDC não disponível — UART fallback desabilitado");
     }
 
@@ -915,6 +921,11 @@ offline:
 }
 
 /* ── API pública ──────────────────────────────────────────────────────────── */
+
+void bridge_service_enable_usb_cdc(void)
+{
+    s_usb_cdc_enabled = true;
+}
 
 esp_err_t bridge_service_init(void)
 {
