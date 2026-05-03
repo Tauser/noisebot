@@ -34,9 +34,9 @@
 #include "led_service.h"
 #include "touch_service.h"
 #include "audio_service.h"
-#include "servo_hal.h"
-#include "motion_safety.h"
-#include "motion_service.h"
+// #include "servo_hal.h"
+// #include "motion_safety.h"
+// #include "motion_service.h"
 #include "state_machine.h"
 #include "emotion_model.h"
 #include "gaze_service.h"
@@ -778,18 +778,8 @@ static esp_err_t phase_hal(void)
         }
     }
 
-    /* Servo HAL — inicializado aqui, antes de PHASE_SERVICES.
-     * bridge_service (PHASE_SERVICES) instala usb_serial_jtag_driver que toma
-     * GPIO 19/20 (USB D+/D-). servo_hal_init() precisa rodar antes disso para
-     * garantir que uart_set_pin() + gpio_sleep_sel_dis() sejam a configuração
-     * vencedora sobre esses pinos. */
-    if (!s_status.safe_mode) {
-        err = servo_hal_init();
-        if (err != ESP_OK) {
-            NB_LOGW(TAG, "servo_hal_init falhou: %s — servos desativados",
-                    esp_err_to_name(err));
-        }
-    }
+    /* Servo HAL — desativado temporariamente para reduzir uso de memória.
+     * Reativar quando motion_service for reintegrado ao boot. */
 
     phase_ok(NB_BOOT_PHASE_HAL);
     return ESP_OK;
@@ -811,13 +801,7 @@ static esp_err_t phase_safety(void)
         return ESP_OK;
     }
 
-    esp_err_t err = motion_safety_init();
-    if (err != ESP_OK) {
-        NB_LOGE(TAG, "motion_safety_init falhou: %s", esp_err_to_name(err));
-        /* Falha no safety init é fatal — não podemos operar sem safety */
-        return err;
-    }
-
+    phase_skip(NB_BOOT_PHASE_SAFETY, "motion desativado temporariamente");
     phase_ok(NB_BOOT_PHASE_SAFETY);
     return ESP_OK;
 }
@@ -1035,63 +1019,14 @@ static esp_err_t phase_services(void)
     return ESP_OK;
 }
 
-/* Interface de safety injetada no motion_service */
-static const nb_motion_safety_iface_t k_motion_safety_iface = {
-    .check_position = motion_safety_check_position,
-    .check_velocity = motion_safety_check_velocity,
-    .heartbeat      = motion_safety_heartbeat,
-    .get_min        = config_get_servo_limit_min,
-    .get_max        = config_get_servo_limit_max,
-    .get_center     = config_get_servo_center,
-};
-
 /*
- * PHASE_MOTION — Etapa 3.3
- *
- * 1. Inicializa motion_service com interface de safety.
- * 2. Arma os servos via motion_safety_arm().
- * 3. Inicia motion_task (que passa a alimentar o heartbeat).
- * 4. Parca todos os servos no centro (posição inicial segura).
- *
- * Falha no arm é não-fatal — robot opera sem movimento.
- * Em safe mode: pulada.
+ * PHASE_MOTION — desativada temporariamente.
+ * Reativar quando servo_hal/motion_safety/motion_service forem reintegrados.
  */
 static esp_err_t phase_motion(void)
 {
     phase_enter(NB_BOOT_PHASE_MOTION);
-
-    if (s_status.safe_mode) {
-        phase_skip(NB_BOOT_PHASE_MOTION, "safe mode ativo");
-        return ESP_OK;
-    }
-
-    /* 1. Inicializa motion_service */
-    esp_err_t err = motion_service_init(&k_motion_safety_iface);
-    if (err != ESP_OK) {
-        NB_LOGW(TAG, "motion_service_init falhou: %s — robot sem movimento",
-                esp_err_to_name(err));
-        return ESP_OK;
-    }
-
-    /* 2. Arma os servos */
-    err = motion_safety_arm();
-    if (err != ESP_OK) {
-        NB_LOGW(TAG, "motion_safety_arm falhou: %s — robot sem movimento",
-                esp_err_to_name(err));
-        return ESP_OK;
-    }
-
-    /* 3. Inicia motion_task (alimenta heartbeat a partir daqui) */
-    err = motion_service_start();
-    if (err != ESP_OK) {
-        NB_LOGE(TAG, "motion_service_start falhou: %s", esp_err_to_name(err));
-        return ESP_OK;
-    }
-
-    /* 4. Parking inicial: servos vão para o centro */
-    motion_park_all();
-
-    phase_ok(NB_BOOT_PHASE_MOTION);
+    phase_skip(NB_BOOT_PHASE_MOTION, "motion desativado temporariamente");
     return ESP_OK;
 }
 
