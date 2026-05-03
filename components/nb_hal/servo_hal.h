@@ -139,6 +139,7 @@ esp_err_t servo_hal_write_position(uint8_t id, uint16_t pos, uint16_t time_ms);
  * @return    ESP_OK em sucesso.
  */
 esp_err_t servo_hal_disable_torque(uint8_t id);
+esp_err_t servo_hal_enable_torque(uint8_t id);
 
 /**
  * servo_hal_deinit() — Libera recursos UART.

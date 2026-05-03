@@ -462,6 +462,25 @@ esp_err_t servo_hal_disable_torque(uint8_t id)
     return ret;
 }
 
+esp_err_t servo_hal_enable_torque(uint8_t id)
+{
+    if (!s_initialized) return ESP_ERR_INVALID_STATE;
+    if (!BUS_LOCK())    return ESP_ERR_TIMEOUT;
+
+    uint8_t params[2];
+    params[0] = SCS_REG_TORQUE_ENABLE;
+    params[1] = 0x01u;
+
+    esp_err_t ret = ESP_OK;
+    if (send_packet(id, SCS_INSTR_WRITE, params, (uint8_t)sizeof(params)) < 0) {
+        ret = ESP_FAIL;
+    } else {
+        ESP_LOGI(TAG, "torque ENABLED servo %u", id);
+    }
+    BUS_UNLOCK();
+    return ret;
+}
+
 void servo_hal_deinit(void)
 {
     if (!s_initialized) return;
