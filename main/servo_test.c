@@ -26,7 +26,7 @@ static const char *TAG = "servo_test";
 
 #define NB_SERVO_TEST_ENABLE_LOOPBACK 0
 #define NB_SERVO_TEST_ENABLE_PING     1
-#define NB_SERVO_TEST_ENABLE_MOTION   1
+#define NB_SERVO_TEST_ENABLE_MOTION   0
 
 /* Limites de movimento do teste (em steps, 0–1023) */
 #define TEST_CENTER  512
