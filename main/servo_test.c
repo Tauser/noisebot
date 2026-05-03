@@ -15,6 +15,7 @@
 #include "servo_test.h"
 
 #include "driver/uart.h"
+#include "hal/usb_serial_jtag_ll.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -39,6 +40,12 @@ static const char *TAG = "servo_test";
 
 static void uart_init_test(void)
 {
+    /* GPIO 19/20 são USB D+/D- no ESP32-S3. O PHY fica ativo por padrão após
+     * reset e briga com UART1 nesses pinos. Este teste roda antes do
+     * boot_manager_run() (onde servo_hal_init desabilitaria o PHY), então
+     * precisamos desabilitar aqui para evitar ruído durante o init do display. */
+    usb_serial_jtag_ll_phy_enable_pad(false);
+
     uart_config_t cfg = {
         .baud_rate  = NB_SERVO_BAUD_RATE,
         .data_bits  = UART_DATA_8_BITS,

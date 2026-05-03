@@ -17,6 +17,7 @@
 #include "esp_log.h"
 
 #include "boot_manager.h"
+#include "hal/usb_serial_jtag_ll.h"
 #include "logger.h"
 #include "esp_timer.h"
 #include "watchdog_service.h"
@@ -715,6 +716,13 @@ static void behavior_task(void *arg)
 static esp_err_t phase_hal(void)
 {
     phase_enter(NB_BOOT_PHASE_HAL);
+
+    /* GPIO 19/20 são USB D+/D- no ESP32-S3. O PHY USB fica ativo por padrão
+     * após reset e gera ruído elétrico que corrompe intermitentemente o init
+     * SPI do display. Desabilitar aqui, antes de qualquer HAL, garante um
+     * barramento SPI limpo. bridge_service_init() (PHASE_SERVICES) reabilita
+     * via usb_serial_jtag_driver_install() quando o bridge for necessário. */
+    usb_serial_jtag_ll_phy_enable_pad(false);
 
     /* Display (Etapa 1.1) */
     esp_err_t err = display_hal_init();
