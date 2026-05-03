@@ -325,16 +325,39 @@ details .panel-body{padding-top:0}
 
     <div style="height:14px"></div>
 
-    <details>
-      <summary>Ajustes tecnicos de servo</summary>
-      <div class="panel-body form-grid">
-        <p class="note">Use apenas para limites persistidos de calibracao. Movimento continua sujeito ao veto de motion_safety.</p>
-        <div class="field"><label>Servo 1 min</label><input type="number" id="c-srv1_min"><button class="btn" onclick="saveOne('srv1_min','c-srv1_min')">Salvar</button></div>
-        <div class="field"><label>Servo 1 max</label><input type="number" id="c-srv1_max"><button class="btn" onclick="saveOne('srv1_max','c-srv1_max')">Salvar</button></div>
-        <div class="field"><label>Servo 1 centro</label><input type="number" id="c-srv1_ctr"><button class="btn" onclick="saveOne('srv1_ctr','c-srv1_ctr')">Salvar</button></div>
-        <div class="field"><label>Servo 2 min</label><input type="number" id="c-srv2_min"><button class="btn" onclick="saveOne('srv2_min','c-srv2_min')">Salvar</button></div>
-        <div class="field"><label>Servo 2 max</label><input type="number" id="c-srv2_max"><button class="btn" onclick="saveOne('srv2_max','c-srv2_max')">Salvar</button></div>
-        <div class="field"><label>Servo 2 centro</label><input type="number" id="c-srv2_ctr"><button class="btn" onclick="saveOne('srv2_ctr','c-srv2_ctr')">Salvar</button></div>
+    <details open>
+      <summary>Calibracao de servo</summary>
+      <div class="panel-body">
+        <p class="note">Ajuste o centro de cada servo ao vivo. O servo se move imediatamente ao arrastar o slider. Salve quando a cabeca estiver reta.</p>
+        <button class="btn" onclick="servoCmd(0,0)" style="margin-bottom:12px">Centralizar ambos</button>
+
+        <div style="margin-bottom:16px">
+          <label><strong>Servo 1 (PAN — esquerda/direita)</strong></label>
+          <div class="field" style="align-items:center;gap:8px;margin-top:6px">
+            <input type="range" id="sl-srv1" min="410" max="614" step="1" style="flex:1" oninput="servoLive(1,this.value)" onchange="servoLive(1,this.value)">
+            <span id="sv-srv1" style="min-width:36px;text-align:right">512</span>
+            <button class="btn" onclick="servoSaveCenter(1)">Salvar</button>
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px">
+          <label><strong>Servo 2 (TILT — cima/baixo)</strong></label>
+          <div class="field" style="align-items:center;gap:8px;margin-top:6px">
+            <input type="range" id="sl-srv2" min="410" max="614" step="1" style="flex:1" oninput="servoLive(2,this.value)" onchange="servoLive(2,this.value)">
+            <span id="sv-srv2" style="min-width:36px;text-align:right">512</span>
+            <button class="btn" onclick="servoSaveCenter(2)">Salvar</button>
+          </div>
+        </div>
+
+        <details style="margin-top:8px">
+          <summary style="cursor:pointer;color:#888;font-size:0.85em">Limites avancados</summary>
+          <div class="form-grid" style="margin-top:8px">
+            <div class="field"><label>Servo 1 min</label><input type="number" id="c-srv1_min"><button class="btn" onclick="saveOne('srv1_min','c-srv1_min')">Salvar</button></div>
+            <div class="field"><label>Servo 1 max</label><input type="number" id="c-srv1_max"><button class="btn" onclick="saveOne('srv1_max','c-srv1_max')">Salvar</button></div>
+            <div class="field"><label>Servo 2 min</label><input type="number" id="c-srv2_min"><button class="btn" onclick="saveOne('srv2_min','c-srv2_min')">Salvar</button></div>
+            <div class="field"><label>Servo 2 max</label><input type="number" id="c-srv2_max"><button class="btn" onclick="saveOne('srv2_max','c-srv2_max')">Salvar</button></div>
+          </div>
+        </details>
       </div>
     </details>
   </section>
@@ -496,6 +519,14 @@ function fetchConfig(){
       var el = document.getElementById('c-' + k);
       if(el && d[k] !== undefined) el.value = d[k];
     });
+    if(d.srv1_ctr !== undefined){
+      document.getElementById('sl-srv1').value = d.srv1_ctr;
+      document.getElementById('sv-srv1').textContent = d.srv1_ctr;
+    }
+    if(d.srv2_ctr !== undefined){
+      document.getElementById('sl-srv2').value = d.srv2_ctr;
+      document.getElementById('sv-srv2').textContent = d.srv2_ctr;
+    }
   });
 }
 
@@ -636,6 +667,25 @@ function saveOne(key, elId){
   var val = parseFloat(document.getElementById(elId).value);
   post('/api/config', {key:key, value:val}, function(d){
     flash('cfg-msg', d.ok ? 'Ajuste salvo: ' + key : 'Erro: ' + (d.error || 'falha'));
+  });
+}
+var _servoDebounce = {};
+function servoLive(servo, val){
+  val = parseInt(val, 10);
+  document.getElementById('sv-srv'+servo).textContent = val;
+  clearTimeout(_servoDebounce[servo]);
+  _servoDebounce[servo] = setTimeout(function(){
+    post('/api/servo', {servo:servo, pos:val}, function(){});
+  }, 80);
+}
+function servoCmd(servo, pos){
+  post('/api/servo', {servo:servo, pos:pos}, function(){});
+}
+function servoSaveCenter(servo){
+  var val = parseInt(document.getElementById('sl-srv'+servo).value, 10);
+  var key = 'srv'+servo+'_ctr';
+  post('/api/config', {key:key, value:val}, function(d){
+    flash('cfg-msg', d.ok ? 'Centro servo '+servo+' salvo: '+val : 'Erro ao salvar');
   });
 }
 

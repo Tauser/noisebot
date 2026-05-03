@@ -17,6 +17,9 @@
 #include "gaze_service.h"
 #include "circadian_service.h"
 #include "idle_service.h"
+#include "motion_service.h"
+#include "servo_hal.h"
+#include "conductor.h"
 #include "rhythm_service.h"
 #include "sound_analysis_service.h"
 #include "wifi_service.h"
@@ -83,7 +86,8 @@ static int log_hook_vprintf(const char *fmt, va_list args)
 static httpd_handle_t     s_server     = NULL;
 static int                s_ws_fd      = -1;
 static portMUX_TYPE       s_mux        = portMUX_INITIALIZER_UNLOCKED;
-static esp_timer_handle_t s_audio_tmr  = NULL;
+static esp_timer_handle_t s_audio_tmr       = NULL;
+static esp_timer_handle_t s_servo_calib_tmr = NULL;  /* auto-resume conductor após calibração */
 static nb_event_type_t    s_last_touch_event = NB_EVT_NONE;
 static int64_t            s_last_touch_us    = 0;
 
@@ -456,6 +460,85 @@ static nb_action_t action_from_str(const char *s)
     if (strcmp(s, "STRETCH")       == 0) return NB_ACTION_STRETCH;
     if (strcmp(s, "CELEBRATE")     == 0) return NB_ACTION_CELEBRATE;
     return NB_ACTION_NONE;
+}
+
+/* Callback do timer: retoma o conductor após 10s sem comandos de calibração */
+static void servo_calib_resume_cb(void *arg)
+{
+    (void)arg;
+    conductor_pause(false);
+    NB_LOGI(TAG, "calibracao servo: conductor retomado (timeout)");
+}
+
+/* POST /api/servo — move servo para posição imediata (calibração ao vivo).
+ * Body: {"servo": 1, "pos": 512}   servo 1 ou 2, pos em steps [0, 1023]
+ *       {"servo": 0, "pos": 0}     servo=0 → park_all (ignora pos)
+ * Pausa o conductor automaticamente e retoma após 10s de inatividade.  */
+static esp_err_t handle_api_servo_post(httpd_req_t *req)
+{
+    char body[128];
+    if (!recv_body(req, body, sizeof(body), NULL)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+    cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
+        return ESP_OK;
+    }
+
+    const cJSON *servo_j = cJSON_GetObjectItemCaseSensitive(root, "servo");
+    const cJSON *pos_j   = cJSON_GetObjectItemCaseSensitive(root, "pos");
+
+    esp_err_t ret = ESP_ERR_INVALID_ARG;
+    if (cJSON_IsNumber(servo_j) && cJSON_IsNumber(pos_j)) {
+        int servo = (int)servo_j->valuedouble;
+        int pos   = (int)pos_j->valuedouble;
+
+        /* Pausa conductor para evitar override durante calibração */
+        conductor_pause(true);
+        if (s_servo_calib_tmr) {
+            esp_timer_stop(s_servo_calib_tmr);
+            esp_timer_start_once(s_servo_calib_tmr, 10000000LL); /* 10s */
+        }
+
+        /* Usa servo_hal diretamente — bypass de safety intencional para calibração.
+         * GPIO 20 (TX) sofre ~20-30% perda de pacotes com WiFi ativo (USB D- RF).
+         * Comandos fire-and-forget: logamos envio, não confirmação do servo.
+         * Enviamos cada comando N vezes com gap para garantir entrega estatística.
+         * A 30% de perda, P(todas 8 falharem) < 0.001%. */
+        #define CAL_SEND(fn, id, ...)  do { \
+            for (int _t = 0; _t < 8; _t++) { \
+                fn((id), ##__VA_ARGS__); \
+                vTaskDelay(pdMS_TO_TICKS(15)); \
+            } \
+        } while (0)
+
+        if (servo == 0) {
+            int16_t c1 = config_get_servo_center(1);
+            int16_t c2 = config_get_servo_center(2);
+            CAL_SEND(servo_hal_enable_torque,    1u);
+            CAL_SEND(servo_hal_enable_torque,    2u);
+            CAL_SEND(servo_hal_write_position,   1u, (uint16_t)c1, 600u);
+            CAL_SEND(servo_hal_write_position,   2u, (uint16_t)c2, 600u);
+            ret = ESP_OK;
+        } else if (servo >= 1 && servo <= 2 && pos >= 0 && pos <= 1023) {
+            CAL_SEND(servo_hal_enable_torque,    (uint8_t)servo);
+            CAL_SEND(servo_hal_write_position,   (uint8_t)servo, (uint16_t)pos, 400u);
+            ret = ESP_OK;
+        }
+        #undef CAL_SEND
+    }
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    if (ret == ESP_OK) {
+        httpd_resp_sendstr(req, "{\"ok\":true}");
+    } else {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"servo cmd failed\"}");
+    }
+    return ESP_OK;
 }
 
 static esp_err_t handle_api_command(httpd_req_t *req)
@@ -1395,6 +1478,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/config",  .method = HTTP_GET,  .handler = handle_api_config_get },
     { .uri = "/api/config",  .method = HTTP_POST, .handler = handle_api_config_post },
     { .uri = "/api/command",        .method = HTTP_POST,   .handler = handle_api_command },
+    { .uri = "/api/servo",          .method = HTTP_POST,   .handler = handle_api_servo_post },
     { .uri = "/api/ota",            .method = HTTP_POST,   .handler = handle_api_ota },
     { .uri = "/api/persona/export", .method = HTTP_GET,    .handler = handle_api_persona_export },
     { .uri = "/api/persona/import", .method = HTTP_POST,   .handler = handle_api_persona_import },
@@ -1500,6 +1584,15 @@ static void on_touch_debug_event(const nb_event_t *ev, void *ctx)
 
 esp_err_t web_service_init(void)
 {
+    /* Timer de auto-resume do conductor após calibração de servo */
+    if (!s_servo_calib_tmr) {
+        const esp_timer_create_args_t ta = {
+            .callback = servo_calib_resume_cb,
+            .name     = "srv_calib",
+        };
+        esp_timer_create(&ta, &s_servo_calib_tmr);
+    }
+
     /* Intercepta logs do ESP-IDF para ring buffer em RAM. */
     s_orig_vprintf = esp_log_set_vprintf(log_hook_vprintf);
 

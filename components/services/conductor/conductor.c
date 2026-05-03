@@ -245,6 +245,7 @@ static volatile nb_action_t s_pending_action = NB_ACTION_NONE;
 static volatile nb_action_t s_current_action = NB_ACTION_NONE;
 static volatile bool        s_interrupt      = false;
 static bool                 s_initialized    = false;
+static volatile bool        s_paused         = false;
 
 /* Anti-repeat: última variação jogada por ação (-1 = nunca jogou). */
 static int8_t s_last_var[NB_ACTION_COUNT];
@@ -397,9 +398,14 @@ esp_err_t conductor_init(void)
     return ESP_OK;
 }
 
+void conductor_pause(bool pause)
+{
+    s_paused = pause;
+}
+
 void conductor_play(nb_action_t action)
 {
-    if (!s_initialized) return;
+    if (!s_initialized || s_paused) return;
     if (action == NB_ACTION_CELEBRATE) {
         expression_service_overlay_heart(2200U);
     }

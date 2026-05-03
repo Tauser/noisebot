@@ -53,6 +53,7 @@ esp_err_t conductor_init(void);
  * NB_ACTION_NONE para apenas interromper a ação atual.
  */
 void conductor_play(nb_action_t action);
+void conductor_pause(bool pause);
 
 /** @brief Retorna a ação em curso (NB_ACTION_NONE se idle). Thread-safe. */
 nb_action_t conductor_get_current(void);
