@@ -516,7 +516,10 @@ esp_err_t led_service_init(void)
 void led_service_update(uint32_t dt_ms)
 {
     if (!s_svc.initialized) return;
-    if (xSemaphoreTake(s_svc.mutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+    if (xSemaphoreTake(s_svc.mutex, pdMS_TO_TICKS(5)) != pdTRUE) {
+        ESP_LOGW(TAG, "mutex timeout — frame de LED skipped (%lums)", (unsigned long)dt_ms);
+        return;
+    }
     service_tick(dt_ms);
     xSemaphoreGive(s_svc.mutex);
 }
