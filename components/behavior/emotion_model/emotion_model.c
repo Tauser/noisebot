@@ -2,7 +2,8 @@
  * emotion_model.c — Modelo emocional do NoiseBot (Layer 6)
  *
  * Vetor emocional (valência, ativação) mapeado por nearest-neighbor
- * aos 9 anchors das expressões base.
+ * aos 9 anchors das expressões base, com histerese para evitar flickering
+ * na fronteira entre regiões de Voronoi.
  *
  * Decaimento:
  *   v(t) = v0 * (1 - DECAY_RATE_PER_MS)^t
@@ -28,6 +29,16 @@
 
 /** Duração da transição de expressão ao mudar emoção. */
 #define TRANSITION_MS       400.0f
+
+/**
+ * Margem de histerese em distância² para troca de expressão.
+ * O novo anchor deve ser mais próximo que o atual por pelo menos
+ * HYSTERESIS_D2 — equivale a ~0.09u de vantagem linear.
+ * Suprime flickering quando o vetor oscila na fronteira de Voronoi
+ * durante o decaimento (DECAY ≈ 0.005u/tick), sem atrasar transições
+ * causadas por eventos (deltas >> 0.1u).
+ */
+#define HYSTERESIS_D2       0.008f
 
 /* ── Anchors (valência, ativação) ────────────────────────────────────────── */
 
@@ -88,11 +99,21 @@ static float clampf(float v, float lo, float hi)
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-/* Mapeamento por nearest-neighbor (distância euclidiana ao quadrado). */
-static nb_expression_t vec_to_expr(float v, float a)
+/*
+ * Mapeamento por nearest-neighbor com histerese.
+ *
+ * Encontra o anchor absoluto mais próximo. Se ele for diferente de `current`,
+ * só troca quando a vantagem de distância² for > HYSTERESIS_D2 — cria uma
+ * zona morta na fronteira de Voronoi que suprime flickering por decaimento.
+ */
+static nb_expression_t vec_to_expr(float v, float a, nb_expression_t current)
 {
-    float best_d2   = 1e9f;
+    float best_d2       = 1e9f;
     nb_expression_t best = NB_EXPR_NEUTRAL;
+
+    float cv  = v - k_anchors[current].v;
+    float ca  = a - k_anchors[current].a;
+    float curr_d2 = cv * cv + ca * ca;
 
     for (int i = 0; i < NB_EXPR_COUNT; i++) {
         float dv = v - k_anchors[i].v;
@@ -103,28 +124,35 @@ static nb_expression_t vec_to_expr(float v, float a)
             best    = k_anchors[i].expr;
         }
     }
+
+    /* Histerese: só sai do anchor atual se o melhor for visivelmente mais próximo. */
+    if (best != current && best_d2 + HYSTERESIS_D2 >= curr_d2) {
+        best = current;
+    }
+
     return best;
 }
 
 /*
- * Avalia nova expressão e, se mudou, chama expression_service e callback.
- * Deve ser chamado fora de critical section.
+ * Avalia nova expressão com histerese e, se mudou, chama expression_service
+ * e callback. Deve ser chamado fora de critical section.
  */
 static void maybe_update_expr(float v, float a)
 {
-    nb_expression_t new_expr = vec_to_expr(v, a);
-
     taskENTER_CRITICAL(&s_mux);
-    nb_expression_t old_expr = s_expr;
-    if (new_expr != old_expr) {
-        s_expr = new_expr;
-    }
+    nb_expression_t curr = s_expr;
     taskEXIT_CRITICAL(&s_mux);
 
-    if (new_expr != old_expr) {
+    nb_expression_t new_expr = vec_to_expr(v, a, curr);
+
+    if (new_expr != curr) {
+        taskENTER_CRITICAL(&s_mux);
+        s_expr = new_expr;
+        taskEXIT_CRITICAL(&s_mux);
+
         expression_service_set(new_expr, TRANSITION_MS);
         ESP_LOGI(TAG, "expr %d → %d (v=%.2f a=%.2f)",
-                 (int)old_expr, (int)new_expr, v, a);
+                 (int)curr, (int)new_expr, v, a);
         if (s_change_cb) {
             s_change_cb(new_expr);
         }
