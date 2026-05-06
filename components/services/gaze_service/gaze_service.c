@@ -12,8 +12,8 @@
  *
  * Thread safety:
  *   - gaze_service_set_target(): protegido por portMUX spinlock.
- *   - s_cur_x/y: escritos somente em render_task (Core 1); leituras de
- *     outros cores são best-effort (nenhuma decisão crítica depende delas).
+ *   - s_cur_x/y, s_drift_x/y: escritos somente em render_task (Core 1);
+ *     leituras de outros cores são best-effort (sem decisão crítica).
  */
 
 #include "gaze_service.h"
@@ -143,10 +143,8 @@ static void gaze_render_cb(nb_display_sprite_t canvas, void *ctx)
         s_start_y = s_cur_y;
         s_phase   = GAZE_FAST;
         s_phase_ms = 0.0f;
-
-        /* Reset drift ao iniciar saccade */
-        s_drift_x = 0.0f;
-        s_drift_y = 0.0f;
+        /* s_drift_x/y não são zerados aqui — o valor pré-sacada decai na
+         * transição SETTLE→DRIFT para evitar o reinício sempre do centro. */
     }
 
     /* 2. Avançar fase */
@@ -177,6 +175,12 @@ static void gaze_render_cb(nb_display_sprite_t canvas, void *ctx)
             if (t >= 1.0f) {
                 t = 1.0f;
                 s_phase = GAZE_DRIFT;
+                /* Decai o drift pré-sacada pelo fator equivalente ao filtro LP
+                 * rodando durante FAST+SETTLE (~6 frames): (1-LP)^6 ≈ 0.30.
+                 * Evita que DRIFT sempre recomece do centro exato — o drift
+                 * residual é sub-pixel (≤ DRIFT_MAX_R × 0.30 ≈ 0.018u). */
+                s_drift_x *= 0.30f;
+                s_drift_y *= 0.30f;
             }
             s_cur_x = lerpf(s_start_x, s_tgt_x, t);
             s_cur_y = lerpf(s_start_y, s_tgt_y, t);
