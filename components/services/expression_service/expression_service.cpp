@@ -58,9 +58,10 @@ static constexpr float HW_F           = 46.0f;   /* half-width em pixels  */
 static constexpr float MAX_HH_F       = 46.0f;   /* half-height máxima    */
 static constexpr int16_t HW_I         = 46;
 
-static constexpr float Y_TRAVEL_PX    = 14.0f;   /* pixels para y=±1      */
+static constexpr float Y_TRAVEL_PX    = 70.0f;   /* pixels para y=±1      */
 static constexpr float X_OFF_TRAVEL   = 18.0f;   /* pixels para x_off=±1  */
 static constexpr float MAX_CURVE_PX   = 10.0f;   /* pixels de curvatura máx */
+static constexpr float GAZE_X_TRAVEL_PX = 45.0f; /* pixels de gaze horizontal */
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
 
@@ -93,8 +94,9 @@ static constexpr int16_t BLINK_BAR_EXTRA_HW  = 3;    /* px de padding além das 
  * que pixels residuais no display sejam apagados pelo canvas limpo.
  * Cobre ~45% do display (< FULL_PUSH_THRESHOLD 85%) → push parcial row-by-row.
  */
-static constexpr int FACE_DIRTY_X0 = (int)BASE_L_CX  - (int)HW_I - (int)X_OFF_TRAVEL - 8 - (int)BLINK_BAR_EXTRA_HW;
-static constexpr int FACE_DIRTY_X1 = (int)BASE_R_CX  + (int)HW_I + (int)X_OFF_TRAVEL + 8 + (int)BLINK_BAR_EXTRA_HW;
+static constexpr int GAZE_X_MARGIN  = (int)GAZE_X_TRAVEL_PX;
+static constexpr int FACE_DIRTY_X0 = (int)BASE_L_CX  - (int)HW_I - (int)X_OFF_TRAVEL - GAZE_X_MARGIN - (int)BLINK_BAR_EXTRA_HW;
+static constexpr int FACE_DIRTY_X1 = (int)BASE_R_CX  + (int)HW_I + (int)X_OFF_TRAVEL + GAZE_X_MARGIN + (int)BLINK_BAR_EXTRA_HW;
 static constexpr int FACE_DIRTY_Y0 = (int)EYE_CY_BASE - (int)MAX_HH_F - (int)Y_TRAVEL_PX - (int)MAX_CURVE_PX - 2;
 static constexpr int FACE_DIRTY_Y1 = (int)EYE_CY_BASE + (int)MAX_HH_F + (int)Y_TRAVEL_PX + (int)MAX_CURVE_PX + 16;
 
@@ -169,15 +171,15 @@ static nb_blink_eye_t     s_blink[2]          = {};
 static int64_t            s_next_blink_us     = 0;
 
 /*
- * Gaze offset — escrito pelo gaze_service render layer (z=5, Core 1)
- * e lido por este callback (z=10, mesmo Core 1, frame seguinte na ordem).
- * Sem lock: acesso exclusivo de Core 1 render_task.
+ * Gaze offset — escrito por gaze_render_cb (z=5) e lido por este callback
+ * (z=10), ambos no mesmo Core 1 render_task, sequencialmente no mesmo frame.
+ * Não são volatile: volatile não provê barrier cross-core no Xtensa, e o
+ * acesso é single-core. Nenhuma outra task deve chamar set_gaze diretamente.
  */
-static volatile float     s_gaze_x            = 0.0f;
-static volatile float     s_gaze_y            = 0.0f;
+static float              s_gaze_x            = 0.0f;
+static float              s_gaze_y            = 0.0f;
 
 /* Pixels de deslocamento horizontal por unidade de gaze_x (translation bilateral). */
-static constexpr float GAZE_X_TRAVEL_PX = 12.0f;
 
 typedef struct {
     bool     active;
