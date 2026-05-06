@@ -421,5 +421,8 @@ void conductor_play(nb_action_t action)
 
 nb_action_t conductor_get_current(void)
 {
-    return s_current_action;
+    taskENTER_CRITICAL(&s_mux);
+    nb_action_t a = s_current_action;
+    taskEXIT_CRITICAL(&s_mux);
+    return a;
 }
