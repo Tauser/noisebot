@@ -160,6 +160,21 @@ static bool cond_trust_low(const nb_event_t *evt)
     return persona_get_trust() < 0.3f;
 }
 
+/* Toque durante RESPONDING: afeta emoção mas não interrompe áudio. */
+static bool cond_responding(const nb_event_t *evt)
+{
+    (void)evt;
+    return state_machine_get_state() == NB_STATE_RESPONDING;
+}
+
+/* Baixa confiança e fora de RESPONDING: STARTLE normal. */
+static bool cond_trust_low_not_responding(const nb_event_t *evt)
+{
+    (void)evt;
+    return persona_get_trust() < 0.3f &&
+           state_machine_get_state() != NB_STATE_RESPONDING;
+}
+
 /* ── Tabela de regras ────────────────────────────────────────────────────── */
 /*
  * Campos não declarados são zero-inicializados (actions[N].type = NB_BE_ACT_NONE).
@@ -171,11 +186,18 @@ static const nb_be_rule_t k_rules[] = {
     /* SM inputs (tap/long/wake) são chamados diretamente no on_touch_event  */
     /* do boot_manager, antes de publicar o evento. Aqui só comportamento.  */
 
-    /* Persona: trust < 0.3 → susto; trust >= 0.3 → calor (unconditional) */
-    { NB_EVT_TOUCH_TAP, cond_trust_low, {
+    /* RESPONDING: reação afetiva sem interromper o áudio em reprodução.
+     * conductor_play() durante RESPONDING interromperia SPEAK_LOOP e chamaria
+     * audio_play_stop(), cortando a fala do robô. Emoção + LTM continuam. */
+    { NB_EVT_TOUCH_TAP, cond_responding, {
+        ACT_EMOT(TOUCH_TAP), ACT_IDLE, ACT_LTM(TOUCH_TAP) }},
+
+    /* Persona: trust < 0.3 (e fora de RESPONDING) → susto */
+    { NB_EVT_TOUCH_TAP, cond_trust_low_not_responding, {
         ACT_EMOT(TOUCH_TAP), ACT_IDLE,
         ACT_PLAY(TOUCH_STARTLE), ACT_LTM(TOUCH_TAP) }},
 
+    /* Fallback: trust >= 0.3 e fora de RESPONDING → calor */
     { NB_EVT_TOUCH_TAP, NULL, {
         ACT_EMOT(TOUCH_TAP), ACT_IDLE,
         ACT_PLAY(TOUCH_WARM), ACT_LTM(TOUCH_TAP) }},

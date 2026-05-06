@@ -189,9 +189,12 @@ void state_machine_on_touch_tap(void)
             do_transition(NB_STATE_TOUCH_REACTING, "tap em SLEEPING");
             break;
         case NB_STATE_ATTENTIVE:
+            /* Tap durante escuta: não muda estado — sessão segue aberta. */
+            break;
         case NB_STATE_RESPONDING:
-            /* Tap durante sessão crítica: não muda estado. Reação afetiva
-             * é tratada pelo behavior_engine via event bus. */
+            /* Tap durante fala: não muda estado — conductor não pode interromper
+             * audio neste momento. Reação afetiva via behavior_engine (cond_responding)
+             * emite emoção + LTM sem chamar conductor_play(). */
             break;
         case NB_STATE_MEDITATION:
             do_transition(NB_STATE_IDLE, "tap sai de MEDITATION");
