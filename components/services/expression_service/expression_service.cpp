@@ -199,6 +199,7 @@ static blush_overlay_t    s_blush_overlay      = {};
 static heart_overlay_t    s_heart_overlay      = {};
 static volatile bool      s_breath_enabled     = false;
 static volatile bool      s_blink_enabled      = true;
+static bool               s_blink_prev_enabled = true;
 
 static constexpr float BREATH_PERIOD_MS = 5200.0f;
 static constexpr float BREATH_AMP       = 0.045f;
@@ -568,7 +569,15 @@ static void blink_update(int64_t now_us)
             s_blink[1] = { BLINK_IDLE, 0.0f, now_us };
             s_next_blink_us = now_us + poisson_blink_delay_us();
         }
+        s_blink_prev_enabled = false;
         return;
+    }
+
+    /* Ao reabilitar: agenda delay fresco para não disparar imediatamente
+     * (s_next_blink_us está no passado após um período com blink desativado). */
+    if (!s_blink_prev_enabled) {
+        s_next_blink_us      = now_us + poisson_blink_delay_us();
+        s_blink_prev_enabled = true;
     }
 
     /* Disparo de novo blink apenas quando ambos os olhos estiverem em IDLE */

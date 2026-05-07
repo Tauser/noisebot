@@ -173,19 +173,32 @@ static const score_step_t k_sleep_a[] = {
     { 600,  NB_EXPR_COUNT,  0.0f,    false, 0.0f, CM_PARK, 0, NULL },
 };
 
-/* WAKE_UP — variação A: acorda neutro + olha curioso */
+/*
+ * WAKE_UP — animação em 2 fases:
+ *   Fase 1 (snap): ancora na expressão SLEEPY (já é o estado atual — sem mudança
+ *                  visual), mas garante que qualquer transição em andamento é
+ *                  cancelada e o ponto de partida está correto.
+ *   Fase 2 (open): transição lenta para a expressão final (~2s) — olhos abrem
+ *                  suavemente em vez de saltar de abertos.
+ *   Fase 3 (ação): movimento ou expressão pós-abertura (opcional).
+ */
+
+/* WAKE_UP — variação A: lento + curioso */
 static const score_step_t k_wake_a[] = {
-    { 0,   NB_EXPR_NEUTRAL, 800.0f, false, 0.0f, CM_CENTER,       600, NULL },
-    { 900, NB_EXPR_COUNT,   0.0f,   false, 0.0f, CM_TILT_CURIOUS,   0, NULL },
+    {    0, NB_EXPR_SLEEPY,  0.0f,    false, 0.0f, CM_NONE,         0,    NULL },
+    {  300, NB_EXPR_NEUTRAL, 2400.0f, false, 0.0f, CM_CENTER,    1200,    NULL },
+    { 3000, NB_EXPR_COUNT,   0.0f,    false, 0.0f, CM_TILT_CURIOUS, 0,    NULL },
 };
-/* WAKE_UP — variação B: acorda neutro, centraliza */
+/* WAKE_UP — variação B: calmo, só centraliza */
 static const score_step_t k_wake_b[] = {
-    { 0,   NB_EXPR_NEUTRAL, 800.0f, false, 0.0f, CM_CENTER, 600, NULL },
+    {    0, NB_EXPR_SLEEPY,  0.0f,    false, 0.0f, CM_NONE,    0,    NULL },
+    {  400, NB_EXPR_NEUTRAL, 2000.0f, false, 0.0f, CM_CENTER, 1000,  NULL },
 };
-/* WAKE_UP — variação C: acorda feliz + nod */
+/* WAKE_UP — variação C: alegre, abre sorrindo + nod */
 static const score_step_t k_wake_c[] = {
-    { 0,   NB_EXPR_HAPPY,   600.0f, false, 0.0f, CM_CENTER, 500, NULL },
-    { 700, NB_EXPR_COUNT,   0.0f,   false, 0.0f, CM_NOD,      0, NULL },
+    {    0, NB_EXPR_SLEEPY,  0.0f,    false, 0.0f, CM_NONE,    0,   NULL },
+    {  500, NB_EXPR_HAPPY,   2000.0f, false, 0.0f, CM_CENTER, 800,  NULL },
+    { 2800, NB_EXPR_COUNT,   0.0f,    false, 0.0f, CM_NOD,     0,   NULL },
 };
 
 /* CELEBRATE — marco especial: HAPPY prolongado + nod entusiasmado */
