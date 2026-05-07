@@ -89,6 +89,8 @@ static bool     s_initialized       = false;
 static uint32_t s_silence_ms        = 0;    /* ms sem interação — acumula em IDLE/SLEEPING */
 static bool     s_milestone_100h    = false; /* greet especial de 100h pendente ao primeiro IDLE */
 static bool     s_wake_word_triggered = false; /* sinaliza que ATTENTIVE foi ativado via wake word */
+static uint32_t s_sleep_touch_guard_ms = 0; /* ignora toque residual ao entrar em SLEEPING */
+static uint32_t s_sleep_wake_guard_ms  = 0; /* evita falso wake word logo após dormir */
 
 /* ── Helpers de NVS (acesso direto, sem config_manager) ──────────────────── */
 
@@ -394,6 +396,20 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
  * led_effect_touch() permanece aqui — é efeito imediato de HAL. */
 static void on_touch_event(nb_touch_event_t evt)
 {
+    if (s_sleep_touch_guard_ms > 0u && evt != NB_TOUCH_EVT_WAKE) {
+        NB_LOGI(TAG, "touch ignorado durante guarda de SLEEPING: evt=%d", (int)evt);
+        return;
+    }
+
+    if (state_machine_get_state() == NB_STATE_SLEEPING) {
+        s_silence_ms = 0;
+        led_effect_touch();
+        state_machine_on_touch_wake();
+        nb_event_t e = { .type = NB_EVT_TOUCH_WAKE };
+        nb_event_publish_async(&e);
+        return;
+    }
+
     /* TAP e SUSTAINED passam pelo touch_semantic_service (Etapa 10.4), que
      * decide se publica TAP simples, DOUBLE_TAP, SUSTAINED, WARM_PULSE, DEEP
      * ou CARESS. LONG_PRESS e WAKE continuam publicados diretamente. */
@@ -473,6 +489,17 @@ static void on_state_changed(nb_robot_state_t new_state,
 {
     (void)reason;
 
+    touch_service_set_sleeping(new_state == NB_STATE_SLEEPING);
+    expression_service_set_blink_enabled(new_state != NB_STATE_SLEEPING);
+    if (new_state == NB_STATE_SLEEPING) {
+        s_sleep_touch_guard_ms = 500u;
+        s_sleep_wake_guard_ms  = 1500u;
+        gaze_service_set_anchor(0.0f, 0.0f);
+        gaze_service_set_target(0.0f, 0.0f);
+    } else {
+        s_sleep_wake_guard_ms = 0u;
+    }
+
     if (old_state == NB_STATE_ATTENTIVE && new_state != NB_STATE_ATTENTIVE) {
         led_base_set(NB_LED_BASE_ATTENTIVE, false);
         if (audio_service_is_listening()) {
@@ -491,6 +518,9 @@ static void on_state_changed(nb_robot_state_t new_state,
             led_base_set(NB_LED_BASE_ATTENTIVE, true);
             break;
         case NB_STATE_RESPONDING:
+            wake_service_suspend();
+            break;
+        case NB_STATE_SLEEPING:
             wake_service_suspend();
             break;
         case NB_STATE_MEDITATION:
@@ -559,7 +589,7 @@ static void on_voice_followup_timeout(const nb_event_t *ev, void *ctx)
     (void)ev; (void)ctx;
     /* Olha para um lado aleatório: simula busca visual da fonte do som */
     float sign = (esp_random() & 1U) ? 1.0f : -1.0f;
-    gaze_service_set_target(sign * 0.55f, 0.05f);
+    gaze_service_set_target(sign * 0.55f, 0.0f);
 }
 
 /* TOUCH_DEEP em IDLE → entra em meditação (11.4) */
@@ -648,8 +678,30 @@ static void behavior_task(void *arg)
 
     while (1) {
         state_machine_update(100);
-        /* energy > 0.7: transições emocionais 30% mais rápidas (persona 11.1) */
-        emotion_model_update(persona_get_energy() > 0.7f ? 130u : 100u);
+        if (s_sleep_touch_guard_ms > 100u) {
+            s_sleep_touch_guard_ms -= 100u;
+        } else {
+            s_sleep_touch_guard_ms = 0u;
+        }
+
+        nb_robot_state_t loop_state = state_machine_get_state();
+
+        if (loop_state == NB_STATE_SLEEPING) {
+            if (s_sleep_wake_guard_ms > 100u) {
+                s_sleep_wake_guard_ms -= 100u;
+            } else if (s_sleep_wake_guard_ms > 0u) {
+                s_sleep_wake_guard_ms = 0u;
+                wake_service_rearm();
+            }
+        } else {
+            s_sleep_wake_guard_ms = 0u;
+        }
+
+        /* energy > 0.7: transições emocionais 30% mais rápidas (persona 11.1).
+         * Em SLEEPING, SLEEPY é base de estado e não deve decair para NEUTRAL. */
+        if (loop_state != NB_STATE_SLEEPING) {
+            emotion_model_update(persona_get_energy() > 0.7f ? 130u : 100u);
+        }
         attention_service_tick(100);
         rhythm_service_tick(100);
         vad_semantic_tick(100);

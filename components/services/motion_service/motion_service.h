@@ -97,6 +97,14 @@ typedef struct {
 esp_err_t motion_service_init(const nb_motion_safety_iface_t *iface);
 
 /**
+ * motion_service_is_ready() — Retorna true se o serviço foi inicializado.
+ *
+ * Usado pelo conductor e outros chamadores para evitar chamar funções de
+ * movimento antes de motion_service_init() completar com sucesso.
+ */
+bool motion_service_is_ready(void);
+
+/**
  * motion_service_start() — Cria a motion_task.
  *
  * A task alimenta o heartbeat da safety e executa os comandos enfileirados.

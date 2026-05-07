@@ -185,8 +185,7 @@ void state_machine_on_touch_tap(void)
             do_transition(NB_STATE_TOUCH_REACTING, "tap");
             break;
         case NB_STATE_SLEEPING:
-            s_touch_elapsed_ms = 0;
-            do_transition(NB_STATE_TOUCH_REACTING, "tap em SLEEPING");
+            do_transition(NB_STATE_IDLE, "tap wake em SLEEPING");
             break;
         case NB_STATE_ATTENTIVE:
             /* Tap durante escuta: não muda estado — sessão segue aberta. */
@@ -227,7 +226,9 @@ void state_machine_on_touch_long_press(void)
 {
     if (!s_initialized) return;
     nb_robot_state_t cur = state_machine_get_state();
-    if (cur == NB_STATE_IDLE || cur == NB_STATE_SLEEPING) {
+    if (cur == NB_STATE_SLEEPING) {
+        do_transition(NB_STATE_IDLE, "long press wake em SLEEPING");
+    } else if (cur == NB_STATE_IDLE) {
         s_touch_elapsed_ms = 0;
         do_transition(NB_STATE_TOUCH_REACTING, "long press");
     } else if (cur == NB_STATE_MEDITATION || cur == NB_STATE_SILENT_COMPANY) {

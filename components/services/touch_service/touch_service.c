@@ -138,6 +138,8 @@ typedef struct {
     /* Misc */
     bool                    sleeping;
     nb_touch_event_cb_t     event_cb;
+    bool                    pending_event;
+    nb_touch_event_t        pending_evt;
     uint32_t                last_raw;
 
     /* Auto-recalibração de emergência (baseline drift pós-boot) */
@@ -169,6 +171,12 @@ static void fire_event(nb_touch_event_t evt)
     if (s_svc.event_cb != NULL) {
         s_svc.event_cb(evt);
     }
+}
+
+static void queue_event(nb_touch_event_t evt)
+{
+    s_svc.pending_evt   = evt;
+    s_svc.pending_event = true;
 }
 
 /*
@@ -281,7 +289,7 @@ static void service_tick(uint32_t dt_ms)
             s_svc.debounce_off = 0;
             s_svc.debounce_on  = 0;
             /* TAP/WAKE: latência = DEBOUNCE_ON_COUNT × dt_ms (≈40ms). */
-            fire_event(s_svc.sleeping ? NB_TOUCH_EVT_WAKE : NB_TOUCH_EVT_TAP);
+            queue_event(s_svc.sleeping ? NB_TOUCH_EVT_WAKE : NB_TOUCH_EVT_TAP);
         }
         break;
 
@@ -293,7 +301,7 @@ static void service_tick(uint32_t dt_ms)
             s_svc.press_ms += dt_ms;
             if (s_svc.press_ms >= LONG_PRESS_MS) {
                 s_svc.state = NB_TOUCH_STATE_LONG_PRESSING;
-                fire_event(NB_TOUCH_EVT_LONG_PRESS);
+                queue_event(NB_TOUCH_EVT_LONG_PRESS);
             }
         }
         break;
@@ -306,7 +314,7 @@ static void service_tick(uint32_t dt_ms)
             s_svc.press_ms += dt_ms;
             if (s_svc.press_ms >= SUSTAINED_MS) {
                 s_svc.state = NB_TOUCH_STATE_SUSTAINED_ACTIVE;
-                fire_event(NB_TOUCH_EVT_SUSTAINED);
+                queue_event(NB_TOUCH_EVT_SUSTAINED);
             }
         }
         break;
@@ -369,6 +377,7 @@ esp_err_t touch_service_init(void)
     s_svc.noise_history_full = false;
     s_svc.sleeping          = false;
     s_svc.event_cb          = NULL;
+    s_svc.pending_event     = false;
 
     recompute_thresholds();
 
@@ -384,9 +393,22 @@ esp_err_t touch_service_init(void)
 void touch_service_update(uint32_t dt_ms)
 {
     if (!s_svc.initialized) return;
+
+    bool has_event = false;
+    nb_touch_event_t evt = NB_TOUCH_EVT_TAP;
+
     if (xSemaphoreTake(s_svc.mutex, 0) != pdTRUE) return;
     service_tick(dt_ms);
+    if (s_svc.pending_event) {
+        evt = s_svc.pending_evt;
+        s_svc.pending_event = false;
+        has_event = true;
+    }
     xSemaphoreGive(s_svc.mutex);
+
+    if (has_event) {
+        fire_event(evt);
+    }
 }
 
 void touch_service_set_event_cb(nb_touch_event_cb_t cb)

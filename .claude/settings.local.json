@@ -12,7 +12,16 @@
       "WebFetch(domain:stack-chan.github.io)",
       "WebFetch(domain:docs.m5stack.com)",
       "Bash(xargs head *)",
-      "Bash(xargs wc *)"
+      "Bash(xargs wc *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Tauser\\\\Downloads\\\\StackChan-main\\\\StackChan-main\\\\firmware\" -Recurse -File)",
+      "Bash(Select-Object -First 30)",
+      "Bash(xargs grep -l \"leftEye\\\\|rightEye\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Tauser\\\\Downloads\\\\sd3.1.0\\\\-895951225\" -Recurse -Directory)",
+      "Bash(Select-Object -First 50 FullName)",
+      "PowerShell(head *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Tauser\\\\Downloads\\\\sd3.1.0\" -Recurse -File | Where-Object { $_.Extension -in @\\('.txt', '.md', '.json', '.xml', '.cfg', '.conf', '.csv'\\) } | Select-Object FullName)",
+      "PowerShell($files = Get-ChildItem \"C:\\\\Users\\\\Tauser\\\\Downloads\\\\sd3.1.0\" -Recurse -File; $files.Count; $files | Select-Object -First 10 | Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"D:\\\\Projetos\\\\Noisebot\\\\components\" -Recurse -Name)"
     ]
   }
 }

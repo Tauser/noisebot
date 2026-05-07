@@ -5,10 +5,16 @@
  * periodicidade mecânica. O hardware RNG do ESP32 garante entropia real.
  *
  * Comportamento por estado:
- *   IDLE || ATTENTIVE:  micro-saccade a cada 5–15s.
+ *   IDLE || ATTENTIVE:  glance a cada 1.5–4.5s (com retorno automático ao centro).
  *   ATTENTIVE somente:  aversive gaze a cada 8–15s.
  *   IDLE somente:       yawn a cada 60–180s.
  *   Outros estados:     timers resetados, gaze retorna a center (0, 0).
+ *
+ * Tipos de glance em IDLE:
+ *   curious flash: microexpressão curiosa curta com gaze lateral puro.
+ *   soft center   (20%): volta ao âncora sem glance ativo.
+ *   double glance (15%): glance normal + segundo glance agendado 100–250ms depois.
+ *   single glance (45%): glance simples com retorno automático.
  *
  * Nota: micro-neck-movement (<5°, ≤3/min) requer motion_service (Etapa 3.3).
  * Stub preparado — ativado quando motion for liberado.
@@ -32,32 +38,67 @@
 
 /* ── Parâmetros de timing ────────────────────────────────────────────────── */
 
-#define SACCADE_MIN_MS      5000U    /* intervalo mínimo de micro-saccade     */
-#define SACCADE_RANGE_MS   10000U    /* variação adicional (sorteada)         */
+#define SACCADE_MIN_MS         700U    /* intervalo mínimo entre glances        */
+#define SACCADE_RANGE_MS      1500U    /* variação adicional (sorteada)         */
 
-#define AVERSIVE_MIN_MS     8000U    /* intervalo mínimo de aversive gaze     */
-#define AVERSIVE_RANGE_MS   7000U
+#define AVERSIVE_MIN_MS       8000U
+#define AVERSIVE_RANGE_MS     7000U
 
-#define YAWN_MIN_MS        60000U    /* intervalo mínimo de yawn              */
-#define YAWN_RANGE_MS     120000U
-#define YAWN_DURATION_MS    2500.0f  /* tempo em SLEEPY antes de retornar     */
-#define YAWN_TRANS_MS        800.0f  /* transição de entrada e saída          */
+#define YAWN_ENABLED             1
+#define YAWN_MIN_MS          60000U
+#define YAWN_RANGE_MS       120000U
+#define YAWN_DURATION_MS     2500.0f
+#define YAWN_TRANS_MS         800.0f
 
-#define ALONE_THRESHOLD_MS 300000U   /* 5 min sem interação → solidão         */
+#define ALONE_THRESHOLD_MS  300000U
 
-#define INVOLUNTARY_MIN_MS  15000U   /* intervalo mínimo entre janelas involuntárias */
-#define INVOLUNTARY_RANGE_MS 20000U  /* variação adicional (sorteada)               */
-#define INVOLUNTARY_PROB      0.05f  /* probabilidade de disparo por janela         */
+/* ── Parâmetros de glance ─────────────────────────────────────────────────── */
+
+/** Distribuição dos glances: laterais pequenos são o padrão; cantos são raros. */
+#define GLANCE_LATERAL_PROB   0.88f
+#define GLANCE_VERTICAL_PROB  0.12f
+
+#define GLANCE_LATERAL_X_MIN  0.14f
+#define GLANCE_LATERAL_X_RNG  0.22f
+#define GLANCE_VERTICAL_X_MAX 0.03f
+#define GLANCE_VERTICAL_Y_MIN 0.035f
+#define GLANCE_VERTICAL_Y_RNG 0.035f
+
+/** Tempo de hold antes de retornar ao âncora (ms). */
+#define GLANCE_HOLD_MIN_MS      90U
+#define GLANCE_HOLD_RANGE_MS   260U    /* total: 90–350ms */
+
+/** Probabilidade de curious flash: microexpressão curiosa curta em IDLE. */
+#define CURIOUS_FLASH_PROB    0.16f
+
+/** Duração do curious flash. */
+#define CURIOUS_FLASH_MIN_MS   300U
+#define CURIOUS_FLASH_RANGE_MS 400U
+#define CURIOUS_FLASH_TRANS_MS 80.0f
+
+/** Probabilidade de soft center reset (volta ao âncora sem glance ativo). */
+#define GLANCE_CENTER_PROB    0.08f
+
+/** Probabilidade de double glance (segundo glance após o primeiro). */
+#define GLANCE_DOUBLE_PROB    0.24f
+
+/** Delay entre os dois glances do double glance (ms). */
+#define GLANCE_DOUBLE_DELAY_MIN_MS   100U
+#define GLANCE_DOUBLE_DELAY_RANGE_MS 150U
+
+/* ── Parâmetros de expressões involuntárias ──────────────────────────────── */
+
+#define INVOLUNTARY_MIN_MS     6000U   /* janela mínima entre expressões        */
+#define INVOLUNTARY_RANGE_MS   8000U   /* variação adicional                    */
+#define INVOLUNTARY_PROB       0.05f   /* probabilidade de disparo por janela         */
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
-/* Número aleatório em [0, 1) usando hardware RNG */
 static inline float rand01(void)
 {
     return (float)(esp_random() >> 1) / 2147483648.0f;
 }
 
-/* Número aleatório em [-1, 1] usando hardware RNG */
 static inline float rand11(void)
 {
     return (float)(int32_t)esp_random() / 2147483648.0f;
@@ -66,6 +107,11 @@ static inline float rand11(void)
 static inline uint32_t rand_interval(uint32_t min_ms, uint32_t range_ms)
 {
     return min_ms + (uint32_t)((float)range_ms * rand01());
+}
+
+static inline float rand_sign(void)
+{
+    return rand01() < 0.5f ? -1.0f : 1.0f;
 }
 
 /* ── Estado interno ──────────────────────────────────────────────────────── */
@@ -77,14 +123,21 @@ static uint32_t s_aversive_timer_ms = 0;
 static uint32_t s_yawn_timer_ms     = 0;
 static uint32_t s_alone_timer_ms    = 0;
 
-static bool     s_was_active        = false; /* estava em IDLE/ATTENTIVE */
-static bool     s_was_idle          = false; /* estava em IDLE (para reset do alone timer) */
-static float    s_saccade_mult      = 1.0f;  /* 1.5 quando curiosity > 0.6 */
-static float    s_yawn_mult         = 1.0f;  /* < 1 = DUSK (mais frequente), > 1 = DAWN */
-static uint32_t s_involuntary_ms    = 30000U; /* próxima janela de expressão involuntária */
+static bool     s_was_active        = false;
+static bool     s_was_idle          = false;
+static float    s_saccade_mult      = 1.0f;
+static float    s_yawn_mult         = 1.0f;
+static uint32_t s_involuntary_ms    = 0;
 static portMUX_TYPE s_mult_mux      = portMUX_INITIALIZER_UNLOCKED;
 
 static nb_idle_alone_cb_t s_alone_cb = NULL;
+
+/* Double glance pendente */
+static bool     s_double_glance_pending  = false;
+static uint32_t s_double_glance_ms       = 0;
+static float    s_double_glance_x        = 0.0f;
+static float    s_double_glance_y        = 0.0f;
+static uint32_t s_double_glance_hold_ms  = 0;
 
 static inline uint32_t saccade_interval(void)
 {
@@ -97,19 +150,67 @@ static inline uint32_t saccade_interval(void)
 
 /* ── Behaviors ───────────────────────────────────────────────────────────── */
 
-static void do_micro_saccade(void)
+static void choose_glance_target(float *x, float *y)
 {
-    /* 20% de chance de voltar ao centro — aumenta naturalidade */
-    float x, y;
-    if (rand01() < 0.20f) {
-        x = 0.0f;
-        y = 0.0f;
-    } else {
-        x = rand11() * 0.50f;
-        y = rand11() * 0.30f;
+    float kind = rand01();
+
+    if (kind < GLANCE_LATERAL_PROB) {
+        *x = rand_sign() * (GLANCE_LATERAL_X_MIN + rand01() * GLANCE_LATERAL_X_RNG);
+        *y = 0.0f;
+        return;
     }
-    gaze_service_set_target(x, y);
-    ESP_LOGD(TAG, "micro-saccade → (%.2f, %.2f)", x, y);
+
+    if (kind < GLANCE_LATERAL_PROB + GLANCE_VERTICAL_PROB) {
+        *x = rand11() * GLANCE_VERTICAL_X_MAX;
+        *y = rand_sign() * (GLANCE_VERTICAL_Y_MIN + rand01() * GLANCE_VERTICAL_Y_RNG);
+        return;
+    }
+
+    *x = rand_sign() * (GLANCE_LATERAL_X_MIN + rand01() * GLANCE_LATERAL_X_RNG);
+    *y = 0.0f;
+}
+
+static void do_glance(void)
+{
+    float r = rand01();
+
+    if (CURIOUS_FLASH_PROB > 0.0f && r < CURIOUS_FLASH_PROB) {
+        /* Curious flash: expressão NB_EXPR_CURIOUS + glance lateral contido */
+        float x      = rand_sign() * (GLANCE_LATERAL_X_MIN + rand01() * GLANCE_LATERAL_X_RNG * 0.6f);
+        float y      = 0.0f;
+        uint32_t hold = rand_interval(GLANCE_HOLD_MIN_MS, GLANCE_HOLD_RANGE_MS);
+        uint32_t dur  = rand_interval(CURIOUS_FLASH_MIN_MS, CURIOUS_FLASH_RANGE_MS);
+        expression_play(NB_EXPR_CURIOUS, (float)dur, CURIOUS_FLASH_TRANS_MS);
+        gaze_service_glance(x, y, hold);
+        ESP_LOGD(TAG, "curious flash → (%.2f, %.2f) hold=%lums", x, y, (unsigned long)hold);
+        return;
+    }
+
+    if (r < CURIOUS_FLASH_PROB + GLANCE_CENTER_PROB) {
+        /* Soft center: re-ancora no centro sem disparar glance */
+        gaze_service_set_target(0.0f, 0.0f);
+        ESP_LOGD(TAG, "soft center reset");
+        return;
+    }
+
+    /* Glance normal com possível double */
+    float x;
+    float y;
+    choose_glance_target(&x, &y);
+    uint32_t hold = rand_interval(GLANCE_HOLD_MIN_MS, GLANCE_HOLD_RANGE_MS);
+    gaze_service_glance(x, y, hold);
+
+    if (!s_double_glance_pending && rand01() < GLANCE_DOUBLE_PROB) {
+        /* Segundo glance ligeiramente deslocado, agendado após pequeno delay */
+        s_double_glance_x       = x * 0.6f + rand11() * GLANCE_LATERAL_X_RNG * 0.4f;
+        s_double_glance_y       = y * 0.5f;
+        s_double_glance_hold_ms = rand_interval(GLANCE_HOLD_MIN_MS, GLANCE_HOLD_RANGE_MS / 2U);
+        s_double_glance_ms      = rand_interval(GLANCE_DOUBLE_DELAY_MIN_MS, GLANCE_DOUBLE_DELAY_RANGE_MS);
+        s_double_glance_pending = true;
+        ESP_LOGD(TAG, "double glance agendado → (%.2f, %.2f)", s_double_glance_x, s_double_glance_y);
+    }
+
+    ESP_LOGD(TAG, "glance → (%.2f, %.2f) hold=%lums", x, y, (unsigned long)hold);
 }
 
 static void do_aversive_gaze(void)
@@ -120,16 +221,18 @@ static void do_aversive_gaze(void)
 
     float x = (cur_x >= 0.0f) ? -(0.45f + rand01() * 0.15f)
                                :  (0.45f + rand01() * 0.15f);
-    float y = rand11() * 0.20f;
+    float y = 0.0f;
     gaze_service_set_target(x, y);
     ESP_LOGD(TAG, "aversive gaze → (%.2f, %.2f)", x, y);
 }
 
 static void reset_timers_and_center(void)
 {
-    s_saccade_timer_ms  = saccade_interval();
-    s_aversive_timer_ms = rand_interval(AVERSIVE_MIN_MS, AVERSIVE_RANGE_MS);
-    s_yawn_timer_ms     = rand_interval(YAWN_MIN_MS,     YAWN_RANGE_MS);
+    s_saccade_timer_ms      = saccade_interval();
+    s_aversive_timer_ms     = rand_interval(AVERSIVE_MIN_MS, AVERSIVE_RANGE_MS);
+    s_yawn_timer_ms         = rand_interval(YAWN_MIN_MS,     YAWN_RANGE_MS);
+    s_double_glance_pending = false;
+    gaze_service_set_anchor(0.0f, 0.0f);
     gaze_service_set_target(0.0f, 0.0f);
 }
 
@@ -204,16 +307,32 @@ void idle_service_update(uint32_t dt_ms)
     /* Transição de entrada/saída de IDLE: reseta timer de solidão */
     if (is_idle != s_was_idle) {
         s_alone_timer_ms = 0;
+        if (is_idle) {
+            gaze_service_set_anchor(0.0f, 0.0f);
+            gaze_service_set_target(0.0f, 0.0f);
+            s_double_glance_pending = false;
+        }
     }
 
     s_was_active = true;
     s_was_idle   = is_idle;
     expression_service_set_breath_enabled(true);
 
-    /* ── Micro-saccade (IDLE e ATTENTIVE) ── */
+    /* ── Double glance pendente ── */
+    if (s_double_glance_pending) {
+        if (s_double_glance_ms <= dt_ms) {
+            gaze_service_glance(s_double_glance_x, s_double_glance_y, s_double_glance_hold_ms);
+            s_double_glance_pending = false;
+            ESP_LOGD(TAG, "double glance disparado → (%.2f, %.2f)", s_double_glance_x, s_double_glance_y);
+        } else {
+            s_double_glance_ms -= dt_ms;
+        }
+    }
+
+    /* ── Glance (IDLE e ATTENTIVE) ── */
     if (s_saccade_timer_ms <= dt_ms) {
-        do_micro_saccade();
-        s_saccade_timer_ms = rand_interval(SACCADE_MIN_MS, SACCADE_RANGE_MS);
+        do_glance();
+        s_saccade_timer_ms = saccade_interval();
     } else {
         s_saccade_timer_ms -= dt_ms;
     }
@@ -234,7 +353,9 @@ void idle_service_update(uint32_t dt_ms)
     /* ── Yawn (IDLE somente) ── */
     if (is_idle) {
         /* Nunca boceja durante música com ritmo detectado */
-        if (rhythm_service_is_locked()) {
+        if (!YAWN_ENABLED) {
+            s_yawn_timer_ms = rand_interval(YAWN_MIN_MS, YAWN_RANGE_MS);
+        } else if (rhythm_service_is_locked()) {
             s_yawn_timer_ms = rand_interval(YAWN_MIN_MS, YAWN_RANGE_MS);
         } else if (s_yawn_timer_ms <= dt_ms) {
             expression_play(NB_EXPR_SLEEPY, YAWN_DURATION_MS, YAWN_TRANS_MS);
@@ -267,12 +388,14 @@ void idle_service_update(uint32_t dt_ms)
         s_alone_timer_ms = 0;
     }
 
-    /* ── Expressões involuntárias (IDLE somente, 5% por janela) ── */
+    /* ── Expressões involuntárias (IDLE somente) ── */
     if (is_idle) {
         if (s_involuntary_ms <= dt_ms) {
             if (rand01() < INVOLUNTARY_PROB) {
                 nb_expression_t cur = emotion_model_get_expression();
-                if (cur == NB_EXPR_HAPPY) {
+                if (cur == NB_EXPR_NEUTRAL) {
+                    ESP_LOGD(TAG, "involuntary: neutral skipped");
+                } else if (cur == NB_EXPR_HAPPY) {
                     /* Piscar satisfeito: olho semicerrando brevemente */
                     expression_play(NB_EXPR_SLEEPY, 80.0f, 40.0f);
                     ESP_LOGD(TAG, "involuntary: satisfied blink");

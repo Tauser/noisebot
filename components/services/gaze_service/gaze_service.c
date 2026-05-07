@@ -3,15 +3,18 @@
  *
  * Registra um render layer (z=5) que roda antes do expression layer (z=10).
  * A cada frame (~33ms):
- *   1. Consome target pendente (se houver) → inicia fase rápida de saccade.
- *   2. Avança a máquina de estado do saccade (FAST → SETTLE → DRIFT).
+ *   1. Consome target/glance pendente (se houver) → inicia fase rápida.
+ *   2. Avança a máquina de estado:
+ *        set_target: FAST → SETTLE → DRIFT
+ *        glance:     FAST → SETTLE → HOLD → RETURN_FAST → RETURN_SETTLE → DRIFT
  *   3. Aplica micro-drift gaussiano low-pass no estado DRIFT.
  *   4. Chama expression_service_set_gaze() com a posição atual.
  *
  * Não desenha nada no canvas — o layer é usado apenas para timing 30fps.
  *
  * Thread safety:
- *   - gaze_service_set_target(): protegido por portMUX spinlock.
+ *   - gaze_service_set_target/glance(): protegidos por s_mux (portMUX spinlock).
+ *   - gaze_service_set_anchor(): protegido por s_anchor_mux.
  *   - s_cur_x/y, s_drift_x/y: escritos somente em render_task (Core 1);
  *     leituras de outros cores são best-effort (sem decisão crítica).
  */
@@ -30,36 +33,26 @@
 
 /* ── Parâmetros ──────────────────────────────────────────────────────────── */
 
-/** Duração da fase rápida do saccade (ms). */
-#define SACCADE_FAST_MS       60.0f
+#define SACCADE_FAST_MS      60.0f
+#define SACCADE_SETTLE_MS   150.0f
+#define SACCADE_OVERSHOOT     0.10f
 
-/** Duração da fase de settle (ms). */
-#define SACCADE_SETTLE_MS    150.0f
-
-/** Overshoot fracionário além do target (10%). */
-#define SACCADE_OVERSHOOT      0.10f
-
-/** Incremento máximo de micro-drift por frame (unidades normalizadas). */
-#define DRIFT_STEP            0.003f
-
-/** Raio máximo do micro-drift (mantido por atenção suave). */
-#define DRIFT_MAX_R           0.06f
-
-/** Coeficiente do filtro low-pass do drift (0=estático, 1=sem filtro). */
+#define DRIFT_STEP            0.0025f  /* drift visível sem empurrar aos cantos */
+#define DRIFT_MAX_R           0.060f   /* raio contido para manter centro visual */
 #define DRIFT_LP              0.18f
 
-/** Amplitude máxima do gaze (impede olhos saírem da tela). */
 #define GAZE_MAX              0.65f
-
-/** Duração de frame estimada em ms (30fps). */
 #define FRAME_MS              33.3f
 
 /* ── Fases do saccade ────────────────────────────────────────────────────── */
 
 typedef enum {
-    GAZE_DRIFT,   /* apenas micro-drift, sem saccade ativo */
-    GAZE_FAST,    /* fase rápida: current → target+overshoot */
-    GAZE_SETTLE,  /* fase de settle: overshoot → target      */
+    GAZE_DRIFT,          /* apenas micro-drift, sem saccade ativo       */
+    GAZE_FAST,           /* fase rápida: current → target+overshoot     */
+    GAZE_SETTLE,         /* fase de settle: overshoot → target          */
+    GAZE_HOLD,           /* segura no target (glance hold)              */
+    GAZE_RETURN_FAST,    /* fase rápida de retorno ao âncora            */
+    GAZE_RETURN_SETTLE,  /* fase de settle de retorno ao âncora         */
 } gaze_phase_t;
 
 /* ── Estado interno ──────────────────────────────────────────────────────── */
@@ -67,27 +60,35 @@ typedef enum {
 static float        s_cur_x      = 0.0f;
 static float        s_cur_y      = 0.0f;
 
-static float        s_tgt_x      = 0.0f;  /* target final do saccade     */
+static float        s_tgt_x      = 0.0f;
 static float        s_tgt_y      = 0.0f;
-
-static float        s_start_x    = 0.0f;  /* posição no início da fase   */
+static float        s_start_x    = 0.0f;
 static float        s_start_y    = 0.0f;
-
-static float        s_over_x     = 0.0f;  /* ponto de overshoot          */
+static float        s_over_x     = 0.0f;
 static float        s_over_y     = 0.0f;
 
-static float        s_phase_ms   = 0.0f;  /* tempo decorrido na fase     */
+static float        s_phase_ms   = 0.0f;
 static gaze_phase_t s_phase      = GAZE_DRIFT;
 
-/* Micro-drift acumulado (low-pass) */
 static float        s_drift_x    = 0.0f;
 static float        s_drift_y    = 0.0f;
 
-/* Target pendente (escrito de qualquer task, consumido no render Core 1) */
-static volatile bool s_new_target = false;
-static float         s_pending_x  = 0.0f;
-static float         s_pending_y  = 0.0f;
-static portMUX_TYPE  s_mux        = portMUX_INITIALIZER_UNLOCKED;
+/* Glance: hold e flag de retorno automático */
+static bool         s_is_glance         = false;
+static float        s_hold_remaining_ms = 0.0f;
+
+/* Âncora de retorno após glance (padrão centro) */
+static float        s_anchor_x   = 0.0f;
+static float        s_anchor_y   = 0.0f;
+static portMUX_TYPE s_anchor_mux = portMUX_INITIALIZER_UNLOCKED;
+
+/* Target/glance pendente (escrito de qualquer task, consumido no render Core 1) */
+static volatile bool s_new_target      = false;
+static float         s_pending_x       = 0.0f;
+static float         s_pending_y       = 0.0f;
+static bool          s_pending_glance  = false;
+static uint32_t      s_pending_hold_ms = 0;
+static portMUX_TYPE  s_mux             = portMUX_INITIALIZER_UNLOCKED;
 
 static bool s_initialized = false;
 
@@ -123,32 +124,34 @@ static void gaze_render_cb(nb_display_sprite_t canvas, void *ctx)
     (void)canvas;
     (void)ctx;
 
-    /* 1. Consumir target pendente */
+    /* 1. Consumir target/glance pendente */
     if (s_new_target) {
         taskENTER_CRITICAL(&s_mux);
-        float tx = s_pending_x;
-        float ty = s_pending_y;
+        float    tx      = s_pending_x;
+        float    ty      = s_pending_y;
+        bool     is_glnc = s_pending_glance;
+        float    hold_ms = (float)s_pending_hold_ms;
         s_new_target = false;
         taskEXIT_CRITICAL(&s_mux);
 
-        /* Calcular overshoot na direção do movimento */
         float dx = tx - s_cur_x;
         float dy = ty - s_cur_y;
         s_over_x = clampf(tx + dx * SACCADE_OVERSHOOT, -GAZE_MAX, GAZE_MAX);
         s_over_y = clampf(ty + dy * SACCADE_OVERSHOOT, -GAZE_MAX, GAZE_MAX);
 
-        s_tgt_x   = tx;
-        s_tgt_y   = ty;
-        s_start_x = s_cur_x;
-        s_start_y = s_cur_y;
-        s_phase   = GAZE_FAST;
+        s_tgt_x    = tx;
+        s_tgt_y    = ty;
+        s_start_x  = s_cur_x;
+        s_start_y  = s_cur_y;
+        s_phase    = GAZE_FAST;
         s_phase_ms = 0.0f;
 
-        /* Zera drift ao iniciar saccade. Com GAZE_X_TRAVEL_PX grande (≥ 30px),
-         * qualquer carry-through amplifica o offset e empurra os olhos para
-         * as bordas. Drift recomeça do centro do novo target. */
+        /* Zera drift ao iniciar saccade — evita carry-through nas bordas */
         s_drift_x = 0.0f;
         s_drift_y = 0.0f;
+
+        s_is_glance         = is_glnc;
+        s_hold_remaining_ms = hold_ms;
     }
 
     /* 2. Avançar fase */
@@ -163,7 +166,6 @@ static void gaze_render_cb(nb_display_sprite_t canvas, void *ctx)
             float t = s_phase_ms / fast_ms;
             if (t >= 1.0f) {
                 t = 1.0f;
-                /* Inicia settle a partir do overshoot */
                 s_start_x  = s_over_x;
                 s_start_y  = s_over_y;
                 s_phase    = GAZE_SETTLE;
@@ -178,7 +180,66 @@ static void gaze_render_cb(nb_display_sprite_t canvas, void *ctx)
             float t = ease_out(s_phase_ms / SACCADE_SETTLE_MS);
             if (t >= 1.0f) {
                 t = 1.0f;
-                s_phase = GAZE_DRIFT;
+                /* Glance → aguarda hold; set_target → deriva normalmente */
+                s_phase    = s_is_glance ? GAZE_HOLD : GAZE_DRIFT;
+                s_phase_ms = 0.0f;
+            }
+            s_cur_x = lerpf(s_start_x, s_tgt_x, t);
+            s_cur_y = lerpf(s_start_y, s_tgt_y, t);
+            break;
+        }
+
+        case GAZE_HOLD: {
+            /* Olhos parados no target durante o hold */
+            s_cur_x = s_tgt_x;
+            s_cur_y = s_tgt_y;
+            if (s_hold_remaining_ms <= FRAME_MS) {
+                /* Hold expirado — inicia saccade de retorno ao âncora */
+                taskENTER_CRITICAL(&s_anchor_mux);
+                float ax = s_anchor_x;
+                float ay = s_anchor_y;
+                taskEXIT_CRITICAL(&s_anchor_mux);
+
+                float dx = ax - s_cur_x;
+                float dy = ay - s_cur_y;
+                s_over_x = clampf(ax + dx * SACCADE_OVERSHOOT, -GAZE_MAX, GAZE_MAX);
+                s_over_y = clampf(ay + dy * SACCADE_OVERSHOOT, -GAZE_MAX, GAZE_MAX);
+                s_tgt_x    = ax;
+                s_tgt_y    = ay;
+                s_start_x  = s_cur_x;
+                s_start_y  = s_cur_y;
+                s_phase    = GAZE_RETURN_FAST;
+                s_phase_ms = 0.0f;
+                s_drift_x  = 0.0f;
+                s_drift_y  = 0.0f;
+            } else {
+                s_hold_remaining_ms -= FRAME_MS;
+            }
+            break;
+        }
+
+        case GAZE_RETURN_FAST: {
+            float attn    = attention_service_get_level();
+            float fast_ms = SACCADE_FAST_MS * (1.5f - attn);
+            float t = s_phase_ms / fast_ms;
+            if (t >= 1.0f) {
+                t = 1.0f;
+                s_start_x  = s_over_x;
+                s_start_y  = s_over_y;
+                s_phase    = GAZE_RETURN_SETTLE;
+                s_phase_ms = 0.0f;
+            }
+            s_cur_x = lerpf(s_start_x, s_over_x, t);
+            s_cur_y = lerpf(s_start_y, s_over_y, t);
+            break;
+        }
+
+        case GAZE_RETURN_SETTLE: {
+            float t = ease_out(s_phase_ms / SACCADE_SETTLE_MS);
+            if (t >= 1.0f) {
+                t = 1.0f;
+                s_phase     = GAZE_DRIFT;
+                s_is_glance = false;
             }
             s_cur_x = lerpf(s_start_x, s_tgt_x, t);
             s_cur_y = lerpf(s_start_y, s_tgt_y, t);
@@ -233,10 +294,30 @@ esp_err_t gaze_service_init(void)
 void gaze_service_set_target(float x, float y)
 {
     taskENTER_CRITICAL(&s_mux);
-    s_pending_x  = clampf(x, -GAZE_MAX, GAZE_MAX);
-    s_pending_y  = clampf(y, -GAZE_MAX, GAZE_MAX);
-    s_new_target = true;
+    s_pending_x      = clampf(x, -GAZE_MAX, GAZE_MAX);
+    s_pending_y      = clampf(y, -GAZE_MAX, GAZE_MAX);
+    s_pending_glance = false;
+    s_new_target     = true;
     taskEXIT_CRITICAL(&s_mux);
+}
+
+void gaze_service_glance(float x, float y, uint32_t hold_ms)
+{
+    taskENTER_CRITICAL(&s_mux);
+    s_pending_x       = clampf(x, -GAZE_MAX, GAZE_MAX);
+    s_pending_y       = clampf(y, -GAZE_MAX, GAZE_MAX);
+    s_pending_glance  = true;
+    s_pending_hold_ms = hold_ms;
+    s_new_target      = true;
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+void gaze_service_set_anchor(float x, float y)
+{
+    taskENTER_CRITICAL(&s_anchor_mux);
+    s_anchor_x = clampf(x, -GAZE_MAX, GAZE_MAX);
+    s_anchor_y = clampf(y, -GAZE_MAX, GAZE_MAX);
+    taskEXIT_CRITICAL(&s_anchor_mux);
 }
 
 void gaze_service_get_current(float *x, float *y)
