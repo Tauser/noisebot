@@ -58,11 +58,10 @@
 #define GLANCE_LATERAL_PROB   0.88f
 #define GLANCE_VERTICAL_PROB  0.12f
 
-#define GLANCE_LATERAL_X_MIN  0.14f
-#define GLANCE_LATERAL_X_RNG  0.22f
-#define GLANCE_VERTICAL_X_MAX 0.03f
-#define GLANCE_VERTICAL_Y_MIN 0.035f
-#define GLANCE_VERTICAL_Y_RNG 0.035f
+#define GLANCE_LATERAL_X_MIN  0.22f   /* start mais decisivo (era 0.14) */
+#define GLANCE_LATERAL_X_RNG  0.16f   /* range 0.22–0.38, longe dos cantos */
+#define GLANCE_VERTICAL_Y_MIN 0.09f   /* visível: 0.09×32px = 2.9px (era 0.035) */
+#define GLANCE_VERTICAL_Y_RNG 0.06f   /* range 0.09–0.15 */
 
 /** Tempo de hold antes de retornar ao âncora (ms). */
 #define GLANCE_HOLD_MIN_MS      90U
@@ -161,7 +160,7 @@ static void choose_glance_target(float *x, float *y)
     }
 
     if (kind < GLANCE_LATERAL_PROB + GLANCE_VERTICAL_PROB) {
-        *x = rand11() * GLANCE_VERTICAL_X_MAX;
+        *x = 0.0f;   /* cardinal puro — sem componente diagonal */
         *y = rand_sign() * (GLANCE_VERTICAL_Y_MIN + rand01() * GLANCE_VERTICAL_Y_RNG);
         return;
     }
@@ -201,9 +200,16 @@ static void do_glance(void)
     gaze_service_glance(x, y, hold);
 
     if (!s_double_glance_pending && rand01() < GLANCE_DOUBLE_PROB) {
-        /* Segundo glance ligeiramente deslocado, agendado após pequeno delay */
-        s_double_glance_x       = x * 0.6f + rand11() * GLANCE_LATERAL_X_RNG * 0.4f;
-        s_double_glance_y       = y * 0.5f;
+        /* Segundo glance mantém direção cardinal do primeiro — sem introduzir diagonal. */
+        if (y != 0.0f) {
+            /* Vertical: x permanece 0, y ligeiramente diferente */
+            s_double_glance_x = 0.0f;
+            s_double_glance_y = y * (0.55f + rand01() * 0.35f);
+        } else {
+            /* Lateral: x muda levemente, y permanece 0 */
+            s_double_glance_x = x * 0.6f + rand_sign() * rand01() * GLANCE_LATERAL_X_RNG * 0.25f;
+            s_double_glance_y = 0.0f;
+        }
         s_double_glance_hold_ms = rand_interval(GLANCE_HOLD_MIN_MS, GLANCE_HOLD_RANGE_MS / 2U);
         s_double_glance_ms      = rand_interval(GLANCE_DOUBLE_DELAY_MIN_MS, GLANCE_DOUBLE_DELAY_RANGE_MS);
         s_double_glance_pending = true;
