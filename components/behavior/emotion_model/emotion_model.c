@@ -62,6 +62,7 @@ static const nb_emotion_anchor_t k_anchors[NB_EXPR_COUNT] = {
     [NB_EXPR_SURPRISED ] = {  0.2f,  0.9f, NB_EXPR_SURPRISED  },
     [NB_EXPR_SAD       ] = { -0.6f, -0.4f, NB_EXPR_SAD        },
     [NB_EXPR_ALARMED   ] = { -0.5f,  0.8f, NB_EXPR_ALARMED    },
+    [NB_EXPR_ANGRY     ] = { -0.85f, 0.55f, NB_EXPR_ANGRY     },
 };
 
 /* ── Deltas por evento ───────────────────────────────────────────────────── */

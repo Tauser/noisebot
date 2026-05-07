@@ -64,6 +64,14 @@ static constexpr float MAX_CURVE_PX   = 10.0f;   /* pixels de curvatura máx */
 static constexpr float GAZE_X_TRAVEL_PX = 14.0f; /* pixels de gaze horizontal */
 static constexpr float GAZE_Y_MAX        = 0.18f; /* mantém gaze perto do centro */
 
+/* Perspectiva lateral: olho do lado do gaze estreita levemente.
+ * PERSP_OPEN_FACTOR: redução relativa de open (14% no gaze máximo).
+ * PERSP_SQUINT_ADD:  squint adicionado ao olho near (8% no gaze máximo).
+ * GAZE_X_MAX:        range máximo de gaze_x (igual a GAZE_MAX em gaze_service). */
+static constexpr float GAZE_PERSP_OPEN_FACTOR = 0.14f;
+static constexpr float GAZE_PERSP_SQUINT_ADD  = 0.08f;
+static constexpr float GAZE_X_MAX             = 0.65f;
+
 /* ── Blink ───────────────────────────────────────────────────────────────── */
 
 static constexpr float   BLINK_MEAN_MS  = 4200.0f;
@@ -166,6 +174,7 @@ static float              s_play_elapsed_ms    = 0.0f;  /* elapsed em HOLD   */
 static float              s_play_dur_ms        = 0.0f;  /* duração do play   */
 static float              s_play_tr_ms         = 0.0f;  /* duração trans     */
 static float              s_play_ret_ms        = 0.0f;  /* elapsed em OUT    */
+static nb_expression_t    s_active_expr        = NB_EXPR_NEUTRAL;
 
 /* Dois olhos independentes para blink assimétrico */
 static nb_blink_eye_t     s_blink[2]          = {};
@@ -199,11 +208,15 @@ static blush_overlay_t    s_blush_overlay      = {};
 static heart_overlay_t    s_heart_overlay      = {};
 static volatile bool      s_breath_enabled     = false;
 static volatile bool      s_blink_enabled      = true;
+static volatile bool      s_sleep_anim_enabled = false;
 static bool               s_blink_prev_enabled = true;
+static int64_t            s_sleep_anim_start_us = 0;
 
-static constexpr float BREATH_PERIOD_MS = 5200.0f;
-static constexpr float BREATH_AMP       = 0.045f;
-static constexpr float NB_PI_F          = 3.14159265358979323846f;
+static constexpr float BREATH_PERIOD_MS       = 5200.0f;
+static constexpr float BREATH_AMP             = 0.045f;
+static constexpr float SLEEP_EYE_PERIOD_MS    = 6200.0f;   /* respiração calma dos olhos */
+static constexpr float SLEEP_BUBBLE_PERIOD_MS = 4200.0f;   /* ciclo da bolha de sono */
+static constexpr float NB_PI_F                = 3.14159265358979323846f;
 
 /* ── 6 Expressões base ───────────────────────────────────────────────────── */
 /*
@@ -274,16 +287,18 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
 
     /* SLEEPY — abertura baixa, squint pesado, olhos levemente descidos */
     {
-        .tl_l=0.16f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
-        .tl_r=0.00f,.tr_r=0.16f,.bl_r=0.00f,.br_r=0.00f,
-        .open_l=0.10f, .open_r=0.10f,
+        .tl_l=0.00f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
+        .tl_r=0.00f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
+        .open_l=0.14f, .open_r=0.14f,
         .y_l=1.00f,    .y_r=1.00f,
         .x_off=0.00f,
-        .rt_top=0.28f, .rb_bot=0.28f,
-        .cv_top=0.43f, .cv_bot=-0.25f,
+        .rt_top=0.16f, .rb_bot=1.00f,
+        .cv_top=-0.60f, .cv_bot=0.53f,
         .color=TFT_WHITE,
         .squint_l=0.51f, .squint_r=0.51f,
     },
+
+
 
 
     /* FOCUSED — cantos internos do topo descidos, squint leve: olhar concentrado */
@@ -363,6 +378,27 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
         .color=TFT_WHITE,
         .squint_l=0.00f, .squint_r=0.00f,
     },
+
+    /* ANGRY — V agressivo exagerado, olhos estreitados, brow pesada */
+    /*
+     * tr_l / tl_r = 0.80 → cantos internos do topo muito fechados (V extremo)
+     * open 0.45            = olhos bem estreitados (mais que SUSPICIOUS=0.60)
+     * squint 0.52          = pálpebra pesando sobre o olho
+     * y=0.15               = olhos levemente descidos (brow pressionando)
+     * cv_top=-0.28         = borda superior côncava = peso da sobrancelha
+     * x_off=0.06           = leve convergência (foco hostil)
+     */
+    {
+        .tl_l=0.00f,.tr_l=0.80f,.bl_l=0.00f,.br_l=0.00f,
+        .tl_r=0.80f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
+        .open_l=0.45f, .open_r=0.45f,
+        .y_l=0.15f,    .y_r=0.15f,
+        .x_off=0.06f,
+        .rt_top=0.15f, .rb_bot=0.25f,
+        .cv_top=-0.28f,.cv_bot=0.05f,
+        .color=TFT_WHITE,
+        .squint_l=0.52f, .squint_r=0.52f,
+    },
 };
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
@@ -403,6 +439,33 @@ static inline uint32_t blend_with_black(uint32_t color, float alpha)
     uint8_t g = (uint8_t)((float)((color >> 8)  & 0xFFu) * alpha);
     uint8_t b = (uint8_t)((float)(color          & 0xFFu) * alpha);
     return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+}
+
+static inline uint32_t blend_color_over_rgb565(uint16_t src, uint32_t color, float alpha)
+{
+    if (alpha < 0.0f) alpha = 0.0f;
+    if (alpha > 1.0f) alpha = 1.0f;
+
+    uint8_t r = (uint8_t)((((uint32_t)(src >> 11) & 0x1Fu) * 255u) / 31u);
+    uint8_t g = (uint8_t)((((uint32_t)(src >> 5)  & 0x3Fu) * 255u) / 63u);
+    uint8_t b = (uint8_t)(( ((uint32_t)src        & 0x1Fu) * 255u) / 31u);
+
+    float cr = (float)((color >> 16) & 0xFFu);
+    float cg = (float)((color >> 8)  & 0xFFu);
+    float cb = (float)( color        & 0xFFu);
+
+    r = (uint8_t)((float)r + (cr - (float)r) * alpha);
+    g = (uint8_t)((float)g + (cg - (float)g) * alpha);
+    b = (uint8_t)((float)b + (cb - (float)b) * alpha);
+    return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+}
+
+static inline void draw_color_alpha_pixel(LGFX_Sprite *spr,
+                                          int16_t x, int16_t y,
+                                          uint32_t color, float alpha)
+{
+    if (alpha <= 0.0f) return;
+    spr->drawPixel(x, y, blend_color_over_rgb565(spr->readPixel(x, y), color, alpha));
 }
 
 static inline float overlay_alpha(int64_t now_us, int64_t start_us, uint32_t duration_ms)
@@ -469,6 +532,271 @@ static void draw_heart_overlay(LGFX_Sprite *spr, int64_t now_us)
     spr->fillTriangle(cx - (r * 2), cy + 1,
                       cx + (r * 2), cy + 1,
                       cx,           cy + (r * 3), color);
+}
+
+static inline float smoothstep01(float v)
+{
+    if (v < 0.0f) v = 0.0f;
+    if (v > 1.0f) v = 1.0f;
+    return v * v * (3.0f - 2.0f * v);
+}
+
+static inline int16_t bubble_point_x(float anchor_x, float px, float scale)
+{
+    return (int16_t)(anchor_x + px * scale + (px >= 0.0f ? 0.5f : -0.5f));
+}
+
+static inline int16_t bubble_point_y(float anchor_y, float py, float scale)
+{
+    return (int16_t)(anchor_y + py * scale + (py >= 0.0f ? 0.5f : -0.5f));
+}
+
+typedef struct {
+    int16_t x;
+    int16_t y;
+} bubble_px_t;
+
+static int append_bubble_cubic_points(bubble_px_t *pts, int count, int max_count,
+                                      float anchor_x, float anchor_y, float scale,
+                                      float x0, float y0,
+                                      float x1, float y1,
+                                      float x2, float y2,
+                                      float x3, float y3,
+                                      bool include_start)
+{
+    if (include_start && count < max_count) {
+        pts[count].x = bubble_point_x(anchor_x, x0, scale);
+        pts[count].y = bubble_point_y(anchor_y, y0, scale);
+        count++;
+    }
+
+    for (int i = 1; i <= 14 && count < max_count; ++i) {
+        float t = (float)i / 14.0f;
+        float u = 1.0f - t;
+        float x = u * u * u * x0
+                + 3.0f * u * u * t * x1
+                + 3.0f * u * t * t * x2
+                + t * t * t * x3;
+        float y = u * u * u * y0
+                + 3.0f * u * u * t * y1
+                + 3.0f * u * t * t * y2
+                + t * t * t * y3;
+        pts[count].x = bubble_point_x(anchor_x, x, scale);
+        pts[count].y = bubble_point_y(anchor_y, y, scale);
+        count++;
+    }
+    return count;
+}
+
+static int build_sleep_bubble_points(bubble_px_t *pts, int max_count,
+                                     float anchor_x, float anchor_y, float scale)
+{
+    int count = 0;
+
+    count = append_bubble_cubic_points(pts, count, max_count, anchor_x, anchor_y, scale,
+                                       0.0f, 0.0f, -8.0f, -1.0f, -14.0f, -2.0f, -20.0f, -6.0f,
+                                       true);
+    count = append_bubble_cubic_points(pts, count, max_count, anchor_x, anchor_y, scale,
+                                       -20.0f, -6.0f, -35.0f, -18.0f, -34.0f, -46.0f, -12.0f, -57.0f,
+                                       false);
+    count = append_bubble_cubic_points(pts, count, max_count, anchor_x, anchor_y, scale,
+                                       -12.0f, -57.0f, 11.0f, -69.0f, 30.0f, -52.0f, 29.0f, -29.0f,
+                                       false);
+    count = append_bubble_cubic_points(pts, count, max_count, anchor_x, anchor_y, scale,
+                                       29.0f, -29.0f, 28.0f, -14.0f, 16.0f, -5.0f, 4.0f, -1.0f,
+                                       false);
+    count = append_bubble_cubic_points(pts, count, max_count, anchor_x, anchor_y, scale,
+                                       4.0f, -1.0f, 3.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+                                       false);
+
+    return count;
+}
+
+static void draw_bubble_cubic(LGFX_Sprite *spr,
+                              float anchor_x, float anchor_y, float scale,
+                              float x0, float y0,
+                              float x1, float y1,
+                              float x2, float y2,
+                              float x3, float y3,
+                              uint32_t color)
+{
+    int16_t prev_x = bubble_point_x(anchor_x, x0, scale);
+    int16_t prev_y = bubble_point_y(anchor_y, y0, scale);
+
+    for (int i = 1; i <= 14; ++i) {
+        float t = (float)i / 14.0f;
+        float u = 1.0f - t;
+        float x = u * u * u * x0
+                + 3.0f * u * u * t * x1
+                + 3.0f * u * t * t * x2
+                + t * t * t * x3;
+        float y = u * u * u * y0
+                + 3.0f * u * u * t * y1
+                + 3.0f * u * t * t * y2
+                + t * t * t * y3;
+        int16_t next_x = bubble_point_x(anchor_x, x, scale);
+        int16_t next_y = bubble_point_y(anchor_y, y, scale);
+        spr->drawLine(prev_x, prev_y, next_x, next_y, color);
+        prev_x = next_x;
+        prev_y = next_y;
+    }
+}
+
+static void draw_bubble_cubic_thick(LGFX_Sprite *spr,
+                                    float anchor_x, float anchor_y, float scale,
+                                    float x0, float y0,
+                                    float x1, float y1,
+                                    float x2, float y2,
+                                    float x3, float y3,
+                                    uint32_t color)
+{
+    for (int16_t dy = -1; dy <= 1; ++dy) {
+        draw_bubble_cubic(spr, anchor_x, anchor_y + (float)dy, scale,
+                          x0, y0, x1, y1, x2, y2, x3, y3, color);
+    }
+}
+
+static void draw_anger_mark(LGFX_Sprite *spr)
+{
+    const float anchor_x = 242.0f;
+    const float anchor_y = 78.0f;
+    const float scale    = 1.0f;
+    const uint32_t red   = 0xFF5C66u;
+    const uint32_t soft  = blend_with_black(red, 0.55f);
+
+    /* Marca de raiva estilo manga: quatro traços curvos acima do olho direito. */
+    draw_bubble_cubic_thick(spr, anchor_x, anchor_y, scale,
+                            -22.0f, -17.0f, -12.0f, -14.0f, -11.0f, -2.0f, -20.0f, 4.0f,
+                            red);
+    draw_bubble_cubic_thick(spr, anchor_x, anchor_y, scale,
+                            7.0f, -17.0f, 0.0f, -10.0f, 2.0f, 0.0f, 14.0f, 2.0f,
+                            red);
+    draw_bubble_cubic_thick(spr, anchor_x, anchor_y, scale,
+                            -4.0f, 15.0f, -1.0f, 7.0f, 5.0f, 7.0f, 11.0f, 15.0f,
+                            red);
+    draw_bubble_cubic(spr, anchor_x + 1.0f, anchor_y + 1.0f, scale,
+                      -22.0f, -17.0f, -12.0f, -14.0f, -11.0f, -2.0f, -20.0f, 4.0f,
+                      soft);
+    draw_bubble_cubic(spr, anchor_x + 1.0f, anchor_y + 1.0f, scale,
+                      7.0f, -17.0f, 0.0f, -10.0f, 2.0f, 0.0f, 14.0f, 2.0f,
+                      soft);
+    draw_bubble_cubic(spr, anchor_x + 1.0f, anchor_y + 1.0f, scale,
+                      -4.0f, 15.0f, -1.0f, 7.0f, 5.0f, 7.0f, 11.0f, 15.0f,
+                      soft);
+}
+
+static void draw_sleep_bubble_outline(LGFX_Sprite *spr,
+                                      float anchor_x, float anchor_y,
+                                      float scale, uint32_t color)
+{
+    /* Formato aproximado do EMO: base estreita presa ao olho esquerdo,
+     * corpo alto/arredondado e topo levemente assimétrico. */
+    draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
+                      0.0f, 0.0f, -8.0f, -1.0f, -14.0f, -2.0f, -20.0f, -6.0f,
+                      color);
+    draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
+                      -20.0f, -6.0f, -35.0f, -18.0f, -34.0f, -46.0f, -12.0f, -57.0f,
+                      color);
+    draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
+                      -12.0f, -57.0f, 11.0f, -69.0f, 30.0f, -52.0f, 29.0f, -29.0f,
+                      color);
+    draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
+                      29.0f, -29.0f, 28.0f, -14.0f, 16.0f, -5.0f, 4.0f, -1.0f,
+                      color);
+    draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
+                      4.0f, -1.0f, 3.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+                      color);
+}
+
+static void fill_sleep_bubble_body(LGFX_Sprite *spr,
+                                   float anchor_x, float anchor_y,
+                                   float scale, uint32_t color, float alpha)
+{
+    if (alpha <= 0.0f || scale <= 0.0f) return;
+
+    bubble_px_t pts[80];
+    int count = build_sleep_bubble_points(pts, 80, anchor_x, anchor_y, scale);
+    if (count < 3) return;
+
+    int16_t min_y = pts[0].y;
+    int16_t max_y = pts[0].y;
+    for (int i = 1; i < count; ++i) {
+        if (pts[i].y < min_y) min_y = pts[i].y;
+        if (pts[i].y > max_y) max_y = pts[i].y;
+    }
+
+    for (int16_t y = min_y; y <= max_y; ++y) {
+        int16_t xs[12];
+        int n = 0;
+
+        for (int i = 0, j = count - 1; i < count; j = i++) {
+            int16_t y0 = pts[j].y;
+            int16_t y1 = pts[i].y;
+            int16_t x0 = pts[j].x;
+            int16_t x1 = pts[i].x;
+
+            if (((y0 <= y) && (y1 > y)) || ((y1 <= y) && (y0 > y))) {
+                float t = (float)(y - y0) / (float)(y1 - y0);
+                float xf = (float)x0 + ((float)x1 - (float)x0) * t;
+                if (n < 12) {
+                    xs[n++] = (int16_t)(xf + (xf >= 0.0f ? 0.5f : -0.5f));
+                }
+            }
+        }
+
+        for (int i = 1; i < n; ++i) {
+            int16_t v = xs[i];
+            int j = i - 1;
+            while (j >= 0 && xs[j] > v) {
+                xs[j + 1] = xs[j];
+                j--;
+            }
+            xs[j + 1] = v;
+        }
+
+        for (int i = 0; i + 1 < n; i += 2) {
+            for (int16_t x = xs[i]; x <= xs[i + 1]; ++x) {
+                draw_color_alpha_pixel(spr, x, y, color, alpha);
+            }
+        }
+    }
+}
+
+static void draw_sleep_bubble(LGFX_Sprite *spr, int64_t now_us)
+{
+    int64_t period_us = (int64_t)(SLEEP_BUBBLE_PERIOD_MS * 1000.0f);
+    int64_t elapsed_us = now_us - s_sleep_anim_start_us;
+    if (elapsed_us < 0) {
+        elapsed_us = 0;
+    }
+    float phase = (float)(elapsed_us % period_us) / (float)period_us;
+    const uint32_t cyan = 0x18E8FFu;
+
+    /* No video do EMO a bolha infla, encolhe até sumir e faz uma pausa limpa. */
+    if (phase >= 0.74f) return;
+
+    float t = phase / 0.74f;
+    float bubble = (t < 0.34f)
+                 ? smoothstep01(t / 0.34f)
+                 : 1.0f - smoothstep01((t - 0.34f) / 0.66f);
+    float alpha = bubble * 0.90f;
+
+    if (alpha <= 0.035f) return;
+
+    float scale = 0.16f + bubble * 0.84f;
+    float wobble = sinf(t * 2.0f * NB_PI_F);
+    float anchor_x = 143.0f + wobble * 2.2f;
+    float anchor_y = 132.0f + sinf(t * 4.0f * NB_PI_F + 0.7f) * 1.0f;
+
+    fill_sleep_bubble_body(spr, anchor_x, anchor_y, scale, cyan, alpha * 0.18f);
+
+    uint32_t edge = blend_with_black(cyan, alpha * 0.92f);
+    uint32_t soft = blend_with_black(cyan, alpha * 0.34f);
+
+    draw_sleep_bubble_outline(spr, anchor_x, anchor_y, scale, edge);
+    if (scale > 0.48f) {
+        draw_sleep_bubble_outline(spr, anchor_x + 1.0f, anchor_y, scale, soft);
+    }
 }
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
@@ -752,6 +1080,7 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
                 s_trans_elapsed_ms   = 0.0f;
                 s_new_target_pending = false;
                 s_play_state         = PLAY_STATE_IDLE;   /* cancela play ativo */
+                s_active_expr        = s_base_expr;
                 target_changed       = true;
             }
             xSemaphoreGive(s_set_mutex);
@@ -782,6 +1111,7 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
                     s_play_elapsed_ms  = 0.0f;
                     s_play_dur_ms      = item.duration_ms;
                     s_play_tr_ms       = item.trans_ms;
+                    s_active_expr      = item.expr;
                 }
                 break;
             }
@@ -796,6 +1126,7 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
                     s_trans_elapsed_ms = 0.0f;
                     s_play_state       = PLAY_STATE_OUT;
                     s_play_ret_ms      = 0.0f;
+                    s_active_expr      = s_base_expr;
                 }
                 break;
 
@@ -822,6 +1153,7 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
     blink_update(now_us);
 
     nb_face_state_t face = s_current;
+    bool sleep_anim = s_sleep_anim_enabled;
     if (s_breath_enabled) {
         float t_ms = (float)(now_us % (int64_t)(BREATH_PERIOD_MS * 1000.0f)) / 1000.0f;
         float breath = sinf((t_ms / BREATH_PERIOD_MS) * 2.0f * NB_PI_F);
@@ -834,9 +1166,37 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
         if (face.open_r > 1.5f) face.open_r = 1.5f;
     }
 
+    float sleep_wave = 0.0f;
+    if (sleep_anim) {
+        int64_t period_us = (int64_t)(SLEEP_EYE_PERIOD_MS * 1000.0f);
+        int64_t elapsed_us = now_us - s_sleep_anim_start_us;
+        if (elapsed_us < 0) {
+            elapsed_us = 0;
+        }
+        float phase = (float)(elapsed_us % period_us) / (float)period_us;
+        float inhale = 0.5f - 0.5f * cosf(phase * 2.0f * NB_PI_F);
+        sleep_wave = sinf(phase * 2.0f * NB_PI_F);
+
+        /* Abertura: exala quase fechado, inala levemente aberto.
+         * Squint zerado aqui — sem ele a variação de open é visível;
+         * com squint=0.51 do SLEEPY a variação some em < 1px. */
+        face.open_l   = 0.060f + inhale * 0.055f;
+        face.open_r   = face.open_l;
+        face.squint_l = 0.0f;
+        face.squint_r = 0.0f;
+        /* Cantos superiores do SLEEPY zerados: visual limpo, tipo balão. */
+        face.tl_l     = 0.0f;
+        face.tr_r     = 0.0f;
+        /* Leve subida dos olhos na inalação (flutuar) */
+        face.y_l      = sleep_wave * 0.014f;
+        face.y_r      = face.y_l;
+        face.x_off    = 0.0f;
+    }
+
     /* Centros X dos olhos com x_off (convergência) e gaze_x (translation) aplicados */
-    float   gx        = s_gaze_x;
-    float   gy        = damp_vertical_for_lateral_gaze(gx, clamp_abs(s_gaze_y, GAZE_Y_MAX));
+    float   gx        = sleep_anim ? 0.0f : s_gaze_x;
+    float   gy        = sleep_anim ? 0.0f
+                                   : damp_vertical_for_lateral_gaze(gx, clamp_abs(s_gaze_y, GAZE_Y_MAX));
     int16_t gaze_shift = (int16_t)(gx * GAZE_X_TRAVEL_PX + (gx >= 0.0f ? 0.5f : -0.5f));
     int16_t left_cx   = BASE_L_CX
                       + (int16_t)(face.x_off * X_OFF_TRAVEL + 0.5f)
@@ -845,9 +1205,24 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
                       - (int16_t)(face.x_off * X_OFF_TRAVEL + 0.5f)
                       + gaze_shift;
 
-    /* Offsets Y combinados com gaze_y */
+    /* Offsets Y combinados com gaze_y.
+     * Em sleep_anim, face.y_l/y_r já contêm o valor animado e gy=0. */
     float y_l = clamp_abs(face.y_l + gy, GAZE_Y_MAX);
     float y_r = clamp_abs(face.y_r + gy, GAZE_Y_MAX);
+
+    /* Perspectiva lateral: olho do lado do gaze estreita levemente.
+     * Ativo só em non-sleep e acima de threshold mínimo de gaze.
+     * Efeito: open × (1 - persp × FACTOR) + squint aumenta levemente. */
+    if (!sleep_anim && fabsf(gx) > 0.04f) {
+        float persp = clamp01((fabsf(gx) - 0.04f) / (GAZE_X_MAX - 0.04f));
+        if (gx < 0.0f) {
+            face.open_l   *= (1.0f - persp * GAZE_PERSP_OPEN_FACTOR);
+            face.squint_l  = clamp01(face.squint_l + persp * GAZE_PERSP_SQUINT_ADD);
+        } else {
+            face.open_r   *= (1.0f - persp * GAZE_PERSP_OPEN_FACTOR);
+            face.squint_r  = clamp01(face.squint_r + persp * GAZE_PERSP_SQUINT_ADD);
+        }
+    }
 
     /* Canvas já limpo em TFT_BLACK pelo render_service */
 
@@ -899,6 +1274,14 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
 
     draw_blush_overlay(spr, now_us);
     draw_heart_overlay(spr, now_us);
+    if (!sleep_anim && (s_active_expr == NB_EXPR_SUSPICIOUS ||
+                        s_active_expr == NB_EXPR_ALARMED ||
+                        s_active_expr == NB_EXPR_ANGRY)) {
+        draw_anger_mark(spr);
+    }
+    if (sleep_anim) {
+        draw_sleep_bubble(spr, now_us);
+    }
 
     /* Declara região suja. Rect conservador cobre todos os pixels possíveis
      * dos olhos (gaze shift, x_off, blink bar). Ser fixo garante que pixels
@@ -929,6 +1312,7 @@ esp_err_t expression_service_init(void)
     s_current          = NB_EXPRESSIONS[NB_EXPR_NEUTRAL];
     s_target           = NB_EXPRESSIONS[NB_EXPR_NEUTRAL];
     s_from             = NB_EXPRESSIONS[NB_EXPR_NEUTRAL];
+    s_active_expr      = NB_EXPR_NEUTRAL;
     s_trans_total_ms   = 0.0f;
     s_trans_elapsed_ms = 0.0f;
 
@@ -1075,6 +1459,14 @@ void expression_service_set_breath_enabled(bool enabled)
 void expression_service_set_blink_enabled(bool enabled)
 {
     s_blink_enabled = enabled;
+}
+
+void expression_service_set_sleep_anim_enabled(bool enabled)
+{
+    if (enabled && !s_sleep_anim_enabled) {
+        s_sleep_anim_start_us = esp_timer_get_time();
+    }
+    s_sleep_anim_enabled = enabled;
 }
 
 } /* extern "C" */

@@ -95,7 +95,8 @@ typedef enum {
     NB_EXPR_SURPRISED  = 6,
     NB_EXPR_SAD        = 7,
     NB_EXPR_ALARMED    = 8,
-    NB_EXPR_COUNT      = 9,
+    NB_EXPR_ANGRY      = 9,
+    NB_EXPR_COUNT      = 10,
 } nb_expression_t;
 
 /** Tabela das expressões base (somente leitura). */
@@ -119,7 +120,7 @@ esp_err_t expression_service_init(void);
  * Interpola linearmente do estado atual para o estado alvo ao longo de
  * transition_ms milissegundos. Thread-safe.
  *
- * @param expr          Expressão alvo (NB_EXPR_NEUTRAL … NB_EXPR_ALARMED).
+ * @param expr          Expressão alvo (NB_EXPR_NEUTRAL … NB_EXPR_ANGRY).
  * @param transition_ms Duração da transição em ms (0 = imediato).
  */
 void expression_service_set(nb_expression_t expr, float transition_ms);
@@ -213,6 +214,14 @@ void expression_service_set_breath_enabled(bool enabled);
  * permanecer quieta sem piscadas periódicas sobrepostas.
  */
 void expression_service_set_blink_enabled(bool enabled);
+
+/**
+ * @brief Habilita/desabilita a animação visual de sono.
+ *
+ * Mantém os olhos centralizados e quase fechados, com respiração lenta e
+ * uma bolha ciano que infla, encolhe e some no display.
+ */
+void expression_service_set_sleep_anim_enabled(bool enabled);
 
 /**
  * @brief Define o offset de gaze aplicado sobre a expressão atual no render.

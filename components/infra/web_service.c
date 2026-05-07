@@ -100,7 +100,7 @@ static const char *const k_state_names[] = {
 
 static const char *const k_expr_names[] = {
     "NEUTRAL", "HAPPY", "CURIOUS", "SLEEPY", "FOCUSED",
-    "SUSPICIOUS", "SURPRISED", "SAD", "ALARMED"
+    "SUSPICIOUS", "SURPRISED", "SAD", "ALARMED", "ANGRY"
 };
 
 static const char *const k_circadian_names[] = { "DAWN", "DAY", "DUSK" };
