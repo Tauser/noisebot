@@ -54,18 +54,21 @@
 
 /* ── Parâmetros de glance ─────────────────────────────────────────────────── */
 
-/** Distribuição dos glances: laterais pequenos são o padrão; cantos são raros. */
-#define GLANCE_LATERAL_PROB   0.88f
-#define GLANCE_VERTICAL_PROB  0.12f
+/* Distribuição de choose_glance_target.
+ * Probabilidade efetiva = prob × (1 - CURIOUS_FLASH_PROB - GLANCE_CENTER_PROB) = prob × 0.76
+ *   lateral:  0.65 × 0.76 = 49.4% dos glances totais
+ *   vertical: 0.35 × 0.76 = 26.6% dos glances totais  ← ~1 a cada 5s */
+#define GLANCE_LATERAL_PROB   0.65f
+#define GLANCE_VERTICAL_PROB  0.35f
 
-#define GLANCE_LATERAL_X_MIN  0.22f   /* start mais decisivo (era 0.14) */
-#define GLANCE_LATERAL_X_RNG  0.16f   /* range 0.22–0.38, longe dos cantos */
-#define GLANCE_VERTICAL_Y_MIN 0.09f   /* visível: 0.09×32px = 2.9px (era 0.035) */
-#define GLANCE_VERTICAL_Y_RNG 0.06f   /* range 0.09–0.15 */
+#define GLANCE_LATERAL_X_MIN  0.16f   /* permite glances curtos e longos */
+#define GLANCE_LATERAL_X_RNG  0.26f   /* range 0.16–0.42: mais variedade */
+#define GLANCE_VERTICAL_Y_MIN 0.09f   /* 2.9px → visível */
+#define GLANCE_VERTICAL_Y_RNG 0.07f   /* range 0.09–0.16 */
 
 /** Tempo de hold antes de retornar ao âncora (ms). */
-#define GLANCE_HOLD_MIN_MS      90U
-#define GLANCE_HOLD_RANGE_MS   260U    /* total: 90–350ms */
+#define GLANCE_HOLD_MIN_MS     100U
+#define GLANCE_HOLD_RANGE_MS   300U    /* total: 100–400ms */
 
 /** Probabilidade de curious flash: microexpressão curiosa curta em IDLE. */
 #define CURIOUS_FLASH_PROB    0.16f
