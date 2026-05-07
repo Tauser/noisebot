@@ -655,6 +655,9 @@ static void on_wake_word_detected(const nb_event_t *evt, void *ctx)
  */
 static void on_emotion_changed(nb_expression_t new_expr)
 {
+    /* SLEEPY é induzido pelo estado SLEEPING e não representa personalidade
+     * persistente. Não salvar evita que o próximo boot inicie com cara de dormindo. */
+    if (new_expr == NB_EXPR_SLEEPY) return;
     config_set_last_emotion((uint8_t)new_expr);
 }
 
@@ -951,8 +954,11 @@ static esp_err_t phase_services(void)
     NB_ASSERT(err == ESP_OK, TAG, "state_machine_init falhou: %s",
               esp_err_to_name(err));
 
-    err = emotion_model_init((nb_expression_t)config_get_last_emotion(),
-                              on_emotion_changed);
+    /* NVS pode ter SLEEPY gravado de um boot anterior ao fix. Substituir por
+     * NEUTRAL garante que o robot nunca inicie com expressão de dormindo. */
+    nb_expression_t boot_emotion = (nb_expression_t)config_get_last_emotion();
+    if (boot_emotion == NB_EXPR_SLEEPY) boot_emotion = NB_EXPR_NEUTRAL;
+    err = emotion_model_init(boot_emotion, on_emotion_changed);
     NB_ASSERT(err == ESP_OK, TAG, "emotion_model_init falhou: %s",
               esp_err_to_name(err));
 
