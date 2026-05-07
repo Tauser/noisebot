@@ -374,6 +374,11 @@ esp_err_t motion_service_init(const nb_motion_safety_iface_t *iface)
     return ESP_OK;
 }
 
+bool motion_service_is_ready(void)
+{
+    return s_initialized;
+}
+
 esp_err_t motion_service_start(void)
 {
     if (!s_initialized) {
@@ -478,8 +483,9 @@ esp_err_t motion_sequence_play(const nb_motion_sequence_t *seq)
     s_seq.seq              = seq;
     s_seq.frame_idx        = 0;
     s_seq.hold_elapsed_ms  = 0;
-    s_seq.active           = true;
     s_seq.holding          = false;
+    portMEMORY_BARRIER();
+    s_seq.active           = true;
 
     ESP_LOGD(TAG, "sequência iniciada: %u frames", seq->frame_count);
     return ESP_OK;

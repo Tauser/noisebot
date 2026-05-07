@@ -58,10 +58,11 @@ static constexpr float HW_F           = 46.0f;   /* half-width em pixels  */
 static constexpr float MAX_HH_F       = 46.0f;   /* half-height máxima    */
 static constexpr int16_t HW_I         = 46;
 
-static constexpr float Y_TRAVEL_PX    = 70.0f;   /* pixels para y=±1      */
+static constexpr float Y_TRAVEL_PX    = 32.0f;   /* pixels para y=±1      */
 static constexpr float X_OFF_TRAVEL   = 18.0f;   /* pixels para x_off=±1  */
 static constexpr float MAX_CURVE_PX   = 10.0f;   /* pixels de curvatura máx */
-static constexpr float GAZE_X_TRAVEL_PX = 45.0f; /* pixels de gaze horizontal */
+static constexpr float GAZE_X_TRAVEL_PX = 14.0f; /* pixels de gaze horizontal */
+static constexpr float GAZE_Y_MAX        = 0.18f; /* mantém gaze perto do centro */
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
 
@@ -84,7 +85,7 @@ static constexpr int16_t BLINK_BAR_EXTRA_HW  = 3;    /* px de padding além das 
 /* ── Dirty rect conservador da área da face ──────────────────────────────── */
 /*
  * Rect fixo que cobre TODOS os pixels possíveis dos olhos em qualquer frame:
- *   gaze shift máximo  = GAZE_MAX(0.65) × GAZE_X_TRAVEL_PX(12) ≈ 8px
+ *   gaze shift máximo  = GAZE_MAX(0.65) × GAZE_X_TRAVEL_PX(14) ≈ 9px
  *   x_off máximo       = X_OFF_TRAVEL = 18px
  *   blink bar padding  = BLINK_BAR_EXTRA_HW = 3px
  *   y travel + abertura = Y_TRAVEL_PX + MAX_HH_F + 2px de margem
@@ -197,6 +198,7 @@ typedef struct {
 static blush_overlay_t    s_blush_overlay      = {};
 static heart_overlay_t    s_heart_overlay      = {};
 static volatile bool      s_breath_enabled     = false;
+static volatile bool      s_blink_enabled      = true;
 
 static constexpr float BREATH_PERIOD_MS = 5200.0f;
 static constexpr float BREATH_AMP       = 0.045f;
@@ -367,6 +369,21 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
 static inline float clamp01(float v)
 {
     return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+}
+
+static inline float clamp_abs(float v, float max_abs)
+{
+    if (v > max_abs) return max_abs;
+    if (v < -max_abs) return -max_abs;
+    return v;
+}
+
+static inline float damp_vertical_for_lateral_gaze(float gx, float gy)
+{
+    if (fabsf(gx) > 0.03f) {
+        return gy * 0.25f;
+    }
+    return gy;
 }
 
 static inline float lerpf(float a, float b, float t)
@@ -545,6 +562,15 @@ static void blink_update_eye(nb_blink_eye_t *eye, int64_t now_us, bool is_left)
 
 static void blink_update(int64_t now_us)
 {
+    if (!s_blink_enabled) {
+        if (s_blink[0].state != BLINK_IDLE || s_blink[1].state != BLINK_IDLE) {
+            s_blink[0] = { BLINK_IDLE, 0.0f, now_us };
+            s_blink[1] = { BLINK_IDLE, 0.0f, now_us };
+            s_next_blink_us = now_us + poisson_blink_delay_us();
+        }
+        return;
+    }
+
     /* Disparo de novo blink apenas quando ambos os olhos estiverem em IDLE */
     if (s_blink[0].state == BLINK_IDLE && s_blink[1].state == BLINK_IDLE) {
         if (now_us >= s_next_blink_us) {
@@ -801,7 +827,7 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
 
     /* Centros X dos olhos com x_off (convergência) e gaze_x (translation) aplicados */
     float   gx        = s_gaze_x;
-    float   gy        = s_gaze_y;
+    float   gy        = damp_vertical_for_lateral_gaze(gx, clamp_abs(s_gaze_y, GAZE_Y_MAX));
     int16_t gaze_shift = (int16_t)(gx * GAZE_X_TRAVEL_PX + (gx >= 0.0f ? 0.5f : -0.5f));
     int16_t left_cx   = BASE_L_CX
                       + (int16_t)(face.x_off * X_OFF_TRAVEL + 0.5f)
@@ -811,8 +837,8 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
                       + gaze_shift;
 
     /* Offsets Y combinados com gaze_y */
-    float y_l = face.y_l + gy;
-    float y_r = face.y_r + gy;
+    float y_l = clamp_abs(face.y_l + gy, GAZE_Y_MAX);
+    float y_r = clamp_abs(face.y_r + gy, GAZE_Y_MAX);
 
     /* Canvas já limpo em TFT_BLACK pelo render_service */
 
@@ -1035,6 +1061,11 @@ void expression_service_overlay_heart(uint32_t duration_ms)
 void expression_service_set_breath_enabled(bool enabled)
 {
     s_breath_enabled = enabled;
+}
+
+void expression_service_set_blink_enabled(bool enabled)
+{
+    s_blink_enabled = enabled;
 }
 
 } /* extern "C" */

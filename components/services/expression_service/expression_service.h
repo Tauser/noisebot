@@ -92,9 +92,9 @@ typedef enum {
     NB_EXPR_SLEEPY     = 3,
     NB_EXPR_FOCUSED    = 4,
     NB_EXPR_SUSPICIOUS = 5,
-    NB_EXPR_SURPRISED  = 6,   /**< placeholder — ajustar preset */
-    NB_EXPR_SAD        = 7,   /**< placeholder — ajustar preset */
-    NB_EXPR_ALARMED    = 8,   /**< placeholder — ajustar preset */
+    NB_EXPR_SURPRISED  = 6,
+    NB_EXPR_SAD        = 7,
+    NB_EXPR_ALARMED    = 8,
     NB_EXPR_COUNT      = 9,
 } nb_expression_t;
 
@@ -147,19 +147,6 @@ void nb_face_state_lerp(const nb_face_state_t *a,
                         float t,
                         nb_face_state_t *out);
 
-/**
- * @brief Define o offset de gaze aplicado sobre a expressão atual no render.
- *
- * Aplicado aditivamente no render callback (mesmo frame, após gaze_service):
- *   - Ambos os olhos deslocados na direção x (translation, não convergência).
- *   - y_l e y_r aumentados por y (positivo = olhos descem).
- *
- * Thread-safe somente quando chamado do render_task (Core 1).
- * Deve ser chamado exclusivamente pelo gaze_service render layer (z=5).
- *
- * @param x  [-1, 1]  -1=esquerda, +1=direita
- * @param y  [-1, 1]  -1=cima,    +1=baixo
- */
 /**
  * @brief Enfileira uma expressão temporária com retorno automático à base.
  *
@@ -219,6 +206,27 @@ void expression_service_overlay_heart(uint32_t duration_ms);
  */
 void expression_service_set_breath_enabled(bool enabled);
 
+/**
+ * @brief Habilita/desabilita o blink automático.
+ *
+ * Usado por estados persistentes como SLEEPING, onde a expressão base deve
+ * permanecer quieta sem piscadas periódicas sobrepostas.
+ */
+void expression_service_set_blink_enabled(bool enabled);
+
+/**
+ * @brief Define o offset de gaze aplicado sobre a expressão atual no render.
+ *
+ * Aplicado aditivamente no render callback (mesmo frame, após gaze_service):
+ *   - Ambos os olhos deslocados na direção x (translation, não convergência).
+ *   - y_l e y_r aumentados por y (positivo = olhos descem).
+ *
+ * Thread-safe somente quando chamado do render_task (Core 1).
+ * Deve ser chamado exclusivamente pelo gaze_service render layer (z=5).
+ *
+ * @param x  [-1, 1]  -1=esquerda, +1=direita
+ * @param y  [-1, 1]  -1=cima,    +1=baixo
+ */
 void expression_service_set_gaze(float x, float y);
 
 #ifdef __cplusplus

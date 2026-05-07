@@ -203,7 +203,21 @@ void emotion_model_update(uint32_t dt_ms)
 
 void emotion_model_on_event(nb_emotion_event_t evt)
 {
-    if (!s_initialized || evt >= NB_EMOT_EVT_COUNT) return;
+    if (!s_initialized || (int)evt < 0 || evt >= NB_EMOT_EVT_COUNT) return;
+
+    /* WAKING_UP: reseta vetor para NEUTRAL antes de aplicar o delta.
+     * Sem o reset, o vetor acumulado do sono (próximo de SLEEPY) pode
+     * continuar selecionando SLEEPY durante a animação de wake do conductor,
+     * sobrepondo a transição de olhos abrindo com olhos fechados. */
+    if (evt == NB_EMOT_EVT_WAKING_UP) {
+        taskENTER_CRITICAL(&s_mux);
+        s_vec.valence    = k_anchors[NB_EXPR_NEUTRAL].v;
+        s_vec.activation = k_anchors[NB_EXPR_NEUTRAL].a;
+        s_expr           = NB_EXPR_NEUTRAL;
+        taskEXIT_CRITICAL(&s_mux);
+        ESP_LOGD(TAG, "waking_up: vetor resetado para NEUTRAL");
+        return;
+    }
 
     const nb_emotion_delta_t *d = &k_event_deltas[evt];
 

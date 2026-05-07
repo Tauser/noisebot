@@ -254,6 +254,8 @@ static int8_t s_last_var[NB_ACTION_COUNT];
 
 static void execute_motion(cond_motion_t m, uint32_t ms)
 {
+    if (!motion_service_is_ready()) return;
+
     switch (m) {
         case CM_NONE:          break;
         case CM_NOD:           motion_neck_nod();                          break;
@@ -264,18 +266,20 @@ static void execute_motion(cond_motion_t m, uint32_t ms)
     }
 }
 
-/* Dorme até o próximo step ou até interrupção, em chunks de 20ms. */
+/* Dorme até o próximo step ou até interrupção, em chunks de 20ms.
+ * Usa elapsed = now - t0 para lidar corretamente com wrap de uint32
+ * (ocorre após ~49 dias de uptime). */
 static bool sleep_until(uint32_t target_ms, uint32_t t0_ms)
 {
-    uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-    if (now_ms >= t0_ms + target_ms) return false;
-    uint32_t remain = (t0_ms + target_ms) - now_ms;
-    while (remain > 0 && !s_interrupt) {
-        uint32_t chunk = remain > 20 ? 20 : remain;
+    while (!s_interrupt) {
+        uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
+        uint32_t elapsed = now_ms - t0_ms;
+        if (elapsed >= target_ms) return false;
+        uint32_t remain = target_ms - elapsed;
+        uint32_t chunk = remain > 20u ? 20u : remain;
         vTaskDelay(pdMS_TO_TICKS(chunk));
-        remain = remain > chunk ? remain - chunk : 0;
     }
-    return s_interrupt;
+    return true;
 }
 
 /* ── Conductor task ──────────────────────────────────────────────────────── */
@@ -296,7 +300,6 @@ static void conductor_task(void *arg)
         taskEXIT_CRITICAL(&s_mux);
 
         if (action == NB_ACTION_NONE) {
-            s_current_action = NB_ACTION_NONE;
             continue;
         }
 
@@ -315,7 +318,9 @@ static void conductor_task(void *arg)
         const nb_score_t *score = &k_scores[action][var];
 
         if (!score->steps || score->count == 0) {
+            taskENTER_CRITICAL(&s_mux);
             s_current_action = NB_ACTION_NONE;
+            taskEXIT_CRITICAL(&s_mux);
             continue;
         }
 
@@ -372,7 +377,9 @@ static void conductor_task(void *arg)
             ESP_LOGD(TAG, "action=%d interrompida", (int)action);
         }
 
+        taskENTER_CRITICAL(&s_mux);
         s_current_action = NB_ACTION_NONE;
+        taskEXIT_CRITICAL(&s_mux);
     }
 }
 
@@ -406,6 +413,10 @@ void conductor_pause(bool pause)
 void conductor_play(nb_action_t action)
 {
     if (!s_initialized || s_paused) return;
+    if ((int)action < 0 || action >= NB_ACTION_COUNT) {
+        ESP_LOGE(TAG, "conductor_play: action=%d inválida", (int)action);
+        return;
+    }
     if (action == NB_ACTION_CELEBRATE) {
         expression_service_overlay_heart(2200U);
     }
