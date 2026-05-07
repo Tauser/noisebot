@@ -345,6 +345,11 @@ uint32_t ltm_count_iact(ltm_iact_type_t type)
     return count;
 }
 
+uint16_t ltm_get_hist_count(void)
+{
+    return s_initialized ? s_main.hist_len : 0u;
+}
+
 uint32_t ltm_get_hours_alive(void)
 {
     if (!s_initialized) return 0u;

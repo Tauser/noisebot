@@ -108,6 +108,15 @@ uint32_t ltm_get_hours_alive(void);
 uint32_t ltm_count_iact(ltm_iact_type_t type);
 
 /**
+ * @brief Retorna o número de entradas válidas no ring buffer de histórico.
+ *
+ * Cresce de 0 até LTM_HISTORY_SIZE (200) e permanece em 200 após saturar.
+ * Denominador correto para calcular frequência relativa de um tipo de
+ * interação no histórico recente.
+ */
+uint16_t ltm_get_hist_count(void);
+
+/**
  * @brief Retorna true quando o usuário é considerado "familiar".
  *
  * Baseado em familiarity_score ≥ 0.5.

@@ -97,13 +97,23 @@ void persona_service_refresh(void)
     uint32_t sessions  = ltm_get_total_sessions();
     if (sessions == 0u) return;   /* LTM vazio → manter NVS intacto */
 
-    uint32_t voice_cnt = ltm_count_iact(LTM_IACT_VOICE_START);
-    uint32_t sleep_cnt = ltm_count_iact(LTM_IACT_SLEEP);
+    uint32_t voice_cnt  = ltm_count_iact(LTM_IACT_VOICE_START);
+    uint32_t sleep_cnt  = ltm_count_iact(LTM_IACT_SLEEP);
+    uint16_t hist_count = ltm_get_hist_count();
 
     float total = (float)sessions;
 
-    s_warmth    = 1.0f - expf(-(float)touches / 50.0f);
-    s_energy    = clampf((float)voice_cnt / total * 2.0f);
+    s_warmth = 1.0f - expf(-(float)touches / 50.0f);
+
+    /* Energy: frequência de voz nas interações recentes (ring buffer).
+     * Usar hist_count como denominador evita o problema de sessions crescer
+     * cumulativamente enquanto voice_cnt fica limitado ao ring buffer de 200
+     * entradas — fórmula anterior encolhia para zero com reboots frequentes.
+     * Fator 6: voz representa ~5-15% das interações → escala para [0.3, 0.9]. */
+    if (hist_count > 0u) {
+        s_energy = clampf((float)voice_cnt / (float)hist_count * 6.0f);
+    }
+
     s_curiosity = clampf(1.0f - ((float)sleep_cnt / total) * 1.5f);
     s_trust     = fminf(s_warmth, clampf((float)sessions / 20.0f));
 

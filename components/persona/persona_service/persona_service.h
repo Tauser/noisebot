@@ -11,7 +11,7 @@
  *
  * Fórmulas:
  *   warmth    = 1 − exp(−touch_count / 50)
- *   energy    = clamp(voice_count / sessions × 2)
+ *   energy    = clamp(voice_count / hist_count × 6)   — hist_count: ring buffer recente
  *   curiosity = clamp(1 − sleep_ratio × 1.5)
  *   trust     = min(warmth, clamp(sessions / 20))
  */
