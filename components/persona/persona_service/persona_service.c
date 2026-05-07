@@ -49,10 +49,10 @@ static float    u2f(uint32_t u){ float f;    memcpy(&f, &u, 4); return f; }
 
 static void load_from_nvs(void)
 {
-    s_warmth    = u2f(nvs_hal_get_u32(s_h, KEY_WARMTH,    f2u(s_warmth)));
-    s_energy    = u2f(nvs_hal_get_u32(s_h, KEY_ENERGY,    f2u(s_energy)));
-    s_curiosity = u2f(nvs_hal_get_u32(s_h, KEY_CURIOSITY, f2u(s_curiosity)));
-    s_trust     = u2f(nvs_hal_get_u32(s_h, KEY_TRUST,     f2u(s_trust)));
+    s_warmth    = clampf(u2f(nvs_hal_get_u32(s_h, KEY_WARMTH,    f2u(s_warmth))));
+    s_energy    = clampf(u2f(nvs_hal_get_u32(s_h, KEY_ENERGY,    f2u(s_energy))));
+    s_curiosity = clampf(u2f(nvs_hal_get_u32(s_h, KEY_CURIOSITY, f2u(s_curiosity))));
+    s_trust     = clampf(u2f(nvs_hal_get_u32(s_h, KEY_TRUST,     f2u(s_trust))));
 }
 
 static void save_to_nvs(void)
