@@ -74,30 +74,28 @@
 /* ── Parâmetros de glance ─────────────────────────────────────────────────── */
 
 /*
- * Mapa de idle inspirado no vídeo do EMO:
- *   1. centro vivo, com pausas longas;
- *   2. olhadas laterais bem curtas, sempre retornando ao centro;
- *   3. olhadas para cima/baixo em eixo puro;
- *   4. blink/linha ocasional como microexpressão;
- *   5. pequenas sequências com intenção, não glances isolados aleatórios.
+ * Amplitudes de gaze:
+ *   peek  = olhada decisiva, claramente visível.
+ *   micro = passo interno de um motif ou confirmação após peek.
  *
- * Importante: sem diagonais aqui. A profundidade lateral vem do
- * expression_service, que estreita levemente o olho do lado escolhido.
+ * Referência: GAZE_X_TRAVEL_PX≈45, GAZE_Y_TRAVEL_PX≈24.
+ *   peek lateral 0.18–0.38 → 8–17 px  (visível sem ser extremo)
+ *   peek vertical 0.12–0.22 → 3–5 px  (olho menor: range mais curto)
  */
-#define GLANCE_LAT_MICRO_MIN       0.035f
-#define GLANCE_LAT_MICRO_RNG       0.055f   /* 0.035–0.090 */
-#define GLANCE_LAT_PEEK_MIN        0.080f
-#define GLANCE_LAT_PEEK_RNG        0.090f   /* 0.080–0.170 */
+#define GLANCE_LAT_MICRO_MIN       0.06f
+#define GLANCE_LAT_MICRO_RNG       0.07f    /* 0.06–0.13 */
+#define GLANCE_LAT_PEEK_MIN        0.18f
+#define GLANCE_LAT_PEEK_RNG        0.20f    /* 0.18–0.38 */
 
-#define GLANCE_VERT_MICRO_MIN      0.035f
-#define GLANCE_VERT_MICRO_RNG      0.055f   /* 0.035–0.090 */
-#define GLANCE_VERT_PEEK_MIN       0.080f
-#define GLANCE_VERT_PEEK_RNG       0.080f   /* 0.080–0.160 */
+#define GLANCE_VERT_MICRO_MIN      0.05f
+#define GLANCE_VERT_MICRO_RNG      0.06f    /* 0.05–0.11 */
+#define GLANCE_VERT_PEEK_MIN       0.12f
+#define GLANCE_VERT_PEEK_RNG       0.10f    /* 0.12–0.22 */
 
-#define GLANCE_HOLD_MICRO_MIN_MS   170U
-#define GLANCE_HOLD_MICRO_RNG_MS   180U
-#define GLANCE_HOLD_PEEK_MIN_MS    260U
-#define GLANCE_HOLD_PEEK_RNG_MS    320U
+#define GLANCE_HOLD_MICRO_MIN_MS   150U
+#define GLANCE_HOLD_MICRO_RNG_MS   150U     /* 150–300ms */
+#define GLANCE_HOLD_PEEK_MIN_MS    250U
+#define GLANCE_HOLD_PEEK_RNG_MS    300U     /* 250–550ms */
 
 #define MOTIF_INNER_GAP_MIN_MS     280U    /* gap entre steps dentro do motif     */
 #define MOTIF_INNER_GAP_RNG_MS     420U    /* 280–700ms — snappy, sem arrastar    */
@@ -182,16 +180,18 @@ static nb_idle_alone_cb_t s_alone_cb = NULL;
 
 typedef enum {
     IDLE_MOTIF_NONE = 0,
-    IDLE_MOTIF_SIDE_PEEK,
-    IDLE_MOTIF_VERTICAL_SCAN,
-    IDLE_MOTIF_CROSS_SCAN,
-    IDLE_MOTIF_CURIOUS_CHECK,
-    IDLE_MOTIF_LINE_BLINK,
-    /* Novos — calibrados contra vídeo do EMO (re-análise por olho separado).
-     * Ver docs/IDLE_REFERENCE.md §3.                                      */
-    IDLE_MOTIF_HEAD_TILT_HOLD,    /* postura assimétrica vertical 5–15s   */
-    IDLE_MOTIF_LOOK_DOWN_BLINK,   /* gaze↓ + blink-bar + hold + blink-bar */
-    IDLE_MOTIF_CURIOUS_TILT,      /* CURIOUS sustentado 3.5–5s            */
+    IDLE_MOTIF_SIDE_PEEK,         /* peek lateral + centro + micro mesmo lado  */
+    IDLE_MOTIF_VERTICAL_SCAN,     /* cima → centro → baixo leve               */
+    IDLE_MOTIF_CROSS_SCAN,        /* lateral → cima → lateral oposto → centro */
+    IDLE_MOTIF_CURIOUS_CHECK,     /* flash CURIOUS + lateral micro + cima      */
+    IDLE_MOTIF_LINE_BLINK,        /* blink-bar isolado curto                   */
+    IDLE_MOTIF_HEAD_TILT_HOLD,    /* overlay assimétrico vertical 5–15s        */
+    IDLE_MOTIF_LOOK_DOWN_BLINK,   /* gaze↓ + blink-bar + hold + blink-bar      */
+    IDLE_MOTIF_CURIOUS_TILT,      /* CURIOUS sustentado 3.5–5s                 */
+    /* Novos — variedade direcional solicitada pelo usuário. */
+    IDLE_MOTIF_BI_LATERAL,        /* peek esq → centro → peek dir (ou inverso) */
+    IDLE_MOTIF_VERT_SWEEP,        /* peek baixo → centro → peek cima (ou inv.) */
+    IDLE_MOTIF_WANDER,            /* lateral → cima → lateral oposto → centro  */
 } idle_motif_t;
 
 static idle_motif_t s_motif              = IDLE_MOTIF_NONE;
@@ -252,39 +252,50 @@ static void schedule_outer_step(void)
     s_next_glance_ms = rand_interval(MOTIF_OUTER_GAP_MIN_MS, MOTIF_OUTER_GAP_RNG_MS);
 }
 
-/* Distribuição de motifs (re-calibrada contra vídeo idle do EMO).
+/* Distribuição de motifs.
  *
- * IDLE (motif a cada 15–40s — janela longa, motifs sustentados):
- *     30% CURIOUS_TILT       — observado 2× em 30s
- *     20% HEAD_TILT_HOLD     — postura sutil persistente
- *     15% LOOK_DOWN_BLINK    — sequência composta look-down + double-blink
- *     15% LINE_BLINK         — blink-bar isolado curto
- *     10% SIDE_PEEK          — glance lateral (mais raro em IDLE puro)
- *      5% VERTICAL_SCAN
- *      5% CROSS_SCAN
+ * IDLE — prioridade em movimento direcional visível (~75% com gaze ativo):
+ *   18% SIDE_PEEK         peek lateral + micro mesmo lado
+ *   18% BI_LATERAL        peek esq → centro → peek dir (ambos lados)
+ *   15% VERT_SWEEP        baixo → centro → cima ou vice-versa
+ *   12% CROSS_SCAN        lateral → cima → lateral oposto → centro
+ *   12% WANDER            lateral → cima → lateral oposto → centro (aleatório)
+ *   15% CURIOUS_TILT      CURIOUS sustentado (expressão)
+ *    5% HEAD_TILT_HOLD    overlay assimétrico (postura)
+ *    3% LOOK_DOWN_BLINK   gaze↓ + blinks
+ *    2% LINE_BLINK        blink isolado
  *
- * ATTENTIVE (motif a cada 5–13s — robô prestando atenção):
- *     distribuição original — domina SIDE_PEEK e VERTICAL_SCAN.
- *
- * Ver docs/IDLE_REFERENCE.md §3 e §4.3. */
+ * ATTENTIVE — mais rápido, mais lateral/vertical:
+ *   25% SIDE_PEEK
+ *   20% BI_LATERAL
+ *   20% VERTICAL_SCAN
+ *   15% CURIOUS_CHECK
+ *   10% CROSS_SCAN
+ *    5% WANDER
+ *    5% LINE_BLINK
+ */
 static void begin_idle_motif(bool is_idle_now)
 {
     float r = rand01();
     if (is_idle_now) {
-        if      (r < 0.30f) s_motif = IDLE_MOTIF_CURIOUS_TILT;
-        else if (r < 0.50f) s_motif = IDLE_MOTIF_HEAD_TILT_HOLD;
-        else if (r < 0.65f) s_motif = IDLE_MOTIF_LOOK_DOWN_BLINK;
-        else if (r < 0.80f) s_motif = IDLE_MOTIF_LINE_BLINK;
-        else if (r < 0.90f) s_motif = IDLE_MOTIF_SIDE_PEEK;
-        else if (r < 0.95f) s_motif = IDLE_MOTIF_VERTICAL_SCAN;
-        else                s_motif = IDLE_MOTIF_CROSS_SCAN;
+        if      (r < 0.18f) s_motif = IDLE_MOTIF_SIDE_PEEK;
+        else if (r < 0.36f) s_motif = IDLE_MOTIF_BI_LATERAL;
+        else if (r < 0.51f) s_motif = IDLE_MOTIF_VERT_SWEEP;
+        else if (r < 0.63f) s_motif = IDLE_MOTIF_CROSS_SCAN;
+        else if (r < 0.75f) s_motif = IDLE_MOTIF_WANDER;
+        else if (r < 0.90f) s_motif = IDLE_MOTIF_CURIOUS_TILT;
+        else if (r < 0.95f) s_motif = IDLE_MOTIF_HEAD_TILT_HOLD;
+        else if (r < 0.98f) s_motif = IDLE_MOTIF_LOOK_DOWN_BLINK;
+        else                s_motif = IDLE_MOTIF_LINE_BLINK;
     } else {
-        /* ATTENTIVE: distribuição original. */
-        if      (r < 0.36f) s_motif = IDLE_MOTIF_SIDE_PEEK;
-        else if (r < 0.58f) s_motif = IDLE_MOTIF_VERTICAL_SCAN;
-        else if (r < 0.74f) s_motif = IDLE_MOTIF_LINE_BLINK;
-        else if (r < 0.88f) s_motif = IDLE_MOTIF_CURIOUS_CHECK;
-        else                s_motif = IDLE_MOTIF_CROSS_SCAN;
+        /* ATTENTIVE */
+        if      (r < 0.25f) s_motif = IDLE_MOTIF_SIDE_PEEK;
+        else if (r < 0.45f) s_motif = IDLE_MOTIF_BI_LATERAL;
+        else if (r < 0.65f) s_motif = IDLE_MOTIF_VERTICAL_SCAN;
+        else if (r < 0.80f) s_motif = IDLE_MOTIF_CURIOUS_CHECK;
+        else if (r < 0.90f) s_motif = IDLE_MOTIF_CROSS_SCAN;
+        else if (r < 0.95f) s_motif = IDLE_MOTIF_WANDER;
+        else                s_motif = IDLE_MOTIF_LINE_BLINK;
     }
     s_motif_step = 0;
     s_motif_sign = rand_sign();
@@ -402,12 +413,16 @@ static void do_glance(bool is_idle_now)
             }
             break;
 
+        /*
+         * CROSS_SCAN — lateral peek → cima → lateral oposto → centro.
+         * Usa peek no primeiro e último, micro no vertical (mais natural).
+         */
         case IDLE_MOTIF_CROSS_SCAN:
             switch (s_motif_step++) {
                 case 0:
-                    do_axis_glance(lateral_micro(s_motif_sign), 0.0f,
-                                   rand_interval(GLANCE_HOLD_MICRO_MIN_MS,
-                                                 GLANCE_HOLD_MICRO_RNG_MS));
+                    do_axis_glance(lateral_peek(s_motif_sign), 0.0f,
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
                     break;
                 case 1:
                     do_axis_glance(0.0f, vertical_micro(-1.0f),
@@ -415,9 +430,9 @@ static void do_glance(bool is_idle_now)
                                                  GLANCE_HOLD_MICRO_RNG_MS));
                     break;
                 case 2:
-                    do_axis_glance(lateral_micro(-s_motif_sign), 0.0f,
-                                   rand_interval(GLANCE_HOLD_MICRO_MIN_MS,
-                                                 GLANCE_HOLD_MICRO_RNG_MS));
+                    do_axis_glance(lateral_peek(-s_motif_sign), 0.0f,
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
                     break;
                 case 3:
                     do_center_pause();
@@ -519,6 +534,96 @@ static void do_glance(bool is_idle_now)
             }
             break;
 
+        /*
+         * BI_LATERAL — peek para um lado, pausa central, peek para o outro.
+         * Cobre a percepção de "olha dos dois lados" — o movimento mais
+         * reconhecível de curiosidade passiva num robô companion.
+         */
+        case IDLE_MOTIF_BI_LATERAL:
+            switch (s_motif_step++) {
+                case 0:
+                    do_axis_glance(lateral_peek(s_motif_sign), 0.0f,
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 1:
+                    do_center_pause();
+                    break;
+                case 2:
+                    do_axis_glance(lateral_peek(-s_motif_sign), 0.0f,
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 3:
+                    do_center_pause();
+                    break;
+                default:
+                    finish_idle_motif();
+                    break;
+            }
+            break;
+
+        /*
+         * VERT_SWEEP — baixo → centro → cima (ou cima → centro → baixo).
+         * s_motif_sign=-1: começa para cima; s_motif_sign=+1: começa para baixo.
+         * Cobre o "baixo meio cima e vice versa" pedido pelo usuário.
+         */
+        case IDLE_MOTIF_VERT_SWEEP:
+            switch (s_motif_step++) {
+                case 0:
+                    do_axis_glance(0.0f, vertical_peek(s_motif_sign),
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 1:
+                    do_center_pause();
+                    break;
+                case 2:
+                    do_axis_glance(0.0f, vertical_peek(-s_motif_sign),
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 3:
+                    do_center_pause();
+                    break;
+                default:
+                    finish_idle_motif();
+                    break;
+            }
+            break;
+
+        /*
+         * WANDER — sequência de 3 direções distintas sem padrão fixo:
+         * lateral peek → vertical peek oposto à altura atual → lateral oposto.
+         * Dá a impressão de varredura exploratória casual.
+         */
+        case IDLE_MOTIF_WANDER:
+            switch (s_motif_step++) {
+                case 0:
+                    do_axis_glance(lateral_peek(s_motif_sign), 0.0f,
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 1:
+                    /* Vertical puro — direção aleatória via rand_sign() interno */
+                    do_axis_glance(0.0f, vertical_peek(rand01() < 0.5f ? -1.0f : 1.0f),
+                                   rand_interval(GLANCE_HOLD_MICRO_MIN_MS,
+                                                 GLANCE_HOLD_MICRO_RNG_MS));
+                    break;
+                case 2:
+                    do_axis_glance(lateral_micro(-s_motif_sign), 0.0f,
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 3:
+                    do_center_pause();
+                    break;
+                default:
+                    finish_idle_motif();
+                    break;
+            }
+            break;
+
         case IDLE_MOTIF_NONE:
         default:
             finish_idle_motif();
@@ -611,7 +716,7 @@ void idle_service_update(uint32_t dt_ms)
     bool is_attentive = (state == NB_STATE_ATTENTIVE);
     bool is_active    = is_idle || is_attentive;
 
-    /* Transicao de IDLE/ATTENTIVE -> outro estado: centraliza gaze e reseta timers */
+        /* Transicao de IDLE/ATTENTIVE -> outro estado: centraliza gaze e reseta timers */
     if (!is_active) {
         if (s_was_active) {
             reset_timers_and_center();
@@ -624,17 +729,16 @@ void idle_service_update(uint32_t dt_ms)
     }
 
     /* Transicao de entrada/saida de IDLE: reseta timer de solidao e
-     * recalcula a janela de saccade para a nova distribuicao
-     * (IDLE = 15-40s, ATTENTIVE = 5-13s). Em entrada IDLE, limpa overlay
-     * para honrar a regra de baseline (CLAUDE.md). */
+     * recalcula a janela de saccade para a nova distribuicao.
+     * Em entrada IDLE, limpa overlay para honrar a regra de baseline. */
     if (is_idle != s_was_idle) {
         s_alone_timer_ms = 0;
         if (is_idle) {
             gaze_service_set_anchor(0.0f, 0.0f);
             gaze_service_set_target(0.0f, 0.0f);
-            s_motif                 = IDLE_MOTIF_NONE;
-            s_motif_step            = 0;
-            s_next_glance_ms        = 0;
+            s_motif          = IDLE_MOTIF_NONE;
+            s_motif_step     = 0;
+            s_next_glance_ms = 0;
             expression_service_set_idle_overlay(0.0f, 0.0f, 0.0f, 0.0f);
         }
         s_saccade_timer_ms = saccade_interval_for(is_idle);
@@ -644,14 +748,12 @@ void idle_service_update(uint32_t dt_ms)
     s_was_idle   = is_idle;
     expression_service_set_breath_enabled(true);
 
-    /* -- Glance (IDLE e ATTENTIVE) --
-     * Janela de motif depende do estado: IDLE = 15-40s (raro),
-     * ATTENTIVE = 5-13s (frequente). Ver docs/IDLE_REFERENCE.md sec.4.1. */
+    /* -- Glance (IDLE e ATTENTIVE) -- */
     if (s_saccade_timer_ms <= dt_ms) {
         do_glance(is_idle);
         if (s_next_glance_ms > 0u) {
-            s_saccade_timer_ms  = s_next_glance_ms;
-            s_next_glance_ms    = 0u;
+            s_saccade_timer_ms = s_next_glance_ms;
+            s_next_glance_ms   = 0u;
         } else {
             s_saccade_timer_ms = saccade_interval_for(is_idle);
         }
