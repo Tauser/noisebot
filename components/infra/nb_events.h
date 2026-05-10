@@ -106,6 +106,9 @@ typedef enum {
     NB_EVT_BRIDGE_SESSION,          /* evento de sessão v2; data.ptr = JSON string estática  */
     NB_EVT_BRIDGE_RESPONSE_TIMEOUT, /* bridge não respondeu em 8s após VOICE_END             */
 
+    /* Persona (Layer 7) */
+    NB_EVT_PERSONA_REFRESHED,       /* dimensões recalculadas; sem payload      */
+
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
 } nb_event_type_t;
 

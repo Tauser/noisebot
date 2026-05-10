@@ -462,6 +462,7 @@ function connect(){
     var d; try { d = JSON.parse(e.data); } catch(_) { return; }
     if (d.type === 'ota') { onOta(d); return; }
     if (d.type === 'telemetry') { onTelemetry(d); return; }
+    if (d.type === 'persona_update') { onPersona(d); return; }
     if (d.state !== undefined) onStatus(d);
   };
 }
@@ -480,6 +481,14 @@ function onStatus(d){
   EXPRS.forEach(function(e){
     var b=document.getElementById('eb-'+e);
     if(b) b.classList.toggle('active', e === d.expression);
+  });
+}
+
+function onPersona(d){
+  ['warmth','energy','curiosity','trust'].forEach(function(k){
+    var v = +d[k] || 0;
+    set('pv-' + k, v.toFixed(3));
+    setBar('pb-' + k, v * 100);
   });
 }
 

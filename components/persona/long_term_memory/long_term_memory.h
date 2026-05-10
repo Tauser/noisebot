@@ -93,6 +93,9 @@ void ltm_flush(void);
 /** Total de toques TAP acumulados (sessions + atual). */
 uint32_t ltm_get_total_touch_count(void);
 
+/** Total de eventos VOICE_START acumulados (sessions + atual). */
+uint32_t ltm_get_total_voice_count(void);
+
 /** Número total de sessões (boots) acumuladas. */
 uint32_t ltm_get_total_sessions(void);
 

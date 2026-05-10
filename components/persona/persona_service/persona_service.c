@@ -12,6 +12,8 @@
 
 #include "long_term_memory.h"
 #include "nvs_hal.h"
+#include "event_bus.h"
+#include "nb_events.h"
 
 #include "esp_log.h"
 
@@ -97,27 +99,27 @@ void persona_service_refresh(void)
     uint32_t sessions  = ltm_get_total_sessions();
     if (sessions == 0u) return;   /* LTM vazio → manter NVS intacto */
 
-    uint32_t voice_cnt  = ltm_count_iact(LTM_IACT_VOICE_START);
-    uint32_t sleep_cnt  = ltm_count_iact(LTM_IACT_SLEEP);
-    uint16_t hist_count = ltm_get_hist_count();
+    uint32_t total_voice = ltm_get_total_voice_count();
+    uint32_t sleep_cnt   = ltm_count_iact(LTM_IACT_SLEEP);
 
     float total = (float)sessions;
 
     s_warmth = 1.0f - expf(-(float)touches / 50.0f);
 
-    /* Energy: frequência de voz nas interações recentes (ring buffer).
-     * Usar hist_count como denominador evita o problema de sessions crescer
-     * cumulativamente enquanto voice_cnt fica limitado ao ring buffer de 200
-     * entradas — fórmula anterior encolhia para zero com reboots frequentes.
-     * Fator 6: voz representa ~5-15% das interações → escala para [0.3, 0.9]. */
-    if (hist_count > 0u) {
-        s_energy = clampf((float)voice_cnt / (float)hist_count * 6.0f);
-    }
+    /* Energy: média cumulativa de voz por sessão.
+     * Usa total_voice_count (acumulado permanente) em vez do ring buffer de 200
+     * entradas, que era dominado por toques e zerava energy quando havia
+     * períodos sem interação por voz.
+     * Escala: 3 eventos de voz/sessão → energy = 1.0 */
+    s_energy = clampf((float)total_voice / fmaxf(1.0f, (float)sessions * 3.0f));
 
     s_curiosity = clampf(1.0f - ((float)sleep_cnt / total) * 1.5f);
     s_trust     = fminf(s_warmth, clampf((float)sessions / 20.0f));
 
     save_to_nvs();
+
+    nb_event_t ev = { .type = NB_EVT_PERSONA_REFRESHED };
+    nb_event_publish_async(&ev);
 
     ESP_LOGD(TAG, "refresh: W=%.2f E=%.2f C=%.2f T=%.2f (touches=%lu sessions=%lu)",
              s_warmth, s_energy, s_curiosity, s_trust,

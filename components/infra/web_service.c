@@ -237,6 +237,23 @@ static void ws_push_ota(int pct, const char *status, const char *msg)
     ws_push_json(json);
 }
 
+static void ws_push_persona(void)
+{
+    char json[128];
+    snprintf(json, sizeof(json),
+        "{\"type\":\"persona_update\","
+        "\"warmth\":%.3f,\"energy\":%.3f,\"curiosity\":%.3f,\"trust\":%.3f}",
+        (double)persona_get_warmth(), (double)persona_get_energy(),
+        (double)persona_get_curiosity(), (double)persona_get_trust());
+    ws_push_json(json);
+}
+
+static void on_persona_refreshed(const nb_event_t *evt, void *ctx)
+{
+    (void)evt; (void)ctx;
+    ws_push_persona();
+}
+
 static void audio_push_timer_cb(void *arg)
 {
     (void)arg;
@@ -1596,6 +1613,7 @@ esp_err_t web_service_init(void)
     /* Intercepta logs do ESP-IDF para ring buffer em RAM. */
     s_orig_vprintf = esp_log_set_vprintf(log_hook_vprintf);
 
+    nb_event_subscribe(NB_EVT_PERSONA_REFRESHED, on_persona_refreshed, NULL, NULL);
     nb_event_subscribe(NB_EVT_WIFI_IP_ACQUIRED, on_ip_acquired,  NULL, NULL);
     nb_event_subscribe(NB_EVT_STATE_CHANGED,    on_state_changed, NULL, NULL);
     nb_event_subscribe(NB_EVT_TOUCH_TAP,         on_touch_debug_event, NULL, NULL);

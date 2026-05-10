@@ -30,7 +30,7 @@
 /* ── Parâmetros ──────────────────────────────────────────────────────────── */
 
 #define LTM_MAGIC           0x4E424C4DUL   /* "NBLM" */
-#define LTM_VERSION         1UL
+#define LTM_VERSION         2UL
 #define LTM_HISTORY_SIZE    200
 #define LTM_JOURNAL_SIZE    1000
 #define LTM_FAMILIAR_THR    0.5f
@@ -53,12 +53,13 @@ typedef struct __attribute__((packed)) {
 
 /*
  * Arquivo principal: persona_state + ring buffer de histórico.
- * Tamanho: 4+4+4+4+4+4+2+2 + 200×6 + 4 = 1232 bytes.
+ * Tamanho: 4+4+4+4+4+4+4+2+2 + 200×6 + 4 = 1236 bytes.
  */
 typedef struct __attribute__((packed)) {
     uint32_t    magic;
     uint32_t    version;
     uint32_t    total_touch_count;
+    uint32_t    total_voice_count;     /* VOICE_START acumulado (v2+) */
     uint32_t    total_sessions;
     uint32_t    cumulative_uptime_s;   /* acumulado de sessões anteriores */
     float       familiarity_score;
@@ -267,7 +268,9 @@ void ltm_record(ltm_iact_type_t type)
 
     /* Atualizar contadores. TAP/LONG contam como contato individual.
      * CARESS conta como 3 (intimidade alta). DEEP conta como 2. */
-    if (type == LTM_IACT_TOUCH_TAP || type == LTM_IACT_TOUCH_LONG ||
+    if (type == LTM_IACT_VOICE_START) {
+        s_main.total_voice_count++;
+    } else if (type == LTM_IACT_TOUCH_TAP || type == LTM_IACT_TOUCH_LONG ||
         type == LTM_IACT_TOUCH_DOUBLE_TAP) {
         s_main.total_touch_count++;
         recalc_familiarity();
@@ -326,6 +329,11 @@ void ltm_flush(void)
 uint32_t ltm_get_total_touch_count(void)
 {
     return s_initialized ? s_main.total_touch_count : 0u;
+}
+
+uint32_t ltm_get_total_voice_count(void)
+{
+    return s_initialized ? s_main.total_voice_count : 0u;
 }
 
 uint32_t ltm_get_total_sessions(void)
