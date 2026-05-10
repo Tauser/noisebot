@@ -14,14 +14,12 @@
  *   Outros estados:      timers resetados, gaze retorna a center (0, 0),
  *                        overlay assimétrico limpo.
  *
- * Tipos de glance:
- *   side peek        : olha para um lado, volta ao centro, repete menor.
- *   vertical scan    : olha para cima, centro, depois baixo leve.
- *   cross scan       : esquerda/direita e cima em micro sequência cardinal.
- *   curious check    : microexpressão curiosa curta com gaze contido.
- *   line blink       : barra horizontal breve (estilo EMO).
- *   head tilt hold   : postura assimétrica vertical 5–15s (overlay).
- *   look down blink  : gaze↓ + 2× blink-bar com hold entre eles.
+ * Tipos de motif:
+ *   bi-lateral       : peek esq → centro → peek dir (ou inverso).
+ *   vert sweep       : peek baixo → centro → peek cima (ou inverso).
+ *   wander           : lateral → vertical aleatório → lateral oposto → centro.
+ *   curious check    : flash CURIOUS + lateral micro + micro cima.
+ *   head tilt hold   : postura assimétrica de abertura 5–15s (overlay dopen).
  *   curious tilt     : CURIOUS sustentado 3.5–5s (motif principal de IDLE).
  *
  * Calibrado contra vídeo idle do EMO — ver docs/IDLE_REFERENCE.md.
@@ -63,7 +61,7 @@
 #define AVERSIVE_MIN_MS       8000U
 #define AVERSIVE_RANGE_MS     7000U
 
-#define YAWN_ENABLED             1
+#define YAWN_ENABLED             0
 #define YAWN_MIN_MS          60000U
 #define YAWN_RANGE_MS       120000U
 #define YAWN_DURATION_MS     2500.0f
@@ -74,30 +72,28 @@
 /* ── Parâmetros de glance ─────────────────────────────────────────────────── */
 
 /*
- * Mapa de idle inspirado no vídeo do EMO:
- *   1. centro vivo, com pausas longas;
- *   2. olhadas laterais bem curtas, sempre retornando ao centro;
- *   3. olhadas para cima/baixo em eixo puro;
- *   4. blink/linha ocasional como microexpressão;
- *   5. pequenas sequências com intenção, não glances isolados aleatórios.
+ * Amplitudes de gaze:
+ *   peek  = olhada decisiva, claramente visível.
+ *   micro = passo interno de um motif ou confirmação após peek.
  *
- * Importante: sem diagonais aqui. A profundidade lateral vem do
- * expression_service, que estreita levemente o olho do lado escolhido.
+ * Referência: GAZE_X_TRAVEL_PX≈45, GAZE_Y_TRAVEL_PX≈24.
+ *   peek lateral 0.18–0.38 → 8–17 px  (visível sem ser extremo)
+ *   peek vertical 0.12–0.22 → 3–5 px  (olho menor: range mais curto)
  */
-#define GLANCE_LAT_MICRO_MIN       0.035f
-#define GLANCE_LAT_MICRO_RNG       0.055f   /* 0.035–0.090 */
-#define GLANCE_LAT_PEEK_MIN        0.080f
-#define GLANCE_LAT_PEEK_RNG        0.090f   /* 0.080–0.170 */
+#define GLANCE_LAT_MICRO_MIN       0.06f
+#define GLANCE_LAT_MICRO_RNG       0.07f    /* 0.06–0.13 */
+#define GLANCE_LAT_PEEK_MIN        0.18f
+#define GLANCE_LAT_PEEK_RNG        0.20f    /* 0.18–0.38 */
 
-#define GLANCE_VERT_MICRO_MIN      0.035f
-#define GLANCE_VERT_MICRO_RNG      0.055f   /* 0.035–0.090 */
-#define GLANCE_VERT_PEEK_MIN       0.080f
-#define GLANCE_VERT_PEEK_RNG       0.080f   /* 0.080–0.160 */
+#define GLANCE_VERT_MICRO_MIN      0.05f
+#define GLANCE_VERT_MICRO_RNG      0.06f    /* 0.05–0.11 */
+#define GLANCE_VERT_PEEK_MIN       0.12f
+#define GLANCE_VERT_PEEK_RNG       0.10f    /* 0.12–0.22 */
 
-#define GLANCE_HOLD_MICRO_MIN_MS   170U
-#define GLANCE_HOLD_MICRO_RNG_MS   180U
-#define GLANCE_HOLD_PEEK_MIN_MS    260U
-#define GLANCE_HOLD_PEEK_RNG_MS    320U
+#define GLANCE_HOLD_MICRO_MIN_MS   150U
+#define GLANCE_HOLD_MICRO_RNG_MS   150U     /* 150–300ms */
+#define GLANCE_HOLD_PEEK_MIN_MS    250U
+#define GLANCE_HOLD_PEEK_RNG_MS    300U     /* 250–550ms */
 
 #define MOTIF_INNER_GAP_MIN_MS     280U    /* gap entre steps dentro do motif     */
 #define MOTIF_INNER_GAP_RNG_MS     420U    /* 280–700ms — snappy, sem arrastar    */
@@ -108,10 +104,6 @@
 #define CURIOUS_FLASH_RANGE_MS     240U
 #define CURIOUS_FLASH_TRANS_MS     80.0f
 
-#define LINE_BLINK_MIN_MS           85U
-#define LINE_BLINK_RANGE_MS         55U
-#define LINE_BLINK_TRANS_MS        35.0f
-
 /* ── HEAD_TILT_HOLD ────────────────────────────────────────────────────────
  * Postura assimétrica vertical sustentada — olho L mais baixo que R (ou
  * vice-versa). No vídeo do EMO: ~+8 px de offset por 12s contínuos.
@@ -120,16 +112,6 @@
 #define TILT_HOLD_DY_RNG           0.04f
 #define TILT_HOLD_DUR_MIN_MS       5000U
 #define TILT_HOLD_DUR_RNG_MS      10000U
-
-/* ── LOOK_DOWN_BLINK ───────────────────────────────────────────────────────
- * Sequência composta: gaze.y → +0.4, blink-bar, hold, segundo blink, return.
- * Total ~1.8–2.2s. No vídeo: t=18.0s–20.0s.                                */
-#define LDB_GAZE_Y                 0.40f
-#define LDB_HOLD_BETWEEN_MIN_MS     550U
-#define LDB_HOLD_BETWEEN_RNG_MS     350U
-#define LDB_GAZE_HOLD_MS           1800U
-#define LDB_BLINK_DUR_MS             80U
-#define LDB_BLINK_TRANS_MS          30.0f
 
 /* ── CURIOUS_TILT ──────────────────────────────────────────────────────────
  * Versão sustentada de CURIOUS_CHECK. Toca a expressão CURIOUS (já
@@ -182,16 +164,12 @@ static nb_idle_alone_cb_t s_alone_cb = NULL;
 
 typedef enum {
     IDLE_MOTIF_NONE = 0,
-    IDLE_MOTIF_SIDE_PEEK,
-    IDLE_MOTIF_VERTICAL_SCAN,
-    IDLE_MOTIF_CROSS_SCAN,
-    IDLE_MOTIF_CURIOUS_CHECK,
-    IDLE_MOTIF_LINE_BLINK,
-    /* Novos — calibrados contra vídeo do EMO (re-análise por olho separado).
-     * Ver docs/IDLE_REFERENCE.md §3.                                      */
-    IDLE_MOTIF_HEAD_TILT_HOLD,    /* postura assimétrica vertical 5–15s   */
-    IDLE_MOTIF_LOOK_DOWN_BLINK,   /* gaze↓ + blink-bar + hold + blink-bar */
-    IDLE_MOTIF_CURIOUS_TILT,      /* CURIOUS sustentado 3.5–5s            */
+    IDLE_MOTIF_GAZE_H,            /* horizontal: esq → centro → dir (ou inverso)    */
+    IDLE_MOTIF_GAZE_V,            /* vertical: baixo → centro → cima (ou inverso)   */
+    IDLE_MOTIF_GAZE_CORNERS,      /* ciclo pelos 4 cantos → centro (horário ou inv.) */
+    IDLE_MOTIF_EXPR_CURIOUS_FLASH,/* flash curto de CURIOUS + micro gaze            */
+    IDLE_MOTIF_POSE_TILT,         /* overlay assimétrico dopen 5–15s                */
+    IDLE_MOTIF_EXPR_CURIOUS_HOLD, /* CURIOUS sustentado 3.5–5s                      */
 } idle_motif_t;
 
 static idle_motif_t s_motif              = IDLE_MOTIF_NONE;
@@ -252,39 +230,38 @@ static void schedule_outer_step(void)
     s_next_glance_ms = rand_interval(MOTIF_OUTER_GAP_MIN_MS, MOTIF_OUTER_GAP_RNG_MS);
 }
 
-/* Distribuição de motifs (re-calibrada contra vídeo idle do EMO).
+/* Distribuição de motifs.
  *
- * IDLE (motif a cada 15–40s — janela longa, motifs sustentados):
- *     30% CURIOUS_TILT       — observado 2× em 30s
- *     20% HEAD_TILT_HOLD     — postura sutil persistente
- *     15% LOOK_DOWN_BLINK    — sequência composta look-down + double-blink
- *     15% LINE_BLINK         — blink-bar isolado curto
- *     10% SIDE_PEEK          — glance lateral (mais raro em IDLE puro)
- *      5% VERTICAL_SCAN
- *      5% CROSS_SCAN
+ * IDLE — mix equilibrado de gaze, expressão e postura:
+ *   25% GAZE_H              horizontal esq ↔ dir
+ *   20% GAZE_V              vertical cima ↕ baixo
+ *   15% GAZE_CORNERS        ciclo pelos 4 cantos
+ *   25% EXPR_CURIOUS_HOLD   CURIOUS sustentado (expressão principal)
+ *   15% POSE_TILT           inclinação assimétrica (postura)
  *
- * ATTENTIVE (motif a cada 5–13s — robô prestando atenção):
- *     distribuição original — domina SIDE_PEEK e VERTICAL_SCAN.
- *
- * Ver docs/IDLE_REFERENCE.md §3 e §4.3. */
+ * ATTENTIVE — mais reativo, mais expressão curiosa:
+ *   25% GAZE_H
+ *   25% GAZE_V
+ *   15% GAZE_CORNERS
+ *   20% EXPR_CURIOUS_FLASH  flash rápido de CURIOUS + micro gaze
+ *   15% EXPR_CURIOUS_HOLD
+ */
 static void begin_idle_motif(bool is_idle_now)
 {
     float r = rand01();
     if (is_idle_now) {
-        if      (r < 0.30f) s_motif = IDLE_MOTIF_CURIOUS_TILT;
-        else if (r < 0.50f) s_motif = IDLE_MOTIF_HEAD_TILT_HOLD;
-        else if (r < 0.65f) s_motif = IDLE_MOTIF_LOOK_DOWN_BLINK;
-        else if (r < 0.80f) s_motif = IDLE_MOTIF_LINE_BLINK;
-        else if (r < 0.90f) s_motif = IDLE_MOTIF_SIDE_PEEK;
-        else if (r < 0.95f) s_motif = IDLE_MOTIF_VERTICAL_SCAN;
-        else                s_motif = IDLE_MOTIF_CROSS_SCAN;
+        if      (r < 0.25f) s_motif = IDLE_MOTIF_GAZE_H;
+        else if (r < 0.45f) s_motif = IDLE_MOTIF_GAZE_V;
+        else if (r < 0.60f) s_motif = IDLE_MOTIF_GAZE_CORNERS;
+        else if (r < 0.85f) s_motif = IDLE_MOTIF_EXPR_CURIOUS_HOLD;
+        else                s_motif = IDLE_MOTIF_POSE_TILT;
     } else {
-        /* ATTENTIVE: distribuição original. */
-        if      (r < 0.36f) s_motif = IDLE_MOTIF_SIDE_PEEK;
-        else if (r < 0.58f) s_motif = IDLE_MOTIF_VERTICAL_SCAN;
-        else if (r < 0.74f) s_motif = IDLE_MOTIF_LINE_BLINK;
-        else if (r < 0.88f) s_motif = IDLE_MOTIF_CURIOUS_CHECK;
-        else                s_motif = IDLE_MOTIF_CROSS_SCAN;
+        /* ATTENTIVE */
+        if      (r < 0.25f) s_motif = IDLE_MOTIF_GAZE_H;
+        else if (r < 0.50f) s_motif = IDLE_MOTIF_GAZE_V;
+        else if (r < 0.65f) s_motif = IDLE_MOTIF_GAZE_CORNERS;
+        else if (r < 0.85f) s_motif = IDLE_MOTIF_EXPR_CURIOUS_FLASH;
+        else                s_motif = IDLE_MOTIF_EXPR_CURIOUS_HOLD;
     }
     s_motif_step = 0;
     s_motif_sign = rand_sign();
@@ -318,7 +295,10 @@ static void do_glance(bool is_idle_now)
     }
 
     switch (s_motif) {
-        case IDLE_MOTIF_SIDE_PEEK:
+        /*
+         * GAZE_H — varredura horizontal: peek lateral → centro → peek oposto.
+         */
+        case IDLE_MOTIF_GAZE_H:
             switch (s_motif_step++) {
                 case 0:
                     do_axis_glance(lateral_peek(s_motif_sign), 0.0f,
@@ -329,9 +309,12 @@ static void do_glance(bool is_idle_now)
                     do_center_pause();
                     break;
                 case 2:
-                    do_axis_glance(lateral_micro(s_motif_sign), 0.0f,
-                                   rand_interval(GLANCE_HOLD_MICRO_MIN_MS,
-                                                 GLANCE_HOLD_MICRO_RNG_MS));
+                    do_axis_glance(lateral_peek(-s_motif_sign), 0.0f,
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 3:
+                    do_center_pause();
                     break;
                 default:
                     finish_idle_motif();
@@ -339,10 +322,14 @@ static void do_glance(bool is_idle_now)
             }
             break;
 
-        case IDLE_MOTIF_VERTICAL_SCAN:
+        /*
+         * GAZE_V — varredura vertical: peek cima/baixo → centro → peek oposto.
+         * s_motif_sign determina se começa para cima (-1) ou para baixo (+1).
+         */
+        case IDLE_MOTIF_GAZE_V:
             switch (s_motif_step++) {
                 case 0:
-                    do_axis_glance(0.0f, vertical_peek(-1.0f),
+                    do_axis_glance(0.0f, vertical_peek(s_motif_sign),
                                    rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
                                                  GLANCE_HOLD_PEEK_RNG_MS));
                     break;
@@ -350,9 +337,12 @@ static void do_glance(bool is_idle_now)
                     do_center_pause();
                     break;
                 case 2:
-                    do_axis_glance(0.0f, vertical_micro(1.0f),
-                                   rand_interval(GLANCE_HOLD_MICRO_MIN_MS,
-                                                 GLANCE_HOLD_MICRO_RNG_MS));
+                    do_axis_glance(0.0f, vertical_peek(-s_motif_sign),
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 3:
+                    do_center_pause();
                     break;
                 default:
                     finish_idle_motif();
@@ -360,7 +350,46 @@ static void do_glance(bool is_idle_now)
             }
             break;
 
-        case IDLE_MOTIF_CURIOUS_CHECK:
+        /*
+         * GAZE_CORNERS — ciclo pelos 4 cantos em sentido horário ou anti-horário.
+         * sign=+1: canto sup-esq → sup-dir → inf-dir → inf-esq → centro.
+         * sign=-1: canto sup-dir → sup-esq → inf-esq → inf-dir → centro.
+         */
+        case IDLE_MOTIF_GAZE_CORNERS:
+            switch (s_motif_step++) {
+                case 0:
+                    do_axis_glance(lateral_peek(-s_motif_sign), vertical_peek(-1.0f),
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 1:
+                    do_axis_glance(lateral_peek(s_motif_sign), vertical_peek(-1.0f),
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 2:
+                    do_axis_glance(lateral_peek(s_motif_sign), vertical_peek(1.0f),
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 3:
+                    do_axis_glance(lateral_peek(-s_motif_sign), vertical_peek(1.0f),
+                                   rand_interval(GLANCE_HOLD_PEEK_MIN_MS,
+                                                 GLANCE_HOLD_PEEK_RNG_MS));
+                    break;
+                case 4:
+                    do_center_pause();
+                    break;
+                default:
+                    finish_idle_motif();
+                    break;
+            }
+            break;
+
+        /*
+         * EXPR_CURIOUS_FLASH — flash curto de CURIOUS + micro gaze lateral e cima.
+         */
+        case IDLE_MOTIF_EXPR_CURIOUS_FLASH:
             switch (s_motif_step++) {
                 case 0: {
                     uint32_t dur = rand_interval(CURIOUS_FLASH_MIN_MS,
@@ -386,75 +415,25 @@ static void do_glance(bool is_idle_now)
             }
             break;
 
-        case IDLE_MOTIF_LINE_BLINK:
-            switch (s_motif_step++) {
-                case 0:
-                    gaze_service_set_target(0.0f, 0.0f);
-                    expression_play(NB_EXPR_SLEEPY,
-                                    (float)rand_interval(LINE_BLINK_MIN_MS,
-                                                         LINE_BLINK_RANGE_MS),
-                                    LINE_BLINK_TRANS_MS);
-                    schedule_inner_step();
-                    break;
-                default:
-                    finish_idle_motif();
-                    break;
-            }
-            break;
-
-        case IDLE_MOTIF_CROSS_SCAN:
-            switch (s_motif_step++) {
-                case 0:
-                    do_axis_glance(lateral_micro(s_motif_sign), 0.0f,
-                                   rand_interval(GLANCE_HOLD_MICRO_MIN_MS,
-                                                 GLANCE_HOLD_MICRO_RNG_MS));
-                    break;
-                case 1:
-                    do_axis_glance(0.0f, vertical_micro(-1.0f),
-                                   rand_interval(GLANCE_HOLD_MICRO_MIN_MS,
-                                                 GLANCE_HOLD_MICRO_RNG_MS));
-                    break;
-                case 2:
-                    do_axis_glance(lateral_micro(-s_motif_sign), 0.0f,
-                                   rand_interval(GLANCE_HOLD_MICRO_MIN_MS,
-                                                 GLANCE_HOLD_MICRO_RNG_MS));
-                    break;
-                case 3:
-                    do_center_pause();
-                    break;
-                default:
-                    finish_idle_motif();
-                    break;
-            }
-            break;
-
         /*
-         * HEAD_TILT_HOLD — postura assimétrica vertical sustentada.
-         * Aplica overlay (dy_l, dy_r) com sinais opostos: simula um leve roll
-         * da cabeça. Mantém durante 5–15s; não bloqueia outros mecanismos
-         * (blink, drift seguem ativos). Ao terminar, limpa o overlay.
-         * Ver docs/IDLE_REFERENCE.md §3 (HEAD_TILT_HOLD).
+         * POSE_TILT — rotação real dos olhos via sprite pushRotateZoom.
+         * Ambos os olhos giram no mesmo sentido (simulando roll da cabeça).
+         * sign=+1: horário (~30°); sign=-1: anti-horário (~-30°).
+         * Mantém 5–15s; blink e drift seguem ativos.
          */
-        case IDLE_MOTIF_HEAD_TILT_HOLD:
+        case IDLE_MOTIF_POSE_TILT:
             switch (s_motif_step++) {
                 case 0: {
-                    float mag = TILT_HOLD_DY_MIN + rand01() * TILT_HOLD_DY_RNG;
-                    /* sign +1: olho L mais baixo (cabeça inclinada para a esquerda do robô)
-                     *      -1: olho R mais baixo (cabeça inclinada para a direita)        */
-                    float dy_l =  mag * s_motif_sign;
-                    float dy_r = -mag * s_motif_sign;
-                    expression_service_set_idle_overlay(dy_l, dy_r, 0.0f, 0.0f);
+                    float angle = 4.0f * s_motif_sign;
+                    expression_service_set_idle_rotation(angle, angle);
                     s_next_glance_ms = rand_interval(TILT_HOLD_DUR_MIN_MS,
                                                      TILT_HOLD_DUR_RNG_MS);
-                    ESP_LOGD(TAG, "tilt_hold dy=(%.2f, %.2f) dur=%lums",
-                             dy_l, dy_r, (unsigned long)s_next_glance_ms);
+                    ESP_LOGD(TAG, "pose_tilt angle=%.1f dur=%lums",
+                             angle, (unsigned long)s_next_glance_ms);
                     break;
                 }
                 case 1:
-                    /* Limpa overlay com retorno suave ao baseline (a transição
-                     * é feita pelo render que lê s_idle_dy_* atomicamente; sem
-                     * easing — o efeito é discreto, não há flick perceptível). */
-                    expression_service_set_idle_overlay(0.0f, 0.0f, 0.0f, 0.0f);
+                    expression_service_set_idle_rotation(0.0f, 0.0f);
                     schedule_inner_step();
                     break;
                 default:
@@ -464,45 +443,10 @@ static void do_glance(bool is_idle_now)
             break;
 
         /*
-         * LOOK_DOWN_BLINK — gaze↓, blink-bar, hold ~600ms, blink-bar, return.
-         * Sequência composta observada no vídeo (t=18s–20s).
-         * Ver docs/IDLE_REFERENCE.md §1.3 e §3.
+         * EXPR_CURIOUS_HOLD — CURIOUS sustentado 3.5–5s com transição suave.
+         * Motif principal de expressão no IDLE.
          */
-        case IDLE_MOTIF_LOOK_DOWN_BLINK:
-            switch (s_motif_step++) {
-                case 0:
-                    /* Gaze para baixo + primeiro blink-bar imediato. */
-                    gaze_service_glance(0.0f, LDB_GAZE_Y, LDB_GAZE_HOLD_MS);
-                    expression_play(NB_EXPR_SLEEPY, (float)LDB_BLINK_DUR_MS,
-                                    LDB_BLINK_TRANS_MS);
-                    s_next_glance_ms = rand_interval(LDB_HOLD_BETWEEN_MIN_MS,
-                                                     LDB_HOLD_BETWEEN_RNG_MS);
-                    ESP_LOGD(TAG, "look_down_blink: gaze↓ + blink1");
-                    break;
-                case 1:
-                    /* Segundo blink-bar (gaze ainda baixo via glance hold). */
-                    expression_play(NB_EXPR_SLEEPY, (float)LDB_BLINK_DUR_MS,
-                                    LDB_BLINK_TRANS_MS);
-                    schedule_inner_step();
-                    ESP_LOGD(TAG, "look_down_blink: blink2");
-                    break;
-                /* O retorno do gaze ao âncora (0,0) acontece automaticamente
-                 * quando o glance hold expira, sem step explícito aqui.    */
-                default:
-                    finish_idle_motif();
-                    break;
-            }
-            break;
-
-        /*
-         * CURIOUS_TILT — versão sustentada do CURIOUS_CHECK.
-         * Toca a expressão CURIOUS (já assimétrica em NB_EXPRESSIONS) por
-         * 3.5–5s. O blink Poisson interno do expression_service continua
-         * ativo durante o hold — replicando o blink dentro de uma expressão
-         * curiosa observado no vídeo (t=23.2s).
-         * Ver docs/IDLE_REFERENCE.md §1.4.
-         */
-        case IDLE_MOTIF_CURIOUS_TILT:
+        case IDLE_MOTIF_EXPR_CURIOUS_HOLD:
             switch (s_motif_step++) {
                 case 0: {
                     uint32_t dur = rand_interval(CURIOUS_TILT_DUR_MIN_MS,
@@ -510,7 +454,7 @@ static void do_glance(bool is_idle_now)
                     expression_play(NB_EXPR_CURIOUS, (float)dur,
                                     CURIOUS_TILT_TRANS_MS);
                     s_next_glance_ms = dur + (uint32_t)CURIOUS_TILT_TRANS_MS;
-                    ESP_LOGD(TAG, "curious_tilt dur=%lums", (unsigned long)dur);
+                    ESP_LOGD(TAG, "expr_curious_hold dur=%lums", (unsigned long)dur);
                     break;
                 }
                 default:
@@ -549,10 +493,9 @@ static void reset_timers_and_center(void)
     s_next_glance_ms        = 0;
     gaze_service_set_anchor(0.0f, 0.0f);
     gaze_service_set_target(0.0f, 0.0f);
-    /* Limpa overlay assimetrico — se HEAD_TILT_HOLD ou CURIOUS_TILT estavam
-     * em curso, garante que o baseline IDLE volte limpo (regra: toda
-     * entrada em IDLE limpa expressao, gaze, postura e overlays). */
+    /* Limpa overlay assimetrico e rotacao — garante baseline IDLE limpo. */
     expression_service_set_idle_overlay(0.0f, 0.0f, 0.0f, 0.0f);
+    expression_service_set_idle_rotation(0.0f, 0.0f);
 }
 
 /* -- API -- */
@@ -611,7 +554,7 @@ void idle_service_update(uint32_t dt_ms)
     bool is_attentive = (state == NB_STATE_ATTENTIVE);
     bool is_active    = is_idle || is_attentive;
 
-    /* Transicao de IDLE/ATTENTIVE -> outro estado: centraliza gaze e reseta timers */
+        /* Transicao de IDLE/ATTENTIVE -> outro estado: centraliza gaze e reseta timers */
     if (!is_active) {
         if (s_was_active) {
             reset_timers_and_center();
@@ -624,18 +567,18 @@ void idle_service_update(uint32_t dt_ms)
     }
 
     /* Transicao de entrada/saida de IDLE: reseta timer de solidao e
-     * recalcula a janela de saccade para a nova distribuicao
-     * (IDLE = 15-40s, ATTENTIVE = 5-13s). Em entrada IDLE, limpa overlay
-     * para honrar a regra de baseline (CLAUDE.md). */
+     * recalcula a janela de saccade para a nova distribuicao.
+     * Em entrada IDLE, limpa overlay para honrar a regra de baseline. */
     if (is_idle != s_was_idle) {
         s_alone_timer_ms = 0;
         if (is_idle) {
             gaze_service_set_anchor(0.0f, 0.0f);
             gaze_service_set_target(0.0f, 0.0f);
-            s_motif                 = IDLE_MOTIF_NONE;
-            s_motif_step            = 0;
-            s_next_glance_ms        = 0;
+            s_motif          = IDLE_MOTIF_NONE;
+            s_motif_step     = 0;
+            s_next_glance_ms = 0;
             expression_service_set_idle_overlay(0.0f, 0.0f, 0.0f, 0.0f);
+            expression_service_set_idle_rotation(0.0f, 0.0f);
         }
         s_saccade_timer_ms = saccade_interval_for(is_idle);
     }
@@ -644,14 +587,12 @@ void idle_service_update(uint32_t dt_ms)
     s_was_idle   = is_idle;
     expression_service_set_breath_enabled(true);
 
-    /* -- Glance (IDLE e ATTENTIVE) --
-     * Janela de motif depende do estado: IDLE = 15-40s (raro),
-     * ATTENTIVE = 5-13s (frequente). Ver docs/IDLE_REFERENCE.md sec.4.1. */
+    /* -- Glance (IDLE e ATTENTIVE) -- */
     if (s_saccade_timer_ms <= dt_ms) {
         do_glance(is_idle);
         if (s_next_glance_ms > 0u) {
-            s_saccade_timer_ms  = s_next_glance_ms;
-            s_next_glance_ms    = 0u;
+            s_saccade_timer_ms = s_next_glance_ms;
+            s_next_glance_ms   = 0u;
         } else {
             s_saccade_timer_ms = saccade_interval_for(is_idle);
         }
@@ -716,8 +657,8 @@ void idle_service_update(uint32_t dt_ms)
                     expression_play(NB_EXPR_FOCUSED, 120.0f + rand01() * 120.0f, 45.0f);
                     ESP_LOGD(TAG, "involuntary: neutral focus pulse");
                 } else if (cur == NB_EXPR_HAPPY) {
-                    expression_play(NB_EXPR_SLEEPY, 80.0f, 40.0f);
-                    ESP_LOGD(TAG, "involuntary: satisfied blink");
+                    expression_play(NB_EXPR_FOCUSED, 100.0f, 45.0f);
+                    ESP_LOGD(TAG, "involuntary: happy focus pulse");
                 } else if (cur == NB_EXPR_FOCUSED) {
                     expression_play(NB_EXPR_SUSPICIOUS, 100.0f, 40.0f);
                     ESP_LOGD(TAG, "involuntary: micro-squint");
