@@ -128,6 +128,7 @@ static constexpr int   SPR_H    = 96;
 static constexpr float SPR_FCX  = 160.0f;  /* centro de face em X (= centro do sprite) */
 static constexpr float SPR_CYF  = 48.0f;   /* centro vertical do sprite */
 static LGFX_Sprite s_face_spr;
+static bool        s_face_spr_ready = false;
 
 typedef enum {
     BLINK_IDLE,
@@ -1241,7 +1242,8 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
     /* Rotação: usa rot_l como ângulo único para ambos os olhos (sempre igual).
      * Sprite combinado 320×96 garante que os dois giram ao redor do centro
      * da face (x=160), não ao redor do centro individual de cada olho. */
-    bool  use_rot = !sleep_anim && is_neutral && (rot_l > 0.5f || rot_l < -0.5f);
+    bool  use_rot = !sleep_anim && is_neutral && s_face_spr_ready
+                 && (rot_l > 0.5f || rot_l < -0.5f);
 
     /*
      * Blink bar EMO: quando qualquer olho entra na fase de barra, os dois olhos
@@ -1372,8 +1374,10 @@ esp_err_t expression_service_init(void)
     if (!s_face_spr.createSprite(SPR_W, SPR_H)) {
         ESP_LOGW(TAG, "face sprite nao alocado — rotacao desabilitada");
         s_face_spr.deleteSprite();
+        s_face_spr_ready = false;
     } else {
         s_face_spr.setColorDepth(16);
+        s_face_spr_ready = true;
         ESP_LOGI(TAG, "face sprite %dx%d criado em PSRAM", SPR_W, SPR_H);
     }
 
