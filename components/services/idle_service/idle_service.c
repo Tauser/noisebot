@@ -232,6 +232,11 @@ static void schedule_outer_step(void)
 
 /* Distribuição de motifs.
  *
+ * Todos os motifs só iniciam quando a expressão ativa é NEUTRAL —
+ * movimentos de gaze e expressão pressupõem NEUTRAL como base.
+ * Se outra expressão estiver ativa (HAPPY, CURIOUS via behavior, etc.),
+ * nenhum motif é iniciado neste ciclo.
+ *
  * IDLE — mix equilibrado de gaze, expressão e postura:
  *   25% GAZE_H              horizontal esq ↔ dir
  *   20% GAZE_V              vertical cima ↕ baixo
@@ -248,6 +253,11 @@ static void schedule_outer_step(void)
  */
 static void begin_idle_motif(bool is_idle_now)
 {
+    if (emotion_model_get_expression() != NB_EXPR_NEUTRAL) {
+        s_motif = IDLE_MOTIF_NONE;
+        return;
+    }
+
     float r = rand01();
     if (is_idle_now) {
         if      (r < 0.25f) s_motif = IDLE_MOTIF_GAZE_H;

@@ -118,13 +118,16 @@ static constexpr int ROT_MARGIN    = 22;
 static constexpr int FACE_DIRTY_Y0 = (int)EYE_CY_BASE - (int)MAX_HH_F - (int)Y_TRAVEL_PX - (int)MAX_CURVE_PX - ROT_MARGIN;
 static constexpr int FACE_DIRTY_Y1 = (int)EYE_CY_BASE + (int)MAX_HH_F + (int)Y_TRAVEL_PX + (int)MAX_CURVE_PX + ROT_MARGIN + 8;
 
-/* ── Sprites por olho (rotação) ──────────────────────────────────────────── */
-static constexpr int   SPR_W   = 96;
-static constexpr int   SPR_H   = 96;
-static constexpr float SPR_CXF = 48.0f;   /* centro do sprite em X */
-static constexpr float SPR_CYF = 48.0f;   /* centro do sprite em Y */
-static LGFX_Sprite s_eye_spr_l;
-static LGFX_Sprite s_eye_spr_r;
+/* ── Sprite de face combinado (rotação) ──────────────────────────────────── */
+/* Sprite único 320×96px cobrindo os dois olhos. A rotação acontece ao redor
+ * do centro da face (x=160), não do centro de cada olho — os dois giram
+ * como uma unidade (head tilt real). Olhos desenhados nas posições de tela
+ * relativas ao sprite (stride = largura do display). */
+static constexpr int   SPR_W    = 320;
+static constexpr int   SPR_H    = 96;
+static constexpr float SPR_FCX  = 160.0f;  /* centro de face em X (= centro do sprite) */
+static constexpr float SPR_CYF  = 48.0f;   /* centro vertical do sprite */
+static LGFX_Sprite s_face_spr;
 
 typedef enum {
     BLINK_IDLE,
@@ -319,7 +322,7 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
         .tl_l=0.00f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
         .tl_r=0.19f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
         .open_l=0.82f, .open_r=0.96f,
-        .y_l=0.00f,    .y_r=-0.28f,
+        .y_l=0.00f,    .y_r=0.00f,
         .x_off=0.60f,
         .rt_top=0.64f, .rb_bot=0.64f,
         .cv_top=0.00f, .cv_bot=0.00f,
@@ -1234,9 +1237,11 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
 
     /* Rotação idle (POSE_TILT). Float 32-bit é atômico em ESP32-S3. */
     float rot_l = s_idle_rot_l;
-    float rot_r = s_idle_rot_r;
-    bool  use_rot_l = !sleep_anim && (rot_l > 0.5f || rot_l < -0.5f);
-    bool  use_rot_r = !sleep_anim && (rot_r > 0.5f || rot_r < -0.5f);
+    bool  is_neutral = (s_active_expr == NB_EXPR_NEUTRAL);
+    /* Rotação: usa rot_l como ângulo único para ambos os olhos (sempre igual).
+     * Sprite combinado 320×96 garante que os dois giram ao redor do centro
+     * da face (x=160), não ao redor do centro individual de cada olho. */
+    bool  use_rot = !sleep_anim && is_neutral && (rot_l > 0.5f || rot_l < -0.5f);
 
     /*
      * Blink bar EMO: quando qualquer olho entra na fase de barra, os dois olhos
@@ -1260,63 +1265,70 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
         spr->drawFastHLine(bx, bar_y,     bw, face.color);
         spr->drawFastHLine(bx, bar_y + 1, bw, face.color);
 
+    } else if (use_rot) {
+
+        /* Rotação combinada: ambos os olhos num sprite único 320×96.
+         * Desenhados nas posições de tela (x = left_cx / right_cx).
+         * Y no sprite = SPR_CYF + (1-open)*MAX_HH_F (bottom-aligned, centrado no sprite).
+         * pushRotateZoom ao redor do centro da face (SPR_FCX=160, SPR_CYF=48)
+         * → os dois olhos arcos ao redor de x=160, efeito de head tilt real. */
+        s_face_spr.fillSprite(TFT_BLACK);
+
+        float spr_cy_l = SPR_CYF + (1.0f - face.open_l) * MAX_HH_F;
+        float spr_cy_r = SPR_CYF + (1.0f - face.open_r) * MAX_HH_F;
+
+        draw_emo_eye(&s_face_spr,
+                     left_cx, spr_cy_l,
+                     face.open_l,
+                     face.tl_l, face.tr_l,
+                     face.bl_l, face.br_l,
+                     face.squint_l,
+                     face.rt_top, face.rb_bot,
+                     face.cv_top, face.cv_bot,
+                     s_blink[0].phase,
+                     face.color);
+
+        draw_emo_eye(&s_face_spr,
+                     right_cx, spr_cy_r,
+                     face.open_r,
+                     face.tl_r, face.tr_r,
+                     face.bl_r, face.br_r,
+                     face.squint_r,
+                     face.rt_top, face.rb_bot,
+                     face.cv_top, face.cv_bot,
+                     s_blink[1].phase,
+                     face.color);
+
+        /* Push: sprite center (160, 48) mapeia para (160, push_y) na tela.
+         * push_y = EYE_CY_BASE + avg_y*Y_TRAVEL_PX (base da face sem open offset,
+         * já que open offset foi absorvido em spr_cy_l/r). */
+        float push_y = (float)EYE_CY_BASE + ((y_l + y_r) * 0.5f * Y_TRAVEL_PX);
+        s_face_spr.pushRotateZoom(spr, SPR_FCX, push_y, rot_l, 1.0f, 1.0f, TFT_BLACK);
+
     } else {
 
-        /* Olho esquerdo */
-        if (use_rot_l) {
-            s_eye_spr_l.fillSprite(TFT_BLACK);
-            draw_emo_eye(&s_eye_spr_l,
-                         (int16_t)SPR_CXF, SPR_CYF,
-                         face.open_l,
-                         face.tl_l, face.tr_l,
-                         face.bl_l, face.br_l,
-                         face.squint_l,
-                         face.rt_top, face.rb_bot,
-                         face.cv_top, face.cv_bot,
-                         s_blink[0].phase,
-                         face.color);
-            s_eye_spr_l.pushRotateZoom(spr, (float)left_cx, cy_l_f,
-                                        rot_l, 1.0f, 1.0f, TFT_BLACK);
-        } else {
-            draw_emo_eye(spr,
-                         left_cx, cy_l_f,
-                         face.open_l,
-                         face.tl_l, face.tr_l,
-                         face.bl_l, face.br_l,
-                         face.squint_l,
-                         face.rt_top, face.rb_bot,
-                         face.cv_top, face.cv_bot,
-                         s_blink[0].phase,
-                         face.color);
-        }
+        /* Path normal sem rotação */
+        draw_emo_eye(spr,
+                     left_cx, cy_l_f,
+                     face.open_l,
+                     face.tl_l, face.tr_l,
+                     face.bl_l, face.br_l,
+                     face.squint_l,
+                     face.rt_top, face.rb_bot,
+                     face.cv_top, face.cv_bot,
+                     s_blink[0].phase,
+                     face.color);
 
-        /* Olho direito — tl_r/bl_r = lados internos, tr_r/br_r = externos. */
-        if (use_rot_r) {
-            s_eye_spr_r.fillSprite(TFT_BLACK);
-            draw_emo_eye(&s_eye_spr_r,
-                         (int16_t)SPR_CXF, SPR_CYF,
-                         face.open_r,
-                         face.tl_r, face.tr_r,
-                         face.bl_r, face.br_r,
-                         face.squint_r,
-                         face.rt_top, face.rb_bot,
-                         face.cv_top, face.cv_bot,
-                         s_blink[1].phase,
-                         face.color);
-            s_eye_spr_r.pushRotateZoom(spr, (float)right_cx, cy_r_f,
-                                        rot_r, 1.0f, 1.0f, TFT_BLACK);
-        } else {
-            draw_emo_eye(spr,
-                         right_cx, cy_r_f,
-                         face.open_r,
-                         face.tl_r, face.tr_r,
-                         face.bl_r, face.br_r,
-                         face.squint_r,
-                         face.rt_top, face.rb_bot,
-                         face.cv_top, face.cv_bot,
-                         s_blink[1].phase,
-                         face.color);
-        }
+        draw_emo_eye(spr,
+                     right_cx, cy_r_f,
+                     face.open_r,
+                     face.tl_r, face.tr_r,
+                     face.bl_r, face.br_r,
+                     face.squint_r,
+                     face.rt_top, face.rb_bot,
+                     face.cv_top, face.cv_bot,
+                     s_blink[1].phase,
+                     face.color);
     }
 
     draw_blush_overlay(spr, now_us);
@@ -1353,18 +1365,16 @@ esp_err_t expression_service_init(void)
         return ESP_ERR_NO_MEM;
     }
 
-    /* Sprites por olho para rotação (POSE_TILT). Alocados em PSRAM. */
-    s_eye_spr_l.setPsram(true);
-    s_eye_spr_r.setPsram(true);
-    if (!s_eye_spr_l.createSprite(SPR_W, SPR_H) ||
-        !s_eye_spr_r.createSprite(SPR_W, SPR_H)) {
-        ESP_LOGW(TAG, "eye sprites nao alocados — rotacao desabilitada");
-        s_eye_spr_l.deleteSprite();
-        s_eye_spr_r.deleteSprite();
+    /* Sprite de face combinado para rotação (POSE_TILT). Alocado em PSRAM.
+     * 320×96px — dois olhos desenhados nas posições de tela, rotacionados
+     * como unidade ao redor do centro da face (x=160). */
+    s_face_spr.setPsram(true);
+    if (!s_face_spr.createSprite(SPR_W, SPR_H)) {
+        ESP_LOGW(TAG, "face sprite nao alocado — rotacao desabilitada");
+        s_face_spr.deleteSprite();
     } else {
-        s_eye_spr_l.setColorDepth(16);
-        s_eye_spr_r.setColorDepth(16);
-        ESP_LOGI(TAG, "eye sprites %dx%d criados em PSRAM", SPR_W, SPR_H);
+        s_face_spr.setColorDepth(16);
+        ESP_LOGI(TAG, "face sprite %dx%d criado em PSRAM", SPR_W, SPR_H);
     }
 
     s_current          = NB_EXPRESSIONS[NB_EXPR_NEUTRAL];
