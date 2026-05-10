@@ -216,10 +216,11 @@ void expression_service_set_breath_enabled(bool enabled);
 void expression_service_set_blink_enabled(bool enabled);
 
 /**
- * @brief Habilita/desabilita a animação visual de sono.
+ * @brief Habilita/desabilita o modo visual de sono dos olhos.
  *
- * Mantém os olhos centralizados e quase fechados, com respiração lenta e
- * uma bolha ciano que infla, encolhe e some no display.
+ * Mantém os olhos centralizados e quase fechados, com respiração lenta
+ * (abertura oscilando sutilmente). A bolha de sono é gerenciada pelo
+ * ui_overlay_service e deve ser ativada separadamente.
  */
 void expression_service_set_sleep_anim_enabled(bool enabled);
 
@@ -237,6 +238,45 @@ void expression_service_set_sleep_anim_enabled(bool enabled);
  * @param y  [-1, 1]  -1=cima,    +1=baixo
  */
 void expression_service_set_gaze(float x, float y);
+
+/**
+ * @brief Aplica overlay assimétrico aditivo sobre a expressão atual.
+ *
+ * Aplicado no render APÓS a expressão base e o gaze offset, ANTES dos
+ * clamps de perspectiva. Útil para postures de IDLE como `head_tilt`
+ * (assimetria vertical sustentada) e `curious_tilt` (um olho mais aberto
+ * que o outro), permitindo um motif persistir por vários segundos sem
+ * substituir a expressão semântica corrente — o blink continua funcionando
+ * normalmente sobre o overlay.
+ *
+ * Magnitudes recomendadas:
+ *   dy_*    ≤ 0.15  (head tilt sutil ≈ 2–3° aparentes)
+ *   dopen_* ≤ 0.25  (olho um pouco mais arregalado)
+ *
+ * Set (0,0,0,0) para limpar.
+ *
+ * Atualizado pela `behavior_task` (idle_service); leitura no `render_task`
+ * (Core 1). Floats de 4 bytes — leitura atômica em ESP32-S3.
+ *
+ * @param dy_l    [-0.3..0.3]  delta vertical olho esquerdo (+ = desce)
+ * @param dy_r    [-0.3..0.3]  delta vertical olho direito  (+ = desce)
+ * @param dopen_l [-0.3..0.3]  delta abertura olho esquerdo (+ = mais aberto)
+ * @param dopen_r [-0.3..0.3]  delta abertura olho direito  (+ = mais aberto)
+ */
+void expression_service_set_idle_overlay(float dy_l, float dy_r,
+                                         float dopen_l, float dopen_r);
+
+/**
+ * @brief Define rotação dos olhos no idle overlay (motif POSE_TILT).
+ *
+ * Cada olho é renderizado num sprite 96×96 e empurrado rotacionado via
+ * pushRotateZoom. Rotação positiva = horário. Clampada em ±45°.
+ * Passar 0.0f, 0.0f para desabilitar (retorna ao path direto sem sprite).
+ *
+ * @param rot_l  Ângulo em graus para o olho esquerdo.
+ * @param rot_r  Ângulo em graus para o olho direito.
+ */
+void expression_service_set_idle_rotation(float rot_l, float rot_r);
 
 #ifdef __cplusplus
 }

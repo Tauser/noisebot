@@ -22,6 +22,7 @@
 
 #include "expression_service.h"
 #include "render_service.h"
+#include "ui_overlay_service.h"
 #include "display_lgfx_config.hpp"
 
 #include "esp_log.h"
@@ -62,7 +63,7 @@ static constexpr float Y_TRAVEL_PX    = 32.0f;   /* pixels para y=±1      */
 static constexpr float X_OFF_TRAVEL   = 18.0f;   /* pixels para x_off=±1  */
 static constexpr float MAX_CURVE_PX   = 10.0f;   /* pixels de curvatura máx */
 static constexpr float GAZE_X_TRAVEL_PX = 14.0f; /* pixels de gaze horizontal */
-static constexpr float GAZE_Y_MAX        = 0.18f; /* mantém gaze perto do centro */
+static constexpr float GAZE_Y_MAX        = 0.55f; /* travel vertical permitido (~18px) */
 
 /* Perspectiva lateral: olho do lado do gaze estreita levemente.
  * PERSP_OPEN_FACTOR: redução relativa de open (14% no gaze máximo).
@@ -74,8 +75,14 @@ static constexpr float GAZE_X_MAX             = 0.65f;
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
 
-static constexpr float   BLINK_MEAN_MS  = 4200.0f;
-static constexpr float   BLINK_MIN_MS   = 1600.0f;
+/* Tuning calibrado contra o vídeo idle do EMO (re-análise por olho separado).
+ * Blinks isolados ocorrem em ~7-10s, mas blinks compostos (look-down + double)
+ * e blinks dentro de expressões sustentadas (CURIOUS_TILT) também acontecem.
+ * Mantemos média moderada — a riqueza vem dos motifs em idle_service.
+ * Ver docs/IDLE_REFERENCE.md §1.3 e §4.1.
+ */
+static constexpr float   BLINK_MEAN_MS  = 5000.0f;   /* era 4200; testado 7500 (alto demais) */
+static constexpr float   BLINK_MIN_MS   = 1800.0f;   /* era 1600                              */
 static constexpr int64_t BLINK_CLOSE_US = 55000LL;
 static constexpr int64_t BLINK_HOLD_US  = 25000LL;
 static constexpr int64_t BLINK_OPEN_US  = 80000LL;
@@ -106,8 +113,18 @@ static constexpr int16_t BLINK_BAR_EXTRA_HW  = 3;    /* px de padding além das 
 static constexpr int GAZE_X_MARGIN  = (int)GAZE_X_TRAVEL_PX;
 static constexpr int FACE_DIRTY_X0 = (int)BASE_L_CX  - (int)HW_I - (int)X_OFF_TRAVEL - GAZE_X_MARGIN - (int)BLINK_BAR_EXTRA_HW;
 static constexpr int FACE_DIRTY_X1 = (int)BASE_R_CX  + (int)HW_I + (int)X_OFF_TRAVEL + GAZE_X_MARGIN + (int)BLINK_BAR_EXTRA_HW;
-static constexpr int FACE_DIRTY_Y0 = (int)EYE_CY_BASE - (int)MAX_HH_F - (int)Y_TRAVEL_PX - (int)MAX_CURVE_PX - 2;
-static constexpr int FACE_DIRTY_Y1 = (int)EYE_CY_BASE + (int)MAX_HH_F + (int)Y_TRAVEL_PX + (int)MAX_CURVE_PX + 16;
+/* ROT_MARGIN: folga extra para olhos rotacionados em até 30° (96×96 sprite → diagonal ~68px vs 46px). */
+static constexpr int ROT_MARGIN    = 22;
+static constexpr int FACE_DIRTY_Y0 = (int)EYE_CY_BASE - (int)MAX_HH_F - (int)Y_TRAVEL_PX - (int)MAX_CURVE_PX - ROT_MARGIN;
+static constexpr int FACE_DIRTY_Y1 = (int)EYE_CY_BASE + (int)MAX_HH_F + (int)Y_TRAVEL_PX + (int)MAX_CURVE_PX + ROT_MARGIN + 8;
+
+/* ── Sprites por olho (rotação) ──────────────────────────────────────────── */
+static constexpr int   SPR_W   = 96;
+static constexpr int   SPR_H   = 96;
+static constexpr float SPR_CXF = 48.0f;   /* centro do sprite em X */
+static constexpr float SPR_CYF = 48.0f;   /* centro do sprite em Y */
+static LGFX_Sprite s_eye_spr_l;
+static LGFX_Sprite s_eye_spr_r;
 
 typedef enum {
     BLINK_IDLE,
@@ -180,6 +197,15 @@ static nb_expression_t    s_active_expr        = NB_EXPR_NEUTRAL;
 static nb_blink_eye_t     s_blink[2]          = {};
 static int64_t            s_next_blink_us     = 0;
 
+/* Duplo blink: ~30% dos blinks disparam um segundo blink 400–1000ms depois.
+ * Calibrado contra vídeo idle do EMO (2 double em 3 eventos / 30s — ver
+ * docs/IDLE_REFERENCE.md §1.3 e §3.2). */
+static bool               s_double_blink_pending = false;
+static int64_t            s_double_blink_us      = 0;
+static constexpr uint32_t DOUBLE_BLINK_THRESH    = 77u;   /* /256 ≈ 30% (era 31 ≈12%) */
+static constexpr int64_t  DOUBLE_BLINK_MIN_US    = 400000LL; /* era 180000 */
+static constexpr int64_t  DOUBLE_BLINK_RNG_US    = 600000LL; /* gap total 400–1000ms (era 180–380) */
+
 /*
  * Gaze offset — escrito por gaze_render_cb (z=5) e lido por este callback
  * (z=10), ambos no mesmo Core 1 render_task, sequencialmente no mesmo frame.
@@ -188,6 +214,16 @@ static int64_t            s_next_blink_us     = 0;
  */
 static float              s_gaze_x            = 0.0f;
 static float              s_gaze_y            = 0.0f;
+
+/* Overlay assimétrico de IDLE (head_tilt, curious_tilt, etc).
+ * Escrito pela behavior_task (idle_service); lido no render_task.
+ * Float 32-bit é atômico em ESP32-S3 single-word load/store. */
+static volatile float     s_idle_dy_l         = 0.0f;
+static volatile float     s_idle_dy_r         = 0.0f;
+static volatile float     s_idle_dopen_l      = 0.0f;
+static volatile float     s_idle_dopen_r      = 0.0f;
+static volatile float     s_idle_rot_l        = 0.0f;   /* rotação em graus, olho esq */
+static volatile float     s_idle_rot_r        = 0.0f;   /* rotação em graus, olho dir */
 
 /* Pixels de deslocamento horizontal por unidade de gaze_x (translation bilateral). */
 
@@ -212,11 +248,15 @@ static volatile bool      s_sleep_anim_enabled = false;
 static bool               s_blink_prev_enabled = true;
 static int64_t            s_sleep_anim_start_us = 0;
 
-static constexpr float BREATH_PERIOD_MS       = 5200.0f;
-static constexpr float BREATH_AMP             = 0.045f;
-static constexpr float SLEEP_EYE_PERIOD_MS    = 6200.0f;   /* respiração calma dos olhos */
-static constexpr float SLEEP_BUBBLE_PERIOD_MS = 4200.0f;   /* ciclo da bolha de sono */
-static constexpr float NB_PI_F                = 3.14159265358979323846f;
+static constexpr float BREATH_PERIOD_MS    = 5200.0f;
+static constexpr float BREATH_AMP          = 0.045f;
+static constexpr float SLEEP_EYE_PERIOD_MS = 6200.0f;   /* respiração calma dos olhos */
+static constexpr float NB_PI_F             = 3.14159265358979323846f;
+
+static constexpr float SLEEP_STAGE_DROWSY_END_MS   = 2500.0f;
+static constexpr float SLEEP_STAGE_RESIST_END_MS   = 7600.0f;
+static constexpr float SLEEP_STAGE_CLOSE_END_MS    = 9000.0f;
+static constexpr float SLEEP_STAGE_REOPEN_END_MS   = 13000.0f;
 
 /* ── 6 Expressões base ───────────────────────────────────────────────────── */
 /*
@@ -248,11 +288,11 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
     {
         .tl_l=0.00f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
         .tl_r=0.00f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
-        .open_l=0.86f, .open_r=0.86f,
+        .open_l=0.88f, .open_r=0.88f,
         .y_l=0.00f,    .y_r=0.00f,
-        .x_off=0.00f,
-        .rt_top=0.38f, .rb_bot=0.38f,
-        .cv_top=0.50f, .cv_bot=0.50f,
+        .x_off=0.60f,
+        .rt_top=0.64f, .rb_bot=0.64f,
+        .cv_top=0.00f, .cv_bot=0.00f,
         .color=TFT_WHITE,
         .squint_l=0.00f, .squint_r=0.00f,
     },
@@ -265,22 +305,24 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
         .tl_r=0.00f,.tr_r=0.00f,.bl_r=0.72f,.br_r=0.72f,
         .open_l=0.41f, .open_r=0.41f,
         .y_l=0.00f,    .y_r=0.00f,
-        .x_off=0.00f,
+        .x_off=0.60f,
         .rt_top=0.27f, .rb_bot=0.52f,
         .cv_top=1.00f, .cv_bot=-1.00f,
         .color=TFT_WHITE,
         .squint_l=0.22f, .squint_r=0.22f,
     },
 
-    /* CURIOUS — olho direito mais aberto e mais alto, curvatura no topo forte */
+    /* CURIOUS — olho direito mais aberto e mais alto, curvatura no topo forte.
+     * y_r=0: com bottom-alignment, open_r=1.00 vs open_l=0.82 já eleva o topo
+     * direito ~17px acima do esquerdo sem desalinhar as bases. */
     {
         .tl_l=0.00f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
-        .tl_r=0.10f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
-        .open_l=0.82f, .open_r=1.00f,
+        .tl_r=0.19f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
+        .open_l=0.82f, .open_r=0.96f,
         .y_l=0.00f,    .y_r=-0.28f,
-        .x_off=0.08f,
-        .rt_top=0.42f, .rb_bot=0.32f,
-        .cv_top=0.65f, .cv_bot=0.10f,
+        .x_off=0.60f,
+        .rt_top=0.64f, .rb_bot=0.64f,
+        .cv_top=0.00f, .cv_bot=0.00f,
         .color=TFT_WHITE,
         .squint_l=0.00f, .squint_r=0.00f,
     },
@@ -291,14 +333,12 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
         .tl_r=0.00f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
         .open_l=0.14f, .open_r=0.14f,
         .y_l=1.00f,    .y_r=1.00f,
-        .x_off=0.00f,
-        .rt_top=0.16f, .rb_bot=1.00f,
-        .cv_top=-0.60f, .cv_bot=0.53f,
+        .x_off=0.60f,
+        .rt_top=0.19f, .rb_bot=1.00f,
+        .cv_top=-0.38f, .cv_bot=0.45f,
         .color=TFT_WHITE,
         .squint_l=0.51f, .squint_r=0.51f,
     },
-
-
 
 
     /* FOCUSED — cantos internos do topo descidos, squint leve: olhar concentrado */
@@ -307,8 +347,8 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
         .tl_r=0.30f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
         .open_l=0.80f, .open_r=0.80f,
         .y_l=0.00f,    .y_r=0.00f,
-        .x_off=0.00f,
-        .rt_top=0.35f, .rb_bot=0.35f,
+        .x_off=0.60f,
+        .rt_top=0.64f, .rb_bot=0.64f,
         .cv_top=0.30f, .cv_bot=0.05f,
         .color=TFT_WHITE,
         .squint_l=0.10f, .squint_r=0.10f,
@@ -316,13 +356,13 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
 
     /* SUSPICIOUS — cantos internos fortemente descidos, squint médio: V agressivo */
     {
-        .tl_l=0.00f,.tr_l=0.62f,.bl_l=0.00f,.br_l=0.00f,
-        .tl_r=0.62f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
-        .open_l=0.60f, .open_r=0.60f,
+        .tl_l=0.00f,.tr_l=0.38f,.bl_l=0.00f,.br_l=0.00f,
+        .tl_r=0.38f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
+        .open_l=0.86f, .open_r=0.86f,
         .y_l=0.10f,    .y_r=0.10f,
-        .x_off=0.00f,
-        .rt_top=0.20f, .rb_bot=0.28f,
-        .cv_top=-0.15f,.cv_bot=0.05f,
+        .x_off=0.60f,
+        .rt_top=0.64f, .rb_bot=0.64f,
+        .cv_top=-0.44f, .cv_bot=0.05f,
         .color=TFT_WHITE,
         .squint_l=0.38f, .squint_r=0.38f,
     },
@@ -331,11 +371,11 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
     {
         .tl_l=0.00f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
         .tl_r=0.00f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
-        .open_l=1.10f, .open_r=1.10f,
+        .open_l=1.00f, .open_r=1.00f,
         .y_l=0.00f,    .y_r=0.00f,
-        .x_off=0.00f,
-        .rt_top=0.45f, .rb_bot=0.45f,
-        .cv_top=0.60f, .cv_bot=0.20f,
+        .x_off=0.60f,
+        .rt_top=0.64f, .rb_bot=0.64f,
+        .cv_top=0.00f, .cv_bot=0.00f,
         .color=TFT_WHITE,
         .squint_l=0.00f, .squint_r=0.00f,
     },
@@ -348,13 +388,13 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
      * Resultado: V invertido no topo — inclinação externa-para-baixo = tristeza clássica
      */
     {
-        .tl_l=0.55f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.20f,
-        .tl_r=0.00f,.tr_r=0.55f,.bl_r=0.20f,.br_r=0.00f,
+        .tl_l=0.70f,.tr_l=0.13f,.bl_l=0.00f,.br_l=0.44f,
+        .tl_r=0.00f,.tr_r=0.70f,.bl_r=0.44f,.br_r=0.00f,
         .open_l=0.68f, .open_r=0.68f,
         .y_l=0.20f,    .y_r=0.20f,
-        .x_off=0.00f,
-        .rt_top=0.28f, .rb_bot=0.32f,
-        .cv_top=-0.10f,.cv_bot=0.08f,
+        .x_off=0.60f,
+        .rt_top=0.64f, .rb_bot=0.64f,
+        .cv_top=-0.16f, .cv_bot=0.08f,
         .color=TFT_WHITE,
         .squint_l=0.08f, .squint_r=0.08f,
     },
@@ -370,10 +410,10 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
     {
         .tl_l=0.00f,.tr_l=0.28f,.bl_l=0.00f,.br_l=0.00f,
         .tl_r=0.28f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
-        .open_l=0.95f, .open_r=0.95f,
-        .y_l=-0.18f,   .y_r=-0.18f,
-        .x_off=0.04f,
-        .rt_top=0.42f, .rb_bot=0.35f,
+        .open_l=0.88f, .open_r=0.88f,
+        .y_l=-0.18f,    .y_r=-0.18f,
+        .x_off=0.60f,
+        .rt_top=0.64f, .rb_bot=0.64f,
         .cv_top=0.55f, .cv_bot=0.10f,
         .color=TFT_WHITE,
         .squint_l=0.00f, .squint_r=0.00f,
@@ -417,10 +457,103 @@ static inline float clamp_abs(float v, float max_abs)
 
 static inline float damp_vertical_for_lateral_gaze(float gx, float gy)
 {
-    if (fabsf(gx) > 0.03f) {
-        return gy * 0.25f;
+    /* Só damp quando fortemente lateral (>0.30) — preserva diagonais orgânicas. */
+    float absx = fabsf(gx);
+    if (absx > 0.30f) {
+        float t = (absx - 0.30f) / (GAZE_X_MAX - 0.30f);  /* 0→1 no range extremo */
+        return gy * (1.0f - t * 0.55f);                    /* reduz até 45% no extremo */
     }
     return gy;
+}
+
+static inline float smooth01(float v)
+{
+    if (v < 0.0f) v = 0.0f;
+    if (v > 1.0f) v = 1.0f;
+    return v * v * (3.0f - 2.0f * v);
+}
+
+static void apply_sleep_visual_stage(nb_face_state_t *face, float elapsed_ms,
+                                     float *sleep_bob_norm)
+{
+    const nb_face_state_t neutral = NB_EXPRESSIONS[NB_EXPR_NEUTRAL];
+    const nb_face_state_t sleepy  = NB_EXPRESSIONS[NB_EXPR_SLEEPY];
+
+    if (elapsed_ms < SLEEP_STAGE_DROWSY_END_MS) {
+        /* 1. Sono chegando: olhos ainda abertos, começando a pesar. */
+        float t = smooth01(elapsed_ms / SLEEP_STAGE_DROWSY_END_MS);
+        *face = neutral;
+        face->open_l = 0.86f - t * 0.12f;
+        face->open_r = 0.86f - t * 0.10f;
+        face->y_l = t * 0.05f;
+        face->y_r = t * 0.04f;
+        face->squint_l = t * 0.10f;
+        face->squint_r = t * 0.08f;
+        face->cv_top = 0.50f - t * 0.16f;
+        return;
+    }
+
+    if (elapsed_ms < SLEEP_STAGE_RESIST_END_MS) {
+        /* 2. Resistência: tenta ficar acordado, com assimetria sonolenta. */
+        float t = (elapsed_ms - SLEEP_STAGE_DROWSY_END_MS)
+                / (SLEEP_STAGE_RESIST_END_MS - SLEEP_STAGE_DROWSY_END_MS);
+        float ease = smooth01(t);
+        float wobble = sinf(t * 3.0f * NB_PI_F);
+        *face = neutral;
+        face->open_l = 0.74f - ease * 0.28f + wobble * 0.035f;
+        face->open_r = 0.76f - ease * 0.38f - wobble * 0.050f;
+        if (face->open_l < 0.30f) face->open_l = 0.30f;
+        if (face->open_r < 0.22f) face->open_r = 0.22f;
+        face->y_l = 0.04f + ease * 0.09f;
+        face->y_r = 0.02f + ease * 0.13f;
+        face->squint_l = 0.10f + ease * 0.20f;
+        face->squint_r = 0.14f + ease * 0.26f;
+        face->cv_top = 0.34f - ease * 0.28f;
+        face->rt_top = 0.30f - ease * 0.09f;
+        face->rb_bot = 0.42f + ease * 0.18f;
+        return;
+    }
+
+    if (elapsed_ms < SLEEP_STAGE_CLOSE_END_MS) {
+        /* 3a. Dorme: fecha de vez pela primeira vez. */
+        float t = smooth01((elapsed_ms - SLEEP_STAGE_RESIST_END_MS)
+                         / (SLEEP_STAGE_CLOSE_END_MS - SLEEP_STAGE_RESIST_END_MS));
+        nb_face_state_t from = neutral;
+        from.open_l = 0.46f;
+        from.open_r = 0.34f;
+        from.y_l = 0.13f;
+        from.y_r = 0.15f;
+        from.squint_l = 0.30f;
+        from.squint_r = 0.40f;
+        from.rt_top = 0.22f;
+        from.rb_bot = 0.60f;
+        from.cv_top = 0.06f;
+        from.cv_bot = 0.34f;
+        nb_face_state_lerp(&from, &sleepy, t, face);
+        return;
+    }
+
+    if (elapsed_ms < SLEEP_STAGE_REOPEN_END_MS) {
+        /* 3b. Tenta abrir um pouco, mas perde a luta e dorme. */
+        float t = (elapsed_ms - SLEEP_STAGE_CLOSE_END_MS)
+                / (SLEEP_STAGE_REOPEN_END_MS - SLEEP_STAGE_CLOSE_END_MS);
+        float lift = sinf(t * NB_PI_F);
+        *face = sleepy;
+        face->open_l = sleepy.open_l + lift * 0.075f;
+        face->open_r = sleepy.open_r + lift * 0.045f;
+        face->y_l = sleepy.y_l;
+        face->y_r = sleepy.y_r;
+        face->squint_l = sleepy.squint_l - lift * 0.08f;
+        face->squint_r = sleepy.squint_r - lift * 0.05f;
+        return;
+    }
+
+    /* 4. Dorme de vez: SLEEPY fixo, só respirando em bloco. */
+    *face = sleepy;
+    float phase = fmodf(elapsed_ms - SLEEP_STAGE_REOPEN_END_MS,
+                        SLEEP_EYE_PERIOD_MS) / SLEEP_EYE_PERIOD_MS;
+    float inhale = 0.5f - 0.5f * cosf(phase * 2.0f * NB_PI_F);
+    *sleep_bob_norm = -(inhale - 0.5f) * 1.35f / Y_TRAVEL_PX;
 }
 
 static inline float lerpf(float a, float b, float t)
@@ -534,82 +667,15 @@ static void draw_heart_overlay(LGFX_Sprite *spr, int64_t now_us)
                       cx,           cy + (r * 3), color);
 }
 
-static inline float smoothstep01(float v)
+
+/* Helpers de coordenada para draw_anger_mark (via draw_bubble_cubic). */
+static inline int16_t bubble_point_x(float ax, float px, float scale)
 {
-    if (v < 0.0f) v = 0.0f;
-    if (v > 1.0f) v = 1.0f;
-    return v * v * (3.0f - 2.0f * v);
+    return (int16_t)(ax + px * scale + (px >= 0.0f ? 0.5f : -0.5f));
 }
-
-static inline int16_t bubble_point_x(float anchor_x, float px, float scale)
+static inline int16_t bubble_point_y(float ay, float py, float scale)
 {
-    return (int16_t)(anchor_x + px * scale + (px >= 0.0f ? 0.5f : -0.5f));
-}
-
-static inline int16_t bubble_point_y(float anchor_y, float py, float scale)
-{
-    return (int16_t)(anchor_y + py * scale + (py >= 0.0f ? 0.5f : -0.5f));
-}
-
-typedef struct {
-    int16_t x;
-    int16_t y;
-} bubble_px_t;
-
-static int append_bubble_cubic_points(bubble_px_t *pts, int count, int max_count,
-                                      float anchor_x, float anchor_y, float scale,
-                                      float x0, float y0,
-                                      float x1, float y1,
-                                      float x2, float y2,
-                                      float x3, float y3,
-                                      bool include_start)
-{
-    if (include_start && count < max_count) {
-        pts[count].x = bubble_point_x(anchor_x, x0, scale);
-        pts[count].y = bubble_point_y(anchor_y, y0, scale);
-        count++;
-    }
-
-    for (int i = 1; i <= 14 && count < max_count; ++i) {
-        float t = (float)i / 14.0f;
-        float u = 1.0f - t;
-        float x = u * u * u * x0
-                + 3.0f * u * u * t * x1
-                + 3.0f * u * t * t * x2
-                + t * t * t * x3;
-        float y = u * u * u * y0
-                + 3.0f * u * u * t * y1
-                + 3.0f * u * t * t * y2
-                + t * t * t * y3;
-        pts[count].x = bubble_point_x(anchor_x, x, scale);
-        pts[count].y = bubble_point_y(anchor_y, y, scale);
-        count++;
-    }
-    return count;
-}
-
-static int build_sleep_bubble_points(bubble_px_t *pts, int max_count,
-                                     float anchor_x, float anchor_y, float scale)
-{
-    int count = 0;
-
-    count = append_bubble_cubic_points(pts, count, max_count, anchor_x, anchor_y, scale,
-                                       0.0f, 0.0f, -8.0f, -1.0f, -14.0f, -2.0f, -20.0f, -6.0f,
-                                       true);
-    count = append_bubble_cubic_points(pts, count, max_count, anchor_x, anchor_y, scale,
-                                       -20.0f, -6.0f, -35.0f, -18.0f, -34.0f, -46.0f, -12.0f, -57.0f,
-                                       false);
-    count = append_bubble_cubic_points(pts, count, max_count, anchor_x, anchor_y, scale,
-                                       -12.0f, -57.0f, 11.0f, -69.0f, 30.0f, -52.0f, 29.0f, -29.0f,
-                                       false);
-    count = append_bubble_cubic_points(pts, count, max_count, anchor_x, anchor_y, scale,
-                                       29.0f, -29.0f, 28.0f, -14.0f, 16.0f, -5.0f, 4.0f, -1.0f,
-                                       false);
-    count = append_bubble_cubic_points(pts, count, max_count, anchor_x, anchor_y, scale,
-                                       4.0f, -1.0f, 3.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-                                       false);
-
-    return count;
+    return (int16_t)(ay + py * scale + (py >= 0.0f ? 0.5f : -0.5f));
 }
 
 static void draw_bubble_cubic(LGFX_Sprite *spr,
@@ -683,120 +749,6 @@ static void draw_anger_mark(LGFX_Sprite *spr)
     draw_bubble_cubic(spr, anchor_x + 1.0f, anchor_y + 1.0f, scale,
                       -4.0f, 15.0f, -1.0f, 7.0f, 5.0f, 7.0f, 11.0f, 15.0f,
                       soft);
-}
-
-static void draw_sleep_bubble_outline(LGFX_Sprite *spr,
-                                      float anchor_x, float anchor_y,
-                                      float scale, uint32_t color)
-{
-    /* Formato aproximado do EMO: base estreita presa ao olho esquerdo,
-     * corpo alto/arredondado e topo levemente assimétrico. */
-    draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
-                      0.0f, 0.0f, -8.0f, -1.0f, -14.0f, -2.0f, -20.0f, -6.0f,
-                      color);
-    draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
-                      -20.0f, -6.0f, -35.0f, -18.0f, -34.0f, -46.0f, -12.0f, -57.0f,
-                      color);
-    draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
-                      -12.0f, -57.0f, 11.0f, -69.0f, 30.0f, -52.0f, 29.0f, -29.0f,
-                      color);
-    draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
-                      29.0f, -29.0f, 28.0f, -14.0f, 16.0f, -5.0f, 4.0f, -1.0f,
-                      color);
-    draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
-                      4.0f, -1.0f, 3.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-                      color);
-}
-
-static void fill_sleep_bubble_body(LGFX_Sprite *spr,
-                                   float anchor_x, float anchor_y,
-                                   float scale, uint32_t color, float alpha)
-{
-    if (alpha <= 0.0f || scale <= 0.0f) return;
-
-    bubble_px_t pts[80];
-    int count = build_sleep_bubble_points(pts, 80, anchor_x, anchor_y, scale);
-    if (count < 3) return;
-
-    int16_t min_y = pts[0].y;
-    int16_t max_y = pts[0].y;
-    for (int i = 1; i < count; ++i) {
-        if (pts[i].y < min_y) min_y = pts[i].y;
-        if (pts[i].y > max_y) max_y = pts[i].y;
-    }
-
-    for (int16_t y = min_y; y <= max_y; ++y) {
-        int16_t xs[12];
-        int n = 0;
-
-        for (int i = 0, j = count - 1; i < count; j = i++) {
-            int16_t y0 = pts[j].y;
-            int16_t y1 = pts[i].y;
-            int16_t x0 = pts[j].x;
-            int16_t x1 = pts[i].x;
-
-            if (((y0 <= y) && (y1 > y)) || ((y1 <= y) && (y0 > y))) {
-                float t = (float)(y - y0) / (float)(y1 - y0);
-                float xf = (float)x0 + ((float)x1 - (float)x0) * t;
-                if (n < 12) {
-                    xs[n++] = (int16_t)(xf + (xf >= 0.0f ? 0.5f : -0.5f));
-                }
-            }
-        }
-
-        for (int i = 1; i < n; ++i) {
-            int16_t v = xs[i];
-            int j = i - 1;
-            while (j >= 0 && xs[j] > v) {
-                xs[j + 1] = xs[j];
-                j--;
-            }
-            xs[j + 1] = v;
-        }
-
-        for (int i = 0; i + 1 < n; i += 2) {
-            for (int16_t x = xs[i]; x <= xs[i + 1]; ++x) {
-                draw_color_alpha_pixel(spr, x, y, color, alpha);
-            }
-        }
-    }
-}
-
-static void draw_sleep_bubble(LGFX_Sprite *spr, int64_t now_us)
-{
-    int64_t period_us = (int64_t)(SLEEP_BUBBLE_PERIOD_MS * 1000.0f);
-    int64_t elapsed_us = now_us - s_sleep_anim_start_us;
-    if (elapsed_us < 0) {
-        elapsed_us = 0;
-    }
-    float phase = (float)(elapsed_us % period_us) / (float)period_us;
-    const uint32_t cyan = 0x18E8FFu;
-
-    /* No video do EMO a bolha infla, encolhe até sumir e faz uma pausa limpa. */
-    if (phase >= 0.74f) return;
-
-    float t = phase / 0.74f;
-    float bubble = (t < 0.34f)
-                 ? smoothstep01(t / 0.34f)
-                 : 1.0f - smoothstep01((t - 0.34f) / 0.66f);
-    float alpha = bubble * 0.90f;
-
-    if (alpha <= 0.035f) return;
-
-    float scale = 0.16f + bubble * 0.84f;
-    float wobble = sinf(t * 2.0f * NB_PI_F);
-    float anchor_x = 143.0f + wobble * 2.2f;
-    float anchor_y = 132.0f + sinf(t * 4.0f * NB_PI_F + 0.7f) * 1.0f;
-
-    fill_sleep_bubble_body(spr, anchor_x, anchor_y, scale, cyan, alpha * 0.18f);
-
-    uint32_t edge = blend_with_black(cyan, alpha * 0.92f);
-    uint32_t soft = blend_with_black(cyan, alpha * 0.34f);
-
-    draw_sleep_bubble_outline(spr, anchor_x, anchor_y, scale, edge);
-    if (scale > 0.48f) {
-        draw_sleep_bubble_outline(spr, anchor_x + 1.0f, anchor_y, scale, soft);
-    }
 }
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
@@ -880,9 +832,16 @@ static void blink_update_eye(nb_blink_eye_t *eye, int64_t now_us, bool is_left)
             if (dt >= BLINK_OPEN_US) {
                 eye->phase = 0.0f;
                 eye->state = BLINK_IDLE;
-                /* Próximo blink agendado a partir do momento em que o olho esquerdo abre */
                 if (is_left) {
                     s_next_blink_us = now_us + poisson_blink_delay_us();
+                    /* ~12% chance de duplo blink: segundo blink 180–380ms depois */
+                    if (!s_double_blink_pending &&
+                        (esp_random() & 0xFFu) < DOUBLE_BLINK_THRESH) {
+                        s_double_blink_pending = true;
+                        s_double_blink_us = now_us + DOUBLE_BLINK_MIN_US
+                                          + (int64_t)((esp_random() & 0xFFu)
+                                            * (DOUBLE_BLINK_RNG_US / 256LL));
+                    }
                 }
             }
             break;
@@ -897,7 +856,8 @@ static void blink_update(int64_t now_us)
             s_blink[1] = { BLINK_IDLE, 0.0f, now_us };
             s_next_blink_us = now_us + poisson_blink_delay_us();
         }
-        s_blink_prev_enabled = false;
+        s_double_blink_pending = false;
+        s_blink_prev_enabled   = false;
         return;
     }
 
@@ -917,6 +877,14 @@ static void blink_update(int64_t now_us)
 
     blink_update_eye(&s_blink[0], now_us, true);
     blink_update_eye(&s_blink[1], now_us, false);
+
+    /* Duplo blink: dispara quando ambos os olhos voltaram a IDLE */
+    if (s_double_blink_pending &&
+        s_blink[0].state == BLINK_IDLE && s_blink[1].state == BLINK_IDLE &&
+        now_us >= s_double_blink_us) {
+        blink_trigger_bilateral(now_us);
+        s_double_blink_pending = false;
+    }
 }
 
 /* ── Renderer do olho EMO ────────────────────────────────────────────────── */
@@ -927,7 +895,7 @@ static void blink_update(int64_t now_us)
  *
  * @param spr        Canvas LGFX_Sprite de destino.
  * @param base_cx    Centro X base do olho (antes do x_off).
- * @param y_off      Offset vertical normalizado [-1..1].
+ * @param cy_base    Centro Y pré-computado em pixels (inclui EYE_CY_BASE, open e y_off).
  * @param open       Abertura vertical [0..1].
  * @param tl/tr      Corner offsets superiores [0..1] (+ = fecha).
  * @param bl/br      Corner offsets inferiores [0..1] (+ = fecha).
@@ -940,7 +908,7 @@ static void blink_update(int64_t now_us)
  * @param color      Cor do olho.
  */
 static void draw_emo_eye(LGFX_Sprite *spr,
-                         int16_t base_cx, float y_off,
+                         int16_t base_cx, float cy_base,
                          float open,
                          float tl, float tr, float bl, float br,
                          float squint,
@@ -952,7 +920,7 @@ static void draw_emo_eye(LGFX_Sprite *spr,
     float eff_open = open * (1.0f - blink_ph);
     if (eff_open < 0.0f) eff_open = 0.0f;
 
-    float cy_f  = (float)EYE_CY_BASE + y_off * Y_TRAVEL_PX;
+    float cy_f  = cy_base;
     int16_t cx  = base_cx;
     int16_t cy  = (int16_t)(cy_f + 0.5f);
 
@@ -1166,31 +1134,12 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
         if (face.open_r > 1.5f) face.open_r = 1.5f;
     }
 
-    float sleep_wave = 0.0f;
+    float sleep_bob_norm = 0.0f;
     if (sleep_anim) {
-        int64_t period_us = (int64_t)(SLEEP_EYE_PERIOD_MS * 1000.0f);
         int64_t elapsed_us = now_us - s_sleep_anim_start_us;
-        if (elapsed_us < 0) {
-            elapsed_us = 0;
-        }
-        float phase = (float)(elapsed_us % period_us) / (float)period_us;
-        float inhale = 0.5f - 0.5f * cosf(phase * 2.0f * NB_PI_F);
-        sleep_wave = sinf(phase * 2.0f * NB_PI_F);
-
-        /* Abertura: exala quase fechado, inala levemente aberto.
-         * Squint zerado aqui — sem ele a variação de open é visível;
-         * com squint=0.51 do SLEEPY a variação some em < 1px. */
-        face.open_l   = 0.060f + inhale * 0.055f;
-        face.open_r   = face.open_l;
-        face.squint_l = 0.0f;
-        face.squint_r = 0.0f;
-        /* Cantos superiores do SLEEPY zerados: visual limpo, tipo balão. */
-        face.tl_l     = 0.0f;
-        face.tr_r     = 0.0f;
-        /* Leve subida dos olhos na inalação (flutuar) */
-        face.y_l      = sleep_wave * 0.014f;
-        face.y_r      = face.y_l;
-        face.x_off    = 0.0f;
+        if (elapsed_us < 0) elapsed_us = 0;
+        apply_sleep_visual_stage(&face, (float)elapsed_us / 1000.0f, &sleep_bob_norm);
+        face.x_off = 0.0f;
     }
 
     /* Centros X dos olhos com x_off (convergência) e gaze_x (translation) aplicados */
@@ -1205,14 +1154,41 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
                       - (int16_t)(face.x_off * X_OFF_TRAVEL + 0.5f)
                       + gaze_shift;
 
-    /* Offsets Y combinados com gaze_y.
-     * Em sleep_anim, face.y_l/y_r já contêm o valor animado e gy=0. */
-    float y_l = clamp_abs(face.y_l + gy, GAZE_Y_MAX);
-    float y_r = clamp_abs(face.y_r + gy, GAZE_Y_MAX);
+    /* Idle overlay assimétrico (head_tilt, curious_tilt) — aditivo, contornável
+     * pelos clamps abaixo. Em sleep_anim ignoramos para não interferir. */
+    float dy_l_ovl    = sleep_anim ? 0.0f : s_idle_dy_l;
+    float dy_r_ovl    = sleep_anim ? 0.0f : s_idle_dy_r;
+    float dopen_l_ovl = sleep_anim ? 0.0f : s_idle_dopen_l;
+    float dopen_r_ovl = sleep_anim ? 0.0f : s_idle_dopen_r;
 
-    /* Perspectiva lateral: olho do lado do gaze estreita levemente.
-     * Ativo só em non-sleep e acima de threshold mínimo de gaze.
-     * Efeito: open × (1 - persp × FACTOR) + squint aumenta levemente. */
+    /* Offsets Y combinados com gaze_y e overlay.
+     * Em sleep_anim, face.y_l/y_r já contêm o valor animado e gy=0. */
+    float y_l = clamp_abs(face.y_l + gy + dy_l_ovl, GAZE_Y_MAX);
+    float y_r = clamp_abs(face.y_r + gy + dy_r_ovl, GAZE_Y_MAX);
+    if (sleep_anim) {
+        y_l += sleep_bob_norm;
+        y_r += sleep_bob_norm;
+    }
+
+    /* Overlay de abertura (curious_tilt: um olho mais aberto). Aplicado antes
+     * da perspectiva de gaze para que ambos efeitos se combinem naturalmente.
+     * Clampado em [0, 1.5] — open_r pode passar de 1 (ex: SURPRISED 1.10). */
+    if (dopen_l_ovl != 0.0f) {
+        float v = face.open_l + dopen_l_ovl;
+        face.open_l = v < 0.0f ? 0.0f : (v > 1.5f ? 1.5f : v);
+    }
+    if (dopen_r_ovl != 0.0f) {
+        float v = face.open_r + dopen_r_ovl;
+        face.open_r = v < 0.0f ? 0.0f : (v > 1.5f ? 1.5f : v);
+    }
+    /* Centro médio dos olhos com base inferior alinhada. */
+    float open_avg = (face.open_l + face.open_r) * 0.5f;
+    float eye_cy_f = (float)EYE_CY_BASE + (1.0f - open_avg) * MAX_HH_F
+                   + ((y_l + y_r) * 0.5f * Y_TRAVEL_PX);
+    int16_t eye_cy = (int16_t)(eye_cy_f + (eye_cy_f >= 0.0f ? 0.5f : -0.5f));
+    ui_overlay_set_eye_frame(left_cx, right_cx, eye_cy);
+
+    /* Perspectiva lateral: olho do lado do gaze estreita levemente. */
     if (!sleep_anim && fabsf(gx) > 0.04f) {
         float persp = clamp01((fabsf(gx) - 0.04f) / (GAZE_X_MAX - 0.04f));
         if (gx < 0.0f) {
@@ -1224,7 +1200,43 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
         }
     }
 
+    /*
+     * Perspectiva vertical: torna o gaze vertical legível pela forma do olho.
+     *   Olhar para cima (gy < 0): squint aumenta — pálpebra superior desce,
+     *     lê como "olhos subindo atrás da pálpebra".
+     *   Olhar para baixo (gy > 0): cv_top sobe e open reduz levemente —
+     *     topo do olho achata, lê como "olho pesando para baixo".
+     * Threshold 0.08 evita ruído do micro-drift.
+     */
+    if (!sleep_anim && fabsf(gy) > 0.08f) {
+        float vpersp = clamp01((fabsf(gy) - 0.08f) / (GAZE_Y_MAX - 0.08f));
+        if (gy < 0.0f) {
+            /* Olhando para cima: squint leve em ambos os olhos */
+            float sq_add = vpersp * 0.18f;
+            face.squint_l = clamp01(face.squint_l + sq_add);
+            face.squint_r = clamp01(face.squint_r + sq_add);
+        } else {
+            /* Olhando para baixo: topo do olho achata (cv_top cai) e open reduz */
+            float cv_delta  = vpersp * 0.30f;
+            float open_mult = 1.0f - vpersp * 0.12f;
+            face.cv_top  -= cv_delta;
+            face.open_l  *= open_mult;
+            face.open_r  *= open_mult;
+        }
+    }
+
     /* Canvas já limpo em TFT_BLACK pelo render_service */
+
+    /* Centro Y de cada olho com base inferior alinhada (pré-computado aqui,
+     * passado explicitamente para draw_emo_eye e reutilizado no sprite path). */
+    float cy_l_f = (float)EYE_CY_BASE + (1.0f - face.open_l) * MAX_HH_F + y_l * Y_TRAVEL_PX;
+    float cy_r_f = (float)EYE_CY_BASE + (1.0f - face.open_r) * MAX_HH_F + y_r * Y_TRAVEL_PX;
+
+    /* Rotação idle (POSE_TILT). Float 32-bit é atômico em ESP32-S3. */
+    float rot_l = s_idle_rot_l;
+    float rot_r = s_idle_rot_r;
+    bool  use_rot_l = !sleep_anim && (rot_l > 0.5f || rot_l < -0.5f);
+    bool  use_rot_r = !sleep_anim && (rot_r > 0.5f || rot_r < -0.5f);
 
     /*
      * Blink bar EMO: quando qualquer olho entra na fase de barra, os dois olhos
@@ -1235,41 +1247,76 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
     if (s_blink[0].phase > BLINK_BAR_PH_THRESH ||
         s_blink[1].phase > BLINK_BAR_PH_THRESH) {
 
-        float   bar_cy_f = (float)EYE_CY_BASE
-                         + (y_l + y_r) * 0.5f * Y_TRAVEL_PX;
-        int16_t bar_cy   = (int16_t)(bar_cy_f + 0.5f);
         int16_t bx       = left_cx  - HW_I - BLINK_BAR_EXTRA_HW;
         int16_t bw       = (right_cx + HW_I + BLINK_BAR_EXTRA_HW) - bx;
 
-        spr->drawFastHLine(bx, bar_cy - 1, bw, face.color);
-        spr->drawFastHLine(bx, bar_cy,     bw, face.color);
-        spr->drawFastHLine(bx, bar_cy + 1, bw, face.color);
+        /* Blink bar na base inferior: usa open pós-perspectiva (valores finais). */
+        float open_avg_final = (face.open_l + face.open_r) * 0.5f;
+        float bar_y_f = (float)EYE_CY_BASE + (1.0f - open_avg_final) * MAX_HH_F
+                      + ((y_l + y_r) * 0.5f * Y_TRAVEL_PX);
+        int16_t bar_y = (int16_t)(bar_y_f + 0.5f);
+
+        spr->drawFastHLine(bx, bar_y - 1, bw, face.color);
+        spr->drawFastHLine(bx, bar_y,     bw, face.color);
+        spr->drawFastHLine(bx, bar_y + 1, bw, face.color);
 
     } else {
 
         /* Olho esquerdo */
-        draw_emo_eye(spr,
-                     left_cx, y_l,
-                     face.open_l,
-                     face.tl_l, face.tr_l,
-                     face.bl_l, face.br_l,
-                     face.squint_l,
-                     face.rt_top, face.rb_bot,
-                     face.cv_top, face.cv_bot,
-                     s_blink[0].phase,
-                     face.color);
+        if (use_rot_l) {
+            s_eye_spr_l.fillSprite(TFT_BLACK);
+            draw_emo_eye(&s_eye_spr_l,
+                         (int16_t)SPR_CXF, SPR_CYF,
+                         face.open_l,
+                         face.tl_l, face.tr_l,
+                         face.bl_l, face.br_l,
+                         face.squint_l,
+                         face.rt_top, face.rb_bot,
+                         face.cv_top, face.cv_bot,
+                         s_blink[0].phase,
+                         face.color);
+            s_eye_spr_l.pushRotateZoom(spr, (float)left_cx, cy_l_f,
+                                        rot_l, 1.0f, 1.0f, TFT_BLACK);
+        } else {
+            draw_emo_eye(spr,
+                         left_cx, cy_l_f,
+                         face.open_l,
+                         face.tl_l, face.tr_l,
+                         face.bl_l, face.br_l,
+                         face.squint_l,
+                         face.rt_top, face.rb_bot,
+                         face.cv_top, face.cv_bot,
+                         s_blink[0].phase,
+                         face.color);
+        }
 
         /* Olho direito — tl_r/bl_r = lados internos, tr_r/br_r = externos. */
-        draw_emo_eye(spr,
-                     right_cx, y_r,
-                     face.open_r,
-                     face.tl_r, face.tr_r,
-                     face.bl_r, face.br_r,
-                     face.squint_r,
-                     face.rt_top, face.rb_bot,
-                     face.cv_top, face.cv_bot,
-                     s_blink[1].phase,
-                     face.color);
+        if (use_rot_r) {
+            s_eye_spr_r.fillSprite(TFT_BLACK);
+            draw_emo_eye(&s_eye_spr_r,
+                         (int16_t)SPR_CXF, SPR_CYF,
+                         face.open_r,
+                         face.tl_r, face.tr_r,
+                         face.bl_r, face.br_r,
+                         face.squint_r,
+                         face.rt_top, face.rb_bot,
+                         face.cv_top, face.cv_bot,
+                         s_blink[1].phase,
+                         face.color);
+            s_eye_spr_r.pushRotateZoom(spr, (float)right_cx, cy_r_f,
+                                        rot_r, 1.0f, 1.0f, TFT_BLACK);
+        } else {
+            draw_emo_eye(spr,
+                         right_cx, cy_r_f,
+                         face.open_r,
+                         face.tl_r, face.tr_r,
+                         face.bl_r, face.br_r,
+                         face.squint_r,
+                         face.rt_top, face.rb_bot,
+                         face.cv_top, face.cv_bot,
+                         s_blink[1].phase,
+                         face.color);
+        }
     }
 
     draw_blush_overlay(spr, now_us);
@@ -1278,9 +1325,6 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
                         s_active_expr == NB_EXPR_ALARMED ||
                         s_active_expr == NB_EXPR_ANGRY)) {
         draw_anger_mark(spr);
-    }
-    if (sleep_anim) {
-        draw_sleep_bubble(spr, now_us);
     }
 
     /* Declara região suja. Rect conservador cobre todos os pixels possíveis
@@ -1307,6 +1351,20 @@ esp_err_t expression_service_init(void)
     if (!s_set_mutex) {
         ESP_LOGE(TAG, "falha ao criar mutex");
         return ESP_ERR_NO_MEM;
+    }
+
+    /* Sprites por olho para rotação (POSE_TILT). Alocados em PSRAM. */
+    s_eye_spr_l.setPsram(true);
+    s_eye_spr_r.setPsram(true);
+    if (!s_eye_spr_l.createSprite(SPR_W, SPR_H) ||
+        !s_eye_spr_r.createSprite(SPR_W, SPR_H)) {
+        ESP_LOGW(TAG, "eye sprites nao alocados — rotacao desabilitada");
+        s_eye_spr_l.deleteSprite();
+        s_eye_spr_r.deleteSprite();
+    } else {
+        s_eye_spr_l.setColorDepth(16);
+        s_eye_spr_r.setColorDepth(16);
+        ESP_LOGI(TAG, "eye sprites %dx%d criados em PSRAM", SPR_W, SPR_H);
     }
 
     s_current          = NB_EXPRESSIONS[NB_EXPR_NEUTRAL];
@@ -1388,6 +1446,37 @@ void expression_service_set_gaze(float x, float y)
 {
     s_gaze_x = x;
     s_gaze_y = y;
+}
+
+void expression_service_set_idle_overlay(float dy_l, float dy_r,
+                                         float dopen_l, float dopen_r)
+{
+    /* Clamp defensivo para evitar overlays absurdos por bug de chamador. */
+    const float MAX_DY    = 0.30f;
+    const float MAX_DOPEN = 0.30f;
+    if (dy_l    >  MAX_DY)    dy_l    =  MAX_DY;
+    if (dy_l    < -MAX_DY)    dy_l    = -MAX_DY;
+    if (dy_r    >  MAX_DY)    dy_r    =  MAX_DY;
+    if (dy_r    < -MAX_DY)    dy_r    = -MAX_DY;
+    if (dopen_l >  MAX_DOPEN) dopen_l =  MAX_DOPEN;
+    if (dopen_l < -MAX_DOPEN) dopen_l = -MAX_DOPEN;
+    if (dopen_r >  MAX_DOPEN) dopen_r =  MAX_DOPEN;
+    if (dopen_r < -MAX_DOPEN) dopen_r = -MAX_DOPEN;
+    s_idle_dy_l    = dy_l;
+    s_idle_dy_r    = dy_r;
+    s_idle_dopen_l = dopen_l;
+    s_idle_dopen_r = dopen_r;
+}
+
+void expression_service_set_idle_rotation(float rot_l, float rot_r)
+{
+    const float MAX_ROT = 45.0f;
+    if (rot_l >  MAX_ROT) rot_l =  MAX_ROT;
+    if (rot_l < -MAX_ROT) rot_l = -MAX_ROT;
+    if (rot_r >  MAX_ROT) rot_r =  MAX_ROT;
+    if (rot_r < -MAX_ROT) rot_r = -MAX_ROT;
+    s_idle_rot_l = rot_l;
+    s_idle_rot_r = rot_r;
 }
 
 void nb_face_state_lerp(const nb_face_state_t *a,
