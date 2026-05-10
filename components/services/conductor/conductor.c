@@ -169,8 +169,8 @@ static const score_step_t k_speak_b[] = {
 
 /* SLEEP — transição longa, park servos */
 static const score_step_t k_sleep_a[] = {
-    { 0,    NB_EXPR_SLEEPY, 1500.0f, false, 0.0f, CM_NONE, 0, NULL },
-    { 600,  NB_EXPR_COUNT,  0.0f,    false, 0.0f, CM_PARK, 0, NULL },
+    { 8200,  NB_EXPR_COUNT,  0.0f, false, 0.0f, CM_PARK, 0, NULL },
+    { 13000, NB_EXPR_SLEEPY, 0.0f, false, 0.0f, CM_NONE, 0, NULL },
 };
 
 /*

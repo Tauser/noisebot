@@ -38,7 +38,7 @@
 #define SACCADE_OVERSHOOT     0.10f
 
 #define DRIFT_STEP            0.0025f  /* drift visível sem empurrar aos cantos */
-#define DRIFT_MAX_R           0.060f   /* raio contido para manter centro visual */
+#define DRIFT_MAX_R           0.040f   /* raio contido (vídeo EMO mostra ±0.035 — ver docs/IDLE_REFERENCE.md §3.3) */
 #define DRIFT_LP              0.18f
 
 #define GAZE_MAX              0.65f

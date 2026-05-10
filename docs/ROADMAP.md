@@ -579,9 +579,14 @@ Critérios adicionais de integração do Bloco 0:
 
 **Critérios mensuráveis:**
 
-- [x] Intervalo de blinks: nenhum <1.5s, nenhum >10s em observação de 5min
+- [x] Intervalo de blinks: nenhum <1.7s, nenhum >18s em observação de 5min
+      (recalibrado contra vídeo idle do EMO — ver `docs/IDLE_REFERENCE.md`).
+      Critério antigo (<1.5s / >10s) era inconsistente com a cauda Poisson.
 - [x] Micro-movements de pescoço: amplitude <5°, frequência ≤ 3/minuto (stub — pós 3.3)
 - [x] Aversive gaze: olhar se desvia a cada 8-15s em modo ATTENTIVE
+- [x] Em IDLE: motifs longos (curiosity / head-tilt / look-down-blink) a
+      cada 15–40s. Não saccades laterais frequentes — o vídeo do EMO
+      mostra motifs **sustentados** (3–5s) mais do que glances rápidos.
 
 ---
 

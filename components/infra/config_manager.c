@@ -86,6 +86,33 @@ static esp_err_t write_svc_defaults(void)
     return ESP_OK;
 }
 
+/*
+ * Durante os testes de SLEEPING o timeout pode ter ficado gravado na NVS com
+ * valores curtos. Como a NVS sobrescreve o default compilado, restauramos para
+ * 20 minutos no boot quando encontramos um valor legado menor que o default.
+ */
+static esp_err_t restore_idle_timeout_if_legacy(void)
+{
+    uint32_t idle_timeout_s = nvs_hal_get_u32(s_h_cfg,
+                                              NB_CFG_KEY_IDLE_TMO,
+                                              NB_CFG_DEFAULT_IDLE_TIMEOUT_S);
+    if (idle_timeout_s >= NB_CFG_DEFAULT_IDLE_TIMEOUT_S) {
+        return ESP_OK;
+    }
+
+    NB_LOGI(TAG, "idle_timeout legado=%lus — restaurando para %lus",
+            (unsigned long)idle_timeout_s,
+            (unsigned long)NB_CFG_DEFAULT_IDLE_TIMEOUT_S);
+
+    esp_err_t err = nvs_hal_set_u32(s_h_cfg,
+                                    NB_CFG_KEY_IDLE_TMO,
+                                    NB_CFG_DEFAULT_IDLE_TIMEOUT_S);
+    if (err == ESP_OK) {
+        nvs_hal_commit(s_h_cfg);
+    }
+    return err;
+}
+
 /* ── API pública ─────────────────────────────────────────────────────────── */
 
 esp_err_t config_manager_init(void)
@@ -125,6 +152,13 @@ esp_err_t config_manager_init(void)
         NB_LOGI(TAG, "Defaults aplicados — primeiro boot ou migração de schema");
     } else {
         NB_LOGI(TAG, "Configuração carregada (cfg_ver=%u)", ver);
+    }
+
+    if ((err = restore_idle_timeout_if_legacy()) != ESP_OK) {
+        NB_LOGE(TAG, "restore_idle_timeout_if_legacy falhou: %s", esp_err_to_name(err));
+        nvs_hal_close(s_h_cfg);
+        nvs_hal_close(s_h_svc);
+        return err;
     }
 
     s_ready = true;

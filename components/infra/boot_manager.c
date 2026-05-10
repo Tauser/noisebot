@@ -64,9 +64,6 @@
 
 #define TAG "nb_boot"
 
-/* Timeout curto temporário para facilitar validação visual de SLEEPING. */
-#define NB_SLEEP_TEST_IDLE_TIMEOUT_S 12u
-
 /* ── Chaves NVS (namespace nb_sys) ──────────────────────────────────────── */
 
 #define NVS_NS_SYS              "nb_sys"
@@ -94,14 +91,6 @@ static bool     s_milestone_100h    = false; /* greet especial de 100h pendente 
 static bool     s_wake_word_triggered = false; /* sinaliza que ATTENTIVE foi ativado via wake word */
 static uint32_t s_sleep_touch_guard_ms = 0; /* ignora toque residual ao entrar em SLEEPING */
 static uint32_t s_sleep_wake_guard_ms  = 0; /* evita falso wake word logo após dormir */
-
-static uint32_t effective_idle_timeout_s(void)
-{
-    uint32_t configured_s = config_get_idle_timeout_s();
-    return (configured_s > NB_SLEEP_TEST_IDLE_TIMEOUT_S)
-         ? NB_SLEEP_TEST_IDLE_TIMEOUT_S
-         : configured_s;
-}
 
 /* ── Helpers de NVS (acesso direto, sem config_manager) ──────────────────── */
 
@@ -503,6 +492,7 @@ static void on_state_changed(nb_robot_state_t new_state,
     touch_service_set_sleeping(new_state == NB_STATE_SLEEPING);
     expression_service_set_blink_enabled(new_state != NB_STATE_SLEEPING);
     expression_service_set_sleep_anim_enabled(new_state == NB_STATE_SLEEPING);
+    ui_overlay_sleep_bubble_set(new_state == NB_STATE_SLEEPING);
     if (new_state == NB_STATE_SLEEPING) {
         s_sleep_touch_guard_ms = 500u;
         s_sleep_wake_guard_ms  = 1500u;
@@ -630,7 +620,7 @@ static void apply_idle_modifiers(nb_circadian_phase_t phase)
                       (phase == NB_CIRCADIAN_DUSK) ? 0.4f : 1.0f;
     idle_service_set_yawn_multiplier(yawn_mult);
 
-    uint32_t base_s = effective_idle_timeout_s();
+    uint32_t base_s = config_get_idle_timeout_s();
     if (phase == NB_CIRCADIAN_DUSK) {
         float factor = (ltm_get_total_sessions() >= 20u) ? 0.5f : 0.7f;
         state_machine_set_idle_timeout_s((uint32_t)((float)base_s * factor));
@@ -960,7 +950,7 @@ static esp_err_t phase_services(void)
               esp_err_to_name(err));
 
     /* state_machine e emotion_model (Etapa 5.1) */
-    err = state_machine_init(effective_idle_timeout_s(),
+    err = state_machine_init(config_get_idle_timeout_s(),
                               s_status.safe_mode,
                               on_state_changed);
     NB_ASSERT(err == ESP_OK, TAG, "state_machine_init falhou: %s",

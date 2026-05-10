@@ -9,6 +9,7 @@
 #define NB_UI_OVERLAY_SERVICE_H
 
 #include "esp_err.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -28,6 +29,23 @@ void ui_overlay_show_volume(uint8_t percent, uint32_t duration_ms);
 void ui_overlay_show_text(const char *text, uint32_t duration_ms);
 void ui_overlay_show_toast(const char *text, nb_ui_overlay_tone_t tone, uint32_t duration_ms);
 void ui_overlay_clear(void);
+
+/**
+ * @brief Atualiza a posição visual atual dos olhos para ancorar overlays.
+ *
+ * Chamado pelo expression_service no render frame. Overlays que pertencem à
+ * face devem derivar sua posição desses centros, em vez de usar coordenadas
+ * absolutas fixas.
+ */
+void ui_overlay_set_eye_frame(int16_t left_cx, int16_t right_cx, int16_t eye_cy);
+
+/**
+ * @brief Ativa/desativa a bolha de sono animada (ciano, acima dos olhos).
+ *
+ * Quando ativa, desenha em loop uma bolha que infla e encolhe na área do
+ * nariz. Deve ser ativada ao entrar em NB_STATE_SLEEPING e desativada ao sair.
+ */
+void ui_overlay_sleep_bubble_set(bool enabled);
 
 #ifdef __cplusplus
 }

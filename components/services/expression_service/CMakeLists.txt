@@ -10,4 +10,5 @@ idf_component_register(
         nb_hal
         LovyanGFX
         render_service
+        ui_overlay_service
 )
