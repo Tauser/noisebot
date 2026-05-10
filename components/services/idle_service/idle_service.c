@@ -4,28 +4,38 @@
  * Todos os timers são aleatórios (intervalos min+rand*range) para evitar
  * periodicidade mecânica. O hardware RNG do ESP32 garante entropia real.
  *
- * Comportamento por estado:
- *   IDLE:                motif raro (15–40s), distribuição rica em motifs
- *                        sustentados (CURIOUS_TILT, HEAD_TILT_HOLD).
- *                        Vida vem de blink + drift + motifs longos.
- *   ATTENTIVE:           motif frequente (5–13s) com distribuição variada,
- *                        + aversive gaze a cada 8–15s.
- *   IDLE somente:        yawn a cada 60–180s.
- *   Outros estados:      timers resetados, gaze retorna a center (0, 0),
- *                        overlay assimétrico limpo.
+ * ── Regra de expressão e motifs ──────────────────────────────────────────
  *
- * Tipos de motif:
- *   bi-lateral       : peek esq → centro → peek dir (ou inverso).
- *   vert sweep       : peek baixo → centro → peek cima (ou inverso).
- *   wander           : lateral → vertical aleatório → lateral oposto → centro.
- *   curious check    : flash CURIOUS + lateral micro + micro cima.
- *   head tilt hold   : postura assimétrica de abertura 5–15s (overlay dopen).
- *   curious tilt     : CURIOUS sustentado 3.5–5s (motif principal de IDLE).
+ * NEUTRAL: pode executar qualquer motif — gaze (H/V/CORNERS), pose (TILT)
+ *          e expressão (CURIOUS_FLASH, CURIOUS_HOLD). É o único estado onde
+ *          motifs independentes de gaze e postura fazem sentido visual.
+ *
+ * Não-NEUTRAL (HAPPY, CURIOUS, FOCUSED, etc.): nenhum novo motif independente
+ *          de gaze ou postura é iniciado. A expressão ativa já comunica o
+ *          estado emocional — sobrepor gaze autônomo causaria conflito visual.
+ *
+ * Motifs compostos (expressão + gaze coreografados juntos, ex: EXPR_CURIOUS_FLASH)
+ *          são a forma correta de combinar olhar e expressão. Eles só iniciam
+ *          a partir de NEUTRAL, onde controlam ambos de forma coerente.
+ *          Futuras expressões que precisem olhar devem ser implementadas
+ *          como novos motifs compostos, nunca como gaze independente sobreposto.
+ *
+ * ── Comportamento por estado de state_machine ────────────────────────────
+ *
+ *   IDLE:      motif a cada 1.5–5s; distribuição rica em expressão e gaze.
+ *   ATTENTIVE: motif a cada 1.0–3.5s; mais gaze lateral e curiosidade.
+ *   Outros:    timers resetados, gaze → centro, overlays limpos.
+ *
+ * ── Tipos de motif ───────────────────────────────────────────────────────
+ *
+ *   GAZE_H            : gaze horizontal esq ↔ dir (puro gaze, só em NEUTRAL)
+ *   GAZE_V            : gaze vertical cima ↕ baixo (puro gaze, só em NEUTRAL)
+ *   GAZE_CORNERS      : ciclo pelos 4 cantos (puro gaze, só em NEUTRAL)
+ *   POSE_TILT         : rotação 30° via sprite (pura postura, só em NEUTRAL)
+ *   EXPR_CURIOUS_FLASH: flash CURIOUS + micro gaze (composto, só em NEUTRAL)
+ *   EXPR_CURIOUS_HOLD : CURIOUS sustentado 3.5–5s (composto, só em NEUTRAL)
  *
  * Calibrado contra vídeo idle do EMO — ver docs/IDLE_REFERENCE.md.
- *
- * Nota: micro-neck-movement (<5°, ≤3/min) requer motion_service (Etapa 3.3).
- * Stub preparado — ativado quando motion for liberado.
  */
 
 #include "idle_service.h"
@@ -230,12 +240,12 @@ static void schedule_outer_step(void)
     s_next_glance_ms = rand_interval(MOTIF_OUTER_GAP_MIN_MS, MOTIF_OUTER_GAP_RNG_MS);
 }
 
-/* Distribuição de motifs.
+/* Distribuição de motifs — ver regra de expressão no cabeçalho do arquivo.
  *
- * Todos os motifs só iniciam quando a expressão ativa é NEUTRAL —
- * movimentos de gaze e expressão pressupõem NEUTRAL como base.
- * Se outra expressão estiver ativa (HAPPY, CURIOUS via behavior, etc.),
- * nenhum motif é iniciado neste ciclo.
+ * Guard: nenhum motif inicia fora de NEUTRAL. Motifs independentes de gaze
+ * (GAZE_*) e postura (POSE_TILT) não fazem sentido sobreposto a expressões
+ * ativas. Motifs compostos (EXPR_*) também partem de NEUTRAL para garantir
+ * que expressão e gaze sejam coreografados de forma coerente.
  *
  * IDLE — mix equilibrado de gaze, expressão e postura:
  *   25% GAZE_H              horizontal esq ↔ dir
