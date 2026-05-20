@@ -51,8 +51,8 @@
 | 16    | RESERVADO\_CAMERA | DVP D7 (Y9)                                              |
 | 17    | RESERVADO\_CAMERA | DVP D6 (Y8)                                              |
 | 18    | RESERVADO\_CAMERA | DVP D5 (Y7)                                              |
-| 4     | RESERVADO\_CAMERA | DVP SIOD (SDA câmera + I2C IMU futuro)                                  |
-| 5     | RESERVADO\_CAMERA | DVP SIOC (SCL câmera + I2C IMU futuro)                                  |
+| 19    | EM USO ⚠          | UART1 RX ← TTLinker TXD (USB D+); ver nota servo        |
+| 20    | EM USO ⚠          | UART1 TX → TTLinker RXD (USB D-); ver nota servo        |
 | 21    | EM USO            | SPI2 MOSI — display ST7789                              |
 | 22–25 | N/A               | Não existem no ESP32-S3                                  |
 | 26–32 | INACESSÍVEL       | Octal PSRAM (SPI0/1 interno, N16R8)                     |
@@ -141,15 +141,26 @@ GPIO 14 e 1 usados para dados — sacrificam TOUCH\_PAD\_NUM14 e T1.
 Controle de volume: divisão digital do sinal PCM (MAX98357A não tem I2C).
 GPIO 48: LED onboard azul da placa Freenove — reservado para status visual, não repurposear.
 
-### SCS0009 Servos (UART1 via FE-TTLinker)
+### SCS0009 Servos (UART1 via FE-TTLinker Mini V2)
 
-| Sinal | GPIO | Notas                                                    |
-| ----- | ---- | -------------------------------------------------------- |
-| TX    | 20   | UART1 TX → TTLinker TXD (USB D-)                         |
-| RX    | 19   | UART1 RX ← TTLinker RXD (USB D+)                         |
+| Lado ESP32 | GPIO | Pino TTLinker | Notas                             |
+| ---------- | ---- | ------------- | --------------------------------- |
+| UART1 TX   | 20   | **RXD**       | ESP32 envia → TTLinker recebe     |
+| UART1 RX   | 19   | **TXD**       | ESP32 recebe ← TTLinker transmite |
 
-O FE-TTLinker é full-duplex no lado MCU — TX e RX são pinos separados.
-A conversão para half-duplex ocorre internamente no barramento dos servos.
+> ⚠ **Labeling do TTLinker é pela perspectiva do TTLinker:**
+> TXD = TTLinker transmite (→ MCU RX); RXD = TTLinker recebe (← MCU TX).
+> Conectar invertido (TX→TXD, RX→RXD) causa eco sem resposta válida — o servo
+> ecoa os bytes recebidos mas a resposta nunca chega ao ESP32.
+> **Validado em bancada após diagnóstico extenso (maio 2026).**
+
+O FE-TTLinker Mini V2 converte full-duplex UART (TX/RX separados, lado MCU)
+para half-duplex SCS bus (DATA único, lado servo). Direção automática —
+nenhum pino de controle adicional necessário.
+
+**Eco do barramento:** o servo ecoa os bytes de TX recebidos enquanto processa
+o comando. O firmware descarta esses bytes (ERR ≠ 0x00) e aguarda a resposta
+válida na mesma janela de leitura.
 
 > **Limitação conhecida — GPIO 19/20 = USB D+/D-.**
 > `servo_hal_init()` chama `usb_serial_jtag_ll_phy_enable_pad(false)` e o
@@ -166,7 +177,8 @@ A conversão para half-duplex ocorre internamente no barramento dos servos.
 
 Baud rate: 1Mbps (padrão Feetech SCS0009).
 IDs de servo: NECK\_PAN = 1, NECK\_TILT = 2.
-Alimentação servos: 5V (linha separada com capacitor bulk obrigatório).
+Alimentação servos: 5V direto (linha separada, capacitor bulk obrigatório).
+Alimentação TTLinker: 5V (mesmo barramento dos servos).
 
 ### Touch — Fita de Cobre (Touch Peripheral)
 

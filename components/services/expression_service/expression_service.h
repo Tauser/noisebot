@@ -186,6 +186,15 @@ typedef struct {
 void expression_combo_play(const nb_expr_frame_t *frames, uint8_t count);
 
 /**
+ * @brief Reproduz a sequência dedicada de despertar.
+ *
+ * Usa poses faciais intermediárias próprias, inspiradas nos 20 primeiros
+ * frames do mosaico de referência, em vez de limitar o wake às expressões
+ * nomeadas do enum.
+ */
+void expression_service_play_wake_sequence(void);
+
+/**
  * @brief Mostra blush temporário sobre a expressão atual.
  *
  * @param intensity   Intensidade 0..255.

@@ -2,11 +2,12 @@
  * led_service.h — Serviço de LED do NoiseBot (Layer 4)
  *
  * Gerencia os 2 LEDs WS2812 com sistema de prioridade em duas camadas:
- *   - base state:    animação persistente (IDLE, BOOT, SAFE_MODE, ERROR)
+ *   - base state:    cor/animação persistente (IDLE, MOOD, BOOT, SAFE_MODE)
  *   - overlay:       efeito temporário com retorno automático ao estado base
  *
  * Prioridade de estados (maior vence):
- *   ERROR > SAFE_MODE > TOUCH > BOOT > IDLE
+ *   ERROR > SAFE_MODE > SILENT_COMPANY > MEDITATION > RESPONDING >
+ *   ATTENTIVE > BOOT > SLEEPING > MOOD > IDLE
  *
  * Não possui FreeRTOS task própria. Chamar led_service_update(dt_ms) a cada
  * ciclo do loop de controle (recomendado: 20ms / 50Hz). O flush ao HAL é
@@ -27,9 +28,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* ── Paleta nomeada do projeto ───────────────────────────────────────────── */
 
-#define NB_LED_WARM_WHITE    ((nb_led_color_t){255, 200, 120})  /* idle base  */
+#define NB_LED_IDLE_CYAN     ((nb_led_color_t){ 35, 210, 255})  /* idle base  */
 #define NB_LED_COOL_WHITE    ((nb_led_color_t){255, 255, 220})  /* boot       */
 #define NB_LED_ORANGE        ((nb_led_color_t){255, 80,   0 })  /* safe mode  */
 #define NB_LED_RED           ((nb_led_color_t){255,  0,   0 })  /* error      */
@@ -37,23 +42,34 @@
 #define NB_LED_BEAT_BLUE     ((nb_led_color_t){ 40, 120, 255})  /* beat flash */
 #define NB_LED_AMBER         ((nb_led_color_t){255, 140,  30})  /* meditation */
 #define NB_LED_EMBER         ((nb_led_color_t){ 80,  45,  15})  /* silent company (muito baixo) */
-#define NB_LED_CYAN_SOFT     ((nb_led_color_t){ 20, 180, 200})  /* attentive/listening          */
+#define NB_LED_CYAN_SOFT     ((nb_led_color_t){ 35, 220, 240})  /* attentive/listening          */
+#define NB_LED_CYAN_VIVID    ((nb_led_color_t){ 30, 220, 240})  /* curious mood                 */
+#define NB_LED_AQUA_HAPPY    ((nb_led_color_t){ 70, 230, 210})  /* happy mood                   */
+#define NB_LED_SLEEP_BLUE    ((nb_led_color_t){ 20, 120, 255})  /* sleeping low breathe         */
+#define NB_LED_SPEAK_AQUA    ((nb_led_color_t){ 45, 225, 230})  /* responding pulse             */
+#define NB_LED_FOCUS_BLUE    ((nb_led_color_t){ 35, 150, 255})  /* focused mood                 */
+#define NB_LED_PURPLE_DIM    ((nb_led_color_t){120,  55, 255})  /* suspicious/sad mood          */
+#define NB_LED_SURPRISE_SKY  ((nb_led_color_t){ 80, 210, 255})  /* surprised/alarmed mood       */
 
 /* ── Tipos públicos ──────────────────────────────────────────────────────── */
 
 /**
  * Estados base do sistema — determinam a animação persistente.
- * Prioridade: ERROR(4) > SAFE_MODE(3) > BOOT(2) > IDLE(1).
+ * Prioridade: ERROR > SAFE_MODE > SILENT_COMPANY > MEDITATION > RESPONDING >
+ * ATTENTIVE > BOOT > SLEEPING > MOOD > IDLE.
  * TOUCH(2.5) é tratado como overlay, não base state.
  */
 typedef enum {
-    NB_LED_BASE_IDLE           = 0,  /**< Breathe quente, brilho baixo            */
-    NB_LED_BASE_BOOT           = 1,  /**< Pulso branco — ativo durante boot        */
-    NB_LED_BASE_SAFE_MODE      = 2,  /**< Laranja sólido pulsante                 */
-    NB_LED_BASE_ERROR          = 3,  /**< Vermelho pulsante rápido                */
-    NB_LED_BASE_MEDITATION     = 4,  /**< Âmbar muito lento (6s), meditação       */
-    NB_LED_BASE_SILENT_COMPANY = 5,  /**< Brasa quase apagada (8s), companhia     */
-    NB_LED_BASE_ATTENTIVE      = 6,  /**< Cyan pulsante médio — escutando         */
+    NB_LED_BASE_IDLE           = 0,  /**< Azul/ciano baixo fixo                    */
+    NB_LED_BASE_MOOD           = 1,  /**< Cor fixa da expressão emocional atual     */
+    NB_LED_BASE_SLEEPING       = 2,  /**< Azul muito baixo, respiração lenta       */
+    NB_LED_BASE_BOOT           = 3,  /**< Pulso branco — ativo durante boot        */
+    NB_LED_BASE_ATTENTIVE      = 4,  /**< Cyan pulsante médio — escutando          */
+    NB_LED_BASE_RESPONDING     = 5,  /**< Pulso suave azul/verde-água — falando    */
+    NB_LED_BASE_MEDITATION     = 6,  /**< Âmbar muito lento (6s), meditação        */
+    NB_LED_BASE_SILENT_COMPANY = 7,  /**< Brasa quase apagada (8s), companhia      */
+    NB_LED_BASE_SAFE_MODE      = 8,  /**< Laranja sólido pulsante                  */
+    NB_LED_BASE_ERROR          = 9,  /**< Vermelho pulsante rápido                 */
     NB_LED_BASE__COUNT,
 } nb_led_base_state_t;
 
@@ -131,7 +147,9 @@ void led_blink(uint8_t count);
 /**
  * @brief Ativa respiração contínua com o período especificado.
  *
- * Não é overlay — substitui a animação do estado base IDLE.
+ * Compatibilidade: ajusta o período interno e garante IDLE ativo.
+ * O IDLE padrão permanece fixo; respiração persistente hoje pertence ao
+ * estado SLEEPING e a estados especiais.
  * Leve diferença de fase entre os 2 LEDs para evitar visual mecânico.
  *
  * @param period_ms Duração de um ciclo completo em ms (recomendado: 2000–6000).
@@ -151,6 +169,15 @@ void led_breathe(uint32_t period_ms);
  * @param active true = ativar, false = desativar.
  */
 void led_base_set(nb_led_base_state_t state, bool active);
+
+/**
+ * @brief Define a cor emocional fixa usada acima do IDLE.
+ *
+ * Quando active=false, remove a cor emocional e volta para o IDLE fixo.
+ * Estados de maior prioridade, como SLEEPING/ATTENTIVE/RESPONDING, continuam
+ * tendo precedência.
+ */
+void led_mood_set(nb_led_color_t color, bool active);
 
 /**
  * @brief Dispara o efeito de touch (flash_decay quente → base).
@@ -176,10 +203,21 @@ void led_effect_heartbeat(void);
 void led_effect_beat(void);
 
 /**
+ * @brief Pulso curto colorido para expressão emocional.
+ *
+ * Overlay temporário com decaimento automático e retorno ao base.
+ */
+void led_effect_color_pulse(nb_led_color_t color, float peak, uint32_t duration_ms);
+
+/**
  * @brief Ativa modo noturno (brilho máximo reduzido por fator configurável).
  *
  * @param enable true = modo noturno ativo.
  */
 void led_set_night_mode(bool enable);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* NB_LED_SERVICE_H */

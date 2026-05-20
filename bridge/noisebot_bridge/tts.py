@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 import json
 import logging
 from pathlib import Path
@@ -7,7 +8,7 @@ import subprocess
 
 import numpy as np
 
-from .config import TTS_SAMPLE_RATE, TTS_TARGET_PEAK
+from .config import TTS_CACHE_SIZE, TTS_SAMPLE_RATE, TTS_TARGET_PEAK
 
 log = logging.getLogger("noisebot_bridge.tts")
 
@@ -48,10 +49,15 @@ class PiperTts:
     def __init__(self, model_path: str):
         self.model_path = model_path
         self.sample_rate = read_piper_sample_rate(model_path)
+        self._cache: OrderedDict[str, np.ndarray] = OrderedDict()
 
     def synthesize(self, text: str) -> np.ndarray:
         if not text:
             return np.zeros(0, dtype=np.int16)
+        cached = self._cache.get(text)
+        if cached is not None:
+            self._cache.move_to_end(text)
+            return cached.copy()
         cmd = ["piper", "--model", self.model_path, "--output_raw"]
         try:
             proc = subprocess.run(cmd, input=text.encode(), capture_output=True, check=False)
@@ -62,4 +68,10 @@ class PiperTts:
             raise RuntimeError(f"piper_falhou:{stderr or proc.returncode}")
         pcm = np.frombuffer(proc.stdout, dtype=np.int16)
         pcm = resample_linear(pcm, self.sample_rate, TTS_SAMPLE_RATE)
-        return limit_peak(pcm, TTS_TARGET_PEAK)
+        pcm = limit_peak(pcm, TTS_TARGET_PEAK)
+        if TTS_CACHE_SIZE > 0:
+            self._cache[text] = pcm.copy()
+            self._cache.move_to_end(text)
+            while len(self._cache) > TTS_CACHE_SIZE:
+                self._cache.popitem(last=False)
+        return pcm

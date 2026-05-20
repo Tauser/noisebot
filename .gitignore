@@ -50,4 +50,6 @@ docs/_build/
 assets/
 
 # Credenciais locais de dev — nunca commitar
+.env
+bridge/.env
 components/infra/wifi_creds.h

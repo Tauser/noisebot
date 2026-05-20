@@ -21,7 +21,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);
   font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-button,input{font:inherit}
+button,input,select{font:inherit}
 button{cursor:pointer}
 .app{max-width:1180px;margin:0 auto;padding:20px}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
@@ -94,6 +94,7 @@ input[type=color]{width:100%;height:38px;border:1px solid var(--line);border-rad
 .field label{color:var(--muted)}
 input[type=number],input[type=text],input[type=password]{width:100%;border:1px solid var(--line);border-radius:6px;
   padding:8px 9px;background:#fff;color:var(--text)}
+select{width:100%;border:1px solid var(--line);border-radius:6px;padding:8px 9px;background:#fff;color:var(--text)}
 input:focus{outline:2px solid rgba(11,127,171,.18);border-color:var(--accent)}
 .bar-track{height:7px;border-radius:999px;background:#e4e9ee;overflow:hidden}
 .bar-fill{height:100%;border-radius:999px;background:var(--accent-2);width:0%;transition:width .3s}
@@ -119,6 +120,14 @@ details .panel-body{padding-top:0}
 .touch-box{border:1px solid var(--line);border-radius:8px;padding:10px;background:#f8fafb}
 .touch-box span{display:block;color:var(--muted);font-size:12px}
 .touch-box strong{display:block;font-size:18px;margin-top:3px;color:#1d3345}
+.ai-card{border:1px solid var(--line);border-radius:8px;background:#f8fafb;padding:12px}
+.ai-card span{display:block;color:var(--muted);font-size:12px}
+.ai-card strong{display:block;font-size:20px;margin-top:4px;color:#1d3345;overflow-wrap:anywhere}
+.status-chip{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:6px 10px;
+  background:#eef2f5;color:#394756;border:1px solid var(--line);font-size:12px;font-weight:700}
+.status-chip.ok{background:#e8f7f2;color:#08755f;border-color:#b8e1d3}
+.status-chip.warn{background:#fff8e7;color:#81540d;border-color:#efd08d}
+.status-chip.bad{background:#fff0ef;color:#9d261d;border-color:#f0aaa3}
 @media(max-width:840px){
   .app{padding:14px}
   .topbar{align-items:flex-start;flex-direction:column}
@@ -149,6 +158,7 @@ details .panel-body{padding-top:0}
   <nav class="tabs" aria-label="Navegacao">
     <button class="tab active" data-view="op">Operacao</button>
     <button class="tab" data-view="settings">Ajustes</button>
+    <button class="tab" data-view="ai">IA</button>
     <button class="tab" data-view="system">Sistema</button>
   </nav>
 
@@ -362,6 +372,74 @@ details .panel-body{padding-top:0}
     </details>
   </section>
 
+  <section id="view-ai" class="view">
+    <div class="grid grid-main">
+      <div class="grid">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Cerebro IA</h2>
+            <span class="status-chip" id="ai-status-chip">--</span>
+          </div>
+          <div class="panel-body">
+            <div class="grid grid-3">
+              <div class="ai-card"><span>Provider</span><strong id="ai-provider">--</strong></div>
+              <div class="ai-card"><span>Modelo</span><strong id="ai-model">--</strong></div>
+              <div class="ai-card"><span>Modo</span><strong id="ai-mode">--</strong></div>
+              <div class="ai-card"><span>Rota</span><strong id="ai-route">--</strong></div>
+              <div class="ai-card"><span>Ultima sessao</span><strong id="ai-session">--</strong></div>
+              <div class="ai-card"><span>Fallback</span><strong id="ai-fallback">--</strong></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Latencia</h2><span class="note" id="ai-updated">--</span></div>
+          <div class="panel-body metric-list">
+            <div class="metric"><span>STT</span><strong class="value" id="ai-stt">--</strong></div>
+            <div class="bar-track"><div class="bar-fill" id="aib-stt"></div></div>
+            <div class="metric"><span>LLM</span><strong class="value" id="ai-llm">--</strong></div>
+            <div class="bar-track"><div class="bar-fill" id="aib-llm"></div></div>
+            <div class="metric"><span>TTS/envio</span><strong class="value" id="ai-tts">--</strong></div>
+            <div class="bar-track"><div class="bar-fill" id="aib-tts"></div></div>
+          </div>
+        </article>
+      </div>
+
+      <aside class="grid">
+        <article class="panel">
+          <div class="panel-head"><h2>Servico</h2><button class="btn" onclick="fetchAI()">Atualizar</button></div>
+          <div class="panel-body metric-list">
+            <div class="metric"><span>Bridge</span><strong class="value" id="ai-bridge">--</strong></div>
+            <div class="metric"><span>Transporte</span><strong class="value" id="ai-transport">--</strong></div>
+            <div class="metric"><span>Protocolo</span><strong class="value" id="ai-protocol">--</strong></div>
+            <div class="metric"><span>Ultimo RX</span><strong class="value" id="ai-rx">--</strong></div>
+            <div class="metric"><span>Chave API</span><strong class="value" id="ai-key">no bridge</strong></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Uso estimado</h2></div>
+          <div class="panel-body metric-list">
+            <div class="metric"><span>Tokens input</span><strong class="value" id="ai-in-tokens">--</strong></div>
+            <div class="metric"><span>Tokens output</span><strong class="value" id="ai-out-tokens">--</strong></div>
+            <div class="metric"><span>Custo estimado</span><strong class="value" id="ai-cost">--</strong></div>
+            <p class="note">Custo e tokens dependem do Bridge v2 expor métricas do provider. A chave nunca deve aparecer aqui.</p>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Preferencias planejadas</h2></div>
+          <div class="panel-body form-grid">
+            <div class="field"><label>Provider</label><select disabled><option>OpenAI</option><option>Gemini</option><option>Local only</option></select><span></span></div>
+            <div class="field"><label>Modelo</label><input type="text" value="controlado pelo bridge/.env" disabled><span></span></div>
+            <div class="field"><label>Timeout</label><input type="text" value="NOISEBOT_OPENAI_TIMEOUT_S" disabled><span></span></div>
+            <p class="note">Estes controles entram quando o Bridge v2 tiver API local de configuracao. Hoje o firmware mostra diagnostico sem alterar segredos do servidor.</p>
+          </div>
+        </article>
+      </aside>
+    </div>
+  </section>
+
   <section id="view-system" class="view">
     <div class="grid grid-2">
       <article class="panel">
@@ -505,6 +583,7 @@ function fetchAll(){
   fetchPersona();
   fetchConfig();
   fetchHealth();
+  fetchAI();
   fetchWifi();
   fetchTouch();
   fetchLogs();
@@ -564,6 +643,41 @@ function fetchWifi(){
     set('w-ssid', d.ssid || '--');
     set('w-ip', d.ip || '--');
     set('w-rssi', d.rssi ? d.rssi + ' dBm' : '--');
+  });
+}
+
+function fetchAI(){
+  get('/api/ai', function(d){
+    var connected = !!d.connected;
+    var outcome = d.outcome || 'unknown';
+    var chip = document.getElementById('ai-status-chip');
+    chip.textContent = connected ? (outcome === 'ok' ? 'online' : outcome) : 'offline';
+    chip.classList.toggle('ok', connected && outcome === 'ok');
+    chip.classList.toggle('warn', connected && outcome !== 'ok');
+    chip.classList.toggle('bad', !connected);
+
+    set('ai-provider', d.provider || '--');
+    set('ai-model', d.model || '--');
+    set('ai-mode', d.mode || 'legacy');
+    set('ai-route', d.route || '--');
+    set('ai-session', d.session_id ? '#' + d.session_id + ' · ' + outcome : '--');
+    set('ai-fallback', d.fallback || '--');
+    set('ai-bridge', connected ? 'Conectado' : 'Offline');
+    set('ai-transport', d.transport || '--');
+    set('ai-protocol', d.protocol_v ? 'v' + d.protocol_v : '--');
+    set('ai-rx', d.last_rx_ms === null || d.last_rx_ms === undefined ? '--' : d.last_rx_ms + ' ms');
+    set('ai-key', d.api_key_configured === null ? 'no bridge' : (d.api_key_configured ? 'configurada' : 'ausente'));
+
+    var lat = d.latency || {};
+    setLatency('ai-stt', 'aib-stt', lat.stt_ms, 1500);
+    setLatency('ai-llm', 'aib-llm', lat.llm_ms, 6000);
+    setLatency('ai-tts', 'aib-tts', lat.tts_ms, 3000);
+
+    var usage = d.usage || {};
+    set('ai-in-tokens', usage.input_tokens === null || usage.input_tokens === undefined ? '--' : usage.input_tokens);
+    set('ai-out-tokens', usage.output_tokens === null || usage.output_tokens === undefined ? '--' : usage.output_tokens);
+    set('ai-cost', usage.estimated_cost === null || usage.estimated_cost === undefined ? 'estimativa indisponivel' : usage.estimated_cost);
+    set('ai-updated', d.updated_age_ms === null || d.updated_age_ms === undefined ? 'sem sessao ainda' : 'atualizado ha ' + fmtMs(d.updated_age_ms));
   });
 }
 
@@ -777,6 +891,17 @@ function fmtBytes(n){
   if(n >= 1024) return (n/1024).toFixed(0) + 'KB';
   return n + 'B';
 }
+function fmtMs(ms){
+  ms = Math.max(0, +ms || 0);
+  if(ms >= 60000) return Math.floor(ms/60000) + 'm ' + Math.floor((ms%60000)/1000) + 's';
+  if(ms >= 1000) return (ms/1000).toFixed(1) + 's';
+  return ms + ' ms';
+}
+function setLatency(labelId, barId, ms, scale){
+  if(ms === null || ms === undefined){ set(labelId, '--'); setBar(barId, 0); return; }
+  set(labelId, ms + ' ms');
+  setBar(barId, Math.min(100, (+ms || 0) / scale * 100));
+}
 function setBar(id,pct){
   var el = document.getElementById(id);
   if(!el) return;
@@ -803,6 +928,7 @@ function del(url,cb){ fetch(url,{method:'DELETE'}).then(function(r){return r.jso
 
 connect();
 setInterval(function(){ fetchHealth(); fetchWifi(); }, 10000);
+setInterval(fetchAI, 3000);
 setInterval(fetchTouch, 500);
 setInterval(fetchLogs, 7000);
 </script>

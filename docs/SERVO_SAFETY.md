@@ -19,24 +19,43 @@ Valores iniciais conservadores. **Expandir apenas após calibração mecânica c
 #define NB_SERVO_NECK_TILT  2  // Inclinação vertical (cima/baixo)
 ```
 
-### Limites de Posição (unidades SCS: 0–4095, onde 2048 ≈ 0°)
+### Limites de Posição (unidades SCS: 0–1023, onde 512 ≈ 0°)
 
-O SCS0009 tem range mecânico de 300° (0–4095). O range seguro é muito menor:
+O SCS0009 usa ADC de 10 bits — range 0..1023 (não 0..4095 do STS series).
+Range mecânico de 300°. O range seguro é muito menor:
 
 ```
-Conversão aproximada: 1° ≈ 13.65 unidades SCS
-Centro: 2048 unidades
+Conversão: 1° ≈ 1023/300 ≈ 3.41 unidades SCS
+Centro: 512 unidades
 
 PAN (horizontal):
-  Min: 1638 unidades (centro - 30°)
-  Max: 2458 unidades (centro + 30°)
+  Min: 410 unidades (centro − 30° = 512 − 102)
+  Max: 614 unidades (centro + 30° = 512 + 102)
   Range seguro: 60° total
 
 TILT (vertical):
-  Min: 1843 unidades (centro - 15°)
-  Max: 2253 unidades (centro + 15°)
+  Min: 461 unidades (centro − 15° = 512 − 51)
+  Max: 563 unidades (centro + 15° = 512 + 51)
   Range seguro: 30° total (mecânica mais restrita no eixo vertical)
 ```
+
+> **Validado em bancada (maio 2026):** READ_POSITION com servo parado retornou
+> valores ≤1023. Escala 0..4095 é do STS series — não se aplica ao SCS0009.
+
+**Limites de hardware EEPROM (confirmados via FT SCServo Debug, maio 2026):**
+
+| Registro EEPROM | Nome | Valor confirmado |
+|---|---|---|
+| 9 | Min Position Limit | **20** (não 0) |
+| 11 | Max Position Limit | **1003** (não 1023) |
+| 13 | Max Temperature Limit | 80°C |
+| 16 | Max Torque Limit | 1000 |
+| 26 | CW Dead Band | 10 steps |
+| 27 | CCW Dead Band | 10 steps |
+
+Os limites EEPROM são hardware: o servo rejeita comandos fora de 20..1003 mesmo que o software envie valores extremos. Os limites de software acima (410..614 PAN, 461..563 TILT) ficam confortavelmente dentro desse range.
+
+O ADC continua lendo 0..1023 (posição física real) independente dos limites EEPROM — estes só afetam Goal Position.
 
 **Importante:** Estes limites são configuráveis via NVS (`nb_cfg::servo_pan_min`, etc.). Os defaults acima são conservadores. Após montagem e teste mecânico, expandir gradualmente com observação visual a cada etapa.
 
@@ -183,15 +202,36 @@ Instruções relevantes:
 | WRITE | 0x03 | Escrever registradores |
 | SYNC_WRITE | 0x83 | Escrever em múltiplos servos simultaneamente |
 
-Registradores relevantes do SCS0009:
-| Endereço | Nome | R/W | Descrição |
-|---|---|---|---|
-| 0x38 (56) | Goal Position | R/W | Posição destino (0–4095) |
-| 0x3A (58) | Moving Speed | R/W | Velocidade (0–1023) |
-| 0x28 (40) | Present Position | R | Posição atual |
-| 0x30 (48) | Present Load | R | Carga atual (indicador de torque) |
-| 0x3F (63) | Present Temperature | R | Temperatura em °C |
-| 0x28 (40) | Present Voltage | R+1 | Tensão de alimentação |
-| 0x18 (24) | Torque Enable | R/W | 1=habilitado, 0=livre |
+Registradores relevantes do SCS0009 (RAM — voláteis, perdem no power cycle):
 
-Confirmar endereços com datasheet físico do SCS0009 — podem variar entre revisões.
+> **ENDIANNESS — CRÍTICO:** O SCS0009 usa **big-endian** para valores de 16 bits:
+> byte alto (H) no endereço menor, byte baixo (L) no endereço maior.
+> As labels "L/H" da documentação Feetech referem-se ao endereço (menor/maior),
+> **não** ao byte (baixo/alto). Confirmado via dump (maio 2026):
+> `reg[0x38]=0x02 reg[0x39]=0x7A` → posição 634 = 0x027A (H=0x02 em 0x38, L=0x7A em 0x39).
+>
+> Encodings corretos no firmware:
+> - **READ:**  `pos = ((uint16_t)reg[0x38] << 8) | reg[0x39]`
+> - **WRITE:** `buf[0] = pos >> 8` (→ reg[0x2A] = H), `buf[1] = pos & 0xFF` (→ reg[0x2B] = L)
+
+| Endereço | Label doc. | R/W | Byte real | Descrição |
+|---|---|---|---|---|
+| 0x28 (40) | Torque Enable | R/W | — | 1=torque ativo, 0=livre |
+| 0x29 (41) | Acceleration | R/W | — | Rampa de aceleração |
+| 0x2A (42) | Goal Position "L" | R/W | **H byte** | Posição destino — byte ALTO |
+| 0x2B (43) | Goal Position "H" | R/W | **L byte** | Posição destino — byte BAIXO |
+| 0x2C (44) | Goal Time "L" | R/W | **H byte** | Tempo de movimento — byte ALTO (ms) |
+| 0x2D (45) | Goal Time "H" | R/W | **L byte** | Tempo de movimento — byte BAIXO |
+| 0x2E (46) | Goal Speed "L" | R/W | **H byte** | Velocidade máxima — byte ALTO (0–1023) |
+| 0x2F (47) | Goal Speed "H" | R/W | **L byte** | Velocidade máxima — byte BAIXO |
+| 0x38 (56) | Present Position "L" | R | **H byte** | Posição atual — byte ALTO |
+| 0x39 (57) | Present Position "H" | R | **L byte** | Posição atual — byte BAIXO |
+| 0x3A (58) | Present Speed "L" | R | **H byte** | Velocidade atual — byte ALTO (bit15=direção) |
+| 0x3B (59) | Present Speed "H" | R | **L byte** | Velocidade atual — byte BAIXO |
+| 0x3C (60) | Present Load "L" | R | **H byte** | Carga atual — byte ALTO (0–1000) |
+| 0x3D (61) | Present Load "H" | R | **L byte** | Carga atual — byte BAIXO |
+| 0x3E (62) | Present Voltage | R | — | Tensão × 10 (ex: 0x32=50 → 5.0 V) |
+| 0x3F (63) | Present Temperature | R | — | Temperatura em °C |
+
+> Validado em bancada (maio 2026): endian confirmado via dump de registradores.
+> Confirmar registradores EEPROM (0x00–0x17) com datasheet antes de escrever.

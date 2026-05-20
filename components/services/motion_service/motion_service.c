@@ -30,6 +30,9 @@
 
 #define MOTION_TASK_PERIOD_MS   20u     /* 50Hz */
 #define MOTION_CMD_QUEUE_DEPTH   8u
+#define MOTION_MIN_DURATION_MS  100u    /* evita degraus secos em comandos externos */
+#define MOTION_TRACK_TIME_MS     20u    /* estilo StackChan: tracking curto por frame */
+#define MOTION_TORQUE_RELEASE_MS 220u   /* solta torque em repouso para evitar jitter */
 
 /* ── Conversão de unidades ───────────────────────────────────────────────── */
 /*
@@ -45,13 +48,15 @@
 typedef enum {
     CMD_MOVE = 0,
     CMD_STOP,
+    CMD_SEQUENCE,   /* inicia sequência inteiramente dentro da motion_task */
 } cmd_type_t;
 
 typedef struct {
-    cmd_type_t type;
-    uint8_t    servo_id;
-    uint16_t   target_pos;  /* steps, para CMD_MOVE */
-    uint32_t   duration_ms;
+    cmd_type_t                  type;
+    uint8_t                     servo_id;
+    uint16_t                    target_pos;  /* steps, para CMD_MOVE */
+    uint32_t                    duration_ms;
+    const nb_motion_sequence_t *seq;         /* para CMD_SEQUENCE    */
 } motion_cmd_t;
 
 /* Estado de interpolação por servo */
@@ -61,8 +66,10 @@ typedef struct {
     uint16_t pos_current;    /* última posição escrita no servo        */
     uint32_t duration_ms;    /* duração total do move                  */
     uint32_t elapsed_ms;     /* ms decorridos no move atual            */
+    uint32_t idle_ms;        /* tempo parado desde o último move       */
     bool     moving;         /* true enquanto move em andamento        */
     volatile bool stop_req;  /* sinaliza parada na próxima iteração    */
+    bool     torque_enabled; /* último estado solicitado ao servo      */
 } servo_move_t;
 
 /* Sequência em andamento */
@@ -162,12 +169,40 @@ static void start_move(uint8_t id, uint16_t target_pos, uint32_t duration_ms)
 {
     int i = servo_index(id);
     if (i < 0) { ESP_LOGE(TAG, "start_move: servo_id inválido %u", id); return; }
+
+    if (duration_ms < MOTION_MIN_DURATION_MS) {
+        duration_ms = MOTION_MIN_DURATION_MS;
+    }
+
+    uint32_t delta = (target_pos > s_servo[i].pos_current)
+                   ? (uint32_t)(target_pos - s_servo[i].pos_current)
+                   : (uint32_t)(s_servo[i].pos_current - target_pos);
+    uint32_t vel_steps_s = (delta * 1000u + duration_ms - 1u) / duration_ms;
+    if (s_iface.check_velocity(id, (uint16_t)vel_steps_s) != ESP_OK) {
+        ESP_LOGW(TAG, "start_move: servo %u vel=%lu steps/s rejeitada",
+                 id, (unsigned long)vel_steps_s);
+        s_servo[i].moving = false;
+        s_servo[i].idle_ms = 0;
+        return;
+    }
+
     s_servo[i].pos_start   = s_servo[i].pos_current;
     s_servo[i].pos_target  = target_pos;
     s_servo[i].duration_ms = duration_ms;
     s_servo[i].elapsed_ms  = 0;
+    s_servo[i].idle_ms     = 0;
     s_servo[i].moving      = true;
     s_servo[i].stop_req    = false;
+
+    if (!s_servo[i].torque_enabled) {
+        esp_err_t ret = servo_hal_enable_torque(id);
+        if (ret == ESP_OK) {
+            s_servo[i].torque_enabled = true;
+        } else {
+            ESP_LOGW(TAG, "servo %u: falha ao habilitar torque: %s",
+                     id, esp_err_to_name(ret));
+        }
+    }
 }
 
 /*
@@ -181,6 +216,20 @@ static void update_servo(uint8_t id, uint32_t dt_ms)
     servo_move_t *sv = &s_servo[i];
 
     if (!sv->moving) {
+        if (sv->torque_enabled) {
+            if (sv->idle_ms < MOTION_TORQUE_RELEASE_MS) {
+                sv->idle_ms += dt_ms;
+            }
+            if (sv->idle_ms >= MOTION_TORQUE_RELEASE_MS) {
+                esp_err_t ret = servo_hal_disable_torque(id);
+                if (ret == ESP_OK) {
+                    sv->torque_enabled = false;
+                } else {
+                    ESP_LOGW(TAG, "servo %u: falha ao soltar torque: %s",
+                             id, esp_err_to_name(ret));
+                }
+            }
+        }
         return;
     }
 
@@ -188,6 +237,7 @@ static void update_servo(uint8_t id, uint32_t dt_ms)
     if (sv->stop_req) {
         sv->stop_req   = false;
         sv->moving     = false;
+        sv->idle_ms    = 0;
         /* Mantém pos_current como está — não escreve nova posição */
         ESP_LOGD(TAG, "servo %u: parado em pos=%u", id, sv->pos_current);
         return;
@@ -212,12 +262,21 @@ static void update_servo(uint8_t id, uint32_t dt_ms)
         ESP_LOGW(TAG, "servo %u: posição %u rejeitada por safety — abortando move",
                  id, new_pos);
         sv->moving = false;
+        sv->idle_ms = 0;
         return;
     }
 
-    /* Envia ao servo: time_ms = período + pequena folga para tracking suave */
-    servo_hal_write_position(id, new_pos, (uint16_t)(MOTION_TASK_PERIOD_MS + 5u));
+    if (new_pos == sv->pos_current && sv->elapsed_ms < sv->duration_ms) {
+        return;
+    }
+
+    /* Envia ao servo no mesmo espírito do StackChan: pequeno tracking por frame.
+     * O perfil suave vem da task (50Hz), não de um salto grande no firmware do servo. */
+    servo_hal_write_position(id, new_pos, (uint16_t)MOTION_TRACK_TIME_MS);
     sv->pos_current = new_pos;
+    if (!sv->moving) {
+        sv->idle_ms = 0;
+    }
 }
 
 /*
@@ -318,6 +377,21 @@ static void motion_task(void *arg)
                 ESP_LOGD(TAG, "CMD_MOVE servo=%u pos=%u dur=%lums",
                          cmd.servo_id, cmd.target_pos,
                          (unsigned long)cmd.duration_ms);
+            } else if (cmd.type == CMD_SEQUENCE) {
+                /* Toda escrita em s_seq acontece aqui, dentro da motion_task.
+                 * Elimina a race condition entre caller e motion_task que existia
+                 * quando s_seq.active era escrito de fora. */
+                s_seq.active         = false;  /* reset antes de configurar */
+                s_seq.seq            = cmd.seq;
+                s_seq.frame_idx      = 0;
+                s_seq.hold_elapsed_ms = 0;
+                s_seq.holding        = false;
+                /* Inicia o primeiro frame diretamente — sem enfileirar CMD_MOVE */
+                const nb_keyframe_t *first = &cmd.seq->frames[0];
+                uint16_t target = degrees_to_steps(first->degrees, first->servo_id);
+                start_move(first->servo_id, target, first->duration_ms);
+                s_seq.active = true;
+                ESP_LOGD(TAG, "CMD_SEQUENCE iniciado: %u frames", cmd.seq->frame_count);
             }
         }
 
@@ -410,10 +484,14 @@ esp_err_t motion_move_to(uint8_t id, uint16_t pos, uint32_t duration_ms)
     if (!s_started) {
         return ESP_ERR_INVALID_STATE;
     }
-    if (duration_ms == 0u) {
-        return ESP_ERR_INVALID_ARG;
+    if (duration_ms < MOTION_MIN_DURATION_MS) {
+        duration_ms = MOTION_MIN_DURATION_MS;
     }
     if (s_iface.check_position(id, pos) != ESP_OK) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    int i = servo_index(id);
+    if (i < 0) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -472,22 +550,19 @@ esp_err_t motion_sequence_play(const nb_motion_sequence_t *seq)
         return ESP_FAIL;  /* outra sequência em andamento */
     }
 
-    /* Inicia o primeiro frame imediatamente via CMD_MOVE */
-    const nb_keyframe_t *first = &seq->frames[0];
-    uint16_t target = degrees_to_steps(first->degrees, first->servo_id);
-    esp_err_t ret = motion_move_to(first->servo_id, target, first->duration_ms);
-    if (ret != ESP_OK) {
-        return ret;
+    /* Enfileira CMD_SEQUENCE — toda inicialização de s_seq acontece dentro
+     * da motion_task ao processar este comando, eliminando a race condition
+     * entre caller e motion_task que existia com a abordagem anterior. */
+    motion_cmd_t cmd = {
+        .type = CMD_SEQUENCE,
+        .seq  = seq,
+    };
+    if (xQueueSend(s_cmd_queue, &cmd, 0) != pdTRUE) {
+        ESP_LOGW(TAG, "motion_sequence_play: fila cheia — comando descartado");
+        return ESP_ERR_NO_MEM;
     }
 
-    s_seq.seq              = seq;
-    s_seq.frame_idx        = 0;
-    s_seq.hold_elapsed_ms  = 0;
-    s_seq.holding          = false;
-    portMEMORY_BARRIER();
-    s_seq.active           = true;
-
-    ESP_LOGD(TAG, "sequência iniciada: %u frames", seq->frame_count);
+    ESP_LOGD(TAG, "CMD_SEQUENCE enfileirado: %u frames", seq->frame_count);
     return ESP_OK;
 }
 

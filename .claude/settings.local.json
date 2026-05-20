@@ -21,7 +21,8 @@
       "PowerShell(head *)",
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Tauser\\\\Downloads\\\\sd3.1.0\" -Recurse -File | Where-Object { $_.Extension -in @\\('.txt', '.md', '.json', '.xml', '.cfg', '.conf', '.csv'\\) } | Select-Object FullName)",
       "PowerShell($files = Get-ChildItem \"C:\\\\Users\\\\Tauser\\\\Downloads\\\\sd3.1.0\" -Recurse -File; $files.Count; $files | Select-Object -First 10 | Select-Object FullName)",
-      "Bash(Get-ChildItem -Path \"D:\\\\Projetos\\\\Noisebot\\\\components\" -Recurse -Name)"
+      "Bash(Get-ChildItem -Path \"D:\\\\Projetos\\\\Noisebot\\\\components\" -Recurse -Name)",
+      "Skill(update-config)"
     ]
   }
 }

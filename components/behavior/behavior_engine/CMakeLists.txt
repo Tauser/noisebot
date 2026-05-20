@@ -1,7 +1,10 @@
 idf_component_register(
     SRCS
         "behavior_engine.c"
-    INCLUDE_DIRS "."
+        "../boredom_service/boredom_service.c"
+    INCLUDE_DIRS
+        "."
+        "../boredom_service"
     REQUIRES
         freertos
         log

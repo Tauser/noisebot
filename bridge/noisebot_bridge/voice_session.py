@@ -61,6 +61,10 @@ class VoiceSessionResult:
     error_reason: str | None = None
 
 
+class _VoiceSessionDone(Exception):
+    pass
+
+
 def classify_session_outcome(discard_reason: str | None, route: str, end_reason: str) -> tuple[str, str, str | None]:
     if discard_reason is None:
         return "ok", "none", None
@@ -74,7 +78,7 @@ def classify_session_outcome(discard_reason: str | None, route: str, end_reason:
         return "stt_unavailable", discard_reason, "stt_unavailable"
     if discard_reason == "llm_indisponivel":
         return "llm_unavailable", discard_reason, "llm_unavailable"
-    if discard_reason in ("gemini_429", "llm_quota_exceeded"):
+    if discard_reason in ("gemini_429", "openai_429", "llm_quota_exceeded"):
         return "llm_quota_exceeded", discard_reason, "llm_quota_exceeded"
     if discard_reason in ("tts_indisponivel", "tts_send_failed"):
         return "tts_failed", discard_reason, "tts_failed"
@@ -254,10 +258,12 @@ class VoiceSessionRuntime:
         llm_result = LlmResult()
         local_intent: LocalIntentResult | None = None
         intent_kind = "none"
+        tts_elapsed_ms = 0.0
         avg_rms = snapshot.avg_rms
         duration_s = snapshot.duration_s
         end_reason = snapshot.end_reason
         session_id = snapshot.session_id
+        final_result: VoiceSessionResult | None = None
 
         def ack_once():
             nonlocal silent_ack_sent
@@ -266,11 +272,13 @@ class VoiceSessionRuntime:
                 silent_ack_sent = True
 
         def speak_text(text_to_speak: str, action: int = 0) -> bool:
-            nonlocal discard_reason
+            nonlocal discard_reason, tts_elapsed_ms
             self.emit_session_event(SESSION_TTS_START, session_id)
+            t0 = time.perf_counter()
             try:
                 tts_pcm = self.tts.synthesize(text_to_speak)
             except Exception as e:
+                tts_elapsed_ms += (time.perf_counter() - t0) * 1000.0
                 discard_reason = "tts_indisponivel"
                 log.warning("TTS indisponivel session_id=%d: %s", session_id, e)
                 ack_once()
@@ -280,10 +288,12 @@ class VoiceSessionRuntime:
                 self.send_msg(MSG_ACTION, struct.pack("<I", action))
                 self.send_say_pcm(tts_pcm)
             except Exception as e:
+                tts_elapsed_ms += (time.perf_counter() - t0) * 1000.0
                 discard_reason = "tts_send_failed"
                 log.warning("TTS envio falhou session_id=%d: %s", session_id, e)
                 self.emit_session_event(SESSION_TTS_STOP, session_id, reason="tts_send_failed")
                 return False
+            tts_elapsed_ms += (time.perf_counter() - t0) * 1000.0
             self.emit_session_event(SESSION_TTS_STOP, session_id, reason="ok")
             return True
 
@@ -299,10 +309,13 @@ class VoiceSessionRuntime:
             timer.start()
             return cancelled, timer
 
+        def finish_session() -> None:
+            raise _VoiceSessionDone()
+
         try:
             if not snapshot.audio_chunks:
                 discard_reason = "buffer_vazio"
-                return
+                finish_session()
             pcm = np.concatenate(snapshot.audio_chunks).astype(np.int16)
             n_samples = len(pcm)
             if end_reason == "timeout" and n_samples > 0:
@@ -311,12 +324,12 @@ class VoiceSessionRuntime:
             if not self.stt or not self.stt.ready:
                 discard_reason = "whisper_nao_pronto"
                 ack_once()
-                return
+                finish_session()
 
             if n_samples < MIN_UTTERANCE_SAMPLES:
                 discard_reason = f"audio_curto_{n_samples}smp"
                 ack_once()
-                return
+                finish_session()
 
             pcm_f = pcm.astype(np.float32)
             rms_pcm = float(np.sqrt(np.mean(pcm_f * pcm_f)))
@@ -324,11 +337,11 @@ class VoiceSessionRuntime:
             if rms_pcm < MIN_TRANSCRIBE_RMS or peak < MIN_TRANSCRIBE_PEAK:
                 discard_reason = f"audio_baixo_rms{rms_pcm:.0f}_peak{peak}"
                 ack_once()
-                return
+                finish_session()
             if rms_pcm < MIN_UTTERANCE_RMS and not self.dry_run:
                 discard_reason = f"rms_baixo_{rms_pcm:.0f}"
                 ack_once()
-                return
+                finish_session()
 
             if self.dry_run:
                 ack_once()
@@ -339,21 +352,21 @@ class VoiceSessionRuntime:
             if not text:
                 discard_reason = "texto_vazio"
                 ack_once()
-                return
+                finish_session()
 
             max_no_speech = MAX_NO_SPEECH_PROB_DRY_RUN if self.dry_run else MAX_NO_SPEECH_PROB
             if tr.no_speech_prob > max_no_speech:
                 discard_reason = f"no_speech_{tr.no_speech_prob:.2f}"
                 ack_once()
-                return
+                finish_session()
             if tr.avg_logprob < MIN_AVG_LOGPROB:
                 discard_reason = f"logprob_{tr.avg_logprob:.2f}"
                 ack_once()
-                return
+                finish_session()
             if tr.compression_ratio > MAX_COMPRESSION_RATIO:
                 discard_reason = f"compression_{tr.compression_ratio:.2f}"
                 ack_once()
-                return
+                finish_session()
 
             if self.intent_router is not None:
                 local_intent = self.intent_router.route(text, self.last_status)
@@ -370,7 +383,7 @@ class VoiceSessionRuntime:
                     )
                     if self.dry_run:
                         discard_reason = "dry_run_ok"
-                        return
+                        finish_session()
                     self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", local_intent.emot_event))
                     self.send_msg(MSG_EXPR, struct.pack("<BI", local_intent.expression_id, 4000))
                     for command in local_intent.device_commands:
@@ -379,31 +392,31 @@ class VoiceSessionRuntime:
                         if not local_intent.device_commands and local_intent.reply:
                             self.device_dispatcher.dispatch(
                                 DeviceCommand("scroll_text", {"text": local_intent.reply}, supported=True)
-                            )
+                        )
                         log.info("INTENT session_id=%d reply_suppressed intent=%s", session_id, local_intent.intent)
                         ack_once()
-                        return
+                        finish_session()
                     spoke_ok = speak_text(local_intent.reply, local_intent.action)
                     if spoke_ok and not local_intent.device_commands and local_intent.reply:
                         self.device_dispatcher.dispatch(
                             DeviceCommand("scroll_text", {"text": local_intent.reply}, supported=True)
                         )
-                    return
+                    finish_session()
 
             if self.dry_run:
                 discard_reason = "dry_run_ok"
-                return
+                finish_session()
 
             if not self.llm or not self.llm.ready:
                 discard_reason = "llm_indisponivel"
                 route = "error"
                 if self.dry_run:
                     ack_once()
-                    return
+                    finish_session()
                 self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", 2))
                 self.send_msg(MSG_EXPR, struct.pack("<BI", 2, 4000))
                 speak_text("Eu entendi, mas estou sem acesso ao cérebro online agora.")
-                return
+                finish_session()
 
             route = "llm"
             thinking_cancel, thinking_timer = schedule_thinking_event()
@@ -415,7 +428,7 @@ class VoiceSessionRuntime:
             if llm_result.error:
                 discard_reason = llm_result.error
                 ack_once()
-                return
+                finish_session()
             reply = llm_result.reply
 
             self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", llm_result.emot_event))
@@ -423,6 +436,8 @@ class VoiceSessionRuntime:
 
             speak_text(reply)
 
+        except _VoiceSessionDone:
+            pass
         except Exception as e:
             log.error("Pipeline de voz falhou session_id=%d: %s", session_id, e, exc_info=True)
             discard_reason = "exception"
@@ -432,6 +447,19 @@ class VoiceSessionRuntime:
                 pass
         finally:
             outcome, outcome_detail, error_reason = classify_session_outcome(discard_reason, route, end_reason)
+            self.emit_session_event(
+                "AI_STATUS",
+                session_id,
+                source="bridge",
+                provider=llm_result.provider,
+                model=llm_result.model,
+                route=route,
+                outcome=outcome,
+                detail=outcome_detail,
+                stt_ms=int(tr.elapsed_ms),
+                llm_ms=int(llm_result.elapsed_ms),
+                tts_ms=int(tts_elapsed_ms),
+            )
             log_text = text or ""
             if len(log_text) > LOG_TEXT_MAX_CHARS:
                 log_text = log_text[:LOG_TEXT_MAX_CHARS] + "..."
@@ -463,7 +491,7 @@ class VoiceSessionRuntime:
                 outcome,
                 outcome_detail,
             )
-            return VoiceSessionResult(
+            final_result = VoiceSessionResult(
                 session_id=session_id,
                 end_reason=end_reason,
                 route=route,
@@ -471,3 +499,4 @@ class VoiceSessionRuntime:
                 outcome_detail=outcome_detail,
                 error_reason=error_reason,
             )
+        return final_result

@@ -86,16 +86,34 @@ static esp_err_t write_svc_defaults(void)
     return ESP_OK;
 }
 
-/*
- * Durante os testes de SLEEPING o timeout pode ter ficado gravado na NVS com
- * valores curtos. Como a NVS sobrescreve o default compilado, restauramos para
- * 20 minutos no boot quando encontramos um valor legado menor que o default.
- */
+/* Teste manual de SLEEPING: defina >0 para forçar idle_timeout_s curto.
+ * Produção/default: 0 mantém/restaura NB_CFG_DEFAULT_IDLE_TIMEOUT_S. */
+#define NB_SLEEP_TEST_IDLE_TIMEOUT_S 0u
+
 static esp_err_t restore_idle_timeout_if_legacy(void)
 {
     uint32_t idle_timeout_s = nvs_hal_get_u32(s_h_cfg,
                                               NB_CFG_KEY_IDLE_TMO,
                                               NB_CFG_DEFAULT_IDLE_TIMEOUT_S);
+
+#if NB_SLEEP_TEST_IDLE_TIMEOUT_S > 0
+    if (idle_timeout_s == NB_SLEEP_TEST_IDLE_TIMEOUT_S) {
+        return ESP_OK;
+    }
+
+    NB_LOGI(TAG, "TESTE SLEEPING: idle_timeout=%lus -> %lus",
+            (unsigned long)idle_timeout_s,
+            (unsigned long)NB_SLEEP_TEST_IDLE_TIMEOUT_S);
+
+    esp_err_t test_err = nvs_hal_set_u32(s_h_cfg,
+                                         NB_CFG_KEY_IDLE_TMO,
+                                         NB_SLEEP_TEST_IDLE_TIMEOUT_S);
+    if (test_err == ESP_OK) {
+        nvs_hal_commit(s_h_cfg);
+    }
+    return test_err;
+#endif
+
     if (idle_timeout_s >= NB_CFG_DEFAULT_IDLE_TIMEOUT_S) {
         return ESP_OK;
     }

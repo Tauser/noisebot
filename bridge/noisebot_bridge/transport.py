@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import socket
+import threading
 import time
 
 from .protocol import FRAME_OVERHEAD, MSG_HELLO, decode_frames, encode_frame
@@ -11,6 +12,30 @@ log = logging.getLogger("noisebot_bridge.transport")
 TCP_CONNECT_TIMEOUT_S = 5.0
 TCP_RECV_TIMEOUT_S = 0.1
 TCP_SEND_TIMEOUT_S = 2.0
+TCP_KEEPALIVE_IDLE_S = 8
+TCP_KEEPALIVE_INTERVAL_S = 2
+TCP_KEEPALIVE_COUNT = 3
+
+
+def _configure_tcp_keepalive(sock: socket.socket):
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
+    if hasattr(socket, "TCP_KEEPIDLE"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, TCP_KEEPALIVE_IDLE_S)
+    if hasattr(socket, "TCP_KEEPINTVL"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, TCP_KEEPALIVE_INTERVAL_S)
+    if hasattr(socket, "TCP_KEEPCNT"):
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, TCP_KEEPALIVE_COUNT)
+    if hasattr(socket, "SIO_KEEPALIVE_VALS"):
+        sock.ioctl(
+            socket.SIO_KEEPALIVE_VALS,
+            (
+                1,
+                TCP_KEEPALIVE_IDLE_S * 1000,
+                TCP_KEEPALIVE_INTERVAL_S * 1000,
+            ),
+        )
 
 
 class TcpTransport:
@@ -18,32 +43,35 @@ class TcpTransport:
         self.host = host
         self.port = port
         self.sock = None
+        self._send_lock = threading.Lock()
 
     def connect(self, timeout: float = TCP_CONNECT_TIMEOUT_S) -> bool:
         try:
             self.sock = socket.create_connection((self.host, self.port), timeout=timeout)
             self.sock.settimeout(TCP_RECV_TIMEOUT_S)
-            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            _configure_tcp_keepalive(self.sock)
             return True
         except Exception as e:
             log.error("TCP connect %s:%d falhou: %s", self.host, self.port, e)
+            self.close()
             return False
 
     def send(self, data: bytes):
         if self.sock is None:
             raise ConnectionError("TCP socket fechado")
-        try:
-            self.sock.settimeout(TCP_SEND_TIMEOUT_S)
-            self.sock.sendall(data)
-            self.sock.settimeout(TCP_RECV_TIMEOUT_S)
-        except Exception as e:
-            if self.sock is not None:
-                try:
-                    self.sock.settimeout(TCP_RECV_TIMEOUT_S)
-                except Exception:
-                    pass
-            log.warning("TCP send erro: %s", e)
-            raise
+        with self._send_lock:
+            try:
+                self.sock.settimeout(TCP_SEND_TIMEOUT_S)
+                self.sock.sendall(data)
+            except Exception as e:
+                log.warning("TCP send erro: %s", e)
+                raise
+            finally:
+                if self.sock is not None:
+                    try:
+                        self.sock.settimeout(TCP_RECV_TIMEOUT_S)
+                    except Exception:
+                        pass
 
     def recv(self, max_bytes: int = 4096) -> bytes:
         if self.sock is None:
@@ -58,7 +86,14 @@ class TcpTransport:
 
     def close(self):
         if self.sock:
-            self.sock.close()
+            try:
+                self.sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                self.sock.close()
+            except Exception:
+                pass
             self.sock = None
 
 

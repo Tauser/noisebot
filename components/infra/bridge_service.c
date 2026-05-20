@@ -195,7 +195,7 @@ static decode_result_t frame_decode(const uint8_t *buf, uint16_t buf_len,
 static nb_bridge_say_chunk_t  s_say_buf;
 static nb_bridge_expr_cmd_t   s_expr_buf;
 static char                   s_text_buf[NB_BRIDGE_TEXT_MAX_LEN + 1u];
-static char                   s_session_buf[97u];
+static char                   s_session_buf[257u];
 static StaticQueue_t          s_tx_queue_static;
 static uint8_t               *s_tx_queue_storage;
 
@@ -382,6 +382,14 @@ static void tcp_configure_client(int fd)
 {
     int opt = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
+
+    int ka_idle = NB_BRIDGE_KEEPALIVE_IDLE_S;
+    int ka_int  = NB_BRIDGE_KEEPALIVE_INT_S;
+    int ka_cnt  = NB_BRIDGE_KEEPALIVE_CNT;
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE,  &ka_idle, sizeof(ka_idle));
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &ka_int,  sizeof(ka_int));
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT,   &ka_cnt,  sizeof(ka_cnt));
 
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags >= 0) {

@@ -29,6 +29,8 @@ from .voice_session import VoiceSessionRuntime
 
 log = logging.getLogger("noisebot_bridge.runtime")
 
+BRIDGE_HEARTBEAT_S = 10.0
+
 
 class BridgeRuntime:
     def __init__(self, transport, stt, llm, tts, dry_run: bool = False, intent_router=None):
@@ -144,6 +146,7 @@ class BridgeRuntime:
         except Exception as e:
             log.warning("HELLO v2 falhou — seguindo em modo v1: %s", e)
         total_bytes = 0
+        next_heartbeat = time.monotonic() + BRIDGE_HEARTBEAT_S
         while True:
             try:
                 data = self.transport.recv(4096)
@@ -155,6 +158,10 @@ class BridgeRuntime:
                 for msg_type, payload in frames:
                     log.debug("FRAME type=0x%02X payload=%d bytes", msg_type, len(payload))
                     self.process_msg(msg_type, payload)
+                now = time.monotonic()
+                if now >= next_heartbeat:
+                    self.transport.send(encode_frame(MSG_HELLO, encode_hello_payload()))
+                    next_heartbeat = now + BRIDGE_HEARTBEAT_S
             except KeyboardInterrupt:
                 log.info("Bridge interrompido por Ctrl+C")
                 self.voice.cancel_voice_timer()

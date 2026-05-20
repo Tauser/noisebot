@@ -41,8 +41,8 @@ static const char *TAG = "nb_led_svc";
 /* Brilho máximo permitido para limitar corrente (~80% = 204/255). */
 #define NB_LED_MAX_BRIGHTNESS   204U
 
-/* Brilho padrão em operação normal (~25%). */
-#define NB_LED_DEFAULT_BRIGHTNESS 64U
+/* Brilho padrão em operação normal (~31%). */
+#define NB_LED_DEFAULT_BRIGHTNESS 80U
 
 /* Brilho do modo noturno (40% do padrão). */
 #define NB_LED_NIGHT_BRIGHTNESS 26U
@@ -51,7 +51,7 @@ static const char *TAG = "nb_led_svc";
 #define NB_LED_BREATHE_PHASE_OFFSET_MS  200U
 
 /* Prioridade máxima de estado base que BLOQUEIA overlays. */
-/* SAFE_MODE (2) e ERROR (3) bloqueiam TOUCH overlay (prioridade 2). */
+/* SAFE_MODE e ERROR bloqueiam overlays afetivos. */
 #define NB_OVERLAY_BLOCK_PRIORITY  NB_LED_BASE_SAFE_MODE
 
 /* ── Tabela gamma 2.2 (256 entradas) ─────────────────────────────────────── */
@@ -128,6 +128,7 @@ typedef struct {
     /* Animação base — fase de breathe/pulse acumulada por LED. */
     uint32_t        base_phase_ms[NB_LED_COUNT];
     uint32_t        base_period_ms;   /* período do breathe/pulse atual */
+    nb_led_color_t  mood_color;       /* cor fixa da expressão atual */
 
     /* Cor manual (usada quando nenhum estado base está ativo). */
     nb_led_color_t  manual_color[NB_LED_COUNT];
@@ -223,6 +224,19 @@ static nb_led_color_t scale_color(nb_led_color_t c, float f)
     return out;
 }
 
+static nb_led_color_t add_color_saturated(nb_led_color_t a, nb_led_color_t b)
+{
+    uint16_t r = (uint16_t)a.r + b.r;
+    uint16_t g = (uint16_t)a.g + b.g;
+    uint16_t bl = (uint16_t)a.b + b.b;
+    nb_led_color_t out = {
+        .r = (uint8_t)(r > 255U ? 255U : r),
+        .g = (uint8_t)(g > 255U ? 255U : g),
+        .b = (uint8_t)(bl > 255U ? 255U : bl),
+    };
+    return out;
+}
+
 /* Retorna o estado base de maior prioridade ativo. -1 se nenhum. */
 static int active_base_priority(void)
 {
@@ -259,9 +273,17 @@ static nb_led_color_t compute_base_color(int priority, uint8_t led_idx)
 
     switch ((nb_led_base_state_t)priority) {
     case NB_LED_BASE_IDLE: {
-        /* Breathe quente lento, brilho 30–100% */
-        float f = 0.3f + 0.7f * breathe_factor(phase, period);
-        return scale_color(NB_LED_WARM_WHITE, f);
+        /* IDLE é fixo. Com gamma 2.2, a cor precisa chegar quase inteira ao render. */
+        return scale_color(NB_LED_IDLE_CYAN, 1.0f);
+    }
+    case NB_LED_BASE_MOOD: {
+        /* Cor fixa da expressão atual. Overlays curtos entram por cima. */
+        return scale_color(s_svc.mood_color, 1.0f);
+    }
+    case NB_LED_BASE_SLEEPING: {
+        /* Azul bem fraco respirando devagar, mas visível no WS2812. */
+        float f = 0.50f + 0.50f * breathe_factor(phase, period);
+        return scale_color(NB_LED_SLEEP_BLUE, f);
     }
     case NB_LED_BASE_BOOT: {
         /* Pulso branco suave, brilho 20–100% */
@@ -293,6 +315,11 @@ static nb_led_color_t compute_base_color(int priority, uint8_t led_idx)
         float f = 0.3f + 0.7f * breathe_factor(phase, period);
         return scale_color(NB_LED_CYAN_SOFT, f);
     }
+    case NB_LED_BASE_RESPONDING: {
+        /* Pulso suave enquanto fala/responde */
+        float f = 0.28f + 0.58f * breathe_factor(phase, period);
+        return scale_color(NB_LED_SPEAK_AQUA, f);
+    }
     default:
         return NB_LED_COLOR_BLACK;
     }
@@ -302,13 +329,16 @@ static nb_led_color_t compute_base_color(int priority, uint8_t led_idx)
 static uint32_t default_period_for_base(nb_led_base_state_t state)
 {
     switch (state) {
-    case NB_LED_BASE_IDLE:      return 4000U;
-    case NB_LED_BASE_BOOT:      return 1200U;
-    case NB_LED_BASE_SAFE_MODE: return 2500U;
+    case NB_LED_BASE_IDLE:           return 5200U;
+    case NB_LED_BASE_MOOD:           return 5200U;
+    case NB_LED_BASE_SLEEPING:       return 7200U;
+    case NB_LED_BASE_BOOT:           return 1200U;
+    case NB_LED_BASE_ATTENTIVE:      return 1800U;
+    case NB_LED_BASE_RESPONDING:     return 1300U;
+    case NB_LED_BASE_SAFE_MODE:      return 2500U;
     case NB_LED_BASE_ERROR:          return 600U;
     case NB_LED_BASE_MEDITATION:     return 6000U;
     case NB_LED_BASE_SILENT_COMPANY: return 8000U;
-    case NB_LED_BASE_ATTENTIVE:      return 1800U;
     default:                         return 2000U;
     }
 }
@@ -414,7 +444,7 @@ static nb_led_color_t compute_overlay_color(void)
             f = 0.8f * sinf(3.14159265f * (float)(t - 120U) / 180.0f);
         }
         /* t >= 300 = pausa (f=0) */
-        return scale_color(NB_LED_WARM_WHITE, f);
+        return scale_color(NB_LED_IDLE_CYAN, f);
     }
 
     default:
@@ -449,15 +479,17 @@ static void service_tick(uint32_t dt_ms)
     bool dirty = false;
 
     for (int i = 0; i < NB_LED_COUNT; i++) {
-        if (overlay_active) {
-            frame[i] = render_color_overlay(compute_overlay_color());
-        } else if (s_svc.manual_active) {
+        if (s_svc.manual_active) {
             frame[i] = render_color(s_svc.manual_color[i]);
         } else {
             nb_led_color_t c = (priority >= 0)
                 ? compute_base_color(priority, (uint8_t)i)
                 : NB_LED_COLOR_BLACK;
             frame[i] = render_color(c);
+            if (overlay_active) {
+                frame[i] = add_color_saturated(frame[i],
+                                               render_color_overlay(compute_overlay_color()));
+            }
         }
 
         if (frame[i].r != s_svc.last_frame[i].r ||
@@ -500,6 +532,7 @@ esp_err_t led_service_init(void)
     /* Estado inicial: BOOT ativo. */
     s_svc.base_active[NB_LED_BASE_BOOT] = true;
     s_svc.base_period_ms = default_period_for_base(NB_LED_BASE_BOOT);
+    s_svc.mood_color = NB_LED_IDLE_CYAN;
 
     /* Offset de fase entre LEDs para breathe. */
     s_svc.base_phase_ms[0] = 0;
@@ -629,6 +662,23 @@ void led_base_set(nb_led_base_state_t state, bool active)
     xSemaphoreGive(s_svc.mutex);
 }
 
+void led_mood_set(nb_led_color_t color, bool active)
+{
+    if (!s_svc.initialized) return;
+    if (xSemaphoreTake(s_svc.mutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+
+    s_svc.mood_color = color;
+    s_svc.base_active[NB_LED_BASE_MOOD] = active;
+    s_svc.manual_active = false;
+
+    int p = active_base_priority();
+    if (p >= 0) {
+        s_svc.base_period_ms = default_period_for_base((nb_led_base_state_t)p);
+    }
+
+    xSemaphoreGive(s_svc.mutex);
+}
+
 void led_effect_touch(void)
 {
     if (!s_svc.initialized) return;
@@ -673,6 +723,25 @@ void led_effect_beat(void)
         s_svc.overlay.decay_peak       = 0.55f;
         s_svc.overlay.decay_elapsed_ms = 0;
         s_svc.overlay.decay_total_ms   = 150U;
+    }
+
+    xSemaphoreGive(s_svc.mutex);
+}
+
+void led_effect_color_pulse(nb_led_color_t color, float peak, uint32_t duration_ms)
+{
+    if (!s_svc.initialized || duration_ms == 0U) return;
+    if (peak < 0.0f) peak = 0.0f;
+    if (peak > 1.0f) peak = 1.0f;
+    if (xSemaphoreTake(s_svc.mutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+
+    int p = active_base_priority();
+    if (p < (int)NB_OVERLAY_BLOCK_PRIORITY) {
+        s_svc.overlay.type             = OVERLAY_FLASH_DECAY;
+        s_svc.overlay.decay_color      = color;
+        s_svc.overlay.decay_peak       = peak;
+        s_svc.overlay.decay_elapsed_ms = 0;
+        s_svc.overlay.decay_total_ms   = duration_ms;
     }
 
     xSemaphoreGive(s_svc.mutex);

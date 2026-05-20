@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+import random
 import re
 import unicodedata
+
+from .market import fetch_btc_price, format_btc_reply
 
 
 @dataclass(frozen=True)
@@ -113,9 +116,24 @@ class LocalIntentRouter:
                 speak_reply=False,
             )
 
+        if self._is_btc_price(norm):
+            price = fetch_btc_price()
+            return LocalIntentResult(
+                intent="local_market_btc_price",
+                confidence=0.86,
+                reply=format_btc_reply(price),
+                expression_id=4,
+                action=0,
+                emot_event=2,
+            )
+
         expression = self._expression_command(norm)
         if expression is not None:
             return expression
+
+        provocation = self._angry_provocation_command(norm)
+        if provocation is not None:
+            return provocation
 
         action = self._action_command(norm)
         if action is not None:
@@ -169,8 +187,14 @@ class LocalIntentRouter:
         return _has_any(text, ("qual seu ip", "voce esta conectado", "esta conectado", "conexao", "rede"))
 
     @staticmethod
+    def _is_btc_price(text: str) -> bool:
+        has_asset = _has_any(text, ("bitcoin", "bit coin", "btc", "btse", "b t c"))
+        has_price = _has_any(text, ("valor", "preco", "cotacao", "quanto", "vale", "agora", "momento"))
+        return has_asset and has_price
+
+    @staticmethod
     def _expression_command(text: str) -> LocalIntentResult | None:
-        if not _has_any(text, ("fique", "fica", "expressao", "rosto", "cara")):
+        if not _has_any(text, ("fique", "fica", "expressao", "rosto", "cara", "modo")):
             return None
         expressions = {
             "feliz": (1, "feliz"),
@@ -182,9 +206,35 @@ class LocalIntentRouter:
             "focada": (4, "focado"),
             "surpreso": (6, "surpreso"),
             "triste": (7, "triste"),
+            # ANGRY — sempre transitório, não vira baseline
+            "bravo": (9, "bravo"),
+            "brava": (9, "bravo"),
+            "raiva": (9, "bravo"),
+            "irritado": (9, "bravo"),
+            "irritada": (9, "bravo"),
+            "zangado": (9, "bravo"),
+            "zangada": (9, "bravo"),
         }
         for key, (expression_id, label) in expressions.items():
             if key in text:
+                if expression_id == 9:
+                    # ANGRY: speak_reply=True para dar feedback teatral ao usuário
+                    return LocalIntentResult(
+                        intent="local_device_expression_angry",
+                        confidence=0.85,
+                        reply="Tá bem. Expressão de raiva ativada. Por exactamente três segundos.",
+                        expression_id=expression_id,
+                        action=0,
+                        emot_event=2,
+                        speak_reply=True,
+                        device_commands=(
+                            DeviceCommand(
+                                "set_expression",
+                                {"expression_id": expression_id, "duration_ms": 3000},
+                                supported=True,
+                            ),
+                        ),
+                    )
                 return LocalIntentResult(
                     intent="local_device_expression",
                     confidence=0.84,
@@ -202,6 +252,55 @@ class LocalIntentRouter:
                     ),
                 )
         return None
+
+    # ── Provocações e taunts ──────────────────────────────────────────────────
+
+    _ANGRY_REPLIES: tuple[str, ...] = (
+        "Tá. Agora eu fiquei oficialmente ofendido.",
+        "Eu ouvi isso. E vou fingir que não doeu.",
+        "Não. Meu bom senso acabou de vetar essa ideia.",
+        "Hm. Você está testando minha paciência de silício.",
+        "Anota aí: isso foi uma provocação registrada nos meus logs.",
+        "Processando... processado. Definitivamente não gostei.",
+    )
+
+    @staticmethod
+    def _angry_provocation_command(text: str) -> LocalIntentResult | None:
+        """Detecta provocações leves e responde com ANGRY transitório e réplica teatral."""
+        triggers = (
+            "voce errou",
+            "voce falhou",
+            "errou de novo",
+            "errou feio",
+            "robo burro",
+            "robo idiota",
+            "robo estupido",
+            "robo inutil",
+            "voce e burro",
+            "voce e idiota",
+            "voce e pessimo",
+            "voce e horrivel",
+            "voce e uma droga",
+            "voce e inutil",
+            "prefiro outra ia",
+            "prefiro o chatgpt",
+            "prefiro o chat",
+            "prefiro alexa",
+            "prefiro a siri",
+            "prefiro o gemini",
+        )
+        if not _has_any(text, triggers):
+            return None
+        reply = random.choice(LocalIntentRouter._ANGRY_REPLIES)
+        return LocalIntentResult(
+            intent="local_angry_provocation",
+            confidence=0.88,
+            reply=reply,
+            expression_id=9,
+            action=0,
+            emot_event=2,
+            speak_reply=True,
+        )
 
     @staticmethod
     def _action_command(text: str) -> LocalIntentResult | None:

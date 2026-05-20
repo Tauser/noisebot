@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from noisebot_bridge.tts import limit_peak, resample_linear
+from noisebot_bridge.tts import PiperTts, limit_peak, resample_linear
 from noisebot_bridge.config import TTS_TARGET_PEAK
 
 
@@ -25,6 +25,16 @@ class TtsAudioTests(unittest.TestCase):
 
     def test_default_tts_peak_is_conservative(self):
         self.assertLessEqual(TTS_TARGET_PEAK, 8000)
+
+    def test_piper_tts_reuses_cached_phrase(self):
+        tts = PiperTts("missing-model.onnx")
+        pcm = np.arange(256, dtype=np.int16)
+        tts._cache["oi"] = pcm
+
+        out = tts.synthesize("oi")
+
+        self.assertTrue(np.array_equal(out, pcm))
+        self.assertIsNot(out, pcm)
 
 
 if __name__ == "__main__":

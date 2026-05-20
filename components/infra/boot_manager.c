@@ -508,6 +508,12 @@ static void on_state_changed(nb_robot_state_t new_state,
             audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
         }
     }
+    if (old_state == NB_STATE_RESPONDING && new_state != NB_STATE_RESPONDING) {
+        led_base_set(NB_LED_BASE_RESPONDING, false);
+    }
+    if (old_state == NB_STATE_SLEEPING && new_state != NB_STATE_SLEEPING) {
+        led_base_set(NB_LED_BASE_SLEEPING, false);
+    }
 
     /* LED + sessão de escuta + synth para transições de estado. */
     switch (new_state) {
@@ -520,9 +526,11 @@ static void on_state_changed(nb_robot_state_t new_state,
             led_base_set(NB_LED_BASE_ATTENTIVE, true);
             break;
         case NB_STATE_RESPONDING:
+            led_base_set(NB_LED_BASE_RESPONDING, true);
             wake_service_suspend();
             break;
         case NB_STATE_SLEEPING:
+            led_base_set(NB_LED_BASE_SLEEPING, true);
             wake_service_suspend();
             break;
         case NB_STATE_MEDITATION:
@@ -652,15 +660,13 @@ static void on_wake_word_detected(const nb_event_t *evt, void *ctx)
 
 
 
-/*
- * Persistir a emoção no NVS sempre que a expressão mapeada mudar.
- */
 static void on_emotion_changed(nb_expression_t new_expr)
 {
     /* SLEEPY é induzido pelo estado SLEEPING e não representa personalidade
      * persistente. Não salvar evita que o próximo boot inicie com cara de dormindo. */
-    if (new_expr == NB_EXPR_SLEEPY) return;
-    config_set_last_emotion((uint8_t)new_expr);
+    if (new_expr != NB_EXPR_SLEEPY) {
+        config_set_last_emotion((uint8_t)new_expr);
+    }
 }
 
 /* ── Task de behavior (10 Hz) ───────────────────────────────────────────── */
@@ -1118,7 +1124,7 @@ static esp_err_t phase_complete(void)
     /* State machine: BOOT_UP → IDLE (boot concluído). */
     state_machine_on_boot_complete();
 
-    /* Transição de LED: BOOT → IDLE (breathe quente). */
+    /* Transição de LED: BOOT → IDLE (azul/ciano baixo fixo). */
     led_base_set(NB_LED_BASE_BOOT, false);
     led_base_set(NB_LED_BASE_IDLE, true);
 

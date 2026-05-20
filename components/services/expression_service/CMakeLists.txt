@@ -11,4 +11,5 @@ idf_component_register(
         LovyanGFX
         render_service
         ui_overlay_service
+        led_service
 )

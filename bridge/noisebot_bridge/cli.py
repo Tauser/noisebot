@@ -5,7 +5,7 @@ import json
 import logging
 import time
 
-from .config import BridgeConfig
+from .config import BridgeConfig, load_bridge_env
 from .intent_router import LocalIntentRouter
 from .llm import FallbackLlmProvider, create_llm_provider
 from .replay import run_replay
@@ -28,7 +28,7 @@ def parse_args() -> BridgeConfig:
     parser.add_argument("--replay", default=None, help="Arquivo WAV/PCM int16 16kHz para testar sem hardware")
     parser.add_argument("--replay-json", action="store_true", help="Imprime resultado estruturado do replay em JSON")
     parser.add_argument("--local-intents", choices=("on", "off"), default="on")
-    parser.add_argument("--llm", choices=("gemini", "openai", "mock", "none"), default="gemini")
+    parser.add_argument("--llm", choices=("gemini", "openai", "mock", "none"), default=BridgeConfig.llm)
     parser.add_argument("--fallback-llm", choices=("gemini", "openai", "mock", "none"), default="none")
     parser.add_argument("--whisper-model", default=BridgeConfig.whisper_model, help="Modelo Whisper local")
     parser.add_argument(
@@ -54,6 +54,7 @@ def parse_args() -> BridgeConfig:
 
 
 def main():
+    load_bridge_env()
     configure_logging()
     log = logging.getLogger("noisebot_bridge")
     cfg = parse_args()
@@ -117,3 +118,7 @@ def main():
                 transport.close()
         log.info("Reconectando em %.0fs...", cfg.reconnect_delay_s)
         time.sleep(cfg.reconnect_delay_s)
+
+
+if __name__ == "__main__":
+    main()

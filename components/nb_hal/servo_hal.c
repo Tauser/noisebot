@@ -379,8 +379,11 @@ esp_err_t servo_hal_read_position(uint8_t id, uint16_t *pos)
     uint8_t buf[2];
     esp_err_t ret = servo_hal_read_raw(id, NB_SERVO_REG_PRESENT_POS_L, 2u, buf);
     if (ret == ESP_OK) {
-        /* Low byte primeiro (little-endian no protocolo SCS) */
-        *pos = (uint16_t)((uint16_t)buf[1] << 8u | (uint16_t)buf[0]);
+        /* SCS0009 é big-endian: byte alto no endereço menor.
+         * buf[0] = reg[0x38] = H byte, buf[1] = reg[0x39] = L byte.
+         * Confirmado via dump de registradores (maio 2026):
+         * reg[0x38]=0x02 reg[0x39]=0x7A → posição 634 = 0x027A. */
+        *pos = (uint16_t)((uint16_t)buf[0] << 8u | (uint16_t)buf[1]);
     }
     return ret;
 }
@@ -393,7 +396,9 @@ esp_err_t servo_hal_read_load(uint8_t id, uint16_t *load)
     uint8_t buf[2];
     esp_err_t ret = servo_hal_read_raw(id, NB_SERVO_REG_PRESENT_LOAD_L, 2u, buf);
     if (ret == ESP_OK) {
-        *load = (uint16_t)((uint16_t)buf[1] << 8u | (uint16_t)buf[0]);
+        /* Big-endian: buf[0] = H byte (reg 0x3C), buf[1] = L byte (reg 0x3D).
+         * Bit 10 = direção (0=CCW, 1=CW), bits 9:0 = magnitude. */
+        *load = (uint16_t)((uint16_t)buf[0] << 8u | (uint16_t)buf[1]);
     }
     return ret;
 }
@@ -427,12 +432,16 @@ esp_err_t servo_hal_write_position(uint8_t id, uint16_t pos, uint16_t time_ms)
     if (!s_initialized) return ESP_ERR_INVALID_STATE;
     if (!BUS_LOCK())    return ESP_ERR_TIMEOUT;
 
+    /* SCS0009 big-endian: byte alto no endereço menor.
+     * reg[0x2A] = Goal Position H, reg[0x2B] = Goal Position L.
+     * reg[0x2C] = Goal Time H,     reg[0x2D] = Goal Time L.
+     * Confirmado via dump (maio 2026): reg[0x2A]=0x02 reg[0x2B]=0x7A → pos 634. */
     uint8_t params[5];
-    params[0] = SCS_REG_GOAL_POSITION_L;
-    params[1] = (uint8_t)(pos & 0xFFu);
-    params[2] = (uint8_t)((pos >> 8u) & 0xFFu);
-    params[3] = (uint8_t)(time_ms & 0xFFu);
-    params[4] = (uint8_t)((time_ms >> 8u) & 0xFFu);
+    params[0] = SCS_REG_GOAL_POSITION_L;          /* endereço inicial: 0x2A */
+    params[1] = (uint8_t)((pos     >> 8u) & 0xFFu); /* reg[0x2A] = pos H      */
+    params[2] = (uint8_t)(pos      & 0xFFu);         /* reg[0x2B] = pos L      */
+    params[3] = (uint8_t)((time_ms >> 8u) & 0xFFu); /* reg[0x2C] = time H     */
+    params[4] = (uint8_t)(time_ms  & 0xFFu);         /* reg[0x2D] = time L     */
 
     esp_err_t ret = ESP_OK;
     if (send_packet(id, SCS_INSTR_WRITE, params, (uint8_t)sizeof(params)) < 0) {

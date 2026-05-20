@@ -23,12 +23,15 @@ extern "C" {
 
 /* ── Registradores de leitura do SCS0009 ─────────────────────────────────── */
 
-#define NB_SERVO_REG_PRESENT_POS_L   0x38u   /* posição atual low byte  */
-#define NB_SERVO_REG_PRESENT_POS_H   0x39u   /* posição atual high byte */
-#define NB_SERVO_REG_PRESENT_SPD_L   0x3Au   /* velocidade atual low    */
-#define NB_SERVO_REG_PRESENT_SPD_H   0x3Bu   /* velocidade atual high   */
-#define NB_SERVO_REG_PRESENT_LOAD_L  0x3Cu   /* carga atual low         */
-#define NB_SERVO_REG_PRESENT_LOAD_H  0x3Du   /* carga atual high        */
+/* ENDIANNESS: SCS0009 usa big-endian — byte ALTO no endereço menor.
+ * Os sufixos "L"/"H" são os nomes da documentação Feetech (endereço menor/maior),
+ * NÃO indicam byte baixo/alto. Confirmado via dump de registradores (maio 2026). */
+#define NB_SERVO_REG_PRESENT_POS_L   0x38u   /* doc: "L" = endereço menor = H byte */
+#define NB_SERVO_REG_PRESENT_POS_H   0x39u   /* doc: "H" = endereço maior = L byte */
+#define NB_SERVO_REG_PRESENT_SPD_L   0x3Au   /* velocidade: endereço menor = H byte */
+#define NB_SERVO_REG_PRESENT_SPD_H   0x3Bu   /* velocidade: endereço maior = L byte */
+#define NB_SERVO_REG_PRESENT_LOAD_L  0x3Cu   /* carga: endereço menor = H byte      */
+#define NB_SERVO_REG_PRESENT_LOAD_H  0x3Du   /* carga: endereço maior = L byte      */
 #define NB_SERVO_REG_PRESENT_VOLTAGE 0x3Eu   /* voltagem em décimos de V */
 #define NB_SERVO_REG_PRESENT_TEMP    0x3Fu   /* temperatura em °C        */
 

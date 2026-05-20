@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime
 
 from noisebot_bridge.intent_router import LocalIntentRouter, normalize_text
+from noisebot_bridge.market import MarketPrice
 
 
 class IntentRouterTests(unittest.TestCase):
@@ -123,8 +124,112 @@ class IntentRouterTests(unittest.TestCase):
         self.assertEqual(result.device_commands[0].name, "play_action")
         self.assertTrue(result.device_commands[0].supported)
 
+    def test_bitcoin_price_intent_uses_local_market_tool(self):
+        import noisebot_bridge.intent_router as intent_router
+
+        original_fetch = intent_router.fetch_btc_price
+        try:
+            intent_router.fetch_btc_price = lambda: MarketPrice(asset="BTC", usd=100000.0, brl=550000.0, source="Teste")
+            result = self.router.route("qual o valor do bitcoin nesse momento")
+        finally:
+            intent_router.fetch_btc_price = original_fetch
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_market_btc_price")
+        self.assertIn("US$ 100.000,00", result.reply)
+        self.assertIn("R$ 550.000,00", result.reply)
+
     def test_unknown_text_returns_none(self):
         self.assertIsNone(self.router.route("fale sobre isaac newton"))
+
+    # ── ANGRY — expressão explícita ───────────────────────────────────────────
+
+    def test_angry_expression_fica_bravo(self):
+        result = self.router.route("fica bravo")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_expression_angry")
+        self.assertEqual(result.expression_id, 9)
+        self.assertTrue(result.speak_reply)
+        self.assertTrue(result.device_commands[0].supported)
+        self.assertEqual(result.device_commands[0].args["expression_id"], 9)
+
+    def test_angry_expression_cara_de_bravo(self):
+        result = self.router.route("cara de bravo")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_expression_angry")
+        self.assertEqual(result.expression_id, 9)
+
+    def test_angry_expression_modo_raiva(self):
+        result = self.router.route("modo raiva")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_expression_angry")
+        self.assertEqual(result.expression_id, 9)
+
+    def test_angry_expression_fique_irritado(self):
+        result = self.router.route("fique irritado")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_expression_angry")
+        self.assertEqual(result.expression_id, 9)
+
+    def test_angry_expression_expressao_brava(self):
+        result = self.router.route("expressão brava")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_device_expression_angry")
+        self.assertEqual(result.expression_id, 9)
+
+    def test_angry_expression_play_duration_is_3000ms(self):
+        result = self.router.route("fica bravo")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.device_commands[0].args["duration_ms"], 3000)
+
+    # ── ANGRY — provocações ───────────────────────────────────────────────────
+
+    def test_angry_provocation_robo_burro(self):
+        result = self.router.route("robô burro")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_angry_provocation")
+        self.assertEqual(result.expression_id, 9)
+        self.assertTrue(result.speak_reply)
+        self.assertNotEqual(result.reply, "")
+
+    def test_angry_provocation_voce_errou(self):
+        result = self.router.route("você errou")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_angry_provocation")
+        self.assertEqual(result.expression_id, 9)
+
+    def test_angry_provocation_prefiro_chatgpt(self):
+        result = self.router.route("prefiro o chatgpt")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_angry_provocation")
+        self.assertEqual(result.expression_id, 9)
+
+    def test_angry_provocation_reply_is_theatrical(self):
+        """Verifica que a resposta é uma das frases teatrais pré-definidas."""
+        from noisebot_bridge.intent_router import LocalIntentRouter
+        result = self.router.route("robô idiota")
+        self.assertIsNotNone(result)
+        self.assertIn(result.reply, LocalIntentRouter._ANGRY_REPLIES)
+
+    def test_angry_provocation_has_no_device_commands(self):
+        result = self.router.route("você errou de novo")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_angry_provocation")
+        self.assertEqual(len(result.device_commands), 0)
+
+    # ── ANGRY — garantias de não-baseline ────────────────────────────────────
+
+    def test_angry_expression_does_not_suppress_speak(self):
+        """ANGRY via intent deve falar a resposta teatral (speak_reply=True)."""
+        result = self.router.route("fica bravo")
+        self.assertIsNotNone(result)
+        self.assertTrue(result.speak_reply)
+
+    def test_non_angry_expression_still_suppresses_speak(self):
+        """Expressões não-ANGRY continuam com speak_reply=False."""
+        result = self.router.route("fique feliz")
+        self.assertIsNotNone(result)
+        self.assertFalse(result.speak_reply)
 
 
 if __name__ == "__main__":

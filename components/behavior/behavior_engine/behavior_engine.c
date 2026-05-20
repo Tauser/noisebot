@@ -39,6 +39,7 @@
 #include "synth_service.h"
 #include "attention_service.h"
 #include "diagnostics_service.h"
+#include "boredom_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
@@ -459,9 +460,20 @@ static void bridge_on_event(const nb_event_t *evt)
 
     case NB_EVT_BRIDGE_EXPR: {
         const nb_bridge_expr_cmd_t *cmd = (const nb_bridge_expr_cmd_t *)evt->data.ptr;
-        if (cmd && cmd->expression_id < NB_EXPR_COUNT) {
-            expression_service_set((nb_expression_t)cmd->expression_id,
-                                   (float)cmd->duration_ms);
+        if (!cmd || cmd->expression_id >= NB_EXPR_COUNT) break;
+        nb_expression_t expr = (nb_expression_t)cmd->expression_id;
+        if (expr == NB_EXPR_ANGRY) {
+            /* ANGRY é sempre transitório — nunca vira baseline.
+             * expression_play() retorna automaticamente à expressão base (NEUTRAL)
+             * após o tempo configurado, garantindo que IDLE recupera autoridade.
+             * LED vermelho como overlay curto, sem substituir o estado base de LED. */
+            static const float ANGRY_PLAY_MS       = 3000.0f;
+            static const float ANGRY_TRANSITION_MS =  200.0f;
+            expression_play(NB_EXPR_ANGRY, ANGRY_PLAY_MS, ANGRY_TRANSITION_MS);
+            led_effect_color_pulse(NB_LED_RED, 0.65f, (uint32_t)ANGRY_PLAY_MS);
+            NB_LOGI(TAG, "ANGRY play transitório (%.0fms) — LED pulse vermelho", ANGRY_PLAY_MS);
+        } else {
+            expression_service_set(expr, (float)cmd->duration_ms);
         }
         break;
     }
@@ -670,6 +682,13 @@ esp_err_t behavior_engine_init(void)
         .name     = "bridge_resp",
     };
     esp_timer_create(&timer_args, &s_bridge_resp_timer);
+
+    /* Escalada criativa de ociosidade (boredom). */
+    esp_err_t boredom_err = boredom_service_init();
+    if (boredom_err != ESP_OK) {
+        NB_LOGW(TAG, "boredom_service_init falhou: %s — continuando",
+                esp_err_to_name(boredom_err));
+    }
 
     s_initialized = true;
     NB_LOGI(TAG, "behavior_engine inicializado (%u regras)", (unsigned)K_NRULES);

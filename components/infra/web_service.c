@@ -91,6 +91,27 @@ static esp_timer_handle_t s_servo_calib_tmr = NULL;  /* auto-resume conductor ap
 static nb_event_type_t    s_last_touch_event = NB_EVT_NONE;
 static int64_t            s_last_touch_us    = 0;
 
+typedef struct {
+    char     provider[24];
+    char     model[40];
+    char     route[24];
+    char     outcome[32];
+    char     detail[40];
+    uint32_t session_id;
+    uint32_t stt_ms;
+    uint32_t llm_ms;
+    uint32_t tts_ms;
+    int64_t  updated_us;
+} nb_ai_dashboard_state_t;
+
+static nb_ai_dashboard_state_t s_ai_state = {
+    .provider = "none",
+    .model    = "none",
+    .route    = "none",
+    .outcome  = "unknown",
+    .detail   = "none",
+};
+
 /* ── Tabelas de nomes ────────────────────────────────────────────────────── */
 
 static const char *const k_state_names[] = {
@@ -171,6 +192,20 @@ static const char *touch_event_name(nb_event_type_t event)
         case NB_EVT_TOUCH_WARM_PULSE:   return "WARM_PULSE";
         default:                        return "NONE";
     }
+}
+
+static void copy_json_string(cJSON *root, const char *key, char *dst, size_t dst_len)
+{
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(root, key);
+    if (!cJSON_IsString(item) || !item->valuestring || dst_len == 0u) return;
+    snprintf(dst, dst_len, "%s", item->valuestring);
+}
+
+static uint32_t get_json_u32(cJSON *root, const char *key)
+{
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(root, key);
+    if (!cJSON_IsNumber(item) || item->valuedouble < 0.0) return 0u;
+    return (uint32_t)item->valuedouble;
 }
 
 /* ── Construção de JSON de status ────────────────────────────────────────── */
@@ -1486,6 +1521,73 @@ static esp_err_t handle_api_diag_bridge(httpd_req_t *req)
     return httpd_resp_sendstr(req, buf);
 }
 
+static esp_err_t handle_api_ai_get(httpd_req_t *req)
+{
+    nb_ai_dashboard_state_t ai;
+    taskENTER_CRITICAL(&s_mux);
+    ai = s_ai_state;
+    taskEXIT_CRITICAL(&s_mux);
+
+    uint32_t age_ms = UINT32_MAX;
+    if (ai.updated_us > 0) {
+        age_ms = (uint32_t)((esp_timer_get_time() - ai.updated_us) / 1000);
+    }
+
+    nb_bridge_transport_t bt = bridge_service_get_transport();
+    uint32_t rx_age          = bridge_service_get_last_rx_age_ms();
+    char rx_buf[16];
+    char ai_age_buf[16];
+    if (rx_age == UINT32_MAX) {
+        snprintf(rx_buf, sizeof(rx_buf), "null");
+    } else {
+        snprintf(rx_buf, sizeof(rx_buf), "%lu", (unsigned long)rx_age);
+    }
+    if (age_ms == UINT32_MAX) {
+        snprintf(ai_age_buf, sizeof(ai_age_buf), "null");
+    } else {
+        snprintf(ai_age_buf, sizeof(ai_age_buf), "%lu", (unsigned long)age_ms);
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr_chunk(req, "{");
+
+    char chunk[192];
+    snprintf(chunk, sizeof(chunk),
+        "\"connected\":%s,\"transport\":\"%s\","
+        "\"protocol_v\":%u,\"last_rx_ms\":%s,",
+        bridge_service_is_connected() ? "true" : "false",
+        transport_name(bt),
+        (unsigned)bridge_service_get_protocol_version(),
+        rx_buf);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+        "\"provider\":\"%s\",\"model\":\"%s\","
+        "\"mode\":\"legacy\",\"route\":\"%s\",",
+        ai.provider, ai.model, ai.route);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+        "\"outcome\":\"%s\",\"detail\":\"%s\","
+        "\"session_id\":%lu,\"updated_age_ms\":%s,",
+        ai.outcome, ai.detail, (unsigned long)ai.session_id, ai_age_buf);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+        "\"latency\":{\"stt_ms\":%lu,\"llm_ms\":%lu,\"tts_ms\":%lu},",
+        (unsigned long)ai.stt_ms,
+        (unsigned long)ai.llm_ms,
+        (unsigned long)ai.tts_ms);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    httpd_resp_sendstr_chunk(req,
+        "\"usage\":{\"input_tokens\":null,\"output_tokens\":null,\"estimated_cost\":null},"
+        "\"api_key_configured\":null,"
+        "\"fallback\":\"local_intents\"}");
+    httpd_resp_sendstr_chunk(req, NULL);
+    return ESP_OK;
+}
+
 static const httpd_uri_t k_uris[] = {
     { .uri = "/",            .method = HTTP_GET,  .handler = handle_root },
     { .uri = "/app.js",      .method = HTTP_GET,  .handler = handle_app_js },
@@ -1529,6 +1631,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/diag/snapshot",      .method = HTTP_POST, .handler = handle_api_diag_snapshot },
     { .uri = "/api/diag/test/wake",     .method = HTTP_GET,  .handler = handle_api_diag_wake },
     { .uri = "/api/diag/test/bridge",   .method = HTTP_GET,  .handler = handle_api_diag_bridge },
+    { .uri = "/api/ai",                 .method = HTTP_GET,  .handler = handle_api_ai_get },
     {
         .uri          = "/ws",
         .method       = HTTP_GET,
@@ -1545,7 +1648,7 @@ static void web_service_start(void)
 
     httpd_config_t cfg    = HTTPD_DEFAULT_CONFIG();
     cfg.max_open_sockets  = 4;
-    cfg.max_uri_handlers  = 40;   /* 30 handlers registrados + margem */
+    cfg.max_uri_handlers  = 44;   /* handlers registrados + margem */
     cfg.server_port       = 80;
     cfg.lru_purge_enable  = true;
     cfg.uri_match_fn      = httpd_uri_match_wildcard;
@@ -1597,6 +1700,38 @@ static void on_touch_debug_event(const nb_event_t *ev, void *ctx)
     taskEXIT_CRITICAL(&s_mux);
 }
 
+static void on_bridge_session_event(const nb_event_t *ev, void *ctx)
+{
+    (void)ctx;
+    const char *payload = (const char *)ev->data.ptr;
+    if (!payload || !strstr(payload, "\"event\":\"AI_STATUS\"")) return;
+
+    cJSON *root = cJSON_Parse(payload);
+    if (!root) return;
+
+    nb_ai_dashboard_state_t next;
+    taskENTER_CRITICAL(&s_mux);
+    next = s_ai_state;
+    taskEXIT_CRITICAL(&s_mux);
+
+    copy_json_string(root, "provider", next.provider, sizeof(next.provider));
+    copy_json_string(root, "model",    next.model,    sizeof(next.model));
+    copy_json_string(root, "route",    next.route,    sizeof(next.route));
+    copy_json_string(root, "outcome",  next.outcome,  sizeof(next.outcome));
+    copy_json_string(root, "detail",   next.detail,   sizeof(next.detail));
+    next.session_id = get_json_u32(root, "session_id");
+    next.stt_ms     = get_json_u32(root, "stt_ms");
+    next.llm_ms     = get_json_u32(root, "llm_ms");
+    next.tts_ms     = get_json_u32(root, "tts_ms");
+    next.updated_us = esp_timer_get_time();
+
+    cJSON_Delete(root);
+
+    taskENTER_CRITICAL(&s_mux);
+    s_ai_state = next;
+    taskEXIT_CRITICAL(&s_mux);
+}
+
 /* ── API pública ─────────────────────────────────────────────────────────── */
 
 esp_err_t web_service_init(void)
@@ -1624,6 +1759,7 @@ esp_err_t web_service_init(void)
     nb_event_subscribe(NB_EVT_TOUCH_DEEP,        on_touch_debug_event, NULL, NULL);
     nb_event_subscribe(NB_EVT_TOUCH_CARESS,      on_touch_debug_event, NULL, NULL);
     nb_event_subscribe(NB_EVT_TOUCH_WARM_PULSE,  on_touch_debug_event, NULL, NULL);
+    nb_event_subscribe(NB_EVT_BRIDGE_SESSION,    on_bridge_session_event, NULL, NULL);
     NB_LOGI(TAG, "web_service registrado — aguardando IP");
     return ESP_OK;
 }

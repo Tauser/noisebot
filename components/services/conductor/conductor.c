@@ -174,31 +174,28 @@ static const score_step_t k_sleep_a[] = {
 };
 
 /*
- * WAKE_UP — animação em 2 fases:
- *   Fase 1 (snap): ancora na expressão SLEEPY (já é o estado atual — sem mudança
- *                  visual), mas garante que qualquer transição em andamento é
- *                  cancelada e o ponto de partida está correto.
- *   Fase 2 (open): transição lenta para a expressão final (~2s) — olhos abrem
- *                  suavemente em vez de saltar de abertos.
- *   Fase 3 (ação): movimento ou expressão pós-abertura (opcional).
+ * WAKE_UP — inspirado nos frames 0–20 de _mosaic_faces.jpg:
+ *   1. ancora no SLEEPY atual;
+ *   2. abre para um estado acordando, ainda pequeno/contido;
+ *   3. estabiliza em NEUTRAL/CURIOUS antes de qualquer emoção social.
+ *
+ * Evita saltar SLEEPY -> HAPPY: os dois têm olhos fechados/arqueados e esse
+ * corte parece continuação do sono em vez de despertar.
  */
 
-/* WAKE_UP — variação A: lento + curioso */
+/* WAKE_UP — variação A: sequência facial dedicada + gesto curioso */
 static const score_step_t k_wake_a[] = {
-    {    0, NB_EXPR_SLEEPY,  0.0f,    false, 0.0f, CM_NONE,         0,    NULL },
-    {  300, NB_EXPR_NEUTRAL, 2400.0f, false, 0.0f, CM_CENTER,    1200,    NULL },
-    { 3000, NB_EXPR_COUNT,   0.0f,    false, 0.0f, CM_TILT_CURIOUS, 0,    NULL },
+    {    0, NB_EXPR_COUNT, 0.0f, false, 0.0f, CM_CENTER,       900, NULL },
+    { 2100, NB_EXPR_COUNT, 0.0f, false, 0.0f, CM_TILT_CURIOUS,   0, NULL },
 };
-/* WAKE_UP — variação B: calmo, só centraliza */
+/* WAKE_UP — variação B: sequência facial dedicada + centralização calma */
 static const score_step_t k_wake_b[] = {
-    {    0, NB_EXPR_SLEEPY,  0.0f,    false, 0.0f, CM_NONE,    0,    NULL },
-    {  400, NB_EXPR_NEUTRAL, 2000.0f, false, 0.0f, CM_CENTER, 1000,  NULL },
+    {    0, NB_EXPR_COUNT, 0.0f, false, 0.0f, CM_CENTER, 1100, NULL },
 };
-/* WAKE_UP — variação C: alegre, abre sorrindo + nod */
+/* WAKE_UP — variação C: sequência facial dedicada + pequeno nod final */
 static const score_step_t k_wake_c[] = {
-    {    0, NB_EXPR_SLEEPY,  0.0f,    false, 0.0f, CM_NONE,    0,   NULL },
-    {  500, NB_EXPR_HAPPY,   2000.0f, false, 0.0f, CM_CENTER, 800,  NULL },
-    { 2800, NB_EXPR_COUNT,   0.0f,    false, 0.0f, CM_NOD,     0,   NULL },
+    {    0, NB_EXPR_COUNT, 0.0f, false, 0.0f, CM_CENTER, 700, NULL },
+    { 1900, NB_EXPR_COUNT, 0.0f, false, 0.0f, CM_NOD,      0, NULL },
 };
 
 /* CELEBRATE — marco especial: HAPPY prolongado + nod entusiasmado */
@@ -352,6 +349,9 @@ static void conductor_task(void *arg)
                 expression_play(NB_EXPR_ALARMED, 120.0f, 40.0f);
                 break;
             default: break;
+        }
+        if (action == NB_ACTION_WAKE_UP) {
+            expression_service_play_wake_sequence();
         }
 
         uint32_t t0_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);

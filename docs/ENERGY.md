@@ -17,16 +17,31 @@ Fonte Raspberry Pi 4 Official PSU
         │
         ├──── MAX98357A amplificador (5V)
         │
-        ├──── FE-TTLinker (5V)
-        │
-        └──[C1: 470µF/10V + C2: 100nF]──── SCS0009 × 2 (5V)
-                                             ↑
-                              Capacitor bulk obrigatório
-                              (fisicamente próximo aos conectores dos servos)
-        │
+        └──── Alimentação dedicada 6V/2A para servo rail
+               │  (opção A: fonte separada 6V — mais simples para fase desktop)
+               │  (opção B: boost robusto com layout próprio, ex: TPS61088)
+               │  ⚠ Módulos boost baratos (MT3608, XL6009 clone) NÃO são confiáveis
+               │    para servo: pico de corrente causa sag de tensão no output,
+               │    anulando o benefício. Boost só funciona com componentes adequados
+               │    (indutor baixo DCR, diodo Schottky rápido, cap de saída ≥220µF).
+               │
+               └──── FE-TTLinker Mini V2 (Vin: 6–6.5V)
+                      │  SP6205M5-L-5-0 LDO interno: dropout ~0.8V
+                      │  A 6V: Vout LDO ≈ 5.2V ✓ (dentro dos 4.8–6V do SCS0009)
+                      │
+                      └──[C1: 470µF/10V + C2: 100nF]──── SCS0009 × 2 (~5V)
+                                                           ↑
+                                            Capacitor bulk obrigatório
+                                            (fisicamente próximo aos conectores dos servos)
+
        GND ────── GND comum (star ground)
                   Todos os componentes no mesmo ponto de referência
 ```
+
+**Por que o boost é necessário:**
+O FE-TTLinker Mini V2 usa o regulador SP6205M5-L-5-0 (LDO, 500mA) com dropout típico de ~0.8V. A 5V de entrada, o LDO fica em dropout e entrega apenas ~4.2V nos servos — abaixo do mínimo especificado de 4.8V. Confirmado pelo suporte Feetech (maio 2026). A 6V de entrada, o LDO entrega ~5.2V, dentro do range operacional dos SCS0009.
+
+**Comparativo StackChan:** O StackChan não usa TTLinker externo. Tem rail de motor separado (VM EN) na PCB do corpo, controlado por PY32 IO Expander → MOSFET/load-switch dedicado. Hardware de servo projetado desde o início na placa. Não é comparável ao TTLinker solto — a função é equivalente, mas a implementação é integrada.
 
 **Regra:** A USB-C da placa Freenove serve para programação e debug. **Não é a fonte de alimentação do sistema.** Alimentação do sistema entra por pino dedicado de 5V externo.
 
@@ -42,8 +57,8 @@ Fonte Raspberry Pi 4 Official PSU
 | INMP441                             | 5mW       | 7mW        | Negligível                        |
 | MAX98357A (volume médio)            | 200mW     | 3.2W       | Pico @ 3W/4Ω com sinal máximo     |
 | SCS0009 × 2 (movimento suave)       | 1.0W      | 8.0W       | Pico de stall ≈ 2A/servo × 2 × 5V |
-| FE-TTLinker                         | 50mW      | 100mW      | —                                 |
-| **Total típico**                    | **~1.8W** | **~12.5W** | Margem: ~2.5W (fonte = 15W)       |
+| FE-TTLinker + alimentação 6V         | 100mW     | 200mW      | Rail servo separado do rail lógico |
+| **Total típico**                    | **~1.9W** | **~12.7W** | Margem: ~2.3W (fonte = 15W)       |
 
 A fonte aguenta o pico. O risco não é de sobrecarga da fonte — é de **queda de tensão transitória** no barramento 5V durante pico de servo (inrush de corrente).
 
