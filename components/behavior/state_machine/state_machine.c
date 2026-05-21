@@ -28,7 +28,7 @@
 
 static nb_robot_state_t      s_state                  = NB_STATE_BOOT_UP;
 static uint32_t              s_idle_elapsed_ms         = 0;
-static uint32_t              s_idle_timeout_ms         = 120000U; /* default 2 min */
+static uint32_t              s_idle_timeout_ms         = 3600000U; /* default 60 min */
 static uint32_t              s_touch_elapsed_ms        = 0;
 static uint32_t              s_attentive_elapsed_ms    = 0;
 static nb_state_change_cb_t  s_change_cb               = NULL;

@@ -515,7 +515,10 @@ static void bridge_on_event(const nb_event_t *evt)
     case NB_EVT_BRIDGE_TEXT_SCROLL: {
         const char *text = (const char *)evt->data.ptr;
         if (text) {
-            ui_overlay_show_text(text, 1800U);
+            uint32_t duration_ms = (strstr(text, "Agora") == text &&
+                                    (strstr(text, "hora") || strstr(text, "minuto")))
+                                 ? 6000U : 1800U;
+            ui_overlay_show_text(text, duration_ms);
             NB_LOGI(TAG, "texto via bridge: %s", text);
         }
         break;

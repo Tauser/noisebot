@@ -59,13 +59,13 @@
 /* ── Notas do glitch demônio ─────────────────────────────────────────────── */
 
 static const nb_note_t s_demon_melody[] = {
-    { 880.0f,  80U  },
-    { 220.0f,  60U  },
-    { 1320.0f, 50U  },
-    { 110.0f,  90U  },
-    { 660.0f,  70U  },
-    { 165.0f,  80U  },
-    { 440.0f,  100U },
+    { 330.0f,  90U  },
+    { 0.0f,    45U  },
+    { 247.0f,  110U },
+    { 196.0f,  150U },
+    { 0.0f,    55U  },
+    { 294.0f,  100U },
+    { 220.0f,  170U },
 };
 #define DEMON_MELODY_COUNT ((uint8_t)(sizeof(s_demon_melody) / sizeof(s_demon_melody[0])))
 
@@ -97,34 +97,30 @@ static inline uint64_t _uptime_ms(void)
 
 static void _react_level1_curious(void)
 {
-    NB_LOGI(TAG, "tédio nível 1 — CURIOUS");
+    NB_LOGI(TAG, "tédio nível 1 — CURIOUS silencioso");
     expression_play(NB_EXPR_CURIOUS, REACT_CURIOUS_DUR_MS, REACT_CURIOUS_TRANS_MS);
-    synth_chirp(320.0f, 520.0f, 300U);
 }
 
 static void _react_level2_sad(void)
 {
-    NB_LOGI(TAG, "tédio nível 2 — SAD + toast");
+    NB_LOGI(TAG, "tédio nível 2 — SAD silencioso + toast");
     expression_play(NB_EXPR_SAD, REACT_SAD_DUR_MS, REACT_SAD_TRANS_MS);
     ui_overlay_show_toast("Alguem ai?", NB_UI_OVERLAY_INFO, TOAST_DUR_MS);
-    synth_blip(280.0f, 350U);
 }
 
 static void _react_level3_suspicious(void)
 {
-    NB_LOGI(TAG, "tédio nível 3 — SUSPICIOUS + toast");
+    NB_LOGI(TAG, "tédio nível 3 — SUSPICIOUS silencioso + toast");
     expression_play(NB_EXPR_SUSPICIOUS, REACT_SUSP_DUR_MS, REACT_SUSP_TRANS_MS);
     ui_overlay_show_toast("Entendi. Fui abandonado.", NB_UI_OVERLAY_WARNING, TOAST_DUR_MS);
-    synth_blip(220.0f, 400U);
 }
 
 static void _react_level4_angry(void)
 {
-    NB_LOGI(TAG, "tédio nível 4 — ANGRY teatral + toast");
+    NB_LOGI(TAG, "tédio nível 4 — ANGRY teatral silencioso + toast");
     expression_play(NB_EXPR_ANGRY, REACT_ANGRY_DUR_MS, REACT_ANGRY_TRANS_MS);
     led_effect_color_pulse(NB_LED_RED, 0.55f, (uint32_t)REACT_ANGRY_DUR_MS);
     ui_overlay_show_toast("Ok. Fingi que nao ligo.", NB_UI_OVERLAY_WARNING, TOAST_DUR_MS);
-    synth_chirp(700.0f, 200.0f, 450U);
 }
 
 static void _react_demon(void)
@@ -133,7 +129,7 @@ static void _react_demon(void)
     expression_play(NB_EXPR_ANGRY, REACT_DEMON_DUR_MS, REACT_DEMON_TRANS_MS);
     led_effect_color_pulse(NB_LED_RED, 1.0f, (uint32_t)REACT_DEMON_DUR_MS);
     ui_overlay_show_toast(">:)", NB_UI_OVERLAY_ERROR, TOAST_DUR_MS);
-    synth_set_timbre(NB_SYNTH_TIMBRE_SQUARE);
+    synth_set_timbre(NB_SYNTH_TIMBRE_SINE);
     synth_melody(s_demon_melody, DEMON_MELODY_COUNT);
 }
 
