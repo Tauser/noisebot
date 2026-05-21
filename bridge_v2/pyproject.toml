@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bridgev2"
+version = "2.0.0"
+description = "NoiseBot Bridge v2 -- pipeline de voz async de baixa latencia"
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+stt = ["faster-whisper>=1.0"]
+llm = ["openai>=1.30"]
+tts = []
+uart = ["pyserial-asyncio>=0.6"]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio==0.23.8",
+]
+
+[project.scripts]
+bridgev2 = "bridgev2.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["bridgev2*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

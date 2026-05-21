@@ -1,0 +1,25 @@
+"""bridgev2.protocol.session_events — Vocabulário de eventos de sessão v2."""
+from __future__ import annotations
+
+# Nomes dos eventos (campo "event" no JSON de MSG_SESSION)
+WAKE_DETECTED = "WAKE_DETECTED"
+LISTEN_START = "LISTEN_START"
+LISTEN_STOP = "LISTEN_STOP"
+TRANSCRIBE_START = "TRANSCRIBE_START"
+THINKING_START = "THINKING_START"
+TTS_START = "TTS_START"
+TTS_STOP = "TTS_STOP"
+SESSION_DONE = "SESSION_DONE"
+SESSION_ERROR = "SESSION_ERROR"
+
+ALL_EVENTS = frozenset({
+    WAKE_DETECTED,
+    LISTEN_START,
+    LISTEN_STOP,
+    TRANSCRIBE_START,
+    THINKING_START,
+    TTS_START,
+    TTS_STOP,
+    SESSION_DONE,
+    SESSION_ERROR,
+})

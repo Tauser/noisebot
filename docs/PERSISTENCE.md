@@ -39,7 +39,7 @@ O sistema usa dois mecanismos de persistência com papeis distintos e complement
 | `volume_level`       | uint8  | Volume de 0 a 100                      | 70       |
 | `display_brightness` | uint8  | Backlight de 0 a 255                   | 180      |
 | `touch_sensitivity`  | float  | Fator de sensibilidade touch           | 0.20     |
-| `idle_timeout_s`     | uint32 | Segundos até entrar em SLEEPING        | 300      |
+| `idle_timeout_s`     | uint32 | Segundos até entrar em SLEEPING        | 3600     |
 | `log_level`          | uint8  | Nível mínimo de log (0=VERBOSE)        | 3 (INFO) |
 
 ### NVS — Namespace `nb_svc` (estado de serviços)
