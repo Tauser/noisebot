@@ -257,7 +257,7 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
             if (err != ESP_OK) {
                 NB_LOGW(TAG, "HELLO v2 resposta falhou: %s", esp_err_to_name(err));
             } else {
-                NB_LOGI(TAG, "HELLO v2 recebido — capabilities enviadas (proto_v=%u)",
+                NB_LOGD(TAG, "HELLO v2 recebido — capabilities enviadas (proto_v=%u)",
                         (unsigned)s.proto_version);
             }
         }

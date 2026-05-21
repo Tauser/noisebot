@@ -492,6 +492,7 @@ static void on_state_changed(nb_robot_state_t new_state,
     touch_service_set_sleeping(new_state == NB_STATE_SLEEPING);
     expression_service_set_blink_enabled(new_state != NB_STATE_SLEEPING);
     expression_service_set_sleep_anim_enabled(new_state == NB_STATE_SLEEPING);
+    expression_service_set_speaking_mouth_enabled(new_state == NB_STATE_RESPONDING);
     ui_overlay_sleep_bubble_set(new_state == NB_STATE_SLEEPING);
     if (new_state == NB_STATE_SLEEPING) {
         s_sleep_touch_guard_ms = 500u;
