@@ -4,7 +4,7 @@ O Orchestrator é o único componente que cruza fronteiras de domínio.
 Ele:
   - assina o bus para todos os eventos relevantes
   - delega ao TurnManager as transições de estado
-  - chama os providers em sequência (STT → Intent → Robot; LLM/TTS nas próximas fases)
+  - chama os providers em sequência (STT → Intent → LLM → Robot)
   - gerencia a Task de turno (cancelada no barge-in — Invariante I-5)
 
 Fase 1: esqueleto que sobe o loop, processa eventos de conexão, loga.
@@ -13,6 +13,10 @@ Fase 3: FinalTranscript → LocalIntentProvider → RobotOutputProvider → FSM 
 Fase 4: STT real (faster-whisper) no COMMITTING_TURN via run_in_executor.
          Métricas: stt_ms, audio_end_to_stt_start_ms, end_of_turn_ms.
          STTProvider=None → continua aceitando FinalTranscript sintético (Fase 3 compat).
+Fase 5: LLM streaming (OpenAI/Gemini) no THINKING quando não há intent local.
+         Métricas: llm_first_token_ms, llm_total_ms.
+         LLMProvider=None → encerra turno diretamente (sem resposta).
+         Falha de API → TurnError → IDLE sem travar.
 """
 from __future__ import annotations
 
@@ -35,6 +39,9 @@ from .events import (
     TurnError,
     FinalTranscript,
     IntentResolved,
+    LlmTokenDelta,
+    LlmReplyComplete,
+    SentenceReady,
     SpeechDone,
     RobotCommand,
 )
@@ -43,6 +50,7 @@ from .turn_manager import TurnManager, TurnState
 from ..llm.local_intent import LocalIntentProvider
 from ..robot.output import RobotOutputProvider
 from ..metrics.registry import MetricsRegistry
+from ..tts.sentencizer import Sentencizer
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +65,11 @@ class Orchestrator:
         None significa sem transporte (modo dry-run / headless).
 
     stt_provider: STTProvider | None
-        Provider de STT (Fase 4+). None = aceita FinalTranscript sintético (Fase 3 compat).
+        Provider de STT (Fase 4+). None = aceita FinalTranscript sintético.
+
+    llm_provider: StreamingLLMProvider | LLMProvider | None
+        Provider LLM (Fase 5+). None = encerra turno sem resposta LLM.
+        Deve implementar generate_stream(text, context) → AsyncIterator[str].
     """
 
     def __init__(
@@ -66,6 +78,7 @@ class Orchestrator:
         config: Any = None,
         get_adapter: Callable[[], Any] | None = None,
         stt_provider: Any | None = None,
+        llm_provider: Any | None = None,
     ) -> None:
         self._bus = bus
         self._config = config
@@ -82,7 +95,10 @@ class Orchestrator:
         # STT Provider Fase 4 (opcional — None = modo Fase 3)
         self._stt: Any | None = stt_provider
 
-        # Métricas Fase 4
+        # LLM Provider Fase 5 (opcional — None = sem resposta LLM)
+        self._llm: Any | None = llm_provider
+
+        # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
 
         # Queue de eventos: o Orchestrator assina todos
@@ -159,6 +175,12 @@ class Orchestrator:
                 pass  # publicados pelo RobotOutputProvider -- já no bus
             case SpeechDone():
                 await self._on_speech_done(event)
+            case LlmTokenDelta():
+                pass  # consumido por TTS (Fase 6)
+            case LlmReplyComplete():
+                pass  # processado inline pelo _run_llm_worker
+            case SentenceReady():
+                pass  # consumido por TTS worker (Fase 6)
             case _:
                 log.debug("Orchestrator: evento não tratado %s", type(event).__name__)
 
@@ -242,6 +264,7 @@ class Orchestrator:
             audio_end_to_stt_start_ms = (t_stt_start - t_voice_end) * 1000.0
 
             full_pcm = session.full_pcm()
+            await self._stt.initialize()
             ft = await self._stt.finalize(full_pcm, turn_id)
 
             t_stt_end = time.monotonic()
@@ -250,7 +273,6 @@ class Orchestrator:
             stt_ms = (t_stt_end - t_stt_start) * 1000.0
             end_of_turn_ms = (t_stt_end - session.t_start) * 1000.0
 
-            # Registra métricas
             self._metrics.record("stt_ms", stt_ms)
             self._metrics.record("audio_end_to_stt_start_ms", audio_end_to_stt_start_ms)
             self._metrics.record("end_of_turn_ms", end_of_turn_ms)
@@ -273,16 +295,15 @@ class Orchestrator:
             ))
 
     async def _on_final_transcript(self, event: FinalTranscript) -> None:
-        """Fase 3/4: FinalTranscript (sintético ou de STT) → intent → robot.
+        """Fase 3/4/5: FinalTranscript → intent local → LLM (se sem intent) → robot.
 
         Pode chegar de:
           - STT real (Fase 4) — via _run_stt_worker
           - Injeção direta no bus (testes / debug CLI / Fase 3 compat)
         """
-        # Garante que o turn_id bate (ou cria sessão sintética se chegou do bus direto)
+        # Garante que o turn_id bate (ou cria sessão sintética)
         if self._session is None or self._session.turn_id != event.turn_id:
             if self._fsm.is_idle:
-                # Injeção direta sem sessão de áudio -- aceita como turno sintético
                 self._session = SessionContext(turn_id=event.turn_id)
                 self._fsm.transition(TurnState.LISTENING, turn_id=event.turn_id)
                 self._fsm.transition(TurnState.COMMITTING_TURN, turn_id=event.turn_id)
@@ -310,8 +331,8 @@ class Orchestrator:
         self._fsm.transition(TurnState.THINKING, turn_id=event.turn_id)
         session.mark("thinking_start")
 
-        # Resolve intent local
-        context = {"status": {}}
+        # Resolve intent local (< 5 ms, sem I/O)
+        context: dict = {"status": {}}
         t_intent_start = time.monotonic()
         intent = self._intent.match(
             text=event.text,
@@ -325,33 +346,153 @@ class Orchestrator:
         if intent.reply_text:
             session.reply_text = intent.reply_text
 
-        # Publica IntentResolved no bus
         await self._bus.publish(intent)
         session.mark("intent_resolved")
 
         if intent.has_intent:
+            # ── Caminho local intent ──────────────────────────────────────
             log.info(
                 "Turno %d: intent=%s reply=%r",
                 event.turn_id, intent.intent_name, intent.reply_text,
             )
-            # THINKING → SPEAKING
             self._fsm.transition(TurnState.SPEAKING, turn_id=event.turn_id)
             session.mark("speaking_start")
-
-            # Emite comandos de robot
             await self._robot.emit_for_intent(intent, self.adapter)
-
-            # Fase 3/4: sem TTS → SpeechDone imediato
+            # Fase 3/4/5: sem TTS → SpeechDone imediato
             await self._bus.publish(SpeechDone(turn_id=event.turn_id))
 
-        else:
-            # Sem intent local → iria para LLM (Fase 5); por enquanto loga e encerra
+        elif self._llm is not None:
+            # ── Caminho LLM (Fase 5) ──────────────────────────────────────
             log.info(
-                "Turno %d: sem intent local para %r -- iria à LLM (Fase 5)",
+                "Turno %d: sem intent local para %r → LLM (%s)",
+                event.turn_id, event.text, getattr(self._llm, "_provider_name", "?"),
+            )
+            self._turn_task = asyncio.create_task(
+                self._run_llm_worker(session, event.text, event.turn_id),
+                name=f"nb_llm_{event.turn_id}",
+            )
+
+        else:
+            # ── Sem LLM configurado ───────────────────────────────────────
+            log.info(
+                "Turno %d: sem intent local para %r — sem LLM provider, encerrando turno",
                 event.turn_id, event.text,
             )
             self._fsm.try_transition(TurnState.IDLE)
             await self._finish_turn()
+
+    async def _run_llm_worker(
+        self, session: SessionContext, text: str, turn_id: int
+    ) -> None:
+        """Task de LLM: stream de tokens → sentencizer → SentenceReady → robot.
+
+        Métricas registradas: llm_first_token_ms, llm_total_ms.
+        Em caso de erro: publica TurnError → _on_turn_error → IDLE.
+        """
+        t_llm_start = time.monotonic()
+        first_token_recorded = False
+        raw_tokens: list[str] = []
+
+        try:
+            context: dict = {
+                "turn_id": turn_id,
+                "robot_state": session.intent_name or "",
+            }
+
+            stream = self._llm.generate_stream(text, context)
+            async for token in stream:
+                if not first_token_recorded:
+                    llm_first_ms = (time.monotonic() - t_llm_start) * 1000.0
+                    self._metrics.record("llm_first_token_ms", llm_first_ms)
+                    first_token_recorded = True
+
+                raw_tokens.append(token)
+                await self._bus.publish(LlmTokenDelta(turn_id=turn_id, text=token))
+
+            t_llm_end = time.monotonic()
+            llm_total_ms = (t_llm_end - t_llm_start) * 1000.0
+            self._metrics.record("llm_total_ms", llm_total_ms)
+
+            raw_response = "".join(raw_tokens)
+            session.mark("llm_complete")
+
+            # ── Parseia JSON de resposta ───────────────────────────────────
+            from ..llm.prompt import parse_llm_json
+            try:
+                parsed = parse_llm_json(raw_response)
+            except (ValueError, Exception) as exc:
+                log.warning(
+                    "Turno %d: falha ao parsear JSON LLM (%s). Usando raw como reply.",
+                    turn_id, exc,
+                )
+                parsed = {
+                    "reply": raw_response.strip(),
+                    "expression_id": None,
+                    "action": None,
+                    "emot_event": None,
+                }
+
+            reply_text = parsed["reply"]
+
+            # ── Sentencizer → SentenceReady ────────────────────────────────
+            sz = Sentencizer()
+            sentences: list[str] = []
+            sentences.extend(sz.feed(reply_text))
+            sentences.extend(sz.flush())
+
+            for idx, sentence in enumerate(sentences):
+                await self._bus.publish(
+                    SentenceReady(turn_id=turn_id, sentence=sentence, index=idx)
+                )
+
+            # ── LlmReplyComplete ───────────────────────────────────────────
+            complete = LlmReplyComplete(
+                turn_id=turn_id,
+                reply=reply_text,
+                expression_id=parsed.get("expression_id"),
+                action_id=parsed.get("action"),
+                emot_event_id=parsed.get("emot_event"),
+                provider=getattr(self._llm, "_provider_name", "unknown"),
+                model=getattr(self._llm, "_model", ""),
+            )
+            await self._bus.publish(complete)
+
+            log.info(
+                "LLM turn_id=%d first_token=%.0fms total=%.0fms reply=%r",
+                turn_id, llm_first_ms if first_token_recorded else 0,
+                llm_total_ms, reply_text[:80],
+            )
+
+            # ── Robot output via IntentResolved sintético ──────────────────
+            llm_intent = IntentResolved(
+                turn_id=turn_id,
+                intent_name="llm_reply",
+                reply_text=reply_text,
+                expression_id=complete.expression_id,
+                action_id=complete.action_id,
+                emot_event_id=complete.emot_event_id,
+            )
+            session.intent_name = "llm_reply"
+            session.reply_text = reply_text
+
+            # THINKING → SPEAKING
+            self._fsm.transition(TurnState.SPEAKING, turn_id=turn_id)
+            session.mark("speaking_start")
+
+            await self._robot.emit_for_intent(llm_intent, self.adapter)
+
+            # Fase 5: sem TTS → SpeechDone imediato
+            await self._bus.publish(SpeechDone(turn_id=turn_id))
+
+        except asyncio.CancelledError:
+            log.info("LLM worker turn_id=%d cancelado (barge-in?)", turn_id)
+        except Exception as exc:
+            log.exception("LLM worker turn_id=%d erro: %s", turn_id, exc)
+            await self._bus.publish(TurnError(
+                turn_id=turn_id,
+                stage="llm",
+                reason=type(exc).__name__,
+            ))
 
     async def _on_speech_done(self, event: SpeechDone) -> None:
         """Turno de fala encerrado → volta a IDLE com baseline."""
@@ -360,15 +501,12 @@ class Orchestrator:
         session = self._session
         if session:
             session.mark("speech_done")
-            # Métricas de latência de reação (primeira reação = expr enviada)
             t_start = session.t_start
             t_done = session.timeline.get("speech_done")
             if t_done:
                 self._metrics.record("first_robot_reaction_ms", (t_done - t_start) * 1000.0)
 
-        # Restaura baseline antes de IDLE (regra do CLAUDE.md)
         await self._robot.reset_baseline(self.adapter, event.turn_id)
-
         self._fsm.try_transition(TurnState.IDLE)
         await self._finish_turn()
 
@@ -417,7 +555,6 @@ class Orchestrator:
         """Limpa estado de sessão após o turno terminar."""
         if self._session:
             log.debug("Turno %d finalizado: %s", self._session.turn_id, self._session.to_log_dict())
-            # Log de métricas ao final de cada turno
             snap = self._metrics.snapshot_flat()
             if snap:
                 log.debug("Métricas (p50/p95): %s", {k: f"{v:.0f}ms" if v else "—" for k, v in snap.items()})
