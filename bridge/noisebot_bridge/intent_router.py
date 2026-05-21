@@ -44,14 +44,15 @@ def _has_any(text: str, terms: tuple[str, ...]) -> bool:
 def _time_reply(now: datetime) -> str:
     hour = now.hour
     minute = now.minute
+    date_suffix = f" São Paulo, {now:%d/%m/%Y}."
     if hour == 0 and minute == 0:
-        return "Agora é meia-noite."
+        return f"Agora é meia-noite.{date_suffix}"
     verb = "é" if hour == 1 else "são"
     hour_unit = "hora" if hour == 1 else "horas"
     if minute == 0:
-        return f"Agora {verb} {hour} {hour_unit}."
+        return f"Agora {verb} {hour} {hour_unit}.{date_suffix}"
     minute_unit = "minuto" if minute == 1 else "minutos"
-    return f"Agora {verb} {hour} {hour_unit} e {minute:02d} {minute_unit}."
+    return f"Agora {verb} {hour} {hour_unit} e {minute:02d} {minute_unit}.{date_suffix}"
 
 
 class LocalIntentRouter:
@@ -70,7 +71,6 @@ class LocalIntentRouter:
                 expression_id=2,
                 action=0,
                 emot_event=2,
-                speak_reply=False,
             )
 
         if self._is_bridge_test(norm):
@@ -81,7 +81,6 @@ class LocalIntentRouter:
                 expression_id=1,
                 action=1,
                 emot_event=2,
-                speak_reply=False,
             )
 
         if self._is_status(norm):
@@ -100,7 +99,6 @@ class LocalIntentRouter:
                 expression_id=1,
                 action=1,
                 emot_event=2,
-                speak_reply=False,
             )
 
         if self._is_network(norm):
@@ -113,7 +111,6 @@ class LocalIntentRouter:
                 expression_id=2,
                 action=0,
                 emot_event=2,
-                speak_reply=False,
             )
 
         if self._is_btc_price(norm):
@@ -242,7 +239,6 @@ class LocalIntentRouter:
                     expression_id=expression_id,
                     action=0,
                     emot_event=2,
-                    speak_reply=False,
                     device_commands=(
                         DeviceCommand(
                             "set_expression",
@@ -319,7 +315,6 @@ class LocalIntentRouter:
             expression_id=2,
             action=0,
             emot_event=2,
-            speak_reply=False,
             device_commands=(DeviceCommand("play_action", {"action_id": 4}, supported=True),),
         )
 
@@ -342,7 +337,6 @@ class LocalIntentRouter:
                     expression_id=2,
                     action=0,
                     emot_event=2,
-                    speak_reply=False,
                     device_commands=(DeviceCommand("look", {"direction": direction}, supported=True),),
                 )
         return None
@@ -404,7 +398,6 @@ class LocalIntentRouter:
             expression_id=2,
             action=0,
             emot_event=2,
-            speak_reply=False,
             device_commands=(DeviceCommand("set_volume", args, supported=True),),
         )
 

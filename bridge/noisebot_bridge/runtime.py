@@ -29,7 +29,7 @@ from .voice_session import VoiceSessionRuntime
 
 log = logging.getLogger("noisebot_bridge.runtime")
 
-BRIDGE_HEARTBEAT_S = 10.0
+BRIDGE_HEARTBEAT_S = 30.0
 
 
 class BridgeRuntime:
