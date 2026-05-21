@@ -234,6 +234,14 @@ void expression_service_set_blink_enabled(bool enabled);
 void expression_service_set_sleep_anim_enabled(bool enabled);
 
 /**
+ * @brief Habilita/desabilita a boquinha animada durante fala.
+ *
+ * O estado RESPONDING liga este overlay enquanto há playback de áudio.
+ * A expressão base continua sendo controlada por expression_service_set().
+ */
+void expression_service_set_speaking_mouth_enabled(bool enabled);
+
+/**
  * @brief Define o offset de gaze aplicado sobre a expressão atual no render.
  *
  * Aplicado aditivamente no render callback (mesmo frame, após gaze_service):

@@ -23,26 +23,19 @@
 
 #define TAG "nb_ui"
 
-/* ── Sleep bubble geometry ───────────────────────────────────────────────── */
+/* ── Sleep message geometry ──────────────────────────────────────────────── */
 /*
- * Bolha ciano animada desenhada à frente dos olhos durante NB_STATE_SLEEPING.
- * Geometria idêntica à que estava no expression_service — movida aqui para
- * separar overlays visuais do motor de olhos procedurais.
+ * Balão discreto de sono durante NB_STATE_SLEEPING. Usa a mesma linguagem visual
+ * das mensagens locais, em vez da antiga bolha ciano procedural.
  */
 
-static constexpr float   SLEEP_BUBBLE_START_DELAY_MS = 38500.0f;
+static constexpr float   SLEEP_BUBBLE_START_DELAY_MS = 1200.0f;
 static constexpr float   SLEEP_BUBBLE_PERIOD_MS = 5200.0f;
-static constexpr float   SLEEP_BUBBLE_VISIBLE_RATIO = 0.32f;
 static constexpr float   BUBBLE_NB_PI_F         = 3.14159265358979323846f;
-
-/* Mesmo espaço visual usado pelo expression_service para os olhos. */
-static constexpr float BUBBLE_TIP_WOBBLE_PX = 0.4f;
-
-/* Envelope conservador da bolha em escala máxima ao redor da ponta. */
-static constexpr int BUBBLE_DIRTY_LEFT_PAD = 68;
-static constexpr int BUBBLE_DIRTY_TOP_PAD  = 68;
-static constexpr int BUBBLE_DIRTY_W        = 78;
-static constexpr int BUBBLE_DIRTY_H        = 76;
+static constexpr int     SLEEP_MSG_W            = 142;
+static constexpr int     SLEEP_MSG_H            = 52;
+static constexpr int     SLEEP_MSG_Y_OFFSET     = 24;
+static constexpr int     SLEEP_MSG_MARGIN       = 6;
 
 static volatile bool  s_sleep_bubble_active   = false;
 static int64_t        s_sleep_bubble_start_us = 0;
@@ -62,172 +55,6 @@ static inline float bubble_smoothstep(float v)
     return v * v * (3.0f - 2.0f * v);
 }
 
-static inline uint32_t bubble_blend_black(uint32_t color, float alpha)
-{
-    uint8_t r = (uint8_t)((float)((color >> 16) & 0xFFu) * alpha);
-    uint8_t g = (uint8_t)((float)((color >> 8)  & 0xFFu) * alpha);
-    uint8_t b = (uint8_t)((float)(color          & 0xFFu) * alpha);
-    return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
-}
-
-static inline uint32_t bubble_blend_over_rgb565(uint16_t src, uint32_t color, float alpha)
-{
-    if (alpha < 0.0f) alpha = 0.0f;
-    if (alpha > 1.0f) alpha = 1.0f;
-    uint8_t r = (uint8_t)((((uint32_t)(src >> 11) & 0x1Fu) * 255u) / 31u);
-    uint8_t g = (uint8_t)((((uint32_t)(src >> 5)  & 0x3Fu) * 255u) / 63u);
-    uint8_t b = (uint8_t)(( ((uint32_t)src         & 0x1Fu) * 255u) / 31u);
-    float cr = (float)((color >> 16) & 0xFFu);
-    float cg = (float)((color >> 8)  & 0xFFu);
-    float cb = (float)( color        & 0xFFu);
-    r = (uint8_t)((float)r + (cr - (float)r) * alpha);
-    g = (uint8_t)((float)g + (cg - (float)g) * alpha);
-    b = (uint8_t)((float)b + (cb - (float)b) * alpha);
-    return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
-}
-
-static inline void bubble_draw_alpha_pixel(LGFX_Sprite *spr,
-                                           int16_t x, int16_t y,
-                                           uint32_t color, float alpha)
-{
-    if (alpha <= 0.0f) return;
-    spr->drawPixel(x, y, bubble_blend_over_rgb565(spr->readPixel(x, y), color, alpha));
-}
-
-static inline int16_t bpt_x(float anchor_x, float px, float scale)
-{
-    return (int16_t)(anchor_x + px * scale + (px >= 0.0f ? 0.5f : -0.5f));
-}
-
-static inline int16_t bpt_y(float anchor_y, float py, float scale)
-{
-    return (int16_t)(anchor_y + py * scale + (py >= 0.0f ? 0.5f : -0.5f));
-}
-
-typedef struct { int16_t x; int16_t y; } bpx_t;
-
-static int bubble_append_cubic(bpx_t *pts, int count, int max_count,
-                                float ax, float ay, float scale,
-                                float x0, float y0, float x1, float y1,
-                                float x2, float y2, float x3, float y3,
-                                bool include_start)
-{
-    if (include_start && count < max_count) {
-        pts[count].x = bpt_x(ax, x0, scale);
-        pts[count].y = bpt_y(ay, y0, scale);
-        count++;
-    }
-    for (int i = 1; i <= 14 && count < max_count; ++i) {
-        float t = (float)i / 14.0f;
-        float u = 1.0f - t;
-        float x = u*u*u*x0 + 3.0f*u*u*t*x1 + 3.0f*u*t*t*x2 + t*t*t*x3;
-        float y = u*u*u*y0 + 3.0f*u*u*t*y1 + 3.0f*u*t*t*y2 + t*t*t*y3;
-        pts[count].x = bpt_x(ax, x, scale);
-        pts[count].y = bpt_y(ay, y, scale);
-        count++;
-    }
-    return count;
-}
-
-static int bubble_build_points(bpx_t *pts, int max_count,
-                                float ax, float ay, float scale)
-{
-    int n = 0;
-    n = bubble_append_cubic(pts, n, max_count, ax, ay, scale,
-        -74.75f,-159.98f,-118.95f,-159.98f,-154.75f,-124.18f,-154.75f,-79.98f, true);
-    n = bubble_append_cubic(pts, n, max_count, ax, ay, scale,
-        -154.75f,-79.98f,-154.75f,-35.78f,-118.95f,0.02f,-74.75f,0.02f, false);
-    n = bubble_append_cubic(pts, n, max_count, ax, ay, scale,
-        -74.75f,0.02f,-61.55f,0.02f,0.0f,0.0f,0.0f,0.0f, false);
-    n = bubble_append_cubic(pts, n, max_count, ax, ay, scale,
-        0.0f,0.0f,-3.52f,-11.66f,-7.03f,-23.32f,-10.55f,-34.98f, false);
-    n = bubble_append_cubic(pts, n, max_count, ax, ay, scale,
-        -10.55f,-34.98f,-0.55f,-47.18f,5.25f,-62.98f,5.25f,-79.98f, false);
-    n = bubble_append_cubic(pts, n, max_count, ax, ay, scale,
-        5.25f,-79.98f,5.25f,-124.18f,-30.55f,-159.98f,-74.75f,-159.98f, false);
-    return n;
-}
-
-static void bubble_draw_cubic(LGFX_Sprite *spr,
-                               float ax, float ay, float scale,
-                               float x0, float y0, float x1, float y1,
-                               float x2, float y2, float x3, float y3,
-                               uint32_t color)
-{
-    int16_t px = bpt_x(ax, x0, scale);
-    int16_t py = bpt_y(ay, y0, scale);
-    for (int i = 1; i <= 14; ++i) {
-        float t = (float)i / 14.0f;
-        float u = 1.0f - t;
-        float x = u*u*u*x0 + 3.0f*u*u*t*x1 + 3.0f*u*t*t*x2 + t*t*t*x3;
-        float y = u*u*u*y0 + 3.0f*u*u*t*y1 + 3.0f*u*t*t*y2 + t*t*t*y3;
-        int16_t nx = bpt_x(ax, x, scale);
-        int16_t ny = bpt_y(ay, y, scale);
-        spr->drawLine(px, py, nx, ny, color);
-        px = nx; py = ny;
-    }
-}
-
-static void bubble_draw_outline(LGFX_Sprite *spr,
-                                 float ax, float ay, float scale, uint32_t color)
-{
-    bubble_draw_cubic(spr, ax, ay, scale,
-        -74.75f,-159.98f,-118.95f,-159.98f,-154.75f,-124.18f,-154.75f,-79.98f, color);
-    bubble_draw_cubic(spr, ax, ay, scale,
-        -154.75f,-79.98f,-154.75f,-35.78f,-118.95f,0.02f,-74.75f,0.02f, color);
-    bubble_draw_cubic(spr, ax, ay, scale,
-        -74.75f,0.02f,-61.55f,0.02f,0.0f,0.0f,0.0f,0.0f, color);
-    bubble_draw_cubic(spr, ax, ay, scale,
-        0.0f,0.0f,-3.52f,-11.66f,-7.03f,-23.32f,-10.55f,-34.98f, color);
-    bubble_draw_cubic(spr, ax, ay, scale,
-        -10.55f,-34.98f,-0.55f,-47.18f,5.25f,-62.98f,5.25f,-79.98f, color);
-    bubble_draw_cubic(spr, ax, ay, scale,
-        5.25f,-79.98f,5.25f,-124.18f,-30.55f,-159.98f,-74.75f,-159.98f, color);
-}
-
-static void bubble_fill_body(LGFX_Sprite *spr,
-                              float ax, float ay, float scale,
-                              uint32_t color, float alpha)
-{
-    if (alpha <= 0.0f || scale <= 0.0f) return;
-
-    bpx_t pts[128];
-    int count = bubble_build_points(pts, 128, ax, ay, scale);
-    if (count < 3) return;
-
-    int16_t min_y = pts[0].y, max_y = pts[0].y;
-    for (int i = 1; i < count; ++i) {
-        if (pts[i].y < min_y) min_y = pts[i].y;
-        if (pts[i].y > max_y) max_y = pts[i].y;
-    }
-
-    for (int16_t y = min_y; y <= max_y; ++y) {
-        int16_t xs[12];
-        int n = 0;
-        for (int i = 0, j = count - 1; i < count; j = i++) {
-            int16_t y0 = pts[j].y, y1 = pts[i].y;
-            int16_t x0 = pts[j].x, x1 = pts[i].x;
-            if (((y0 <= y) && (y1 > y)) || ((y1 <= y) && (y0 > y))) {
-                float t = (float)(y - y0) / (float)(y1 - y0);
-                float xf = (float)x0 + ((float)x1 - (float)x0) * t;
-                if (n < 12) {
-                    xs[n++] = (int16_t)(xf + (xf >= 0.0f ? 0.5f : -0.5f));
-                }
-            }
-        }
-        for (int i = 1; i < n; ++i) {
-            int16_t v = xs[i]; int j = i - 1;
-            while (j >= 0 && xs[j] > v) { xs[j + 1] = xs[j]; j--; }
-            xs[j + 1] = v;
-        }
-        for (int i = 0; i + 1 < n; i += 2) {
-            for (int16_t x = xs[i]; x <= xs[i + 1]; ++x) {
-                bubble_draw_alpha_pixel(spr, x, y, color, alpha);
-            }
-        }
-    }
-}
-
 static void sleep_bubble_phase(int64_t now_us, float *phase, float *t)
 {
     int64_t delay_us   = (int64_t)(SLEEP_BUBBLE_START_DELAY_MS * 1000.0f);
@@ -242,64 +69,62 @@ static void sleep_bubble_phase(int64_t now_us, float *phase, float *t)
     elapsed_us -= delay_us;
 
     *phase = (float)(elapsed_us % period_us) / (float)period_us;
-    *t = (*phase >= SLEEP_BUBBLE_VISIBLE_RATIO) ? 1.0f
-                                                : (*phase / SLEEP_BUBBLE_VISIBLE_RATIO);
+    *t = *phase;
 }
 
-static void sleep_bubble_anchor(int64_t now_us, float *anchor_x, float *anchor_y)
+static void sleep_bubble_rect(int64_t now_us, int *x, int *y, int *w, int *h)
+{
+    float phase = 0.0f;
+    float t = 0.0f;
+    sleep_bubble_phase(now_us, &phase, &t);
+    float bob = sinf((phase * 2.0f * BUBBLE_NB_PI_F) + 0.35f);
+    float appear = 1.0f;
+    if (phase < 0.22f) {
+        appear = bubble_smoothstep(phase / 0.22f);
+    }
+    (void)t;
+
+    float eye_center_x = ((float)s_eye_left_cx + (float)s_eye_right_cx) * 0.5f;
+    *w = SLEEP_MSG_W;
+    *h = SLEEP_MSG_H;
+    *x = (int)(eye_center_x + 0.5f) - (*w / 2);
+    *y = (int)s_eye_cy + SLEEP_MSG_Y_OFFSET
+       + (int)((bob * 3.0f * appear) + (bob >= 0.0f ? 0.5f : -0.5f));
+
+    int dw = display_hal_width();
+    int dh = display_hal_height();
+    if (dw <= 0) dw = 320;
+    if (dh <= 0) dh = 240;
+    if (*x < SLEEP_MSG_MARGIN) *x = SLEEP_MSG_MARGIN;
+    if (*x + *w > dw - SLEEP_MSG_MARGIN) *x = dw - SLEEP_MSG_MARGIN - *w;
+    if (*y < SLEEP_MSG_MARGIN) *y = SLEEP_MSG_MARGIN;
+    if (*y + *h > dh - SLEEP_MSG_MARGIN) *y = dh - SLEEP_MSG_MARGIN - *h;
+}
+
+static void draw_message_bubble(LGFX_Sprite *spr,
+                                int x,
+                                int y,
+                                int w,
+                                int h,
+                                const char *text,
+                                uint16_t bg,
+                                uint16_t fg,
+                                int64_t now_us);
+
+static void draw_sleep_bubble(LGFX_Sprite *spr, int64_t now_us,
+                              int x, int y, int w, int h)
 {
     float phase = 0.0f;
     float t = 0.0f;
     sleep_bubble_phase(now_us, &phase, &t);
     (void)phase;
-
-    float wobble = sinf(t * 2.0f * BUBBLE_NB_PI_F);
-    float eye_center_x = ((float)s_eye_left_cx + (float)s_eye_right_cx) * 0.5f;
-    *anchor_x = eye_center_x + wobble * BUBBLE_TIP_WOBBLE_PX;
-    *anchor_y = (float)s_eye_cy + sinf(t * 4.0f * BUBBLE_NB_PI_F + 0.7f) * 0.25f;
-}
-
-static void sleep_bubble_dirty_rect(float anchor_x, float anchor_y,
-                                    int *x, int *y, int *w, int *h)
-{
-    *x = (int)(anchor_x + 0.5f) - BUBBLE_DIRTY_LEFT_PAD;
-    *y = (int)(anchor_y + 0.5f) - BUBBLE_DIRTY_TOP_PAD;
-    *w = BUBBLE_DIRTY_W;
-    *h = BUBBLE_DIRTY_H;
-}
-
-static void draw_sleep_bubble(LGFX_Sprite *spr, int64_t now_us,
-                              float anchor_x, float anchor_y)
-{
-    float phase = 0.0f;
-    float t = 0.0f;
-    sleep_bubble_phase(now_us, &phase, &t);
-    const uint32_t bubble_blue = 0x247CFFu;
-
-    if (phase >= SLEEP_BUBBLE_VISIBLE_RATIO) return;   /* pausa limpa — sem bolha */
-
-    float bubble = (t < 0.34f)
-                 ? bubble_smoothstep(t / 0.34f)
-                 : 1.0f - bubble_smoothstep((t - 0.34f) / 0.66f);
-
-    if (bubble <= 0.018f) return;
-
-    float scale = 0.035f + bubble * 0.245f;
-
-    bubble_fill_body(spr, anchor_x, anchor_y, scale, bubble_blue, 0.055f);
-
-    uint32_t edge = bubble_blend_black(bubble_blue, 0.92f);
-    uint32_t soft = bubble_blend_black(bubble_blue, 0.32f);
-
-    bubble_draw_outline(spr, anchor_x, anchor_y, scale, edge);
-    spr->fillCircle((int32_t)(anchor_x + 0.5f), (int32_t)(anchor_y + 0.5f), 1, edge);
-    if (scale > 0.18f) {
-        bubble_draw_outline(spr, anchor_x + 1.0f, anchor_y, scale, soft);
-    }
+    (void)t;
+    draw_message_bubble(spr, x, y, w, h, "Zzz...",
+                        TFT_WHITE, spr->color565(54, 86, 108), now_us);
 }
 
 static constexpr uint8_t OVERLAY_Z_ORDER = 30;
-static constexpr int TEXT_MAX_LEN = 48;
+static constexpr int TEXT_MAX_LEN = 129; /* 128 bytes + NUL, igual ao bridge */
 
 typedef enum {
     OVERLAY_NONE = 0,
@@ -336,15 +161,25 @@ static void overlay_rect(overlay_kind_t kind, int *x, int *y, int *w, int *h)
     if (dh <= 0) dh = 240;
 
     if (kind == OVERLAY_TOAST) {
-        *w = (dw < 308) ? (dw - 24) : 296;
+        *w = (dw < 312) ? (dw - 16) : 304;
         *h = 52;
         *x = (dw - *w) / 2;
-        *y = 12;
-    } else if (kind == OVERLAY_CLOCK || kind == OVERLAY_STATUS || kind == OVERLAY_CONNECTION) {
+        *y = dh - *h - 8;
+    } else if (kind == OVERLAY_CLOCK) {
+        *w = dw;
+        *h = dh;
+        *x = 0;
+        *y = 0;
+    } else if (kind == OVERLAY_STATUS || kind == OVERLAY_CONNECTION) {
         *w = (dw < 286) ? (dw - 28) : 258;
         *h = 68;
         *x = (dw - *w) / 2;
         *y = dh - *h - 12;
+    } else if (kind == OVERLAY_TEXT) {
+        *w = (dw < 312) ? (dw - 16) : 304;
+        *h = 52;
+        *x = (dw - *w) / 2;
+        *y = dh - *h - 8;
     } else {
         *w = (dw < 280) ? (dw - 32) : 240;
         *h = 52;
@@ -428,6 +263,31 @@ static void parse_clock_text(const char *text, int *hour, int *minute)
     *minute = m;
 }
 
+static const char *clock_city_label(void)
+{
+    return "Sao Paulo";
+}
+
+static void clock_date_label(const char *text, char *out, size_t out_size)
+{
+    if (!out || out_size == 0U) return;
+    out[0] = '\0';
+    if (!text) return;
+
+    int d = 0;
+    int m = 0;
+    int y = 0;
+    const char *p = text;
+    while (*p) {
+        if (std::sscanf(p, "%2d/%2d/%4d", &d, &m, &y) == 3 &&
+            d >= 1 && d <= 31 && m >= 1 && m <= 12 && y >= 2020 && y <= 2099) {
+            std::snprintf(out, out_size, "%02d/%02d/%04d", d, m, y);
+            return;
+        }
+        p++;
+    }
+}
+
 static void draw_volume_overlay(LGFX_Sprite *spr,
                                 int x,
                                 int y,
@@ -460,22 +320,77 @@ static void draw_volume_overlay(LGFX_Sprite *spr,
     spr->drawString(label, x + w - 52, y + 18);
 }
 
+static void draw_message_bubble(LGFX_Sprite *spr,
+                                int x,
+                                int y,
+                                int w,
+                                int h,
+                                const char *text,
+                                uint16_t bg,
+                                uint16_t fg,
+                                int64_t now_us)
+{
+    const int pad_x = 18;
+
+    spr->setTextSize(2);
+    int text_w = spr->textWidth(text);
+    int text_h = 16;
+    int max_w = w - 18;
+    int desired_w = text_w + (pad_x * 2);
+    if (desired_w < 128) desired_w = 128;
+    int bar_w = (desired_w > max_w) ? max_w : desired_w;
+    int bar_h = 38;
+    int tail_h = 10;
+    int bar_x = x + ((w - bar_w) / 2);
+    int bar_y = y + tail_h + ((h - bar_h - tail_h) / 2);
+    if (bar_y < y + tail_h) bar_y = y + tail_h;
+    if (bar_y + bar_h > y + h) bar_y = y + h - bar_h;
+    int radius = bar_h / 2;
+    int text_area_w = bar_w - (pad_x * 2);
+    int text_x = bar_x + pad_x;
+    int text_y = bar_y + ((bar_h - text_h) / 2) + 1;
+    int tail_x = bar_x + (bar_w / 2);
+    int tail_base_y = bar_y + 5;
+    int tail_tip_y = bar_y - tail_h;
+
+    spr->fillRoundRect(bar_x, bar_y, bar_w, bar_h, radius, bg);
+    spr->fillTriangle(tail_x - 10, tail_base_y,
+                      tail_x + 10, tail_base_y,
+                      tail_x,      tail_tip_y,
+                      bg);
+
+    spr->setTextColor(fg, bg);
+    if (text_w <= text_area_w) {
+        spr->drawString(text, text_x, text_y);
+        return;
+    }
+
+    int overflow = text_w - text_area_w;
+    int64_t phase_ms = (now_us / 1000LL) % 6000LL;
+    int offset = 0;
+    if (phase_ms > 850LL) {
+        int64_t moving_ms = phase_ms - 850LL;
+        offset = (int)((moving_ms * 48LL) / 1000LL);
+        int cycle = overflow + 42;
+        if (cycle > 0) offset %= cycle;
+    }
+    if (offset > overflow) offset = overflow;
+
+    spr->setClipRect(text_x, bar_y, text_area_w, bar_h);
+    spr->drawString(text, text_x - offset, text_y);
+    spr->clearClipRect();
+}
+
 static void draw_text_overlay(LGFX_Sprite *spr,
                               int x,
                               int y,
                               int w,
                               int h,
-                              const overlay_state_t *state)
+                              const overlay_state_t *state,
+                              int64_t now_us)
 {
-    const uint16_t fg = TFT_WHITE;
-    const uint16_t dim = spr->color565(76, 88, 92);
-
-    spr->fillRoundRect(x, y, w, h, 6, TFT_BLACK);
-    spr->drawRoundRect(x, y, w, h, 6, dim);
-
-    spr->setTextColor(fg, TFT_BLACK);
-    spr->setTextSize(2);
-    spr->drawString(state->text, x + 16, y + 18);
+    draw_message_bubble(spr, x, y, w, h, state->text,
+                        TFT_WHITE, spr->color565(54, 86, 108), now_us);
 }
 
 static void draw_clock_overlay(LGFX_Sprite *spr,
@@ -485,10 +400,10 @@ static void draw_clock_overlay(LGFX_Sprite *spr,
                                int h,
                                const overlay_state_t *state)
 {
-    const uint16_t bg = spr->color565(8, 17, 24);
-    const uint16_t fg = TFT_WHITE;
-    const uint16_t dim = spr->color565(95, 116, 124);
-    const uint16_t accent = spr->color565(92, 220, 186);
+    const uint16_t bg = spr->color565(4, 9, 13);
+    const uint16_t fg = spr->color565(242, 248, 250);
+    const uint16_t dim = spr->color565(111, 130, 136);
+    const uint16_t soft = spr->color565(177, 194, 198);
 
     int hour = 0;
     int minute = 0;
@@ -496,19 +411,26 @@ static void draw_clock_overlay(LGFX_Sprite *spr,
 
     char time_label[8];
     std::snprintf(time_label, sizeof(time_label), "%02d:%02d", hour, minute);
+    char date_label[16];
+    clock_date_label(state->text, date_label, sizeof(date_label));
 
-    spr->fillRoundRect(x, y, w, h, 8, bg);
-    spr->drawRoundRect(x, y, w, h, 8, accent);
-    spr->drawCircle(x + 30, y + 30, 15, accent);
-    spr->drawLine(x + 30, y + 30, x + 30, y + 19, fg);
-    spr->drawLine(x + 30, y + 30, x + 40, y + 30, fg);
+    spr->fillRect(x, y, w, h, bg);
 
     spr->setTextColor(fg, bg);
-    spr->setTextSize(3);
-    spr->drawString(time_label, x + 60, y + 12);
-    spr->setTextColor(dim, bg);
-    spr->setTextSize(1);
-    spr->drawString("hora local", x + 64, y + 42);
+    spr->setTextSize(6);
+    int label_w = spr->textWidth(time_label);
+    spr->drawString(time_label, x + ((w - label_w) / 2), y + 72);
+
+    spr->setTextColor(soft, bg);
+    spr->setTextSize(2);
+    const char *city = clock_city_label();
+    int city_w = spr->textWidth(city);
+    spr->drawString(city, x + ((w - city_w) / 2), y + 146);
+    if (date_label[0] != '\0') {
+        spr->setTextColor(dim, bg);
+        int date_w = spr->textWidth(date_label);
+        spr->drawString(date_label, x + ((w - date_w) / 2), y + 171);
+    }
 }
 
 static void draw_status_overlay(LGFX_Sprite *spr,
@@ -592,25 +514,25 @@ static void toast_colors(LGFX_Sprite *spr,
 {
     switch (tone) {
         case NB_UI_OVERLAY_SUCCESS:
-            *bg = spr->color565(13, 46, 31);
-            *border = spr->color565(72, 208, 129);
-            *fg = spr->color565(218, 255, 234);
+            *bg = TFT_WHITE;
+            *border = TFT_WHITE;
+            *fg = spr->color565(38, 119, 82);
             break;
         case NB_UI_OVERLAY_WARNING:
-            *bg = spr->color565(50, 39, 8);
-            *border = spr->color565(232, 184, 62);
-            *fg = spr->color565(255, 243, 198);
+            *bg = TFT_WHITE;
+            *border = TFT_WHITE;
+            *fg = spr->color565(143, 100, 22);
             break;
         case NB_UI_OVERLAY_ERROR:
-            *bg = spr->color565(54, 16, 28);
-            *border = spr->color565(242, 96, 135);
-            *fg = spr->color565(255, 224, 234);
+            *bg = TFT_WHITE;
+            *border = TFT_WHITE;
+            *fg = spr->color565(151, 50, 76);
             break;
         case NB_UI_OVERLAY_INFO:
         default:
-            *bg = spr->color565(14, 31, 44);
-            *border = spr->color565(84, 181, 242);
-            *fg = spr->color565(226, 245, 255);
+            *bg = TFT_WHITE;
+            *border = TFT_WHITE;
+            *fg = spr->color565(54, 86, 108);
             break;
     }
 }
@@ -620,18 +542,14 @@ static void draw_toast_overlay(LGFX_Sprite *spr,
                                int y,
                                int w,
                                int h,
-                               const overlay_state_t *state)
+                               const overlay_state_t *state,
+                               int64_t now_us)
 {
     uint16_t bg, border, fg;
     toast_colors(spr, state->tone, &bg, &border, &fg);
+    (void)border;
 
-    spr->fillRoundRect(x, y, w, h, 8, bg);
-    spr->drawRoundRect(x, y, w, h, 8, border);
-    spr->fillCircle(x + 22, y + 26, 6, border);
-
-    spr->setTextColor(fg, bg);
-    spr->setTextSize(2);
-    spr->drawString(state->text, x + 40, y + 18);
+    draw_message_bubble(spr, x, y, w, h, state->text, bg, fg, now_us);
 }
 
 static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
@@ -653,19 +571,16 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
         xSemaphoreGive(s_mutex);
     }
 
-    /* Sleep bubble: animação contínua, independente dos overlays de UI. */
+    /* Sleep message: animação contínua, independente dos overlays de UI. */
     bool bubble = s_sleep_bubble_active;
     if (bubble) {
-        float anchor_x = 0.0f;
-        float anchor_y = 0.0f;
         int dirty_x = 0, dirty_y = 0, dirty_w = 0, dirty_h = 0;
-        sleep_bubble_anchor(now_us, &anchor_x, &anchor_y);
-        sleep_bubble_dirty_rect(anchor_x, anchor_y, &dirty_x, &dirty_y, &dirty_w, &dirty_h);
+        sleep_bubble_rect(now_us, &dirty_x, &dirty_y, &dirty_w, &dirty_h);
         if (s_sleep_bubble_was_active) {
             render_service_mark_dirty(s_bubble_prev_x, s_bubble_prev_y,
                                       s_bubble_prev_w, s_bubble_prev_h);
         }
-        draw_sleep_bubble(spr, now_us, anchor_x, anchor_y);
+        draw_sleep_bubble(spr, now_us, dirty_x, dirty_y, dirty_w, dirty_h);
         render_service_mark_dirty(dirty_x, dirty_y, dirty_w, dirty_h);
         s_bubble_prev_x = dirty_x;
         s_bubble_prev_y = dirty_y;
@@ -697,10 +612,10 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
             draw_volume_overlay(spr, x, y, w, h, &state);
             break;
         case OVERLAY_TEXT:
-            draw_text_overlay(spr, x, y, w, h, &state);
+            draw_text_overlay(spr, x, y, w, h, &state, now_us);
             break;
         case OVERLAY_TOAST:
-            draw_toast_overlay(spr, x, y, w, h, &state);
+            draw_toast_overlay(spr, x, y, w, h, &state, now_us);
             break;
         case OVERLAY_CLOCK:
             draw_clock_overlay(spr, x, y, w, h, &state);

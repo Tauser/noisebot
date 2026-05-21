@@ -8,7 +8,8 @@
  *   - Layer registrada no render_service com z_order = 10.
  *   - A cada frame (30fps), atualiza interpolação, blink e redesenha.
  *   - Canvas já limpo (TFT_BLACK) pelo render_service antes de cada layer.
- *   - Boca e sobrancelhas: fora deste módulo — peças ocasionais de Layer 5+.
+ *   - Boca: overlay visual transitório controlado por estado de fala.
+ *   - Sobrancelhas: fora deste módulo — peças ocasionais de Layer 5+.
  *
  * Renderer dos olhos (estilo EMO):
  *   - Quadrilátero com cantos independentes + squint + curvatura de borda.
@@ -109,6 +110,16 @@ static constexpr float GAZE_PERSP_OPEN_FACTOR = 0.14f;
 static constexpr float GAZE_PERSP_SQUINT_ADD  = 0.08f;
 static constexpr float GAZE_X_MAX             = 0.65f;
 
+/* Boca de fala: pequena, centralizada abaixo dos olhos, ativada durante
+ * RESPONDING. Fica dentro do dirty rect fixo da face. */
+static constexpr int16_t MOUTH_CX             = 160;
+static constexpr int16_t MOUTH_CY             = 171;
+static constexpr int16_t MOUTH_MIN_W          = 38;
+static constexpr int16_t MOUTH_MAX_W          = 58;
+static constexpr int16_t MOUTH_MIN_H          = 3;
+static constexpr int16_t MOUTH_MAX_H          = 13;
+static constexpr int64_t MOUTH_PERIOD_US      = 320000LL;
+
 /* ── Blink ───────────────────────────────────────────────────────────────── */
 
 /* Tuning calibrado contra o vídeo idle do EMO (re-análise por olho separado).
@@ -148,7 +159,9 @@ static constexpr int16_t BLINK_BAR_EXTRA_HW  = 3;    /* px de padding além das 
  */
 static constexpr int GAZE_X_MARGIN  = (int)GAZE_X_TRAVEL_PX;
 static constexpr int FACE_DIRTY_X0 = (int)BASE_L_CX  - (int)HW_I - (int)X_OFF_TRAVEL - GAZE_X_MARGIN - (int)BLINK_BAR_EXTRA_HW;
-static constexpr int FACE_DIRTY_X1 = (int)BASE_R_CX  + (int)HW_I + (int)X_OFF_TRAVEL + GAZE_X_MARGIN + (int)BLINK_BAR_EXTRA_HW;
+static constexpr int FACE_DIRTY_X1_RAW = (int)BASE_R_CX + (int)HW_I + (int)X_OFF_TRAVEL
+                                       + GAZE_X_MARGIN + (int)BLINK_BAR_EXTRA_HW + 20;
+static constexpr int FACE_DIRTY_X1 = FACE_DIRTY_X1_RAW > 320 ? 320 : FACE_DIRTY_X1_RAW;
 /* ROT_MARGIN: folga extra para olhos rotacionados em até 30° (96×96 sprite → diagonal ~68px vs 46px). */
 static constexpr int ROT_MARGIN    = 22;
 static constexpr int FACE_DIRTY_Y0 = (int)EYE_CY_BASE - (int)MAX_HH_F - (int)Y_TRAVEL_PX - (int)MAX_CURVE_PX - ROT_MARGIN;
@@ -285,8 +298,10 @@ static heart_overlay_t    s_heart_overlay      = {};
 static volatile bool      s_breath_enabled     = false;
 static volatile bool      s_blink_enabled      = true;
 static volatile bool      s_sleep_anim_enabled = false;
+static volatile bool      s_speaking_mouth_enabled = false;
 static bool               s_blink_prev_enabled = true;
 static int64_t            s_sleep_anim_start_us = 0;
+static int64_t            s_speaking_mouth_start_us = 0;
 
 static constexpr float BREATH_PERIOD_MS    = 5200.0f;
 static constexpr float BREATH_AMP          = 0.045f;
@@ -374,12 +389,12 @@ extern "C" const nb_face_state_t NB_EXPRESSIONS[NB_EXPR_COUNT] = {
         .squint_l=0.00f, .squint_r=0.00f,
     },
 
-    /* SLEEPY — abertura baixa, squint pesado, olhos levemente descidos */
+    /* SLEEPY — abertura baixa, squint pesado, olhos centrados para o balão Zzz */
     {
         .tl_l=0.00f,.tr_l=0.00f,.bl_l=0.00f,.br_l=0.00f,
         .tl_r=0.00f,.tr_r=0.00f,.bl_r=0.00f,.br_r=0.00f,
         .open_l=0.14f, .open_r=0.14f,
-        .y_l=1.00f,    .y_r=1.00f,
+        .y_l=-0.55f,   .y_r=-0.55f,
         .x_off=0.60f,
         .rt_top=0.19f, .rb_bot=1.00f,
         .cv_top=-0.38f, .cv_bot=0.45f,
@@ -679,6 +694,38 @@ static inline void draw_color_alpha_pixel(LGFX_Sprite *spr,
     spr->drawPixel(x, y, blend_color_over_rgb565(spr->readPixel(x, y), color, alpha));
 }
 
+static void draw_overlay_line_thick(LGFX_Sprite *spr,
+                                    int16_t x0, int16_t y0,
+                                    int16_t x1, int16_t y1,
+                                    uint32_t color, int16_t radius)
+{
+    for (int16_t dy = (int16_t)-radius; dy <= radius; ++dy) {
+        for (int16_t dx = (int16_t)-radius; dx <= radius; ++dx) {
+            if ((dx * dx + dy * dy) > (radius * radius + radius)) continue;
+            spr->drawLine((int16_t)(x0 + dx), (int16_t)(y0 + dy),
+                          (int16_t)(x1 + dx), (int16_t)(y1 + dy),
+                          color);
+        }
+    }
+}
+
+static void draw_overlay_quad_capsule(LGFX_Sprite *spr,
+                                      float x0, float y0,
+                                      float x1, float y1,
+                                      float x2, float y2,
+                                      uint32_t color, int16_t radius)
+{
+    for (int i = 0; i <= 12; ++i) {
+        float t = (float)i / 12.0f;
+        float u = 1.0f - t;
+        float x = u * u * x0 + 2.0f * u * t * x1 + t * t * x2;
+        float y = u * u * y0 + 2.0f * u * t * y1 + t * t * y2;
+        int16_t px = (int16_t)(x + (x >= 0.0f ? 0.5f : -0.5f));
+        int16_t py = (int16_t)(y + (y >= 0.0f ? 0.5f : -0.5f));
+        spr->fillCircle(px, py, radius, color);
+    }
+}
+
 static inline float overlay_alpha(int64_t now_us, int64_t start_us, uint32_t duration_ms)
 {
     if (duration_ms == 0U) return 0.0f;
@@ -698,34 +745,78 @@ static inline float overlay_alpha(int64_t now_us, int64_t start_us, uint32_t dur
 }
 
 static void draw_blush_hatch(LGFX_Sprite *spr, int16_t cx, int16_t cy,
-                             int8_t dir, uint32_t color)
+                             uint32_t color)
 {
-    const int16_t x0 = (int16_t)(cx - (int16_t)(dir * 16));
-    const int16_t y0 = (int16_t)(cy - 7);
-    const int16_t x1 = (int16_t)(x0 + (int16_t)(dir * 9));
-    const int16_t y1 = (int16_t)(cy + 6);
-
-    spr->drawLine(x0, y0, x1, y1, color);
-    spr->drawLine((int16_t)(x0 + dir), y0, (int16_t)(x1 + dir), y1, color);
+    draw_overlay_quad_capsule(spr,
+                              (float)(cx - 5), (float)(cy - 8),
+                              (float)(cx - 8), (float)(cy - 1),
+                              (float)(cx + 4), (float)(cy + 7),
+                              color, 4);
 }
 
-static void draw_tiny_blush_heart(LGFX_Sprite *spr, int16_t cx, int16_t cy,
-                                  uint32_t color)
+static void draw_solid_heart(LGFX_Sprite *spr, int16_t cx, int16_t cy,
+                             int16_t size, float angle_rad, uint32_t color)
 {
-    spr->fillCircle((int16_t)(cx - 3), (int16_t)(cy - 2), 3, color);
-    spr->fillCircle((int16_t)(cx + 3), (int16_t)(cy - 2), 3, color);
-    spr->fillTriangle((int16_t)(cx - 7), cy,
-                      (int16_t)(cx + 7), cy,
-                      cx, (int16_t)(cy + 10), color);
-}
+    static constexpr int8_t HEART_POLY[][2] = {
+        {  0,  15}, { -8,  11}, {-16,   5}, {-21,  -3},
+        {-22, -10}, {-19, -17}, {-13, -21}, { -7, -21},
+        { -3, -20}, {  0, -16}, {  3, -20}, {  7, -21},
+        { 13, -21}, { 19, -17}, { 22, -10}, { 21,  -3},
+        { 16,   5}, {  8,  11}
+    };
+    static constexpr int POINTS = (int)(sizeof(HEART_POLY) / sizeof(HEART_POLY[0]));
+    const float scale = (float)size / 22.0f;
+    const float c = cosf(angle_rad);
+    const float s = sinf(angle_rad);
+    float px[POINTS];
+    float py[POINTS];
+    float min_y = 999.0f;
+    float max_y = -999.0f;
 
-static void draw_blush_sparkle(LGFX_Sprite *spr, int16_t cx, int16_t cy,
-                               uint32_t color)
-{
-    spr->drawFastHLine((int16_t)(cx - 4), cy, 9, color);
-    spr->drawLine(cx, (int16_t)(cy - 4), cx, (int16_t)(cy + 4), color);
-    spr->drawPixel((int16_t)(cx - 2), (int16_t)(cy - 2), color);
-    spr->drawPixel((int16_t)(cx + 2), (int16_t)(cy + 2), color);
+    for (int i = 0; i < POINTS; ++i) {
+        float x = (float)HEART_POLY[i][0] * scale;
+        float y = (float)HEART_POLY[i][1] * scale;
+        px[i] = (float)cx + x * c - y * s;
+        py[i] = (float)cy + x * s + y * c;
+        if (py[i] < min_y) min_y = py[i];
+        if (py[i] > max_y) max_y = py[i];
+    }
+
+    int16_t top = (int16_t)(min_y - 1.0f);
+    int16_t bottom = (int16_t)(max_y + 1.0f);
+
+    for (int16_t y = top; y <= bottom; ++y) {
+        float intersections[POINTS];
+        int count = 0;
+        for (int i = 0; i < POINTS; ++i) {
+            int j = (i + 1) % POINTS;
+            float x0 = px[i];
+            float y0 = py[i];
+            float x1 = px[j];
+            float y1 = py[j];
+            float scan_y = (float)y + 0.5f;
+            if ((y0 <= scan_y && y1 > scan_y) || (y1 <= scan_y && y0 > scan_y)) {
+                float t = (scan_y - y0) / (y1 - y0);
+                if (count < POINTS) {
+                    intersections[count++] = x0 + (x1 - x0) * t;
+                }
+            }
+        }
+        for (int a = 0; a < count - 1; ++a) {
+            for (int b = a + 1; b < count; ++b) {
+                if (intersections[b] < intersections[a]) {
+                    float tmp = intersections[a];
+                    intersections[a] = intersections[b];
+                    intersections[b] = tmp;
+                }
+            }
+        }
+        for (int i = 0; i + 1 < count; i += 2) {
+            int16_t x0 = (int16_t)(intersections[i] + 0.5f);
+            int16_t x1 = (int16_t)(intersections[i + 1] + 0.5f);
+            spr->drawFastHLine(x0, y, (int32_t)x1 - (int32_t)x0 + 1, color);
+        }
+    }
 }
 
 static void draw_blush_overlay(LGFX_Sprite *spr, int64_t now_us,
@@ -734,79 +825,52 @@ static void draw_blush_overlay(LGFX_Sprite *spr, int64_t now_us,
 {
     if (!s_blush_overlay.active) return;
 
-    float alpha = overlay_alpha(now_us, s_blush_overlay.start_us,
-                                s_blush_overlay.duration_ms);
-    if (alpha <= 0.0f) {
+    if (overlay_alpha(now_us, s_blush_overlay.start_us,
+                      s_blush_overlay.duration_ms) <= 0.0f) {
         s_blush_overlay.active = false;
         return;
     }
 
-    alpha *= (float)s_blush_overlay.intensity / 255.0f;
-    int64_t elapsed_us = now_us - s_blush_overlay.start_us;
-    float elapsed_ms = elapsed_us > 0 ? (float)elapsed_us / 1000.0f : 0.0f;
-    float pulse = 0.92f + 0.08f * sinf(elapsed_ms * 0.020f);
-    float glow = alpha * pulse;
-    if (glow > 1.0f) glow = 1.0f;
+    uint32_t color = 0xFF7F9Au;
 
-    uint32_t outer = blend_with_black(0xFF4F91u, glow * 0.60f);
-    uint32_t mid   = blend_with_black(0xFF78ACu, glow * 0.76f);
-    uint32_t inner = blend_with_black(0xFFC6D7u, glow * 0.82f);
-    uint32_t line  = blend_with_black(0xFFD6E2u, glow * 0.95f);
-    uint32_t pop   = blend_with_black(0xFF7AAEu, glow * 0.88f);
+    int16_t lx = (int16_t)(left_cx - HW_I - 12);
+    int16_t rx = (int16_t)(right_cx + HW_I + 12);
+    int16_t ly = (int16_t)(left_cy + 43);
+    int16_t ry = (int16_t)(right_cy + 43);
 
-    int16_t lx = left_cx - 27;
-    int16_t rx = right_cx + 27;
-    int16_t ly = left_cy + 43;
-    int16_t ry = right_cy + 43;
+    draw_blush_hatch(spr, (int16_t)(lx - 10), (int16_t)(ly - 2), color);
+    draw_blush_hatch(spr, (int16_t)(lx + 4), ly, color);
+    draw_blush_hatch(spr, (int16_t)(lx + 18), (int16_t)(ly + 2), color);
 
-    int16_t outer_rx = (int16_t)(29.0f * pulse);
-    int16_t outer_ry = (int16_t)(12.0f * pulse);
-    int16_t mid_rx   = (int16_t)(21.0f * pulse);
-    int16_t mid_ry   = (int16_t)(8.0f * pulse);
-
-    spr->fillEllipse(lx, ly, outer_rx, outer_ry, outer);
-    spr->fillEllipse(rx, ry, outer_rx, outer_ry, outer);
-    spr->fillEllipse(lx, ly, mid_rx, mid_ry, mid);
-    spr->fillEllipse(rx, ry, mid_rx, mid_ry, mid);
-    spr->fillEllipse((int16_t)(lx - 5), (int16_t)(ly - 3), 8, 3, inner);
-    spr->fillEllipse((int16_t)(rx + 5), (int16_t)(ry - 3), 8, 3, inner);
-
-    draw_blush_hatch(spr, (int16_t)(lx - 1), ly, 1, line);
-    draw_blush_hatch(spr, (int16_t)(lx + 10), (int16_t)(ly + 1), 1, line);
-    draw_blush_hatch(spr, (int16_t)(rx + 1), ry, -1, line);
-    draw_blush_hatch(spr, (int16_t)(rx - 10), (int16_t)(ry + 1), -1, line);
-
-    draw_tiny_blush_heart(spr, (int16_t)(lx - 27), (int16_t)(ly - 14), pop);
-    draw_tiny_blush_heart(spr, (int16_t)(rx + 27), (int16_t)(ry - 14), pop);
-    draw_blush_sparkle(spr, (int16_t)(lx + 28), (int16_t)(ly - 16), line);
-    draw_blush_sparkle(spr, (int16_t)(rx - 28), (int16_t)(ry - 16), line);
+    draw_blush_hatch(spr, (int16_t)(rx - 18), (int16_t)(ry - 2), color);
+    draw_blush_hatch(spr, (int16_t)(rx - 4), ry, color);
+    draw_blush_hatch(spr, (int16_t)(rx + 10), (int16_t)(ry + 2), color);
 }
 
 static void draw_heart_overlay(LGFX_Sprite *spr, int64_t now_us,
-                               int16_t face_cx, int16_t eye_cy)
+                               int16_t right_cx, int16_t eye_cy)
 {
     if (!s_heart_overlay.active) return;
 
-    float alpha = overlay_alpha(now_us, s_heart_overlay.start_us,
-                                s_heart_overlay.duration_ms);
-    if (alpha <= 0.0f) {
+    if (overlay_alpha(now_us, s_heart_overlay.start_us,
+                      s_heart_overlay.duration_ms) <= 0.0f) {
         s_heart_overlay.active = false;
         return;
     }
 
+    int16_t eye_right = (int16_t)(right_cx + HW_I);
+    int16_t eye_top = (int16_t)(eye_cy - MAX_HH_F);
     int64_t elapsed_us = now_us - s_heart_overlay.start_us;
-    float elapsed_ms = elapsed_us > 0 ? (float)elapsed_us / 1000.0f : 0.0f;
-    float pulse = 1.0f + 0.10f * sinf(elapsed_ms * 0.018f);
-    int16_t r = (int16_t)(11.0f * pulse);
-    int16_t cx = face_cx;
-    int16_t cy = eye_cy + 44;
-    uint32_t color = blend_with_black(0xFF4F7Bu, alpha);
+    float phase = (float)(elapsed_us % 900000LL) / 900000.0f;
+    float pulse = sinf(phase * 2.0f * NB_PI_F);
+    int16_t size = (int16_t)(17 + (pulse > 0.35f ? 1 : 0));
+    int16_t cx = (int16_t)(eye_right + 12);
+    int16_t cy = (int16_t)(eye_top - 10 + (pulse > 0.0f ? -1 : 0));
+    uint32_t color = 0xFF6F86u;
 
-    spr->fillCircle(cx - r, cy - 3, r, color);
-    spr->fillCircle(cx + r, cy - 3, r, color);
-    spr->fillTriangle(cx - (r * 2), cy + 1,
-                      cx + (r * 2), cy + 1,
-                      cx,           cy + (r * 3), color);
+    if (cx > 294) cx = 294;
+    if (cy < 54) cy = 54;
+    draw_solid_heart(spr, cx, cy, size, 0.2617994f, color);
 }
 
 
@@ -844,7 +908,7 @@ static void draw_bubble_cubic(LGFX_Sprite *spr,
                 + t * t * t * y3;
         int16_t next_x = bubble_point_x(anchor_x, x, scale);
         int16_t next_y = bubble_point_y(anchor_y, y, scale);
-        spr->drawLine(prev_x, prev_y, next_x, next_y, color);
+        draw_overlay_line_thick(spr, prev_x, prev_y, next_x, next_y, color, 1);
         prev_x = next_x;
         prev_y = next_y;
     }
@@ -860,13 +924,17 @@ static void draw_bubble_cubic_thick(LGFX_Sprite *spr,
 {
     draw_bubble_cubic(spr, anchor_x, anchor_y, scale,
                       x0, y0, x1, y1, x2, y2, x3, y3, color);
-    draw_bubble_cubic(spr, anchor_x - 1.0f, anchor_y, scale,
+    draw_bubble_cubic(spr, anchor_x - 2.0f, anchor_y, scale,
                       x0, y0, x1, y1, x2, y2, x3, y3, color);
-    draw_bubble_cubic(spr, anchor_x + 1.0f, anchor_y, scale,
+    draw_bubble_cubic(spr, anchor_x + 2.0f, anchor_y, scale,
                       x0, y0, x1, y1, x2, y2, x3, y3, color);
-    draw_bubble_cubic(spr, anchor_x, anchor_y - 1.0f, scale,
+    draw_bubble_cubic(spr, anchor_x, anchor_y - 2.0f, scale,
                       x0, y0, x1, y1, x2, y2, x3, y3, color);
-    draw_bubble_cubic(spr, anchor_x, anchor_y + 1.0f, scale,
+    draw_bubble_cubic(spr, anchor_x, anchor_y + 2.0f, scale,
+                      x0, y0, x1, y1, x2, y2, x3, y3, color);
+    draw_bubble_cubic(spr, anchor_x - 1.5f, anchor_y - 1.5f, scale,
+                      x0, y0, x1, y1, x2, y2, x3, y3, color);
+    draw_bubble_cubic(spr, anchor_x + 1.5f, anchor_y + 1.5f, scale,
                       x0, y0, x1, y1, x2, y2, x3, y3, color);
 }
 
@@ -897,6 +965,32 @@ static void draw_anger_mark(LGFX_Sprite *spr)
     draw_bubble_cubic(spr, anchor_x + 1.0f, anchor_y + 1.0f, scale,
                       -4.0f, 15.0f, -1.0f, 7.0f, 5.0f, 7.0f, 11.0f, 15.0f,
                       soft);
+}
+
+static void draw_speaking_mouth(LGFX_Sprite *spr, int64_t now_us, uint16_t color)
+{
+    if (!s_speaking_mouth_enabled) return;
+
+    int64_t elapsed_us = now_us - s_speaking_mouth_start_us;
+    if (elapsed_us < 0) elapsed_us = 0;
+
+    float phase = (float)(elapsed_us % MOUTH_PERIOD_US) / (float)MOUTH_PERIOD_US;
+    float wave  = 0.5f + 0.5f * sinf(phase * 2.0f * NB_PI_F);
+    float bite  = 0.5f + 0.5f * sinf((phase * 3.0f + 0.18f) * 2.0f * NB_PI_F);
+    float open  = (wave * 0.72f) + (bite * 0.28f);
+
+    int16_t mouth_w = (int16_t)((float)MOUTH_MIN_W
+                     + ((float)(MOUTH_MAX_W - MOUTH_MIN_W) * (0.35f + open * 0.65f))
+                     + 0.5f);
+    int16_t mouth_h = (int16_t)((float)MOUTH_MIN_H
+                     + ((float)(MOUTH_MAX_H - MOUTH_MIN_H) * open)
+                     + 0.5f);
+    int16_t mouth_x = MOUTH_CX - (mouth_w / 2);
+    int16_t mouth_y = MOUTH_CY - (mouth_h / 2);
+    int16_t radius  = mouth_h / 2;
+    if (radius < 2) radius = 2;
+
+    spr->fillRoundRect(mouth_x, mouth_y, mouth_w, mouth_h, radius, color);
 }
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
@@ -1520,9 +1614,11 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
 
     int16_t cy_l_i = (int16_t)(cy_l_f + (cy_l_f >= 0.0f ? 0.5f : -0.5f));
     int16_t cy_r_i = (int16_t)(cy_r_f + (cy_r_f >= 0.0f ? 0.5f : -0.5f));
-    int16_t face_cx = (int16_t)(((int32_t)left_cx + (int32_t)right_cx) / 2);
+    if (!sleep_anim) {
+        draw_speaking_mouth(spr, now_us, face.color);
+    }
     draw_blush_overlay(spr, now_us, left_cx, right_cx, cy_l_i, cy_r_i);
-    draw_heart_overlay(spr, now_us, face_cx, eye_cy);
+    draw_heart_overlay(spr, now_us, right_cx, eye_cy);
     if (!sleep_anim && (s_active_expr == NB_EXPR_SUSPICIOUS ||
                         s_active_expr == NB_EXPR_ALARMED ||
                         s_active_expr == NB_EXPR_ANGRY)) {
@@ -1767,6 +1863,14 @@ void expression_service_set_sleep_anim_enabled(bool enabled)
         s_sleep_anim_start_us = esp_timer_get_time();
     }
     s_sleep_anim_enabled = enabled;
+}
+
+void expression_service_set_speaking_mouth_enabled(bool enabled)
+{
+    if (enabled && !s_speaking_mouth_enabled) {
+        s_speaking_mouth_start_us = esp_timer_get_time();
+    }
+    s_speaking_mouth_enabled = enabled;
 }
 
 } /* extern "C" */
