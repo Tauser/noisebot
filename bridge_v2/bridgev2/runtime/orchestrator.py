@@ -56,6 +56,7 @@ from ..robot.output import RobotOutputProvider
 from ..metrics.registry import MetricsRegistry
 from ..tts.sentencizer import Sentencizer
 from ..audio.playback import OutputScheduler
+from ..audio.vad import BargeInMonitor
 
 log = logging.getLogger(__name__)
 
@@ -111,6 +112,10 @@ class Orchestrator:
         # TTS Provider Fase 6 (opcional — None = SpeechDone imediato)
         self._tts: Any | None = tts_provider
 
+        # VAD secundário Fase 7: detecta barge-in durante SPEAKING/THINKING
+        self._vad = BargeInMonitor()
+        self._t_barge_in: float | None = None   # timestamp para métrica
+
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
 
@@ -125,6 +130,14 @@ class Orchestrator:
     @property
     def metrics(self) -> MetricsRegistry:
         return self._metrics
+
+    def set_tts_provider(self, provider: Any | None) -> None:
+        """Atualiza o provider TTS em runtime.
+
+        Usado pelo Application quando o Piper falha no boot e o bridge precisa
+        seguir em modo sem voz sintetizada em vez de manter uma referência ruim.
+        """
+        self._tts = provider
 
     # -- Ciclo principal ----------------------------------------------------
 
@@ -230,6 +243,16 @@ class Orchestrator:
             self._session.append_audio(event.pcm)
             if self._stt is not None:
                 self._stt.feed(event.pcm)
+
+        # Fase 7: VAD secundário — detecta barge-in durante SPEAKING/THINKING
+        if self._fsm.can_interrupt and self._session is not None:
+            if self._vad.feed(event.pcm):
+                log.info(
+                    "VAD barge-in detectado no turno %d (energia sustentada)",
+                    self._session.turn_id,
+                )
+                self._vad.reset()
+                await self._bus.publish(BargeInDetected(turn_id=self._session.turn_id))
 
     async def _on_voice_end(self, event: VoiceActivityEnd) -> None:
         if not self._fsm.is_listening:
@@ -592,14 +615,39 @@ class Orchestrator:
     async def _on_barge_in(self, event: BargeInDetected) -> None:
         if not self._fsm.can_interrupt:
             return
-        log.info("Barge-in no turno %d", event.turn_id)
+
+        t_barge = time.monotonic()
+        log.info("Barge-in no turno %d (estado=%s)", event.turn_id, self._fsm.state.name)
+
         adapter = self.adapter
+
+        # Barge-in cristalino: SPEECH_CANCEL se firmware suportar.
+        # Barge-in suave: parar de enviar SAY (OutputScheduler cancelado junto com a Task).
         if adapter is not None:
             await adapter.send_speech_cancel(event.turn_id)
+
+        # Cancela Task de turno (LLM stream + TTS + OutputScheduler)
         await self._cancel_current_turn(reason="barge_in")
+
+        t_cancelled = time.monotonic()
+        self._metrics.record("interruption_cancel_ms", (t_cancelled - t_barge) * 1000.0)
+        log.info("Barge-in: turno %d cancelado em %.0f ms", event.turn_id, (t_cancelled - t_barge) * 1000.0)
+
+        # Restaura baseline IDLE no robô (regra de baseline do CLAUDE.md)
+        await self._robot.reset_baseline(adapter, event.turn_id)
+
+        # VAD reset — limpa contadores para o próximo turno
+        self._vad.reset()
+
+        # INTERRUPTED → LISTENING: inicia novo turno para capturar a nova fala
         self._fsm.try_transition(TurnState.INTERRUPTED)
         self._fsm.try_transition(TurnState.LISTENING)
+
+        # Nova sessão (novo turn_id monotônico)
         self._session = SessionContext(turn_id=new_turn_id())
+        self._session.set_deadline(TURN_DEADLINE_S)
+        if self._stt is not None:
+            await self._stt.reset()
 
     async def _on_turn_error(self, event: TurnError) -> None:
         log.error("Erro no turno %d estágio=%s: %s", event.turn_id, event.stage, event.reason)
