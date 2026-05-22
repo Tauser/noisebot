@@ -179,6 +179,33 @@ class TestBargeInViaFirmwareEvent:
         assert orch._fsm.state == TurnState.LISTENING
         assert orch._session is not None
         assert orch._session.turn_id != old_turn_id  # Invariante I-5
+        assert orch._fsm.current_turn_id == orch._session.turn_id
+
+    @pytest.mark.asyncio
+    async def test_stale_barge_in_does_not_cancel_current_turn(self):
+        bus = EventBus(default_maxsize=256)
+        adapter = MagicMock()
+        adapter.send_expr = AsyncMock()
+        adapter.send_gaze = AsyncMock()
+        adapter.send_speech_cancel = AsyncMock()
+        adapter.send_say = AsyncMock()
+        adapter.send_text_scroll = AsyncMock()
+        adapter.send_emot_event = AsyncMock()
+        adapter.send_action = AsyncMock()
+
+        orch = Orchestrator(bus, get_adapter=lambda: adapter)
+
+        orch._fsm.try_transition(TurnState.LISTENING, turn_id=20)
+        orch._fsm.try_transition(TurnState.COMMITTING_TURN, turn_id=20)
+        orch._fsm.try_transition(TurnState.THINKING, turn_id=20)
+        from bridgev2.runtime.session import SessionContext
+        orch._session = SessionContext(turn_id=20)
+
+        await orch._on_barge_in(BargeInDetected(turn_id=19))
+
+        assert orch._fsm.state == TurnState.THINKING
+        assert orch._session.turn_id == 20
+        adapter.send_speech_cancel.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_barge_in_sends_speech_cancel_when_supported(self):

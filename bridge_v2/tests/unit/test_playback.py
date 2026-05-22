@@ -86,6 +86,33 @@ class TestOutputScheduler:
         assert calls == [42]  # chamado apenas uma vez com turn_id correto
 
     @pytest.mark.asyncio
+    async def test_say_begin_and_end_wrap_non_empty_audio(self):
+        adapter = MagicMock()
+        adapter.send_say = AsyncMock()
+        adapter.send_say_begin = AsyncMock()
+        adapter.send_say_end = AsyncMock()
+
+        chunks = [b"\x00" * CHUNK_BYTES, b"\x01" * CHUNK_BYTES]
+        scheduler = OutputScheduler()
+        await scheduler.run(turn_id=77, pcm_iter=_aiter(chunks), adapter=adapter)
+
+        adapter.send_say_begin.assert_awaited_once_with(77)
+        adapter.send_say_end.assert_awaited_once_with(77)
+
+    @pytest.mark.asyncio
+    async def test_say_begin_and_end_not_sent_for_empty_audio(self):
+        adapter = MagicMock()
+        adapter.send_say = AsyncMock()
+        adapter.send_say_begin = AsyncMock()
+        adapter.send_say_end = AsyncMock()
+
+        scheduler = OutputScheduler()
+        await scheduler.run(turn_id=77, pcm_iter=_aiter([b"", b""]), adapter=adapter)
+
+        adapter.send_say_begin.assert_not_awaited()
+        adapter.send_say_end.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_on_first_audio_not_called_on_empty(self):
         calls = []
         scheduler = OutputScheduler()

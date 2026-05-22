@@ -10,6 +10,7 @@ Cancelável via asyncio.Task.cancel() para barge-in.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
 from typing import Any, AsyncIterator, Callable
@@ -62,6 +63,7 @@ class OutputScheduler:
 
             if self._t_first is None:
                 self._t_first = time.monotonic()
+                await _maybe_call_adapter(adapter, "send_say_begin", turn_id)
                 if on_first_audio is not None:
                     on_first_audio(turn_id)
 
@@ -88,9 +90,27 @@ class OutputScheduler:
             await asyncio.sleep(0)
 
         if self._chunks_sent:
+            await _maybe_call_adapter(adapter, "send_say_end", turn_id)
+
+        if self._chunks_sent:
             log.debug(
                 "OutputScheduler: turn_id=%d %d chunks (%.1f s)",
                 turn_id,
                 self._chunks_sent,
                 self._chunks_sent * CHUNK_DURATION_S,
             )
+
+
+async def _maybe_call_adapter(adapter: Any, method_name: str, *args: Any) -> None:
+    """Chama método opcional do adapter, aceitando adapters mockados nos testes."""
+    if adapter is None:
+        return
+    method = getattr(adapter, method_name, None)
+    if method is None:
+        return
+    try:
+        result = method(*args)
+        if inspect.isawaitable(result):
+            await result
+    except Exception:
+        log.exception("OutputScheduler: erro em %s", method_name)

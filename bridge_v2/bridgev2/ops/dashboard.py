@@ -61,6 +61,11 @@ h3{font-size:13px;font-weight:600;margin-bottom:6px}
 /* Provider status row */
 .psr{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
 .psr-item{display:flex;align-items:center;gap:5px;font-size:12px}
+.turn-detail{display:none;flex-direction:column;gap:6px;margin-top:10px}
+.turn-box{background:#f8fafc;border:1px solid var(--border);border-radius:var(--r);
+  padding:8px 10px}
+.turn-text{font-size:12px;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.turn-reply{max-height:170px;overflow:auto}
 
 /* Metrics table */
 table{width:100%;border-collapse:collapse;font-size:12px}
@@ -200,6 +205,16 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
       </div>
       <div class="psr" id="provider-status"></div>
       <div id="last-turn" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+      <div id="turn-detail" class="turn-detail">
+        <div class="turn-box">
+          <div class="sg-label">Você disse</div>
+          <div id="turn-transcript" class="turn-text">—</div>
+        </div>
+        <div class="turn-box">
+          <div class="sg-label">Resposta da IA</div>
+          <div id="turn-reply" class="turn-text turn-reply">—</div>
+        </div>
+      </div>
       <div id="last-error-box" style="margin-top:6px;display:none">
         <div class="pill pill-err" id="last-error-text"></div>
       </div>
@@ -250,7 +265,7 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
       </div>
       <div class="form-row">
         <label>Max tokens</label>
-        <input type="number" id="cfg-max-tokens" value="140" min="1" max="4096" style="width:80px">
+        <input type="number" id="cfg-max-tokens" value="256" min="1" max="4096" style="width:80px">
       </div>
       <div class="btn-row" style="margin-top:6px">
         <button class="btn btn-primary" onclick="applyConfig()" id="btn-apply-cfg">
@@ -299,18 +314,28 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
     <div class="test-card">
       <h4>Inject Transcript</h4>
       <p>Injeta FinalTranscript sintético no orchestrator para testar pipeline sem microfone.</p>
-      <button class="btn btn-secondary" disabled title="Use: python -m bridgev2 debug transcript 'texto'">
-        Via CLI apenas
+      <input type="text" id="debug-transcript-text" value="que horas são"
+        style="width:100%;margin-bottom:6px" maxlength="500">
+      <button class="btn btn-primary" onclick="runTranscriptTest()">
+        Rodar Transcript
       </button>
-      <p style="font-size:10px;color:var(--muted);margin-top:4px">
-        <code style="font-family:var(--mono)">python -m bridgev2 debug transcript "texto"</code>
-      </p>
+    </div>
+    <div class="test-card">
+      <h4>Voice Turn Sintético</h4>
+      <p>Simula VOICE_START + áudio silencioso + VOICE_END para exercitar o caminho de STT.</p>
+      <div class="form-row" style="margin-bottom:6px">
+        <label style="min-width:54px">Chunks</label>
+        <input type="number" id="debug-voice-chunks" value="40" min="1" max="300" style="width:80px">
+      </div>
+      <button class="btn btn-primary" onclick="runVoiceTurnTest()">
+        Rodar Voice Turn
+      </button>
     </div>
     <div class="test-card">
       <h4>Fake Firmware</h4>
-      <p>Sobe simulador TCP de firmware para testes de protocolo sem ESP32.</p>
-      <button class="btn btn-secondary" disabled title="Use: python -m bridgev2 debug fake-fw">
-        Via CLI apenas
+      <p>O simulador ainda é processo separado; mantenha-o rodando quando quiser testar protocolo TCP.</p>
+      <button class="btn btn-secondary" disabled>
+        Processo separado
       </button>
       <p style="font-size:10px;color:var(--muted);margin-top:4px">
         <code style="font-family:var(--mono)">python -m bridgev2 debug fake-fw --port 9001</code>
@@ -320,14 +345,7 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
       <h4>Replay de Áudio</h4>
       <p>Replay de WAV/PCM gravado sem precisar do firmware real.</p>
       <button class="btn btn-secondary" disabled>
-        Endpoint não implementado
-      </button>
-    </div>
-    <div class="test-card">
-      <h4>Turn Sintético</h4>
-      <p>Dispara um turno completo com texto fixo via injeção direta.</p>
-      <button class="btn btn-secondary" disabled>
-        Endpoint não implementado
+        Próximo endpoint
       </button>
     </div>
   </div>
@@ -364,7 +382,7 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
 // ── Catálogo de providers (espelha config_controller.py) ─────────────────
 const CATALOG = {
   openai: ['gpt-4o-mini','gpt-4o','gpt-4.1-mini','gpt-4.1','gpt-4-turbo'],
-  gemini: ['gemini-2.0-flash-exp','gemini-1.5-flash','gemini-1.5-pro','gemini-2.0-pro-exp'],
+  gemini: ['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.5-pro'],
   none:   [],
 };
 
@@ -495,7 +513,21 @@ function renderStatus(s) {
   if (s.last_turn_id) {
     lt.innerHTML = 'Turno <b>#' + s.last_turn_id + '</b> · ' +
       outcomePill(s.last_outcome) +
+      (s.last_route ? '<span class="age"> · rota: ' + safeStr(s.last_route) + '</span>' : '') +
       '<span class="age"> · ' + (s.updated_at || '') + '</span>';
+  } else {
+    lt.textContent = '';
+  }
+
+  const td = document.getElementById('turn-detail');
+  const transcript = s.last_transcript || '';
+  const reply = s.last_reply || '';
+  if (s.last_turn_id && (transcript || reply)) {
+    td.style.display = 'flex';
+    document.getElementById('turn-transcript').textContent = transcript || '—';
+    document.getElementById('turn-reply').textContent = reply || '—';
+  } else {
+    td.style.display = 'none';
   }
 
   const eb = document.getElementById('last-error-box');
@@ -628,6 +660,39 @@ async function resetMetrics() {
     await api('/ai/metrics/reset', { method:'POST' });
     showToast('Métricas zeradas.');
     setTimeout(doRefresh, 400);
+  } catch (e) {
+    showToast('✗ ' + (e.body?.error || e.message), true);
+  }
+}
+
+async function runTranscriptTest() {
+  const input = document.getElementById('debug-transcript-text');
+  const text = input.value.trim();
+  if (!text) {
+    showToast('Digite um texto para injetar.', true);
+    return;
+  }
+  try {
+    const data = await api('/debug/transcript', {
+      method:'POST',
+      body: JSON.stringify({ text }),
+    });
+    showToast('Transcript injetado: turno #' + data.turn_id);
+    setTimeout(doRefresh, 900);
+  } catch (e) {
+    showToast('✗ ' + (e.body?.error || e.message), true);
+  }
+}
+
+async function runVoiceTurnTest() {
+  const chunks = parseInt(document.getElementById('debug-voice-chunks').value, 10) || 40;
+  try {
+    await api('/debug/voice-turn', {
+      method:'POST',
+      body: JSON.stringify({ chunks }),
+    });
+    showToast('Voice turn sintético injetado.');
+    setTimeout(doRefresh, 1200);
   } catch (e) {
     showToast('✗ ' + (e.body?.error || e.message), true);
   }

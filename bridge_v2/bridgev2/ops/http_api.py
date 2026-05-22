@@ -36,6 +36,8 @@ from .schemas import (
 from .dashboard import get_dashboard_html
 from .security import check_token, load_or_create_token
 from .status_store import StatusStore
+from ..runtime.events import AudioChunkIn, FinalTranscript, VoiceActivityEnd, VoiceActivityStart
+from ..runtime.session import new_turn_id
 from ..service.healthcheck import is_healthy
 
 log = logging.getLogger(__name__)
@@ -84,6 +86,8 @@ class OpsHttpServer:
         wa.router.add_post("/ai/mode",        self._post_ai_mode)
         wa.router.add_post("/ai/restart",     self._post_ai_restart)
         wa.router.add_post("/ai/metrics/reset", self._post_metrics_reset)
+        wa.router.add_post("/debug/transcript", self._post_debug_transcript)
+        wa.router.add_post("/debug/voice-turn", self._post_debug_voice_turn)
         return wa
 
     # -- Lifecycle -------------------------------------------------------------
@@ -160,6 +164,9 @@ class OpsHttpServer:
             last_error=store.last_error,
             last_turn_id=store.last_turn_id,
             last_outcome=store.last_outcome,
+            last_transcript=store.last_transcript,
+            last_reply=store.last_reply,
+            last_route=store.last_route,
         ))
 
     async def _get_ai_metrics(self, request: web.Request) -> web.Response:
@@ -227,6 +234,59 @@ class OpsHttpServer:
         log.info("Ops API: métricas zeradas.")
         return _json(ok_response("métricas zeradas"))
 
+    async def _post_debug_transcript(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        try:
+            data = await request.json()
+        except Exception:
+            return _json(error_response("body JSON inválido"), status=400)
+
+        text = str(data.get("text", "")).strip() if isinstance(data, dict) else ""
+        if not text:
+            return _json(error_response("text obrigatório"), status=400)
+        if len(text) > 500:
+            return _json(error_response("text deve ter no máximo 500 caracteres"), status=422)
+
+        turn_id = _safe_turn_id(data.get("turn_id")) if isinstance(data, dict) else 0
+        if turn_id <= 0:
+            turn_id = new_turn_id()
+
+        bus = getattr(self._app, "_bus", None)
+        if bus is None:
+            return _json(error_response("event bus indisponível"), status=503)
+
+        await bus.publish(FinalTranscript(turn_id=turn_id, text=text))
+        log.info("Ops debug: transcript injetado turn_id=%d chars=%d", turn_id, len(text))
+        return _json(ok_response("transcript injetado", turn_id=turn_id, text=text))
+
+    async def _post_debug_voice_turn(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        chunks = 40
+        if isinstance(data, dict) and data.get("chunks") is not None:
+            try:
+                chunks = int(data.get("chunks"))
+            except (TypeError, ValueError):
+                return _json(error_response("chunks deve ser inteiro"), status=400)
+        if chunks < 1 or chunks > 300:
+            return _json(error_response("chunks deve estar entre 1 e 300"), status=422)
+
+        bus = getattr(self._app, "_bus", None)
+        if bus is None:
+            return _json(error_response("event bus indisponível"), status=503)
+
+        await bus.publish(VoiceActivityStart())
+        silence = bytes(512)
+        for seq in range(1, chunks + 1):
+            await bus.publish(AudioChunkIn(pcm=silence, seq=seq))
+        await bus.publish(VoiceActivityEnd())
+        log.info("Ops debug: voice-turn sintético injetado chunks=%d", chunks)
+        return _json(ok_response("voice-turn sintético injetado", chunks=chunks))
+
     # -- Internos --------------------------------------------------------------
 
     async def _graceful_restart(self) -> None:
@@ -241,3 +301,10 @@ def _json(data: dict, status: int = 200) -> web.Response:
         status=status,
         content_type="application/json",
     )
+
+
+def _safe_turn_id(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0

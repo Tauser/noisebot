@@ -4,7 +4,12 @@ from __future__ import annotations
 import json
 import pytest
 
-from bridgev2.llm.prompt import build_messages, parse_llm_json, _SYSTEM_PROMPT
+from bridgev2.llm.prompt import (
+    build_messages,
+    parse_llm_json,
+    recover_llm_reply_text,
+    _SYSTEM_PROMPT,
+)
 
 
 # ── build_messages ────────────────────────────────────────────────────────────
@@ -155,3 +160,19 @@ class TestParseLlmJson:
         raw = "  \n" + _VALID_JSON + "\n  "
         r = parse_llm_json(raw)
         assert r["reply"] == "Olá!"
+
+
+class TestRecoverLlmReplyText:
+    def test_recovers_reply_from_truncated_json(self):
+        raw = '{"reply":"Era uma vez um robo pequeno'
+        assert recover_llm_reply_text(raw) == "Era uma vez um robo pequeno"
+
+    def test_recovers_escaped_reply_fragment(self):
+        raw = r'{"reply":"Ele disse: \"oi\"'
+        assert recover_llm_reply_text(raw) == 'Ele disse: "oi"'
+
+    def test_never_returns_raw_json_object(self):
+        assert recover_llm_reply_text('{"foo":') == "Não consegui completar minha resposta."
+
+    def test_plain_text_is_returned(self):
+        assert recover_llm_reply_text("olá mundo") == "olá mundo"

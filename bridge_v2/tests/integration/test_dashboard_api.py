@@ -17,6 +17,8 @@ from bridgev2.ops.config_controller import ConfigController
 from bridgev2.ops.http_api import OpsHttpServer
 from bridgev2.ops.status_store import StatusStore
 from bridgev2.metrics.registry import MetricsRegistry
+from bridgev2.runtime.bus import EventBus
+from bridgev2.runtime.events import AudioChunkIn, FinalTranscript, VoiceActivityEnd, VoiceActivityStart
 
 TOKEN = "test-token-deadbeef1234"
 
@@ -41,6 +43,7 @@ def _make_ops(store: StatusStore | None = None, token: str = TOKEN) -> OpsHttpSe
 
     fake_app = MagicMock()
     fake_app._config = config
+    fake_app._bus = EventBus(default_maxsize=64)
     fake_app._orchestrator = orch
     fake_app.shutdown = AsyncMock()
     fake_app._build_llm_provider = MagicMock(return_value=None)
@@ -107,7 +110,8 @@ class TestGetAiStatus:
         required = (
             "connected", "pipeline", "mode", "provider", "model",
             "api_key_configured", "stt_status", "llm_status", "tts_status",
-            "last_turn_id", "last_outcome", "updated_at",
+            "last_turn_id", "last_outcome", "last_transcript", "last_reply",
+            "last_route", "updated_at",
         )
         for field in required:
             assert field in data, f"campo ausente: {field}"
@@ -154,6 +158,43 @@ class TestGetAiStatus:
         ops = _make_ops()
         _, data = await _do("get", ops._web_app, "/ai/status")
         assert data["pipeline"] == "v2"
+
+    @pytest.mark.asyncio
+    async def test_status_includes_last_turn_texts(self):
+        store = StatusStore()
+        store.record_turn(
+            7,
+            "llm",
+            transcript="qual é a cor do céu?",
+            reply="Azul, na maior parte do dia.",
+            route="llm",
+        )
+        ops = _make_ops(store)
+        _, data = await _do("get", ops._web_app, "/ai/status")
+        assert data["last_turn_id"] == 7
+        assert data["last_transcript"] == "qual é a cor do céu?"
+        assert data["last_reply"] == "Azul, na maior parte do dia."
+        assert data["last_route"] == "llm"
+
+    @pytest.mark.asyncio
+    async def test_status_redacts_secrets_from_last_turn_texts(self):
+        store = StatusStore()
+        store.record_turn(
+            8,
+            "llm",
+            transcript="minha chave é sk-abcdef1234567890",
+            reply="Gemini key AIzaSy123456789012345678901234567890",
+            route="llm",
+        )
+        ops = _make_ops(store)
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/ai/status")
+        body = await r.text()
+        await client.close()
+        assert "sk-abcdef1234567890" not in body
+        assert "AIzaSy123456789012345678901234567890" not in body
+        assert "<redacted>" in body
 
 
 # ---------------------------------------------------------------------------
@@ -203,16 +244,15 @@ class TestGetAiErrors:
     @pytest.mark.asyncio
     async def test_errors_no_api_key_in_message(self):
         store = StatusStore()
-        store.record_error("auth", turn_id=1, message="bad key sk-should-not-appear")
+        store.record_error("auth", turn_id=1, message="bad key sk-shouldnotappear123456")
         ops = _make_ops(store)
         client = TestClient(TestServer(ops._web_app))
         await client.start_server()
         r = await client.get("/ai/errors")
         body = await r.text()
         await client.close()
-        # A mensagem foi truncada em 200 chars mas não deve conter chave explícita
-        # Neste teste a mensagem não tem "sk-" como prefixo de chave real
-        assert "sk-should-not-appear" not in body or True   # truncado, mas testar o princípio
+        assert "sk-shouldnotappear123456" not in body
+        assert "<redacted>" in body
 
 
 # ---------------------------------------------------------------------------
@@ -326,17 +366,17 @@ class TestPostAiConfig:
 
         changes = ConfigController(fake_app).apply({
             "provider": "gemini",
-            "model": "gemini-1.5-flash",
+            "model": "gemini-2.5-flash",
             "max_tokens": 77,
             "mode": "local_only",
         })
 
         assert changes["provider"]["new"] == "gemini"
         assert fake_app._config.llm.provider.value == "gemini"
-        assert fake_app._config.llm.model == "gemini-1.5-flash"
+        assert fake_app._config.llm.model == "gemini-2.5-flash"
         assert fake_app._config.llm.max_output_tokens == 77
         assert fake_app._config.pipeline_mode.value == "local_only"
-        assert built_with[-1] == ("gemini", "gemini-1.5-flash", 77, "local_only")
+        assert built_with[-1] == ("gemini", "gemini-2.5-flash", 77, "local_only")
         fake_app._orchestrator.set_llm_provider.assert_called_once_with("new-provider")
 
 
@@ -513,6 +553,19 @@ class TestGetDashboard:
         body = await r.text()
         await client.close()
         assert "Testes" in body or "tests" in body.lower()
+        assert "/debug/transcript" in body
+        assert "/debug/voice-turn" in body
+
+    @pytest.mark.asyncio
+    async def test_dashboard_has_last_turn_detail_section(self):
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        body = await r.text()
+        await client.close()
+        assert "turn-detail" in body
+        assert "Resposta da IA" in body
 
     @pytest.mark.asyncio
     async def test_dashboard_warns_about_api_keys(self):
@@ -524,3 +577,91 @@ class TestGetDashboard:
         body = await r.text()
         await client.close()
         assert "variáveis de ambiente" in body or "env" in body.lower()
+
+
+# ---------------------------------------------------------------------------
+# POST /debug/* — Testes manuais via dashboard
+# ---------------------------------------------------------------------------
+
+class TestDebugEndpoints:
+    @pytest.mark.asyncio
+    async def test_debug_transcript_requires_token(self):
+        ops = _make_ops()
+        resp, _ = await _do(
+            "post",
+            ops._web_app,
+            "/debug/transcript",
+            json={"text": "que horas são"},
+        )
+        assert resp.status == 401
+
+    @pytest.mark.asyncio
+    async def test_debug_transcript_publishes_final_transcript(self):
+        ops = _make_ops()
+        q = ops._app._bus.subscribe(FinalTranscript)
+        resp, data = await _do(
+            "post",
+            ops._web_app,
+            "/debug/transcript",
+            json={"text": "que horas são", "turn_id": 1234},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        assert data["status"] == "ok"
+        evt = await q.get()
+        assert isinstance(evt, FinalTranscript)
+        assert evt.turn_id == 1234
+        assert evt.text == "que horas são"
+
+    @pytest.mark.asyncio
+    async def test_debug_transcript_rejects_empty_text(self):
+        ops = _make_ops()
+        resp, _ = await _do(
+            "post",
+            ops._web_app,
+            "/debug/transcript",
+            json={"text": ""},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 400
+
+    @pytest.mark.asyncio
+    async def test_debug_voice_turn_requires_token(self):
+        ops = _make_ops()
+        resp, _ = await _do(
+            "post",
+            ops._web_app,
+            "/debug/voice-turn",
+            json={"chunks": 2},
+        )
+        assert resp.status == 401
+
+    @pytest.mark.asyncio
+    async def test_debug_voice_turn_publishes_voice_events(self):
+        ops = _make_ops()
+        q = ops._app._bus.subscribe(VoiceActivityStart, AudioChunkIn, VoiceActivityEnd)
+        resp, data = await _do(
+            "post",
+            ops._web_app,
+            "/debug/voice-turn",
+            json={"chunks": 3},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 200
+        assert data["status"] == "ok"
+        events = [await q.get() for _ in range(5)]
+        assert isinstance(events[0], VoiceActivityStart)
+        assert all(isinstance(evt, AudioChunkIn) for evt in events[1:4])
+        assert isinstance(events[4], VoiceActivityEnd)
+
+    @pytest.mark.asyncio
+    async def test_debug_voice_turn_rejects_invalid_chunk_count(self):
+        ops = _make_ops()
+        resp, _ = await _do(
+            "post",
+            ops._web_app,
+            "/debug/voice-turn",
+            json={"chunks": 999},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert resp.status == 422

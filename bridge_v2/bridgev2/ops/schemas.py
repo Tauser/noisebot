@@ -31,6 +31,9 @@ def ai_status_response(
     last_error: dict | None,
     last_turn_id: int,
     last_outcome: str,
+    last_transcript: str,
+    last_reply: str,
+    last_route: str,
 ) -> dict:
     return {
         "connected": connected,
@@ -45,6 +48,9 @@ def ai_status_response(
         "last_error": last_error,
         "last_turn_id": last_turn_id,
         "last_outcome": last_outcome,
+        "last_transcript": last_transcript,
+        "last_reply": last_reply,
+        "last_route": last_route,
         "updated_at": _now_iso(),
     }
 

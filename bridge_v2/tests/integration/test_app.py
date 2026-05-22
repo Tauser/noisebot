@@ -34,6 +34,7 @@ def _make_config(
     uart: str | None = None,
     dry_run: bool = False,
     reconnect_delay: float = 0.05,
+    piper_model: str = "",
 ) -> BridgeV2Config:
     """Constroi BridgeV2Config minimo para testes."""
     return BridgeV2Config(
@@ -55,7 +56,7 @@ def _make_config(
         pipeline_mode=PipelineMode.LOCAL_ONLY,
         stt=SttConfig(model="small", backend="faster", device="cpu", compute_type="int8"),
         tts=TtsConfig(
-            piper_executable="piper", piper_model="",
+            piper_executable="piper", piper_model=piper_model,
             cache_size=4, sample_rate=16000, target_peak=8000,
         ),
         audio=AudioConfig(
@@ -103,6 +104,32 @@ class TestApplicationInit:
         config = _make_config(host="127.0.0.1", port=9999)
         app = Application(config)
         assert app._get_adapter() is None
+
+    async def test_tts_init_failure_disables_orchestrator_provider(self, monkeypatch):
+        """Falha no Piper no boot não deixa provider quebrado preso no Orchestrator."""
+        class BadTTS:
+            async def initialize(self):
+                raise RuntimeError("piper indisponivel")
+
+            async def shutdown(self):
+                pass
+
+        monkeypatch.setattr(
+            "bridgev2.tts.piper_server.PiperServerTTS",
+            lambda **kwargs: BadTTS(),
+        )
+
+        config = _make_config(dry_run=True, piper_model="fake.onnx")
+        app = Application(config)
+        task = asyncio.create_task(app.run(), name="test_app_bad_tts")
+        try:
+            await asyncio.sleep(0.05)
+            assert app._tts_provider is None
+            assert app._orchestrator._tts is None
+        finally:
+            await app.shutdown()
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 # ── Caminho real Application -> supervisor -> FakeFirmware ────────────────────

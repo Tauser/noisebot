@@ -18,7 +18,7 @@ from .prompt import build_messages
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "gemini-1.5-flash"
+_DEFAULT_MODEL = "gemini-2.5-flash"
 _DEFAULT_TEMPERATURE = 0.7
 _DEFAULT_MAX_TOKENS = 256
 
@@ -33,7 +33,7 @@ class GeminiProvider(StreamingLLMProvider):
     Parâmetros
     ----------
     model:
-        Modelo Gemini. Default: gemini-1.5-flash.
+        Modelo Gemini. Default: gemini-2.5-flash.
     temperature:
         Temperatura de sampling. Default: 0.7.
     max_tokens:

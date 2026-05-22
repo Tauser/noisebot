@@ -2,6 +2,7 @@
 
 build_messages:  constrói lista de mensagens no formato OpenAI/Gemini chat.
 parse_llm_json:  extrai e valida JSON de resposta do LLM.
+recover_llm_reply_text: extrai texto falável quando o JSON veio truncado.
 """
 from __future__ import annotations
 
@@ -105,6 +106,26 @@ def parse_llm_json(raw: str) -> dict[str, Any]:
     }
 
 
+def recover_llm_reply_text(raw: str) -> str:
+    """Recupera um texto falável quando a resposta JSON veio incompleta.
+
+    O fallback evita que o robô fale/exiba fragmentos como ``{"reply":"...``.
+    """
+    cleaned = raw.strip()
+    md = re.search(r"```(?:json)?\s*([\s\S]*?)(?:```|$)", cleaned)
+    if md:
+        cleaned = md.group(1).strip()
+
+    reply_match = re.search(r'"reply"\s*:\s*"((?:\\.|[^"\\])*)', cleaned)
+    if reply_match:
+        return _decode_json_string_fragment(reply_match.group(1)).strip()
+
+    if cleaned.startswith("{") or cleaned.startswith("["):
+        return "Não consegui completar minha resposta."
+
+    return cleaned
+
+
 def _int_or_none(val: Any) -> int | None:
     if val is None:
         return None
@@ -112,3 +133,15 @@ def _int_or_none(val: Any) -> int | None:
         return int(val)
     except (ValueError, TypeError):
         return None
+
+
+def _decode_json_string_fragment(value: str) -> str:
+    try:
+        return json.loads(f'"{value}"')
+    except json.JSONDecodeError:
+        return (
+            value.replace(r"\"", '"')
+            .replace(r"\\", "\\")
+            .replace(r"\n", "\n")
+            .replace(r"\t", "\t")
+        )

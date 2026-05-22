@@ -12,8 +12,11 @@ Segredos só via variável de ambiente / arquivo fora do Git.
 from __future__ import annotations
 
 import logging
+from dataclasses import is_dataclass, replace
 import time
 from typing import Any
+
+from ..config import LlmProvider, PipelineMode
 
 log = logging.getLogger(__name__)
 
@@ -25,8 +28,8 @@ PROVIDER_CATALOG: dict[str, list[str]] = {
         "gpt-4-turbo",
     ],
     "gemini": [
-        "gemini-2.0-flash-exp", "gemini-1.5-flash",
-        "gemini-1.5-pro", "gemini-2.0-pro-exp",
+        "gemini-2.5-flash", "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
     ],
     "none": [],
 }
@@ -112,7 +115,7 @@ class ConfigController:
         new_model = data.get("model")
         new_max_tokens = data.get("max_tokens")
 
-        if new_provider or new_model or new_max_tokens:
+        if new_provider or new_model or new_max_tokens is not None:
             import os
             old_provider = config.llm.provider.value
             old_model = config.llm.model
@@ -124,18 +127,9 @@ class ConfigController:
             if new_model:
                 os.environ["NOISEBOT_LLM_MODEL"] = new_model
                 changes["model"] = {"old": old_model, "new": new_model}
-            if new_max_tokens:
+            if new_max_tokens is not None:
                 os.environ["NOISEBOT_LLM_MAX_OUTPUT_TOKENS"] = str(new_max_tokens)
                 changes["max_tokens"] = {"old": old_max, "new": new_max_tokens}
-
-            # Rebuild provider e injeta no orchestrator
-            try:
-                new_llm = app._build_llm_provider()
-                app._orchestrator.set_llm_provider(new_llm)
-                log.info("Config aplicada: LLM provider reconstruído com %s", changes)
-            except Exception as exc:
-                log.error("Falha ao reconstruir LLM provider: %s", exc)
-                raise RuntimeError(f"Falha ao aplicar config: {exc}") from exc
 
         # Mode
         new_mode = data.get("mode")
@@ -145,6 +139,24 @@ class ConfigController:
             os.environ["NOISEBOT_PIPELINE_MODE"] = new_mode
             changes["mode"] = {"old": old_mode, "new": new_mode}
             log.info("Config aplicada: pipeline_mode %s → %s", old_mode, new_mode)
+
+        if changes:
+            self._refresh_app_config(
+                provider=new_provider,
+                model=new_model,
+                max_tokens=new_max_tokens,
+                mode=new_mode,
+            )
+
+        if any(key in changes for key in ("provider", "model", "max_tokens", "mode")):
+            # Rebuild provider e injeta no orchestrator usando o snapshot atualizado.
+            try:
+                new_llm = app._build_llm_provider()
+                app._orchestrator.set_llm_provider(new_llm)
+                log.info("Config aplicada: LLM provider reconstruído com %s", changes)
+            except Exception as exc:
+                log.error("Falha ao reconstruir LLM provider: %s", exc)
+                raise RuntimeError(f"Falha ao aplicar config: {exc}") from exc
 
         # Auditoria (sem segredos)
         if changes:
@@ -169,3 +181,34 @@ class ConfigController:
             return self._app._config.llm.provider.value
         except Exception:
             return "openai"
+
+    def _refresh_app_config(
+        self,
+        *,
+        provider: str | None,
+        model: str | None,
+        max_tokens: int | None,
+        mode: str | None,
+    ) -> None:
+        """Atualiza o snapshot tipado usado pelos builders da Application."""
+        config = self._app._config
+        if not is_dataclass(config):
+            return
+
+        next_config = config
+
+        if provider is not None or model is not None or max_tokens is not None:
+            next_llm = replace(
+                config.llm,
+                provider=LlmProvider(provider) if provider is not None else config.llm.provider,
+                model=model if model is not None else config.llm.model,
+                max_output_tokens=max_tokens
+                if max_tokens is not None
+                else config.llm.max_output_tokens,
+            )
+            next_config = replace(next_config, llm=next_llm)
+
+        if mode is not None:
+            next_config = replace(next_config, pipeline_mode=PipelineMode(mode))
+
+        self._app._config = next_config

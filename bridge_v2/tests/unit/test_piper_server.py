@@ -106,6 +106,16 @@ class TestPiperServerTTSNoProcess:
         tts = PiperServerTTS(model="")
         await tts.shutdown()  # não deve levantar
 
+    @pytest.mark.asyncio
+    async def test_initialize_raises_when_process_fails(self):
+        tts = PiperServerTTS(executable="piper-inexistente", model="fake.onnx")
+        with patch(
+            "asyncio.create_subprocess_exec",
+            side_effect=FileNotFoundError("piper"),
+        ):
+            with pytest.raises(RuntimeError, match="falha ao iniciar piper"):
+                await tts.initialize()
+
 
 class TestPiperServerTTSWithMockProcess:
     """Testa o caminho de síntese com processo piper mockado."""

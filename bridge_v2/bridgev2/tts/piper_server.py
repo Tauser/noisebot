@@ -67,6 +67,7 @@ class PiperServerTTS(TTSProvider):
             log.info("PiperServerTTS: processo iniciado. modelo=%s", self._model)
         except Exception as exc:
             log.error("PiperServerTTS: falha ao iniciar piper (%s). TTS desabilitado.", exc)
+            raise RuntimeError("PiperServerTTS: falha ao iniciar piper") from exc
 
     async def synthesize_stream(
         self, sentences: AsyncIterator[str]

@@ -65,10 +65,10 @@ class TestLoadConfig:
 
     def test_llm_provider_gemini(self, monkeypatch):
         monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "gemini")
-        monkeypatch.setenv("NOISEBOT_LLM_MODEL", "gemini-1.5-flash")
+        monkeypatch.setenv("NOISEBOT_LLM_MODEL", "gemini-2.5-flash")
         cfg = load_config(env_path="/nonexistent/.env")
         assert cfg.llm.provider == LlmProvider.GEMINI
-        assert cfg.llm.model == "gemini-1.5-flash"
+        assert cfg.llm.model == "gemini-2.5-flash"
 
     def test_api_key_configured_flag(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret-key")

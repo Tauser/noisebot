@@ -177,6 +177,7 @@ class Orchestrator:
                 await self._turn_task
             except asyncio.CancelledError:
                 pass
+        await self._finish_turn()
         self._fsm.reset_to_idle()
         if self._stt is not None:
             try:
@@ -241,6 +242,7 @@ class Orchestrator:
         log.warning("Firmware desconectado: %s", event.reason)
         await self._cancel_current_turn(reason="transport_disconnected")
         self._fsm.reset_to_idle()
+        await self._finish_turn()
         if self._store:
             self._store.firmware_connected = False
 
@@ -377,6 +379,8 @@ class Orchestrator:
         session = self._session
         session.final_text = event.text
         session.mark("final_transcript")
+        if self._store:
+            self._store.record_turn_detail(event.turn_id, transcript=event.text)
 
         if not event.is_usable:
             log.debug("Turno %d: transcript não utilizável (%s)", event.turn_id, event.quality.name)
@@ -404,6 +408,12 @@ class Orchestrator:
         session.intent_name = intent.intent_name
         if intent.reply_text:
             session.reply_text = intent.reply_text
+            if self._store:
+                self._store.record_turn_detail(
+                    event.turn_id,
+                    reply=intent.reply_text,
+                    route="local_intent" if intent.has_intent else "",
+                )
 
         await self._bus.publish(intent)
         session.mark("intent_resolved")
@@ -484,7 +494,7 @@ class Orchestrator:
             session.mark("llm_complete")
 
             # ── Parseia JSON de resposta ───────────────────────────────────
-            from ..llm.prompt import parse_llm_json
+            from ..llm.prompt import parse_llm_json, recover_llm_reply_text
             try:
                 parsed = parse_llm_json(raw_response)
             except (ValueError, Exception) as exc:
@@ -493,7 +503,7 @@ class Orchestrator:
                     turn_id, exc,
                 )
                 parsed = {
-                    "reply": raw_response.strip(),
+                    "reply": recover_llm_reply_text(raw_response),
                     "expression_id": None,
                     "action": None,
                     "emot_event": None,
@@ -539,6 +549,13 @@ class Orchestrator:
             )
             session.intent_name = "llm_reply"
             session.reply_text = reply_text
+            if self._store:
+                self._store.record_turn_detail(
+                    turn_id,
+                    transcript=session.final_text,
+                    reply=reply_text,
+                    route="llm",
+                )
 
             # THINKING → SPEAKING + reação visual imediata (< 300 ms)
             self._fsm.transition(TurnState.SPEAKING, turn_id=turn_id)
@@ -632,7 +649,13 @@ class Orchestrator:
         if self._store and session:
             intent = session.intent_name or ""
             outcome = "llm" if intent == "llm_reply" else ("local_intent" if intent else "ok")
-            self._store.record_turn(event.turn_id, outcome)
+            self._store.record_turn(
+                event.turn_id,
+                outcome,
+                transcript=session.final_text,
+                reply=session.reply_text,
+                route=outcome,
+            )
         await self._finish_turn()
 
     async def _on_barge_in(self, event: BargeInDetected) -> None:
@@ -663,7 +686,13 @@ class Orchestrator:
         self._metrics.record("interruption_cancel_ms", (t_cancelled - t_barge) * 1000.0)
         log.info("Barge-in: turno %d cancelado em %.0f ms", event.turn_id, (t_cancelled - t_barge) * 1000.0)
         if self._store:
-            self._store.record_turn(event.turn_id, "interrupted")
+            self._store.record_turn(
+                event.turn_id,
+                "interrupted",
+                transcript=self._session.final_text,
+                reply=self._session.reply_text,
+                route="barge_in",
+            )
 
         # Restaura baseline IDLE no robô (regra de baseline do CLAUDE.md)
         await self._robot.reset_baseline(adapter, event.turn_id)
@@ -684,7 +713,13 @@ class Orchestrator:
     async def _on_turn_error(self, event: TurnError) -> None:
         log.error("Erro no turno %d estágio=%s: %s", event.turn_id, event.stage, event.reason)
         if self._store:
-            self._store.record_turn(event.turn_id, "failed")
+            self._store.record_turn(
+                event.turn_id,
+                "failed",
+                transcript=self._session.final_text if self._session else None,
+                reply=self._session.reply_text if self._session else None,
+                route=event.stage,
+            )
             self._store.record_error(
                 kind=f"{event.stage}_failure",
                 turn_id=event.turn_id,
@@ -705,8 +740,7 @@ class Orchestrator:
         if self._stt is not None:
             await self._stt.reset()
         # Fase 10: watchdog garante que o turno sempre termina (Invariante I-4)
-        if self._watchdog and not self._watchdog.done():
-            self._watchdog.cancel()
+        await self._cancel_watchdog()
         self._watchdog = asyncio.create_task(
             self._run_watchdog(self._session),
             name=f"nb_watchdog_{self._session.turn_id}",
@@ -761,6 +795,18 @@ class Orchestrator:
         self._session = None
         self._turn_task = None
         # Cancela watchdog — turno terminou dentro do prazo
-        if self._watchdog and not self._watchdog.done():
-            self._watchdog.cancel()
+        await self._cancel_watchdog()
+
+    async def _cancel_watchdog(self) -> None:
+        """Cancela e aguarda a task de watchdog para evitar tasks penduradas."""
+        watchdog = self._watchdog
         self._watchdog = None
+        if watchdog is None or watchdog.done():
+            return
+        if watchdog is asyncio.current_task():
+            return
+        watchdog.cancel()
+        try:
+            await watchdog
+        except asyncio.CancelledError:
+            pass
