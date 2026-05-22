@@ -4,7 +4,7 @@ O Orchestrator é o único componente que cruza fronteiras de domínio.
 Ele:
   - assina o bus para todos os eventos relevantes
   - delega ao TurnManager as transições de estado
-  - chama os providers em sequência (STT → Intent → LLM → Robot)
+  - chama os providers em sequência (STT → Intent → LLM → TTS → Robot)
   - gerencia a Task de turno (cancelada no barge-in — Invariante I-5)
 
 Fase 1: esqueleto que sobe o loop, processa eventos de conexão, loga.
@@ -17,6 +17,10 @@ Fase 5: LLM streaming (OpenAI/Gemini) no THINKING quando não há intent local.
          Métricas: llm_first_token_ms, llm_total_ms.
          LLMProvider=None → encerra turno diretamente (sem resposta).
          Falha de API → TurnError → IDLE sem travar.
+Fase 6: TTS persistente (PiperServerTTS) + cache + OutputScheduler.
+         Ambos os caminhos (intent local e LLM) sintetizam e enviam SAY.
+         Métricas: tts_first_audio_ms, first_audio_out_ms.
+         TTSProvider=None → SpeechDone imediato (compat Fase 3–5).
 """
 from __future__ import annotations
 
@@ -51,6 +55,7 @@ from ..llm.local_intent import LocalIntentProvider
 from ..robot.output import RobotOutputProvider
 from ..metrics.registry import MetricsRegistry
 from ..tts.sentencizer import Sentencizer
+from ..audio.playback import OutputScheduler
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +75,10 @@ class Orchestrator:
     llm_provider: StreamingLLMProvider | LLMProvider | None
         Provider LLM (Fase 5+). None = encerra turno sem resposta LLM.
         Deve implementar generate_stream(text, context) → AsyncIterator[str].
+
+    tts_provider: TTSProvider | None
+        Provider TTS (Fase 6+). None = SpeechDone imediato (compat Fase 3–5).
+        Deve implementar synthesize_stream(sentences) → AsyncIterator[bytes].
     """
 
     def __init__(
@@ -79,6 +88,7 @@ class Orchestrator:
         get_adapter: Callable[[], Any] | None = None,
         stt_provider: Any | None = None,
         llm_provider: Any | None = None,
+        tts_provider: Any | None = None,
     ) -> None:
         self._bus = bus
         self._config = config
@@ -97,6 +107,9 @@ class Orchestrator:
 
         # LLM Provider Fase 5 (opcional — None = sem resposta LLM)
         self._llm: Any | None = llm_provider
+
+        # TTS Provider Fase 6 (opcional — None = SpeechDone imediato)
+        self._tts: Any | None = tts_provider
 
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
@@ -141,6 +154,11 @@ class Orchestrator:
         if self._stt is not None:
             try:
                 await self._stt.close()
+            except Exception:
+                pass
+        if self._tts is not None:
+            try:
+                await self._tts.shutdown()
             except Exception:
                 pass
         await self._bus.close()
@@ -358,8 +376,16 @@ class Orchestrator:
             self._fsm.transition(TurnState.SPEAKING, turn_id=event.turn_id)
             session.mark("speaking_start")
             await self._robot.emit_for_intent(intent, self.adapter)
-            # Fase 3/4/5: sem TTS → SpeechDone imediato
-            await self._bus.publish(SpeechDone(turn_id=event.turn_id))
+
+            if self._tts is not None and intent.reply_text:
+                # Fase 6: sintetiza e envia SAY (cancelável por barge-in)
+                self._turn_task = asyncio.create_task(
+                    self._speak_reply(event.turn_id, intent.reply_text, session),
+                    name=f"nb_tts_{event.turn_id}",
+                )
+            else:
+                # Compat Fase 3–5: sem TTS → SpeechDone imediato
+                await self._bus.publish(SpeechDone(turn_id=event.turn_id))
 
         elif self._llm is not None:
             # ── Caminho LLM (Fase 5) ──────────────────────────────────────
@@ -436,9 +462,7 @@ class Orchestrator:
 
             # ── Sentencizer → SentenceReady ────────────────────────────────
             sz = Sentencizer()
-            sentences: list[str] = []
-            sentences.extend(sz.feed(reply_text))
-            sentences.extend(sz.flush())
+            sentences: list[str] = list(sz.feed(reply_text)) + list(sz.flush())
 
             for idx, sentence in enumerate(sentences):
                 await self._bus.publish(
@@ -475,13 +499,14 @@ class Orchestrator:
             session.intent_name = "llm_reply"
             session.reply_text = reply_text
 
-            # THINKING → SPEAKING
+            # THINKING → SPEAKING + reação visual imediata (< 300 ms)
             self._fsm.transition(TurnState.SPEAKING, turn_id=turn_id)
             session.mark("speaking_start")
-
             await self._robot.emit_for_intent(llm_intent, self.adapter)
 
-            # Fase 5: sem TTS → SpeechDone imediato
+            # Fase 6: TTS síntese frase a frase + SAY paginado
+            if self._tts is not None and sentences:
+                await self._run_tts_and_speak(turn_id, sentences, session)
             await self._bus.publish(SpeechDone(turn_id=turn_id))
 
         except asyncio.CancelledError:
@@ -493,6 +518,60 @@ class Orchestrator:
                 stage="llm",
                 reason=type(exc).__name__,
             ))
+
+    async def _speak_reply(
+        self, turn_id: int, reply_text: str, session: SessionContext
+    ) -> None:
+        """Task de TTS para o caminho de intent local. Cancelável por barge-in."""
+        try:
+            sz = Sentencizer()
+            sentences = list(sz.feed(reply_text)) + list(sz.flush())
+            if sentences:
+                await self._run_tts_and_speak(turn_id, sentences, session)
+            await self._bus.publish(SpeechDone(turn_id=turn_id))
+        except asyncio.CancelledError:
+            log.info("TTS reply turn_id=%d cancelado (barge-in?)", turn_id)
+        except Exception as exc:
+            log.exception("TTS reply turn_id=%d erro: %s", turn_id, exc)
+            await self._bus.publish(
+                TurnError(turn_id=turn_id, stage="tts", reason=type(exc).__name__)
+            )
+
+    async def _run_tts_and_speak(
+        self,
+        turn_id: int,
+        sentences: list[str],
+        session: SessionContext,
+    ) -> None:
+        """Sintetiza sentences via TTS e envia SAY ao firmware com pacing.
+
+        Registra tts_first_audio_ms e first_audio_out_ms ao enviar o 1º chunk.
+        """
+        first_audio_recorded = False
+
+        def _on_first(tid: int) -> None:
+            nonlocal first_audio_recorded
+            if not first_audio_recorded:
+                first_audio_recorded = True
+                t = time.monotonic()
+                elapsed_ms = (t - session.t_start) * 1000.0
+                self._metrics.record("tts_first_audio_ms", elapsed_ms)
+                self._metrics.record("first_audio_out_ms", elapsed_ms)
+                session.mark("first_audio_out", t)
+                log.info("Turno %d: primeiro SAY %.0f ms de VOICE_END", tid, elapsed_ms)
+
+        scheduler = OutputScheduler()
+
+        async def _aiter_sentences():
+            for s in sentences:
+                yield s
+
+        await scheduler.run(
+            turn_id=turn_id,
+            pcm_iter=self._tts.synthesize_stream(_aiter_sentences()),
+            adapter=self.adapter,
+            on_first_audio=_on_first,
+        )
 
     async def _on_speech_done(self, event: SpeechDone) -> None:
         """Turno de fala encerrado → volta a IDLE com baseline."""

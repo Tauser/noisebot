@@ -40,12 +40,16 @@ class Application:
         stt_provider = self._build_stt_provider()
         llm_provider = self._build_llm_provider()
 
+        tts_provider = self._build_tts_provider()
+        self._tts_provider = tts_provider
+
         self._orchestrator = Orchestrator(
             self._bus,
             config,
             get_adapter=get_adapter,
             stt_provider=stt_provider,
             llm_provider=llm_provider,
+            tts_provider=tts_provider,
         )
 
         # Fase 2: criar supervisor se transporte configurado e nao for dry_run
@@ -96,6 +100,20 @@ class Application:
         log.warning("LLM provider %s ainda não implementado; rodando sem LLM.", llm.provider)
         return None
 
+    def _build_tts_provider(self):
+        """Cria PiperServerTTS se o modelo estiver configurado."""
+        from .tts.piper_server import PiperServerTTS
+        tts = self._config.tts
+        if not tts.piper_model:
+            log.warning("TTS: NOISEBOT_PIPER_MODEL não configurado — TTS desabilitado.")
+            return None
+        return PiperServerTTS(
+            executable=tts.piper_executable,
+            model=tts.piper_model,
+            cache_size=tts.cache_size,
+            sample_rate=tts.sample_rate,
+        )
+
     def _build_supervisor(self):
         """Constroi ConnectionSupervisor com a factory de transporte correta."""
         from .transport.reconnect import ConnectionSupervisor
@@ -139,6 +157,14 @@ class Application:
             self._config.pipeline_mode.value,
             self._config.dry_run,
         )
+
+        # Fase 6: inicializa TTS antes de aceitar turnos
+        if self._tts_provider is not None:
+            try:
+                await self._tts_provider.initialize()
+            except Exception:
+                log.exception("TTS initialize falhou — TTS desabilitado para esta sessão.")
+                self._tts_provider = None
 
         orch_task = asyncio.create_task(
             self._orchestrator.run(),
