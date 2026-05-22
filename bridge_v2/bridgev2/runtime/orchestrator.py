@@ -120,6 +120,9 @@ class Orchestrator:
         self._vad = BargeInMonitor()
         self._t_barge_in: float | None = None   # timestamp para métrica
 
+        # Watchdog Fase 10: task que cancela turnos preso além do deadline
+        self._watchdog: asyncio.Task | None = None
+
         # StatusStore Fase 9.5: telemetria para a ops API
         self._store: Any | None = status_store
 
@@ -695,13 +698,47 @@ class Orchestrator:
     # -- Helpers internos ---------------------------------------------------
 
     async def _begin_turn(self) -> None:
-        """Inicia um novo turno: cria sessão e transiciona para LISTENING."""
+        """Inicia um novo turno: cria sessão, transiciona para LISTENING e arma watchdog."""
         self._session = SessionContext(turn_id=new_turn_id())
         self._session.set_deadline(TURN_DEADLINE_S)
         self._fsm.transition(TurnState.LISTENING, turn_id=self._session.turn_id)
         if self._stt is not None:
             await self._stt.reset()
+        # Fase 10: watchdog garante que o turno sempre termina (Invariante I-4)
+        if self._watchdog and not self._watchdog.done():
+            self._watchdog.cancel()
+        self._watchdog = asyncio.create_task(
+            self._run_watchdog(self._session),
+            name=f"nb_watchdog_{self._session.turn_id}",
+        )
         log.info("Turno %d iniciado (LISTENING)", self._session.turn_id)
+
+    async def _run_watchdog(self, session: SessionContext) -> None:
+        """Cancela o turno se o deadline for excedido — Invariante I-4."""
+        try:
+            while True:
+                await asyncio.sleep(2.0)
+                if self._session is not session:
+                    return   # turno terminou normalmente
+                if session.is_past_deadline():
+                    log.warning(
+                        "Watchdog: turno %d excedeu deadline de %.0f s — cancelando",
+                        session.turn_id, TURN_DEADLINE_S,
+                    )
+                    if self._store:
+                        self._store.record_error(
+                            kind="watchdog_timeout",
+                            turn_id=session.turn_id,
+                            message=f"deadline {TURN_DEADLINE_S}s excedido",
+                        )
+                    await self._bus.publish(TurnError(
+                        turn_id=session.turn_id,
+                        stage="watchdog",
+                        reason="deadline_exceeded",
+                    ))
+                    return
+        except asyncio.CancelledError:
+            pass
 
     async def _cancel_current_turn(self, reason: str = "") -> None:
         """Cancela a Task de turno atual se existir."""
@@ -723,3 +760,7 @@ class Orchestrator:
                 log.debug("Métricas (p50/p95): %s", {k: f"{v:.0f}ms" if v else "—" for k, v in snap.items()})
         self._session = None
         self._turn_task = None
+        # Cancela watchdog — turno terminou dentro do prazo
+        if self._watchdog and not self._watchdog.done():
+            self._watchdog.cancel()
+        self._watchdog = None
