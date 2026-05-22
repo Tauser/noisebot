@@ -1,6 +1,7 @@
 """bridgev2.ops.http_api — Servidor HTTP local-only async (Fase 9.5).
 
 Endpoints (§11.3 do BRIDGE_V2.md):
+  GET  /            Dashboard HTML (painel de operação)
   GET  /health
   GET  /ai/status
   GET  /ai/metrics
@@ -32,6 +33,7 @@ from .schemas import (
     health_response,
     ok_response,
 )
+from .dashboard import get_dashboard_html
 from .security import check_token, load_or_create_token
 from .status_store import StatusStore
 from ..service.healthcheck import is_healthy
@@ -72,6 +74,7 @@ class OpsHttpServer:
 
     def _build_app(self) -> web.Application:
         wa = web.Application(middlewares=[self._error_middleware])
+        wa.router.add_get("/",                self._get_dashboard)
         wa.router.add_get("/health",          self._get_health)
         wa.router.add_get("/ai/status",       self._get_ai_status)
         wa.router.add_get("/ai/metrics",      self._get_ai_metrics)
@@ -119,6 +122,13 @@ class OpsHttpServer:
             )
 
     # -- GET handlers ----------------------------------------------------------
+
+    async def _get_dashboard(self, request: web.Request) -> web.Response:
+        return web.Response(
+            text=get_dashboard_html(),
+            content_type="text/html",
+            charset="utf-8",
+        )
 
     async def _get_health(self, request: web.Request) -> web.Response:
         healthy = is_healthy()

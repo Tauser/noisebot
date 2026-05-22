@@ -12,6 +12,8 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
+from bridgev2.config import load_config
+from bridgev2.ops.config_controller import ConfigController
 from bridgev2.ops.http_api import OpsHttpServer
 from bridgev2.ops.status_store import StatusStore
 from bridgev2.metrics.registry import MetricsRegistry
@@ -299,6 +301,44 @@ class TestPostAiConfig:
         assert resp.status == 200
         assert data["status"] == "ok"
 
+    def test_runtime_config_updates_application_snapshot(self, monkeypatch):
+        monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "openai")
+        monkeypatch.setenv("NOISEBOT_LLM_MODEL", "gpt-4o-mini")
+        monkeypatch.setenv("NOISEBOT_LLM_MAX_OUTPUT_TOKENS", "140")
+        monkeypatch.setenv("NOISEBOT_PIPELINE_MODE", "normal")
+
+        fake_app = MagicMock()
+        fake_app._config = load_config()
+        fake_app._orchestrator.set_llm_provider = MagicMock()
+        built_with = []
+
+        def build_llm_provider():
+            cfg = fake_app._config
+            built_with.append((
+                cfg.llm.provider.value,
+                cfg.llm.model,
+                cfg.llm.max_output_tokens,
+                cfg.pipeline_mode.value,
+            ))
+            return "new-provider"
+
+        fake_app._build_llm_provider.side_effect = build_llm_provider
+
+        changes = ConfigController(fake_app).apply({
+            "provider": "gemini",
+            "model": "gemini-1.5-flash",
+            "max_tokens": 77,
+            "mode": "local_only",
+        })
+
+        assert changes["provider"]["new"] == "gemini"
+        assert fake_app._config.llm.provider.value == "gemini"
+        assert fake_app._config.llm.model == "gemini-1.5-flash"
+        assert fake_app._config.llm.max_output_tokens == 77
+        assert fake_app._config.pipeline_mode.value == "local_only"
+        assert built_with[-1] == ("gemini", "gemini-1.5-flash", 77, "local_only")
+        fake_app._orchestrator.set_llm_provider.assert_called_once_with("new-provider")
+
 
 # ---------------------------------------------------------------------------
 # POST /ai/mode
@@ -356,3 +396,131 @@ class TestPostMetricsReset:
         assert resp.status == 200
         assert store.turn_counters["total"] == 0
         assert store.turn_counters["llm"] == 0
+
+
+# ---------------------------------------------------------------------------
+# GET / — Dashboard HTML
+# ---------------------------------------------------------------------------
+
+class TestGetDashboard:
+    @pytest.mark.asyncio
+    async def test_root_returns_200(self):
+        ops = _make_ops()
+        resp, _ = await _do("get", ops._web_app, "/health")  # warm-up
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        assert r.status == 200
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_root_content_type_html(self):
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        assert "text/html" in r.content_type
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_dashboard_contains_title(self):
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        body = await r.text()
+        await client.close()
+        assert "Bridge v2" in body
+
+    @pytest.mark.asyncio
+    async def test_dashboard_has_status_section(self):
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        body = await r.text()
+        await client.close()
+        assert "status-grid" in body or "Status" in body
+
+    @pytest.mark.asyncio
+    async def test_dashboard_has_metrics_section(self):
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        body = await r.text()
+        await client.close()
+        assert "Métricas" in body or "metrics" in body.lower()
+
+    @pytest.mark.asyncio
+    async def test_dashboard_has_config_section(self):
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        body = await r.text()
+        await client.close()
+        assert "Configuração" in body or "cfg-provider" in body
+
+    @pytest.mark.asyncio
+    async def test_dashboard_has_token_section(self):
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        body = await r.text()
+        await client.close()
+        assert "token" in body.lower()
+
+    @pytest.mark.asyncio
+    async def test_dashboard_never_shows_api_key_value(self):
+        """O HTML do dashboard nunca deve referenciar um valor de API key."""
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-should-not-appear-in-html"}):
+            r = await client.get("/")
+            body = await r.text()
+        await client.close()
+        assert "sk-should-not-appear-in-html" not in body
+
+    @pytest.mark.asyncio
+    async def test_dashboard_has_restart_button(self):
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        body = await r.text()
+        await client.close()
+        assert "restart" in body.lower() or "reinício" in body.lower()
+
+    @pytest.mark.asyncio
+    async def test_dashboard_has_errors_section(self):
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        body = await r.text()
+        await client.close()
+        assert "Erros" in body or "errors" in body.lower()
+
+    @pytest.mark.asyncio
+    async def test_dashboard_has_tests_section(self):
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        body = await r.text()
+        await client.close()
+        assert "Testes" in body or "tests" in body.lower()
+
+    @pytest.mark.asyncio
+    async def test_dashboard_warns_about_api_keys(self):
+        """Dashboard deve ter aviso claro sobre não usar API keys aqui."""
+        ops = _make_ops()
+        client = TestClient(TestServer(ops._web_app))
+        await client.start_server()
+        r = await client.get("/")
+        body = await r.text()
+        await client.close()
+        assert "variáveis de ambiente" in body or "env" in body.lower()
