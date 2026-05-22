@@ -80,6 +80,9 @@ class Orchestrator:
     tts_provider: TTSProvider | None
         Provider TTS (Fase 6+). None = SpeechDone imediato (compat Fase 3–5).
         Deve implementar synthesize_stream(sentences) → AsyncIterator[bytes].
+
+    status_store: StatusStore | None
+        Estado de runtime compartilhado com a ops API (Fase 9.5).
     """
 
     def __init__(
@@ -90,6 +93,7 @@ class Orchestrator:
         stt_provider: Any | None = None,
         llm_provider: Any | None = None,
         tts_provider: Any | None = None,
+        status_store: Any | None = None,
     ) -> None:
         self._bus = bus
         self._config = config
@@ -116,6 +120,9 @@ class Orchestrator:
         self._vad = BargeInMonitor()
         self._t_barge_in: float | None = None   # timestamp para métrica
 
+        # StatusStore Fase 9.5: telemetria para a ops API
+        self._store: Any | None = status_store
+
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
 
@@ -130,6 +137,10 @@ class Orchestrator:
     @property
     def metrics(self) -> MetricsRegistry:
         return self._metrics
+
+    def set_llm_provider(self, provider: Any | None) -> None:
+        """Atualiza o provider LLM em runtime (usado pelo ConfigController)."""
+        self._llm = provider
 
     def set_tts_provider(self, provider: Any | None) -> None:
         """Atualiza o provider TTS em runtime.
@@ -220,11 +231,15 @@ class Orchestrator:
     async def _on_firmware_connected(self, event: FirmwareConnected) -> None:
         log.info("Firmware conectado. capabilities=%s", event.peer_capabilities.get("features", []))
         self._fsm.reset_to_idle()
+        if self._store:
+            self._store.firmware_connected = True
 
     async def _on_firmware_disconnected(self, event: FirmwareDisconnected) -> None:
         log.warning("Firmware desconectado: %s", event.reason)
         await self._cancel_current_turn(reason="transport_disconnected")
         self._fsm.reset_to_idle()
+        if self._store:
+            self._store.firmware_connected = False
 
     async def _on_wake(self, event: WakeDetected) -> None:
         if not self._fsm.is_idle:
@@ -610,10 +625,22 @@ class Orchestrator:
 
         await self._robot.reset_baseline(self.adapter, event.turn_id)
         self._fsm.try_transition(TurnState.IDLE)
+        # Telemetria: registra outcome do turno
+        if self._store and session:
+            intent = session.intent_name or ""
+            outcome = "llm" if intent == "llm_reply" else ("local_intent" if intent else "ok")
+            self._store.record_turn(event.turn_id, outcome)
         await self._finish_turn()
 
     async def _on_barge_in(self, event: BargeInDetected) -> None:
         if not self._fsm.can_interrupt:
+            return
+        if self._session is None or self._session.turn_id != event.turn_id:
+            log.debug(
+                "Barge-in stale ignorado: event_turn=%d session_turn=%s",
+                event.turn_id,
+                self._session.turn_id if self._session else "None",
+            )
             return
 
         t_barge = time.monotonic()
@@ -632,6 +659,8 @@ class Orchestrator:
         t_cancelled = time.monotonic()
         self._metrics.record("interruption_cancel_ms", (t_cancelled - t_barge) * 1000.0)
         log.info("Barge-in: turno %d cancelado em %.0f ms", event.turn_id, (t_cancelled - t_barge) * 1000.0)
+        if self._store:
+            self._store.record_turn(event.turn_id, "interrupted")
 
         # Restaura baseline IDLE no robô (regra de baseline do CLAUDE.md)
         await self._robot.reset_baseline(adapter, event.turn_id)
@@ -641,16 +670,23 @@ class Orchestrator:
 
         # INTERRUPTED → LISTENING: inicia novo turno para capturar a nova fala
         self._fsm.try_transition(TurnState.INTERRUPTED)
-        self._fsm.try_transition(TurnState.LISTENING)
 
         # Nova sessão (novo turn_id monotônico)
         self._session = SessionContext(turn_id=new_turn_id())
         self._session.set_deadline(TURN_DEADLINE_S)
+        self._fsm.try_transition(TurnState.LISTENING, turn_id=self._session.turn_id)
         if self._stt is not None:
             await self._stt.reset()
 
     async def _on_turn_error(self, event: TurnError) -> None:
         log.error("Erro no turno %d estágio=%s: %s", event.turn_id, event.stage, event.reason)
+        if self._store:
+            self._store.record_turn(event.turn_id, "failed")
+            self._store.record_error(
+                kind=f"{event.stage}_failure",
+                turn_id=event.turn_id,
+                message=event.reason[:200],
+            )
         await self._cancel_current_turn(reason=f"error:{event.stage}")
         self._fsm.try_transition(TurnState.ERROR_RECOVERY)
         self._fsm.try_transition(TurnState.IDLE)

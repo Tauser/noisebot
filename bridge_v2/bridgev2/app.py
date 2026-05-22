@@ -43,6 +43,10 @@ class Application:
         tts_provider = self._build_tts_provider()
         self._tts_provider = tts_provider
 
+        # Fase 9.5: StatusStore — estado compartilhado entre orchestrator e ops API
+        from .ops.status_store import StatusStore
+        self._status_store = StatusStore()
+
         self._orchestrator = Orchestrator(
             self._bus,
             config,
@@ -50,7 +54,11 @@ class Application:
             stt_provider=stt_provider,
             llm_provider=llm_provider,
             tts_provider=tts_provider,
+            status_store=self._status_store,
         )
+
+        # Fase 9.5: Ops HTTP API
+        self._ops_server = self._build_ops_server()
 
         # Fase 2: criar supervisor se transporte configurado e nao for dry_run
         transport = config.transport
@@ -99,6 +107,16 @@ class Application:
             )
         log.warning("LLM provider %s ainda não implementado; rodando sem LLM.", llm.provider)
         return None
+
+    def _build_ops_server(self):
+        """Cria o servidor HTTP de operação se habilitado."""
+        from .ops.http_api import OpsHttpServer
+        return OpsHttpServer(
+            app=self,
+            store=self._status_store,
+            host="127.0.0.1",
+            port=self._config.ops.port,
+        )
 
     def _build_tts_provider(self):
         """Cria PiperServerTTS se o modelo estiver configurado."""
@@ -178,6 +196,12 @@ class Application:
         hc_task = asyncio.create_task(healthcheck_loop(), name="nb_healthcheck")
         self._tasks.append(hc_task)
 
+        # Fase 9.5: ops HTTP API
+        try:
+            await self._ops_server.start()
+        except Exception:
+            log.exception("Ops API: falha ao iniciar — pipeline continua sem dashboard.")
+
         if self._supervisor is not None:
             supervisor_task = asyncio.create_task(
                 self._supervisor.run(),
@@ -199,6 +223,8 @@ class Application:
             return
         self._running = False
         log.info("Application: encerrando...")
+
+        await self._ops_server.stop()
 
         if self._supervisor is not None:
             await self._supervisor.shutdown()
