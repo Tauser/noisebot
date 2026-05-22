@@ -1,0 +1,46 @@
+# bridgev2.service — Unit systemd para NoiseBot Bridge v2 (usuário, não sistema)
+#
+# Instalação (Linux / Raspberry Pi):
+#   mkdir -p ~/.config/systemd/user
+#   cp bridgev2.service ~/.config/systemd/user/
+#   # Edite ExecStart e WorkingDirectory se necessário
+#   systemctl --user daemon-reload
+#   systemctl --user enable bridgev2
+#   systemctl --user start bridgev2
+#
+# Ou via CLI do bridge:
+#   python -m bridgev2 service install
+#   python -m bridgev2 service start
+#
+# Logs:
+#   journalctl --user -u bridgev2 -f
+
+[Unit]
+Description=NoiseBot Bridge v2 — pipeline de voz async
+Documentation=https://github.com/tauser/noisebot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Ajuste ExecStart para o Python do venv se aplicável:
+#   ExecStart=/home/user/.venv/bin/python -m bridgev2
+ExecStart=python3 -m bridgev2
+WorkingDirectory=%h
+Restart=on-failure
+RestartSec=5
+# Limita restarts em loop de crash (max 5 em 1 minuto)
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bridgev2
+
+# Variáveis de ambiente — alternativa ao arquivo .env:
+# Environment=NOISEBOT_HOST=192.168.1.x
+# Environment=NOISEBOT_PIPELINE_MODE=normal
+# EnvironmentFile=%h/.bridgev2/.env
+
+[Install]
+WantedBy=default.target

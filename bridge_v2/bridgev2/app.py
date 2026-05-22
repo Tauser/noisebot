@@ -165,12 +165,18 @@ class Application:
             except Exception:
                 log.exception("TTS initialize falhou — TTS desabilitado para esta sessão.")
                 self._tts_provider = None
+                self._orchestrator.set_tts_provider(None)
 
         orch_task = asyncio.create_task(
             self._orchestrator.run(),
             name="nb_orchestrator",
         )
         self._tasks.append(orch_task)
+
+        # Fase 9: healthcheck loop — atualiza arquivo de heartbeat a cada 10 s
+        from .service.healthcheck import healthcheck_loop
+        hc_task = asyncio.create_task(healthcheck_loop(), name="nb_healthcheck")
+        self._tasks.append(hc_task)
 
         if self._supervisor is not None:
             supervisor_task = asyncio.create_task(
