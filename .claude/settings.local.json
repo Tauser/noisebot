@@ -22,7 +22,22 @@
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Tauser\\\\Downloads\\\\sd3.1.0\" -Recurse -File | Where-Object { $_.Extension -in @\\('.txt', '.md', '.json', '.xml', '.cfg', '.conf', '.csv'\\) } | Select-Object FullName)",
       "PowerShell($files = Get-ChildItem \"C:\\\\Users\\\\Tauser\\\\Downloads\\\\sd3.1.0\" -Recurse -File; $files.Count; $files | Select-Object -First 10 | Select-Object FullName)",
       "Bash(Get-ChildItem -Path \"D:\\\\Projetos\\\\Noisebot\\\\components\" -Recurse -Name)",
-      "Skill(update-config)"
+      "Skill(update-config)",
+      "Bash(python -m pytest tests/unit/test_cache.py tests/unit/test_piper_server.py tests/unit/test_playback.py -v)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python -m pytest tests/unit/test_vad.py tests/integration/test_barge_in.py -v)",
+      "Bash(python -m pytest tests/unit/test_vad.py tests/integration/test_barge_in.py -q)",
+      "Bash(python -m pytest tests/unit/test_healthcheck.py tests/unit/test_service_manager.py -v)",
+      "Bash(python -m pytest tests/unit/test_ops_security.py tests/integration/test_dashboard_api.py -v)",
+      "Bash(python -m pytest tests/integration/test_dashboard_api.py::TestGetHealth::test_health_returns_200_when_healthy -v -s)",
+      "Bash(python -m pytest tests/integration/test_dashboard_api.py::TestGetHealth -v -s)",
+      "Bash(python -m pytest tests/unit/test_ops_security.py tests/integration/test_dashboard_api.py -q)",
+      "Bash(python -m pytest tests/integration/test_resilience.py tests/integration/test_protocol_fuzz.py tests/integration/test_memory.py -v)",
+      "Bash(python -m pytest tests/integration/test_resilience.py tests/integration/test_protocol_fuzz.py tests/integration/test_memory.py -q)",
+      "Bash(python -m pytest tests/integration/test_memory.py::TestMemorySmoke::test_watchdog_tasks_not_accumulated -v -s)",
+      "Bash(python -m pytest tests/integration/test_resilience.py::TestLlmFailures::test_llm_exception_ends_turn_in_idle -v -s)",
+      "Bash(python -m pytest \"tests/integration/test_resilience.py::TestLlmFailures::test_llm_exception_ends_turn_in_idle\" -v)",
+      "Bash(python -m pytest tests/integration/test_dashboard_api.py -q)"
     ]
   }
 }
