@@ -42,16 +42,29 @@
 #include "wake_service.h"
 #include "audio_service.h"
 #include "touch_service.h"
+#include "time_service.h"
+#include "agenda_service.h"
+#include "synth_service.h"
+#include "sd_hal.h"
+#include "nb_hw_config.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <errno.h>
 
 #define TAG              "nb_web"
 #define SD_WWW_INDEX     "/sdcard/www/index.html"
 #define SD_WWW_JS        "/sdcard/www/app.js"
 #define SD_WWW_CSS       "/sdcard/www/style.css"
 #define MAX_BODY_LEN     512
+#define FILE_PATH_MAX    192
+#define FILE_UPLOAD_MAX  (256u * 1024u)
+#define FILE_READ_MAX    (8u * 1024u)
 
 /* ── Log ring buffer ─────────────────────────────────────────────────────── */
 
@@ -87,9 +100,11 @@ static httpd_handle_t     s_server     = NULL;
 static int                s_ws_fd      = -1;
 static portMUX_TYPE       s_mux        = portMUX_INITIALIZER_UNLOCKED;
 static esp_timer_handle_t s_audio_tmr       = NULL;
+static esp_timer_handle_t s_http_health_tmr = NULL;
 static esp_timer_handle_t s_servo_calib_tmr = NULL;  /* auto-resume conductor após calibração */
 static nb_event_type_t    s_last_touch_event = NB_EVT_NONE;
 static int64_t            s_last_touch_us    = 0;
+static volatile bool      s_http_restart_pending = false;
 
 typedef struct {
     char     provider[24];
@@ -443,6 +458,307 @@ static bool recv_body(httpd_req_t *req, char *buf, size_t size, int *out_len)
     return true;
 }
 
+/* ── File manager SD ─────────────────────────────────────────────────────── */
+
+static bool get_query_value(httpd_req_t *req, const char *key, char *out, size_t out_len)
+{
+    char query[180];
+    if (!out || out_len == 0u) return false;
+    out[0] = '\0';
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) return false;
+    return httpd_query_key_value(query, key, out, out_len) == ESP_OK;
+}
+
+static bool fs_path_is_safe(const char *path)
+{
+    if (!path || path[0] != '/') return false;
+    if (strstr(path, "..") || strchr(path, '\\')) return false;
+    for (const char *p = path; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c < 0x20u || c == 0x7Fu) return false;
+    }
+    return true;
+}
+
+static int url_hex_val(char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static void url_decode_in_place(char *s)
+{
+    if (!s) return;
+    char *r = s;
+    char *w = s;
+    while (*r) {
+        if (*r == '%' && r[1] && r[2]) {
+            int hi = url_hex_val(r[1]);
+            int lo = url_hex_val(r[2]);
+            if (hi >= 0 && lo >= 0) {
+                *w++ = (char)((hi << 4) | lo);
+                r += 3;
+                continue;
+            }
+        }
+        *w++ = (*r == '+') ? ' ' : *r;
+        r++;
+    }
+    *w = '\0';
+}
+
+static bool fs_path_is_write_allowed(const char *path)
+{
+    return strncmp(path, "/assets/", 8) == 0 ||
+           strncmp(path, "/config/", 8) == 0 ||
+           strncmp(path, "/memory/", 8) == 0 ||
+           strncmp(path, "/www/", 5) == 0;
+}
+
+static bool fs_full_path(httpd_req_t *req, char *rel, size_t rel_len,
+                         char *full, size_t full_len, bool require_write)
+{
+    char path[FILE_PATH_MAX];
+    if (!sd_hal_is_mounted() && sd_hal_try_remount() != ESP_OK) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":false,\"error\":\"sd_not_mounted\"}");
+        return false;
+    }
+    if (!get_query_value(req, "path", path, sizeof(path))) {
+        strlcpy(path, "/", sizeof(path));
+    }
+    url_decode_in_place(path);
+    if (!fs_path_is_safe(path) || (require_write && !fs_path_is_write_allowed(path))) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"invalid_path\"}");
+        return false;
+    }
+    if (strlen(NB_SD_MOUNT_POINT) + strlen(path) + 1u > full_len) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"path_too_long\"}");
+        return false;
+    }
+    strlcpy(full, NB_SD_MOUNT_POINT, full_len);
+    strlcat(full, path, full_len);
+    if (rel && rel_len > 0u) {
+        strlcpy(rel, path, rel_len);
+    }
+    return true;
+}
+
+static esp_err_t handle_api_files_list(httpd_req_t *req)
+{
+    char rel[FILE_PATH_MAX];
+    char full[FILE_PATH_MAX + 16];
+    if (!fs_full_path(req, rel, sizeof(rel), full, sizeof(full), false)) return ESP_OK;
+
+    struct stat st;
+    if (stat(full, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"directory_not_found\"}");
+        return ESP_OK;
+    }
+
+    DIR *dir = opendir(full);
+    if (!dir) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"opendir_failed\"}");
+        return ESP_OK;
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr_chunk(req, "{\"ok\":true,\"mounted\":true,\"path\":\"");
+    char esc_path[FILE_PATH_MAX * 2];
+    json_escape(rel, esc_path, sizeof(esc_path));
+    httpd_resp_sendstr_chunk(req, esc_path);
+    httpd_resp_sendstr_chunk(req, "\",\"items\":[");
+
+    bool first = true;
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+
+        char child[FILE_PATH_MAX + 80];
+        if (strlen(full) + 1u + strlen(ent->d_name) + 1u > sizeof(child)) {
+            continue;
+        }
+        strlcpy(child, full, sizeof(child));
+        strlcat(child, "/", sizeof(child));
+        strlcat(child, ent->d_name, sizeof(child));
+        if (stat(child, &st) != 0) continue;
+
+        char name[160];
+        json_escape(ent->d_name, name, sizeof(name));
+        char item[260];
+        snprintf(item, sizeof(item),
+                 "%s{\"name\":\"%s\",\"dir\":%s,\"size\":%llu}",
+                 first ? "" : ",",
+                 name,
+                 S_ISDIR(st.st_mode) ? "true" : "false",
+                 (unsigned long long)st.st_size);
+        httpd_resp_sendstr_chunk(req, item);
+        first = false;
+    }
+    closedir(dir);
+
+    httpd_resp_sendstr_chunk(req, "]}");
+    return httpd_resp_sendstr_chunk(req, NULL);
+}
+
+static esp_err_t handle_api_file_read(httpd_req_t *req)
+{
+    char full[FILE_PATH_MAX + 16];
+    if (!fs_full_path(req, NULL, 0u, full, sizeof(full), false)) return ESP_OK;
+
+    struct stat st;
+    if (stat(full, &st) != 0 || S_ISDIR(st.st_mode)) {
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "file not found");
+        return ESP_OK;
+    }
+    if ((uint64_t)st.st_size > FILE_READ_MAX) {
+        httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE, "file too large");
+        return ESP_OK;
+    }
+
+    FILE *f = fopen(full, "rb");
+    if (!f) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "open failed");
+        return ESP_OK;
+    }
+
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    char chunk[256];
+    size_t n;
+    while ((n = fread(chunk, 1u, sizeof(chunk), f)) > 0u) {
+        if (httpd_resp_send_chunk(req, chunk, n) != ESP_OK) {
+            fclose(f);
+            return ESP_OK;
+        }
+    }
+    fclose(f);
+    return httpd_resp_send_chunk(req, NULL, 0u);
+}
+
+static esp_err_t handle_api_file_write(httpd_req_t *req)
+{
+    char full[FILE_PATH_MAX + 16];
+    if (!fs_full_path(req, NULL, 0u, full, sizeof(full), true)) return ESP_OK;
+
+    if (req->content_len > FILE_UPLOAD_MAX) {
+        httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE, "file too large");
+        return ESP_OK;
+    }
+
+    FILE *f = fopen(full, "wb");
+    if (!f) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "open failed");
+        return ESP_OK;
+    }
+
+    char chunk[512];
+    size_t remaining = req->content_len;
+    while (remaining > 0u) {
+        size_t want = remaining < sizeof(chunk) ? remaining : sizeof(chunk);
+        int got = httpd_req_recv(req, chunk, want);
+        if (got <= 0) {
+            fclose(f);
+            unlink(full);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "upload failed");
+            return ESP_OK;
+        }
+        if (fwrite(chunk, 1u, (size_t)got, f) != (size_t)got) {
+            fclose(f);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "write failed");
+            return ESP_OK;
+        }
+        remaining -= (size_t)got;
+    }
+    fclose(f);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}");
+}
+
+static esp_err_t handle_api_file_delete(httpd_req_t *req)
+{
+    char full[FILE_PATH_MAX + 16];
+    if (!fs_full_path(req, NULL, 0u, full, sizeof(full), true)) return ESP_OK;
+
+    struct stat st;
+    if (stat(full, &st) != 0 || S_ISDIR(st.st_mode)) {
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "file not found");
+        return ESP_OK;
+    }
+    if (unlink(full) != 0) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "delete failed");
+        return ESP_OK;
+    }
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}");
+}
+
+static esp_err_t handle_api_dir_create(httpd_req_t *req)
+{
+    char full[FILE_PATH_MAX + 16];
+    if (!fs_full_path(req, NULL, 0u, full, sizeof(full), true)) return ESP_OK;
+    if (mkdir(full, 0775) != 0 && errno != EEXIST) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "mkdir failed");
+        return ESP_OK;
+    }
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}");
+}
+
+static esp_err_t handle_api_file_rename(httpd_req_t *req)
+{
+    char query[FILE_PATH_MAX * 3];
+    char from_rel[FILE_PATH_MAX];
+    char to_rel[FILE_PATH_MAX];
+    char from_full[FILE_PATH_MAX + 16];
+    char to_full[FILE_PATH_MAX + 16];
+
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+        httpd_query_key_value(query, "from", from_rel, sizeof(from_rel)) != ESP_OK ||
+        httpd_query_key_value(query, "to", to_rel, sizeof(to_rel)) != ESP_OK) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_path\"}");
+    }
+
+    url_decode_in_place(from_rel);
+    url_decode_in_place(to_rel);
+
+    if (!sd_hal_is_mounted() && sd_hal_try_remount() != ESP_OK) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":false,\"error\":\"sd_not_mounted\"}");
+    }
+
+    if (!fs_path_is_safe(from_rel) || !fs_path_is_safe(to_rel) ||
+        !fs_path_is_write_allowed(from_rel) || !fs_path_is_write_allowed(to_rel)) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"invalid_path\"}");
+    }
+
+    if (strlen(NB_SD_MOUNT_POINT) + strlen(from_rel) + 1u > sizeof(from_full) ||
+        strlen(NB_SD_MOUNT_POINT) + strlen(to_rel) + 1u > sizeof(to_full)) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"path_too_long\"}");
+    }
+
+    strlcpy(from_full, NB_SD_MOUNT_POINT, sizeof(from_full));
+    strlcat(from_full, from_rel, sizeof(from_full));
+    strlcpy(to_full, NB_SD_MOUNT_POINT, sizeof(to_full));
+    strlcat(to_full, to_rel, sizeof(to_full));
+
+    if (rename(from_full, to_full) != 0) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"rename_failed\"}");
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}");
+}
+
 static esp_err_t handle_api_config_post(httpd_req_t *req)
 {
     char body[MAX_BODY_LEN];
@@ -622,6 +938,16 @@ static esp_err_t handle_api_command(httpd_req_t *req)
             NB_LOGI(TAG, "command ACTION %s via API", value_j->valuestring);
             executed = true;
         }
+    }
+
+    if (cJSON_IsString(type_j) &&
+        strcmp(type_j->valuestring, "ALERT") == 0 &&
+        cJSON_IsString(value_j) &&
+        strcmp(value_j->valuestring, "SILENCE") == 0)
+    {
+        synth_stop();
+        NB_LOGI(TAG, "alerta silenciado via API");
+        executed = true;
     }
 
     cJSON_Delete(root);
@@ -947,22 +1273,30 @@ static esp_err_t handle_api_version(httpd_req_t *req)
     return httpd_resp_sendstr(req, buf);
 }
 
-static esp_err_t handle_api_health(httpd_req_t *req)
+static void send_health_object(httpd_req_t *req, bool wrap)
 {
     char buf[256];
     snprintf(buf, sizeof(buf),
-        "{\"heap_dram_free\":%lu,\"heap_dram_min\":%lu,"
+        "%s\"heap_dram_free\":%lu,\"heap_dram_min\":%lu,"
         "\"heap_psram_free\":%lu,\"heap_psram_min\":%lu,"
-        "\"task_count\":%lu,\"uptime_s\":%lu,\"health\":%u}",
+        "\"task_count\":%lu,\"uptime_s\":%lu,\"health\":%u%s",
+        wrap ? "{" : "",
         (unsigned long)esp_get_free_heap_size(),
         (unsigned long)esp_get_minimum_free_heap_size(),
         (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
         (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
         (unsigned long)uxTaskGetNumberOfTasks(),
         (unsigned long)diagnostics_get_uptime_s(),
-        (unsigned)diagnostics_get_health_score());
+        (unsigned)diagnostics_get_health_score(),
+        wrap ? "}" : "");
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+static esp_err_t handle_api_health(httpd_req_t *req)
+{
     httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, buf);
+    send_health_object(req, true);
+    return httpd_resp_sendstr_chunk(req, NULL);
 }
 
 static esp_err_t handle_api_restart(httpd_req_t *req)
@@ -1209,18 +1543,31 @@ static esp_err_t handle_api_idle_post(httpd_req_t *req)
 
 /* ── Etapa 15.5 — WiFi provisioning e config completa ───────────────────── */
 
-static esp_err_t handle_api_wifi_get(httpd_req_t *req)
+static void send_wifi_object(httpd_req_t *req, bool wrap)
 {
     bool connected  = wifi_service_is_connected();
     const char *ip  = wifi_service_get_ip();
     const char *sid = wifi_service_get_ssid();
     int8_t rssi     = wifi_service_get_rssi();
-    char buf[128];
+    uint16_t reason = wifi_service_get_last_disconnect_reason();
+    uint32_t disc_count = wifi_service_get_disconnect_count();
+    char buf[192];
     snprintf(buf, sizeof(buf),
-        "{\"connected\":%s,\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d}",
-        connected ? "true" : "false", sid, ip, (int)rssi);
+        "%s\"connected\":%s,\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,"
+        "\"last_disconnect_reason\":%u,\"disconnect_count\":%lu%s",
+        wrap ? "{" : "",
+        connected ? "true" : "false", sid, ip, (int)rssi,
+        (unsigned)reason,
+        (unsigned long)disc_count,
+        wrap ? "}" : "");
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+static esp_err_t handle_api_wifi_get(httpd_req_t *req)
+{
     httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, buf);
+    send_wifi_object(req, true);
+    return httpd_resp_sendstr_chunk(req, NULL);
 }
 
 static esp_err_t handle_api_wifi_post(httpd_req_t *req)
@@ -1326,7 +1673,7 @@ static esp_err_t handle_api_persona_delete(httpd_req_t *req)
         "{\"ok\":true,\"note\":\"effective after restart\"}");
 }
 
-static esp_err_t handle_api_touch_get(httpd_req_t *req)
+static void send_touch_object(httpd_req_t *req, bool wrap)
 {
     nb_touch_debug_t dbg;
     touch_service_get_debug(&dbg);
@@ -1344,10 +1691,11 @@ static esp_err_t handle_api_touch_get(httpd_req_t *req)
 
     char buf[320];
     snprintf(buf, sizeof(buf),
-        "{\"raw\":%lu,\"filtered\":%lu,\"baseline\":%lu,"
+        "%s\"raw\":%lu,\"filtered\":%lu,\"baseline\":%lu,"
         "\"threshold_on\":%lu,\"threshold_off\":%lu,"
         "\"state\":\"%s\",\"pressed\":%s,\"duration_ms\":%lu,"
-        "\"last_event\":\"%s\",\"last_event_age_ms\":%lld}",
+        "\"last_event\":\"%s\",\"last_event_age_ms\":%lld%s",
+        wrap ? "{" : "",
         (unsigned long)dbg.raw,
         (unsigned long)dbg.filtered_raw,
         (unsigned long)dbg.baseline,
@@ -1357,10 +1705,393 @@ static esp_err_t handle_api_touch_get(httpd_req_t *req)
         pressed ? "true" : "false",
         (unsigned long)dbg.touch_duration_ms,
         touch_event_name(last_event),
-        (long long)age_ms);
+        (long long)age_ms,
+        wrap ? "}" : "");
+    httpd_resp_sendstr_chunk(req, buf);
+}
+
+static esp_err_t handle_api_touch_get(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    send_touch_object(req, true);
+    return httpd_resp_sendstr_chunk(req, NULL);
+}
+
+/* ── Agenda local: hora, timers, lembretes e alarmes ────────────────────── */
+
+static void format_local_time(char *dst, size_t dst_len)
+{
+    struct tm tm_now;
+    if (time_service_get_local_time(&tm_now) != ESP_OK) {
+        if (dst_len > 0u) dst[0] = '\0';
+        return;
+    }
+    snprintf(dst, dst_len, "%04d-%02d-%02d %02d:%02d:%02d",
+             tm_now.tm_year + 1900,
+             tm_now.tm_mon + 1,
+             tm_now.tm_mday,
+             tm_now.tm_hour,
+             tm_now.tm_min,
+             tm_now.tm_sec);
+}
+
+static esp_err_t send_time_object(httpd_req_t *req, bool wrap)
+{
+    char local_time[24];
+    char tz_name[NB_TIME_TZ_NAME_MAX * 2];
+    char tz_posix[NB_TIME_TZ_POSIX_MAX * 2];
+    char location[NB_TIME_LOCATION_MAX * 2];
+    format_local_time(local_time, sizeof(local_time));
+    json_escape(time_service_get_tz_name(), tz_name, sizeof(tz_name));
+    json_escape(time_service_get_tz_posix(), tz_posix, sizeof(tz_posix));
+    json_escape(time_service_get_location(), location, sizeof(location));
+
+    time_t now = 0;
+    time(&now);
+
+    char chunk[96];
+    if (wrap) {
+        httpd_resp_sendstr_chunk(req, "{");
+    }
+    snprintf(chunk, sizeof(chunk), "\"synced\":%s,\"epoch\":%lld,",
+             time_service_is_synced() ? "true" : "false",
+             (long long)now);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    httpd_resp_sendstr_chunk(req, "\"timezone\":\"");
+    httpd_resp_sendstr_chunk(req, tz_name);
+    httpd_resp_sendstr_chunk(req, "\",\"posix_tz\":\"");
+    httpd_resp_sendstr_chunk(req, tz_posix);
+    httpd_resp_sendstr_chunk(req, "\",\"location_label\":\"");
+    httpd_resp_sendstr_chunk(req, location);
+    httpd_resp_sendstr_chunk(req, "\",\"local_time\":\"");
+    httpd_resp_sendstr_chunk(req, local_time);
+    httpd_resp_sendstr_chunk(req, "\"");
+    if (wrap) {
+        httpd_resp_sendstr_chunk(req, "}");
+    }
+    return ESP_OK;
+}
+
+static esp_err_t handle_api_time_get(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    send_time_object(req, true);
+    return httpd_resp_sendstr_chunk(req, NULL);
+}
+
+static esp_err_t handle_api_time_config(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    if (!recv_body(req, body, sizeof(body), NULL)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+    cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
+        return ESP_OK;
+    }
+
+    const cJSON *posix_j = cJSON_GetObjectItemCaseSensitive(root, "posix_tz");
+    const cJSON *tz_j    = cJSON_GetObjectItemCaseSensitive(root, "timezone");
+    const cJSON *loc_j   = cJSON_GetObjectItemCaseSensitive(root, "location_label");
+    esp_err_t err = ESP_OK;
+
+    if (cJSON_IsString(posix_j) || cJSON_IsString(tz_j)) {
+        const char *posix = cJSON_IsString(posix_j) ? posix_j->valuestring
+                                                    : time_service_get_tz_posix();
+        const char *tz = cJSON_IsString(tz_j) ? tz_j->valuestring
+                                              : time_service_get_tz_name();
+        err = time_service_set_timezone(posix, tz);
+    }
+    if (err == ESP_OK && cJSON_IsString(loc_j)) {
+        err = time_service_set_location(loc_j->valuestring);
+    }
+    cJSON_Delete(root);
 
     httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK) {
+        return httpd_resp_sendstr(req, "{\"ok\":true}");
+    }
+    httpd_resp_set_status(req, "400 Bad Request");
+    char buf[80];
+    snprintf(buf, sizeof(buf), "{\"ok\":false,\"error\":\"%s\"}", esp_err_to_name(err));
     return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_time_sync(httpd_req_t *req)
+{
+    esp_err_t err = time_service_sync_now();
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK) return httpd_resp_sendstr(req, "{\"ok\":true}");
+    httpd_resp_set_status(req, "400 Bad Request");
+    char buf[80];
+    snprintf(buf, sizeof(buf), "{\"ok\":false,\"error\":\"%s\"}", esp_err_to_name(err));
+    return httpd_resp_sendstr(req, buf);
+}
+
+static void send_timer_json(httpd_req_t *req, const nb_timer_t *t, bool first)
+{
+    char label[NB_AGENDA_LABEL_MAX * 2];
+    char chunk[224];
+    json_escape(t->label, label, sizeof(label));
+    snprintf(chunk, sizeof(chunk),
+        "%s{\"id\":%u,\"label\":\"%s\",\"duration_ms\":%lu,\"remaining_ms\":%lu}",
+        first ? "" : ",",
+        (unsigned)t->id,
+        label,
+        (unsigned long)t->duration_ms,
+        (unsigned long)t->remaining_ms);
+    httpd_resp_sendstr_chunk(req, chunk);
+}
+
+static void send_reminder_json(httpd_req_t *req, const nb_reminder_t *r, bool first)
+{
+    char label[NB_AGENDA_LABEL_MAX * 2];
+    char chunk[224];
+    json_escape(r->label, label, sizeof(label));
+    snprintf(chunk, sizeof(chunk),
+        "%s{\"id\":%u,\"text\":\"%s\",\"delay_ms\":%lu,\"remaining_ms\":%lu}",
+        first ? "" : ",",
+        (unsigned)r->id,
+        label,
+        (unsigned long)r->delay_ms,
+        (unsigned long)r->remaining_ms);
+    httpd_resp_sendstr_chunk(req, chunk);
+}
+
+static void send_alarm_json(httpd_req_t *req, const nb_alarm_t *a, bool first)
+{
+    char label[NB_AGENDA_LABEL_MAX * 2];
+    char chunk[256];
+    json_escape(a->label, label, sizeof(label));
+    snprintf(chunk, sizeof(chunk),
+        "%s{\"id\":%u,\"label\":\"%s\",\"hour\":%u,\"minute\":%u,"
+        "\"weekdays_mask\":%u,\"enabled\":%s}",
+        first ? "" : ",",
+        (unsigned)a->id,
+        label,
+        (unsigned)a->hour,
+        (unsigned)a->minute,
+        (unsigned)a->days,
+        a->enabled ? "true" : "false");
+    httpd_resp_sendstr_chunk(req, chunk);
+}
+
+static void send_agenda_object(httpd_req_t *req, bool wrap)
+{
+    if (wrap) {
+        httpd_resp_sendstr_chunk(req, "{");
+    }
+    httpd_resp_sendstr_chunk(req, "\"time\":{");
+    send_time_object(req, false);
+    httpd_resp_sendstr_chunk(req, "},\"timers\":[");
+    bool first = true;
+    for (uint8_t i = 0; i < NB_AGENDA_MAX_TIMERS; i++) {
+        nb_timer_t t;
+        if (agenda_timer_get(i, &t) && t.active) {
+            send_timer_json(req, &t, first);
+            first = false;
+        }
+    }
+    httpd_resp_sendstr_chunk(req, "],\"reminders\":[");
+    first = true;
+    for (uint8_t i = 0; i < NB_AGENDA_MAX_REMINDERS; i++) {
+        nb_reminder_t r;
+        if (agenda_reminder_get(i, &r) && r.active) {
+            send_reminder_json(req, &r, first);
+            first = false;
+        }
+    }
+    httpd_resp_sendstr_chunk(req, "],\"alarms\":[");
+    first = true;
+    for (uint8_t i = 0; i < NB_AGENDA_MAX_ALARMS; i++) {
+        nb_alarm_t a;
+        if (agenda_alarm_get(i, &a) && a.active) {
+            send_alarm_json(req, &a, first);
+            first = false;
+        }
+    }
+    httpd_resp_sendstr_chunk(req, "]");
+    if (wrap) {
+        httpd_resp_sendstr_chunk(req, "}");
+    }
+}
+
+static esp_err_t handle_api_agenda_get(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    send_agenda_object(req, true);
+    return httpd_resp_sendstr_chunk(req, NULL);
+}
+
+static esp_err_t agenda_send_result(httpd_req_t *req, esp_err_t err, uint8_t id)
+{
+    httpd_resp_set_type(req, "application/json");
+    if (err == ESP_OK) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "{\"ok\":true,\"id\":%u}", (unsigned)id);
+        return httpd_resp_sendstr(req, buf);
+    }
+    httpd_resp_set_status(req, "400 Bad Request");
+    char buf[80];
+    snprintf(buf, sizeof(buf), "{\"ok\":false,\"error\":\"%s\"}", esp_err_to_name(err));
+    return httpd_resp_sendstr(req, buf);
+}
+
+static cJSON *parse_agenda_body(httpd_req_t *req, char *body, size_t body_len)
+{
+    if (!recv_body(req, body, body_len, NULL)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return NULL;
+    }
+    cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
+    }
+    return root;
+}
+
+static esp_err_t handle_api_timer_create(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    cJSON *root = parse_agenda_body(req, body, sizeof(body));
+    if (!root) return ESP_OK;
+    uint32_t duration_ms = get_json_u32(root, "duration_ms");
+    const cJSON *label_j = cJSON_GetObjectItemCaseSensitive(root, "label");
+    const char *label = cJSON_IsString(label_j) ? label_j->valuestring : "timer";
+    uint8_t id = 0;
+    esp_err_t err = agenda_timer_create(duration_ms, label, &id);
+    cJSON_Delete(root);
+    return agenda_send_result(req, err, id);
+}
+
+static esp_err_t handle_api_timer_update(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    cJSON *root = parse_agenda_body(req, body, sizeof(body));
+    if (!root) return ESP_OK;
+    uint8_t id = (uint8_t)get_json_u32(root, "id");
+    uint32_t duration_ms = get_json_u32(root, "duration_ms");
+    const cJSON *label_j = cJSON_GetObjectItemCaseSensitive(root, "label");
+    const char *label = cJSON_IsString(label_j) ? label_j->valuestring : NULL;
+    esp_err_t err = agenda_timer_update(id, duration_ms, label);
+    cJSON_Delete(root);
+    return agenda_send_result(req, err, id);
+}
+
+static esp_err_t handle_api_timer_cancel(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    cJSON *root = parse_agenda_body(req, body, sizeof(body));
+    if (!root) return ESP_OK;
+    uint8_t id = (uint8_t)get_json_u32(root, "id");
+    esp_err_t err = agenda_timer_cancel(id);
+    cJSON_Delete(root);
+    return agenda_send_result(req, err, id);
+}
+
+static esp_err_t handle_api_reminder_create(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    cJSON *root = parse_agenda_body(req, body, sizeof(body));
+    if (!root) return ESP_OK;
+    uint32_t delay_ms = get_json_u32(root, "delay_ms");
+    const cJSON *text_j = cJSON_GetObjectItemCaseSensitive(root, "text");
+    const char *text = cJSON_IsString(text_j) ? text_j->valuestring : "";
+    uint8_t id = 0;
+    esp_err_t err = agenda_reminder_create(delay_ms, text, &id);
+    cJSON_Delete(root);
+    return agenda_send_result(req, err, id);
+}
+
+static esp_err_t handle_api_reminder_update(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    cJSON *root = parse_agenda_body(req, body, sizeof(body));
+    if (!root) return ESP_OK;
+    uint8_t id = (uint8_t)get_json_u32(root, "id");
+    uint32_t delay_ms = get_json_u32(root, "delay_ms");
+    const cJSON *text_j = cJSON_GetObjectItemCaseSensitive(root, "text");
+    const char *text = cJSON_IsString(text_j) ? text_j->valuestring : NULL;
+    esp_err_t err = agenda_reminder_update(id, delay_ms, text);
+    cJSON_Delete(root);
+    return agenda_send_result(req, err, id);
+}
+
+static esp_err_t handle_api_reminder_cancel(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    cJSON *root = parse_agenda_body(req, body, sizeof(body));
+    if (!root) return ESP_OK;
+    uint8_t id = (uint8_t)get_json_u32(root, "id");
+    esp_err_t err = agenda_reminder_cancel(id);
+    cJSON_Delete(root);
+    return agenda_send_result(req, err, id);
+}
+
+static esp_err_t handle_api_alarm_create(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    cJSON *root = parse_agenda_body(req, body, sizeof(body));
+    if (!root) return ESP_OK;
+    uint8_t hour = (uint8_t)get_json_u32(root, "hour");
+    uint8_t minute = (uint8_t)get_json_u32(root, "minute");
+    uint8_t mask = (uint8_t)get_json_u32(root, "weekdays_mask");
+    const cJSON *enabled_j = cJSON_GetObjectItemCaseSensitive(root, "enabled");
+    bool enabled = !cJSON_IsBool(enabled_j) || cJSON_IsTrue(enabled_j);
+    const cJSON *label_j = cJSON_GetObjectItemCaseSensitive(root, "label");
+    const char *label = cJSON_IsString(label_j) ? label_j->valuestring : "alarme";
+    uint8_t id = 0;
+    esp_err_t err = agenda_alarm_create(hour, minute, mask, label, enabled, &id);
+    cJSON_Delete(root);
+    return agenda_send_result(req, err, id);
+}
+
+static esp_err_t handle_api_alarm_update(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    cJSON *root = parse_agenda_body(req, body, sizeof(body));
+    if (!root) return ESP_OK;
+    uint8_t id = (uint8_t)get_json_u32(root, "id");
+    uint8_t hour = (uint8_t)get_json_u32(root, "hour");
+    uint8_t minute = (uint8_t)get_json_u32(root, "minute");
+    uint8_t mask = (uint8_t)get_json_u32(root, "weekdays_mask");
+    const cJSON *enabled_j = cJSON_GetObjectItemCaseSensitive(root, "enabled");
+    const cJSON *label_j = cJSON_GetObjectItemCaseSensitive(root, "label");
+    const char *label = cJSON_IsString(label_j) ? label_j->valuestring : "alarme";
+    esp_err_t err = agenda_alarm_update(id, hour, minute, mask, label);
+    if (err == ESP_OK && cJSON_IsBool(enabled_j)) {
+        err = agenda_alarm_set_enabled(id, cJSON_IsTrue(enabled_j));
+    }
+    cJSON_Delete(root);
+    return agenda_send_result(req, err, id);
+}
+
+static esp_err_t handle_api_alarm_cancel(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    cJSON *root = parse_agenda_body(req, body, sizeof(body));
+    if (!root) return ESP_OK;
+    uint8_t id = (uint8_t)get_json_u32(root, "id");
+    esp_err_t err = agenda_alarm_cancel(id);
+    cJSON_Delete(root);
+    return agenda_send_result(req, err, id);
+}
+
+static esp_err_t handle_api_alarm_enabled(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    cJSON *root = parse_agenda_body(req, body, sizeof(body));
+    if (!root) return ESP_OK;
+    uint8_t id = (uint8_t)get_json_u32(root, "id");
+    const cJSON *enabled_j = cJSON_GetObjectItemCaseSensitive(root, "enabled");
+    esp_err_t err = cJSON_IsBool(enabled_j)
+        ? agenda_alarm_set_enabled(id, cJSON_IsTrue(enabled_j))
+        : ESP_ERR_INVALID_ARG;
+    cJSON_Delete(root);
+    return agenda_send_result(req, err, id);
 }
 
 /* ── Registro de handlers ────────────────────────────────────────────────── */
@@ -1521,7 +2252,7 @@ static esp_err_t handle_api_diag_bridge(httpd_req_t *req)
     return httpd_resp_sendstr(req, buf);
 }
 
-static esp_err_t handle_api_ai_get(httpd_req_t *req)
+static void send_ai_object(httpd_req_t *req, bool wrap)
 {
     nb_ai_dashboard_state_t ai;
     taskENTER_CRITICAL(&s_mux);
@@ -1548,8 +2279,9 @@ static esp_err_t handle_api_ai_get(httpd_req_t *req)
         snprintf(ai_age_buf, sizeof(ai_age_buf), "%lu", (unsigned long)age_ms);
     }
 
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr_chunk(req, "{");
+    if (wrap) {
+        httpd_resp_sendstr_chunk(req, "{");
+    }
 
     char chunk[192];
     snprintf(chunk, sizeof(chunk),
@@ -1583,9 +2315,57 @@ static esp_err_t handle_api_ai_get(httpd_req_t *req)
     httpd_resp_sendstr_chunk(req,
         "\"usage\":{\"input_tokens\":null,\"output_tokens\":null,\"estimated_cost\":null},"
         "\"api_key_configured\":null,"
-        "\"fallback\":\"local_intents\"}");
+        "\"fallback\":\"local_intents\"");
+    if (wrap) {
+        httpd_resp_sendstr_chunk(req, "}");
+    }
+}
+
+static esp_err_t handle_api_ai_get(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    send_ai_object(req, true);
     httpd_resp_sendstr_chunk(req, NULL);
     return ESP_OK;
+}
+
+static esp_err_t handle_api_dashboard_get(httpd_req_t *req)
+{
+    char query[32] = "";
+    char view[16] = "op";
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        httpd_query_key_value(query, "view", view, sizeof(view));
+    }
+    if (strcmp(view, "agenda") != 0 &&
+        strcmp(view, "ai") != 0 &&
+        strcmp(view, "system") != 0)
+    {
+        strlcpy(view, "op", sizeof(view));
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr_chunk(req, "{\"view\":\"");
+    httpd_resp_sendstr_chunk(req, view);
+    httpd_resp_sendstr_chunk(req, "\"");
+
+    if (strcmp(view, "agenda") == 0) {
+        httpd_resp_sendstr_chunk(req, ",\"agenda\":{");
+        send_agenda_object(req, false);
+        httpd_resp_sendstr_chunk(req, "}");
+    } else if (strcmp(view, "ai") == 0) {
+        httpd_resp_sendstr_chunk(req, ",\"ai\":{");
+        send_ai_object(req, false);
+        httpd_resp_sendstr_chunk(req, "}");
+    } else if (strcmp(view, "system") == 0) {
+        httpd_resp_sendstr_chunk(req, ",\"health\":{");
+        send_health_object(req, false);
+        httpd_resp_sendstr_chunk(req, "},\"wifi\":{");
+        send_wifi_object(req, false);
+        httpd_resp_sendstr_chunk(req, "}");
+    }
+
+    httpd_resp_sendstr_chunk(req, "}");
+    return httpd_resp_sendstr_chunk(req, NULL);
 }
 
 static const httpd_uri_t k_uris[] = {
@@ -1603,9 +2383,16 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/persona/import", .method = HTTP_POST,   .handler = handle_api_persona_import },
     /* 15.3 — Sistema */
     { .uri = "/api/version",        .method = HTTP_GET,    .handler = handle_api_version },
+    { .uri = "/api/dashboard",      .method = HTTP_GET,    .handler = handle_api_dashboard_get },
     { .uri = "/api/health",         .method = HTTP_GET,    .handler = handle_api_health },
     { .uri = "/api/restart",        .method = HTTP_POST,   .handler = handle_api_restart },
     { .uri = "/api/logs",           .method = HTTP_GET,    .handler = handle_api_logs },
+    { .uri = "/api/files",          .method = HTTP_GET,    .handler = handle_api_files_list },
+    { .uri = "/api/file",           .method = HTTP_GET,    .handler = handle_api_file_read },
+    { .uri = "/api/file",           .method = HTTP_PUT,    .handler = handle_api_file_write },
+    { .uri = "/api/file",           .method = HTTP_DELETE, .handler = handle_api_file_delete },
+    { .uri = "/api/file/rename",    .method = HTTP_POST,   .handler = handle_api_file_rename },
+    { .uri = "/api/dir",            .method = HTTP_POST,   .handler = handle_api_dir_create },
     /* 15.4 — Controle expandido */
     { .uri = "/api/expression",     .method = HTTP_POST,   .handler = handle_api_expression },
     { .uri = "/api/emot_event",     .method = HTTP_POST,   .handler = handle_api_emot_event },
@@ -1626,6 +2413,21 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/ltm",            .method = HTTP_GET,    .handler = handle_api_ltm_get },
     { .uri = "/api/persona",        .method = HTTP_DELETE, .handler = handle_api_persona_delete },
     { .uri = "/api/touch",          .method = HTTP_GET,    .handler = handle_api_touch_get },
+    /* Agenda local */
+    { .uri = "/api/time",            .method = HTTP_GET,  .handler = handle_api_time_get },
+    { .uri = "/api/time/config",     .method = HTTP_POST, .handler = handle_api_time_config },
+    { .uri = "/api/time/sync",       .method = HTTP_POST, .handler = handle_api_time_sync },
+    { .uri = "/api/agenda",          .method = HTTP_GET,  .handler = handle_api_agenda_get },
+    { .uri = "/api/timer/create",    .method = HTTP_POST, .handler = handle_api_timer_create },
+    { .uri = "/api/timer/update",    .method = HTTP_POST, .handler = handle_api_timer_update },
+    { .uri = "/api/timer/cancel",    .method = HTTP_POST, .handler = handle_api_timer_cancel },
+    { .uri = "/api/reminder/create", .method = HTTP_POST, .handler = handle_api_reminder_create },
+    { .uri = "/api/reminder/update", .method = HTTP_POST, .handler = handle_api_reminder_update },
+    { .uri = "/api/reminder/cancel", .method = HTTP_POST, .handler = handle_api_reminder_cancel },
+    { .uri = "/api/alarm/create",    .method = HTTP_POST, .handler = handle_api_alarm_create },
+    { .uri = "/api/alarm/update",    .method = HTTP_POST, .handler = handle_api_alarm_update },
+    { .uri = "/api/alarm/cancel",    .method = HTTP_POST, .handler = handle_api_alarm_cancel },
+    { .uri = "/api/alarm/enabled",   .method = HTTP_POST, .handler = handle_api_alarm_enabled },
     /* 12.23 — Diagnóstico de produto */
     { .uri = "/api/diag",               .method = HTTP_GET,  .handler = handle_api_diag },
     { .uri = "/api/diag/snapshot",      .method = HTTP_POST, .handler = handle_api_diag_snapshot },
@@ -1648,8 +2450,10 @@ static void web_service_start(void)
 
     httpd_config_t cfg    = HTTPD_DEFAULT_CONFIG();
     cfg.max_open_sockets  = 4;
-    cfg.max_uri_handlers  = 44;   /* handlers registrados + margem */
+    cfg.max_uri_handlers  = 72;   /* handlers registrados + margem */
     cfg.server_port       = 80;
+    cfg.recv_wait_timeout = 5;
+    cfg.send_wait_timeout = 5;
     cfg.lru_purge_enable  = true;
     cfg.uri_match_fn      = httpd_uri_match_wildcard;
 
@@ -1677,12 +2481,60 @@ static void web_service_start(void)
     NB_LOGI(TAG, "HTTP server iniciado na porta 80 — http://noisebot.local");
 }
 
+static void web_service_stop(const char *reason)
+{
+    httpd_handle_t server = s_server;
+    if (!server) return;
+
+    s_ws_fd = -1;
+    s_server = NULL;
+    esp_err_t err = httpd_stop(server);
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "httpd_stop falhou: %s", esp_err_to_name(err));
+        return;
+    }
+    NB_LOGW(TAG, "HTTP server parado — %s", reason ? reason : "solicitado");
+}
+
+static void web_recover_task(void *arg)
+{
+    (void)arg;
+    if (wifi_service_is_connected() && !s_server) {
+        NB_LOGW(TAG, "watchdog HTTP: WiFi ativo sem servidor — reiniciando");
+        web_service_start();
+    }
+    s_http_restart_pending = false;
+    vTaskDelete(NULL);
+}
+
+static void web_health_cb(void *arg)
+{
+    (void)arg;
+    if (wifi_service_is_connected() && !s_server) {
+        if (!s_http_restart_pending) {
+            s_http_restart_pending = true;
+            BaseType_t ok = xTaskCreate(web_recover_task, "nb_web_recover",
+                                        4096, NULL, 5, NULL);
+            if (ok != pdPASS) {
+                s_http_restart_pending = false;
+                NB_LOGW(TAG, "watchdog HTTP: falha ao criar task de recovery");
+            }
+        }
+    }
+}
+
 /* ── Handlers de eventos ─────────────────────────────────────────────────── */
 
 static void on_ip_acquired(const nb_event_t *ev, void *ctx)
 {
     (void)ev; (void)ctx;
     web_service_start();
+}
+
+static void on_wifi_disconnected(const nb_event_t *ev, void *ctx)
+{
+    (void)ev; (void)ctx;
+    web_service_stop("WiFi desconectado");
 }
 
 static void on_state_changed(const nb_event_t *ev, void *ctx)
@@ -1745,11 +2597,21 @@ esp_err_t web_service_init(void)
         esp_timer_create(&ta, &s_servo_calib_tmr);
     }
 
+    if (!s_http_health_tmr) {
+        const esp_timer_create_args_t th = {
+            .callback = web_health_cb,
+            .name     = "web_health",
+        };
+        esp_timer_create(&th, &s_http_health_tmr);
+        esp_timer_start_periodic(s_http_health_tmr, 15000000LL);
+    }
+
     /* Intercepta logs do ESP-IDF para ring buffer em RAM. */
     s_orig_vprintf = esp_log_set_vprintf(log_hook_vprintf);
 
     nb_event_subscribe(NB_EVT_PERSONA_REFRESHED, on_persona_refreshed, NULL, NULL);
     nb_event_subscribe(NB_EVT_WIFI_IP_ACQUIRED, on_ip_acquired,  NULL, NULL);
+    nb_event_subscribe(NB_EVT_WIFI_DISCONNECTED, on_wifi_disconnected, NULL, NULL);
     nb_event_subscribe(NB_EVT_STATE_CHANGED,    on_state_changed, NULL, NULL);
     nb_event_subscribe(NB_EVT_TOUCH_TAP,         on_touch_debug_event, NULL, NULL);
     nb_event_subscribe(NB_EVT_TOUCH_LONG_PRESS,  on_touch_debug_event, NULL, NULL);
@@ -1760,6 +2622,9 @@ esp_err_t web_service_init(void)
     nb_event_subscribe(NB_EVT_TOUCH_CARESS,      on_touch_debug_event, NULL, NULL);
     nb_event_subscribe(NB_EVT_TOUCH_WARM_PULSE,  on_touch_debug_event, NULL, NULL);
     nb_event_subscribe(NB_EVT_BRIDGE_SESSION,    on_bridge_session_event, NULL, NULL);
+    if (wifi_service_is_connected()) {
+        web_service_start();
+    }
     NB_LOGI(TAG, "web_service registrado — aguardando IP");
     return ESP_OK;
 }

@@ -108,14 +108,23 @@ static bool s_usb_cdc_enabled = false;
 
 /* ── CRC-8/SMBUS (poly 0x07, init 0x00) ──────────────────────────────────── */
 
-static uint8_t crc8(const uint8_t *data, size_t len)
+static uint8_t crc8_extend(uint8_t crc, const uint8_t *data, size_t len)
 {
-    uint8_t crc = 0x00u;
     for (size_t i = 0; i < len; i++) {
         crc ^= data[i];
         for (int b = 0; b < 8; b++) {
             crc = (crc & 0x80u) ? (uint8_t)((crc << 1u) ^ 0x07u) : (uint8_t)(crc << 1u);
         }
+    }
+    return crc;
+}
+
+static uint8_t frame_crc(nb_bridge_msg_type_t type, const void *payload, uint16_t payload_len)
+{
+    uint8_t type_byte = (uint8_t)type;
+    uint8_t crc = crc8_extend(0x00u, &type_byte, 1u);
+    if (payload_len > 0u && payload != NULL) {
+        crc = crc8_extend(crc, (const uint8_t *)payload, payload_len);
     }
     return crc;
 }
@@ -139,13 +148,8 @@ static uint16_t frame_encode(uint8_t *buf, nb_bridge_msg_type_t type,
         memcpy(&buf[FRAME_DATA_OFF], payload, payload_len);
     }
 
-    /* CRC cobre TYPE + DATA */
-    uint8_t crc_src[1u + FRAME_MAX_PAYLOAD];
-    crc_src[0] = (uint8_t)type;
-    if (payload_len > 0u && payload != NULL) {
-        memcpy(&crc_src[1], payload, payload_len);
-    }
-    buf[FRAME_DATA_OFF + payload_len] = crc8(crc_src, 1u + payload_len);
+    /* CRC cobre TYPE + DATA; calcular incremental evita buffer grande no stack. */
+    buf[FRAME_DATA_OFF + payload_len] = frame_crc(type, payload, payload_len);
 
     return (uint16_t)(FRAME_OVERHEAD + payload_len);
 }
@@ -173,12 +177,10 @@ static decode_result_t frame_decode(const uint8_t *buf, uint16_t buf_len,
     if ((uint16_t)(FRAME_OVERHEAD + data_len) > buf_len) return DECODE_LEN_ERR;
     if (data_len > FRAME_MAX_PAYLOAD) return DECODE_LEN_ERR;
 
-    uint8_t crc_src[1u + FRAME_MAX_PAYLOAD];
-    crc_src[0] = buf[FRAME_TYPE_OFF];
-    if (data_len > 0u) {
-        memcpy(&crc_src[1], &buf[FRAME_DATA_OFF], data_len);
-    }
-    uint8_t expected_crc = crc8(crc_src, 1u + data_len);
+    uint8_t expected_crc = frame_crc(
+        (nb_bridge_msg_type_t)buf[FRAME_TYPE_OFF],
+        &buf[FRAME_DATA_OFF],
+        data_len);
     uint8_t received_crc = buf[FRAME_DATA_OFF + data_len];
 
     if (expected_crc != received_crc) return DECODE_CRC_ERR;
@@ -204,6 +206,7 @@ static uint32_t s_diag_audio_chunks = 0u;
 static uint32_t s_diag_audio_drops = 0u;
 static bool     s_diag_audio_drop_logged = false;
 static volatile uint32_t s_tx_flush_seq = 0u;
+static bool     s_followup_requested = false;
 
 typedef enum {
     TCP_SEND_OK = 0,
@@ -334,6 +337,9 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
                                 ? data_len : NB_BRIDGE_TEXT_MAX_LEN;
             memcpy(s_text_buf, data, copy_len);
             s_text_buf[copy_len] = '\0';
+            xSemaphoreTake(s.mutex, portMAX_DELAY);
+            s_followup_requested = (strchr(s_text_buf, '?') != NULL);
+            xSemaphoreGive(s.mutex);
             evt.type     = NB_EVT_BRIDGE_TEXT_SCROLL;
             evt.data.ptr = s_text_buf;
             nb_event_publish(&evt);
@@ -493,6 +499,10 @@ static bool tcp_send_all(int fd, const uint8_t *data, uint16_t len)
 /* Recebe até max_len bytes com timeout. Retorna bytes lidos ou -1 em erro. */
 static int tcp_recv_timeout(int fd, uint8_t *buf, int max_len, uint32_t timeout_ms)
 {
+    if (max_len <= 0) {
+        return 0;
+    }
+
     fd_set rfds;
     FD_ZERO(&rfds);
     FD_SET(fd, &rfds);
@@ -501,7 +511,11 @@ static int tcp_recv_timeout(int fd, uint8_t *buf, int max_len, uint32_t timeout_
         .tv_usec = (long)((timeout_ms % 1000u) * 1000u),
     };
     int ret = select(fd + 1, &rfds, NULL, NULL, &tv);
-    if (ret <= 0) return (ret == 0) ? 0 : -1;
+    if (ret < 0) {
+        NB_LOGW(TAG, "TCP select erro errno=%d", errno);
+        return -1;
+    }
+    if (ret == 0) return 0;
 
     int received = recv(fd, buf, max_len, 0);
     if (received < 0) {
@@ -509,6 +523,7 @@ static int tcp_recv_timeout(int fd, uint8_t *buf, int max_len, uint32_t timeout_
         if (err == EAGAIN || err == EWOULDBLOCK || err == EINPROGRESS) {
             return 0;
         }
+        NB_LOGW(TAG, "TCP recv erro errno=%d", err);
     }
     return (received == 0) ? -1 : received;
 }
@@ -657,6 +672,11 @@ static void tcp_io_loop(void)
     int64_t next_status_us = esp_timer_get_time() + 5000000LL;
 
     while (true) {
+        if (!wifi_service_is_connected()) {
+            NB_LOGW(TAG, "WiFi caiu durante bridge TCP — desconectando cliente");
+            goto tcp_disconnect;
+        }
+
         if (seen_flush_seq != s_tx_flush_seq) {
             tx_pending = false;
             tx_offset = 0u;
@@ -713,6 +733,11 @@ static void tcp_io_loop(void)
         }
 
         /* RX: lê dados disponíveis */
+        if (s_rx_head >= sizeof(s_rx_buf)) {
+            NB_LOGW(TAG, "TCP RX buffer cheio sem frame valido — resincronizando");
+            s_rx_head = 0u;
+        }
+
         uint32_t rx_wait_ms = tx_pending ? 5u : 10u;
         int n = tcp_recv_timeout(s.client_fd,
                                  s_rx_buf + s_rx_head,
@@ -739,6 +764,13 @@ static void tcp_io_loop(void)
 
             uint16_t data_len = (uint16_t)p[FRAME_LEN_LO_OFF] |
                                  (uint16_t)(p[FRAME_LEN_HI_OFF] << 8u);
+            if (data_len > FRAME_MAX_PAYLOAD) {
+                NB_LOGW(TAG, "TCP frame len=%u acima do max=%u — resincronizando",
+                        (unsigned)data_len, (unsigned)FRAME_MAX_PAYLOAD);
+                consumed++;
+                continue;
+            }
+
             uint16_t total    = (uint16_t)(FRAME_OVERHEAD + data_len);
 
             if (consumed + total > s_rx_head) break;   /* frame incompleto */
@@ -804,6 +836,11 @@ static void uart_io_loop(void)
         }
 
         /* RX */
+        if (s_rx_head >= sizeof(s_rx_buf)) {
+            NB_LOGW(TAG, "UART RX buffer cheio sem frame valido — resincronizando");
+            s_rx_head = 0u;
+        }
+
         int n = uart_recv(s_rx_buf + s_rx_head,
                           (uint32_t)(sizeof(s_rx_buf) - s_rx_head),
                           50u);
@@ -819,6 +856,13 @@ static void uart_io_loop(void)
 
             uint16_t data_len = (uint16_t)p[FRAME_LEN_LO_OFF] |
                                  (uint16_t)(p[FRAME_LEN_HI_OFF] << 8u);
+            if (data_len > FRAME_MAX_PAYLOAD) {
+                NB_LOGW(TAG, "UART frame len=%u acima do max=%u — resincronizando",
+                        (unsigned)data_len, (unsigned)FRAME_MAX_PAYLOAD);
+                consumed++;
+                continue;
+            }
+
             uint16_t total    = (uint16_t)(FRAME_OVERHEAD + data_len);
             if (consumed + total > s_rx_head) break;
 
@@ -880,11 +924,9 @@ static void nb_bridge_task(void *arg)
         s.server_fd = tcp_create_server();
         if (s.server_fd < 0) {
             NB_LOGE(TAG, "tcp_create_server falhou");
-            goto offline;
         }
     } else {
-        NB_LOGI(TAG, "Sem WiFi e sem UART — modo OFFLINE");
-        goto offline;
+        NB_LOGI(TAG, "Sem WiFi — bridge TCP aguardara reconexao em background");
     }
 
     /* Loop principal: aceita, conecta, reconecta indefinidamente */
@@ -892,15 +934,45 @@ static void nb_bridge_task(void *arg)
         s.state = BS_STATE_TCP_WAIT;
         NB_LOGD(TAG, "Aguardando cliente TCP...");
 
+        while (!wifi_service_is_connected()) {
+            if (s.client_fd >= 0) {
+                close(s.client_fd);
+                s.client_fd = -1;
+            }
+            if (s.server_fd >= 0) {
+                close(s.server_fd);
+                s.server_fd = -1;
+                NB_LOGW(TAG, "WiFi caiu — servidor TCP será recriado após reconexão");
+            }
+            vTaskDelay(pdMS_TO_TICKS(2000));
+        }
+
+        if (s.server_fd < 0) {
+            NB_LOGI(TAG, "WiFi ativo — recriando servidor TCP porta %d", NB_BRIDGE_TCP_PORT);
+            s.server_fd = tcp_create_server();
+            if (s.server_fd < 0) {
+                NB_LOGE(TAG, "tcp_create_server falhou após reconexão");
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                continue;
+            }
+        }
+
         /* Aceita com poll de 1s para não bloquear indefinidamente */
         s.client_fd = -1;
         while (s.client_fd < 0) {
-            s.client_fd = tcp_accept_timeout(s.server_fd, 1000u);
             /* Se WiFi caiu, aguarda reconexão */
             if (!wifi_service_is_connected()) {
-                vTaskDelay(pdMS_TO_TICKS(2000));
+                if (s.server_fd >= 0) {
+                    close(s.server_fd);
+                    s.server_fd = -1;
+                    NB_LOGW(TAG, "WiFi caiu durante accept — fechando servidor TCP");
+                }
+                break;
             }
+            s.client_fd = tcp_accept_timeout(s.server_fd, 1000u);
         }
+
+        if (s.client_fd < 0) continue;
 
         if (!do_handshake_tcp(s.client_fd, 300u)) {
             NB_LOGD(TAG, "TCP handshake falhou — aguardando próximo cliente");
@@ -987,6 +1059,15 @@ nb_bridge_transport_t bridge_service_get_transport(void)
 bool bridge_service_is_connected(void)
 {
     return bridge_service_get_transport() != NB_BRIDGE_TRANSPORT_OFFLINE;
+}
+
+bool bridge_service_consume_followup_request(void)
+{
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    bool requested = s_followup_requested;
+    s_followup_requested = false;
+    xSemaphoreGive(s.mutex);
+    return requested;
 }
 
 void bridge_service_flush_tx(void)

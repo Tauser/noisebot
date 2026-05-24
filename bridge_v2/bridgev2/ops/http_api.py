@@ -145,11 +145,12 @@ class OpsHttpServer:
 
         # api_key_configured: verifica apenas presença, nunca o valor
         provider = config.llm.provider.value
-        api_key = (
-            bool(os.environ.get("OPENAI_API_KEY"))
-            if provider == "openai"
-            else bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
-        )
+        if provider == "openai":
+            api_key = bool(os.environ.get("OPENAI_API_KEY"))
+        elif provider == "gemini":
+            api_key = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+        else:
+            api_key = provider == "ollama"
 
         return _json(ai_status_response(
             connected=store.firmware_connected,

@@ -139,6 +139,10 @@ esp_err_t audio_hal_mic_read(int32_t   *mono_buf,
     esp_err_t err = i2s_channel_read(s_rx, s_rx_stereo, bytes_to_read,
                                       &bytes_read, ticks);
     if (err != ESP_OK) return err;
+    if (bytes_read == 0U || bytes_read < bytes_to_read) {
+        if (samples_out) *samples_out = 0;
+        return ESP_ERR_TIMEOUT;
+    }
 
     /*
      * INMP441 canal esquerdo: bytes_read / (2 × 4) frames.
@@ -181,8 +185,10 @@ esp_err_t audio_hal_spk_write(const int16_t *mono_buf,
     size_t bytes_to_write = num_samples * 2U * sizeof(int32_t);
     size_t bytes_written  = 0;
 
-    return i2s_channel_write(s_tx, s_tx_stereo, bytes_to_write,
-                              &bytes_written, ticks);
+    esp_err_t err = i2s_channel_write(s_tx, s_tx_stereo, bytes_to_write,
+                                      &bytes_written, ticks);
+    if (err != ESP_OK) return err;
+    return (bytes_written == bytes_to_write) ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 
 /* ── Silêncio no speaker ─────────────────────────────────────────────────── */
@@ -194,7 +200,9 @@ esp_err_t audio_hal_spk_write_silence(size_t num_frames, TickType_t ticks)
 
     size_t bytes = num_frames * 2U * sizeof(int32_t);
     size_t written = 0;
-    return i2s_channel_write(s_tx, s_silence, bytes, &written, ticks);
+    esp_err_t err = i2s_channel_write(s_tx, s_silence, bytes, &written, ticks);
+    if (err != ESP_OK) return err;
+    return (written == bytes) ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 
 /* ── Deinit ──────────────────────────────────────────────────────────────── */

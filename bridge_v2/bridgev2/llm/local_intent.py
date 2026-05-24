@@ -27,12 +27,138 @@ def _has(text: str, *terms: str) -> bool:
     return any(t in text for t in terms)
 
 
+# -- Agenda helpers ---------------------------------------------------------
+
+_UNIT_SECONDS: dict[str, int] = {
+    "segundo": 1,
+    "segundos": 1,
+    "minuto": 60,
+    "minutos": 60,
+    "hora": 3600,
+    "horas": 3600,
+}
+
+_TIMER_TERMS = ("timer", "timing", "temporizador", "contador", "contagem")
+_CANCEL_TERMS = (
+    "cancela",
+    "cancelar",
+    "cancele",
+    "para",
+    "pare",
+    "parar",
+    "desliga",
+    "desligar",
+    "encerra",
+    "encerrar",
+    "remove",
+    "remover",
+)
+
+
+def _parse_duration_s(text: str) -> int | None:
+    match = re.search(r"\b(\d+)\s*(segundos?|minutos?|horas?)\b", text)
+    if not match:
+        return None
+    return int(match.group(1)) * _UNIT_SECONDS[match.group(2)]
+
+
+def _agenda_command(action: str, **payload: object) -> dict[str, object]:
+    return {
+        "event": "AGENDA_COMMAND",
+        "action": action,
+        **payload,
+    }
+
+
+def _alert_command(action: str) -> dict[str, object]:
+    return {
+        "event": "ALERT_COMMAND",
+        "action": action,
+    }
+
+
+def _extract_timer_label(text: str) -> str:
+    match = re.search(r"\bchamado\s+(.+?)\s+(?:de|por|para)\s+\d+\s*(?:segundos?|minutos?|horas?)\b", text)
+    if match:
+        return match.group(1).strip()[:48] or "timer"
+    return "timer"
+
+
+def _extract_cancel_label(text: str, kind: str) -> str | None:
+    verbs = r"(?:cancela|cancelar|cancele|para|pare|parar|desliga|desligar|encerra|encerrar|remove|remover)"
+    patterns = [
+        rf"\b{verbs}\s+(?:o\s+|a\s+)?{kind}\s+(?:do|da|de)\s+(.+)$",
+        rf"\b{verbs}\s+(?:o\s+|a\s+)?{kind}\s+chamado\s+(.+)$",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).strip()[:48] or None
+    return None
+
+
+def _extract_timer_cancel_label(text: str) -> str | None:
+    for term in _TIMER_TERMS:
+        label = _extract_cancel_label(text, term)
+        if label:
+            return label
+    return None
+
+
+def _extract_reminder_label(text: str) -> str:
+    match = re.search(r"\bme\s+lembre\s+de\s+(.+?)\s+daqui\s+a\s+\d+\s*(?:segundos?|minutos?|horas?)\b", text)
+    if match:
+        return match.group(1).strip()[:48] or "lembrete"
+    return "lembrete"
+
+
+def _parse_alarm_time(text: str) -> tuple[int, int] | None:
+    match = re.search(r"\b(?:as|às)?\s*(\d{1,2})\s+e\s+meia\b", text)
+    if match:
+        hour = int(match.group(1))
+        return (hour, 30) if 0 <= hour <= 23 else None
+
+    match = re.search(r"\b(?:as|às)?\s*(\d{1,2})\s*(?:h|horas?)?\s+(\d{1,2})\b", text)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        return (hour, minute) if 0 <= hour <= 23 and 0 <= minute <= 59 else None
+
+    match = re.search(r"\b(?:as|às)?\s*(\d{1,2})\s*(?:h|horas?)\b", text)
+    if match:
+        hour = int(match.group(1))
+        return (hour, 0) if 0 <= hour <= 23 else None
+
+    return None
+
+
+def _parse_weekdays_mask(text: str) -> int:
+    if "segunda a sexta" in text or "segunda ate sexta" in text:
+        return 0x3E
+    if "segunda a sabado" in text or "segunda ate sabado" in text:
+        return 0x7E
+    days = {
+        "domingo": 0,
+        "segunda": 1,
+        "terca": 2,
+        "quarta": 3,
+        "quinta": 4,
+        "sexta": 5,
+        "sabado": 6,
+    }
+    mask = 0
+    for name, bit in days.items():
+        if name in text:
+            mask |= 1 << bit
+    return mask
+
+
 # -- Replies de tempo --------------------------------------------------------
 
 def _time_reply(now: datetime) -> str:
     hour = now.hour
     minute = now.minute
-    date_suffix = f" Sao Paulo, {now:%d/%m/%Y}."
+    date_suffix = f" Brasilia, {now:%d/%m/%Y}."
     if hour == 0 and minute == 0:
         return f"Agora e meia-noite.{date_suffix}"
     verb = "e" if hour == 1 else "sao"
@@ -84,6 +210,141 @@ class LocalIntentProvider:
         now = now or datetime.now()
         context = context or {}
         status = context.get("status", {})
+
+        # -- Alertas locais ---------------------------------------------------
+        if _has(norm, "silencia", "silenciar", "para de tocar",
+                "pare de tocar", "para o alarme", "desliga o alarme",
+                "desligar alarme", "cala o alarme"):
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_alert_silence",
+                reply_text="Pronto, silenciei.",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NOD,
+                emot_event_id=_EMOT_NEUTRAL,
+                device_command=_alert_command("silence"),
+            )
+
+        # -- Agenda: timers ---------------------------------------------------
+        has_timer_ref = _has(norm, *_TIMER_TERMS)
+
+        if has_timer_ref and _has(norm, *_CANCEL_TERMS):
+            label = _extract_timer_cancel_label(norm)
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_timer_cancel",
+                reply_text="Timer cancelado." if label else "Vou cancelar o timer.",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NOD,
+                emot_event_id=_EMOT_NEUTRAL,
+                device_command=_agenda_command("timer_cancel", label=label or ""),
+            )
+
+        if has_timer_ref and _has(norm, "quanto falta", "tempo falta"):
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_timer_status",
+                reply_text="Os timers ativos aparecem no dashboard do robo.",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_NEUTRAL,
+            )
+
+        if has_timer_ref:
+            duration_s = _parse_duration_s(norm)
+            if duration_s is not None:
+                label = _extract_timer_label(norm)
+                return IntentResolved(
+                    turn_id=turn_id,
+                    intent_name="local_timer_create",
+                    reply_text=f"Timer {label} iniciado.",
+                    expression_id=_EXPR_ATTENTIVE,
+                    action_id=_ACTION_NOD,
+                    emot_event_id=_EMOT_NEUTRAL,
+                    device_command=_agenda_command(
+                        "timer_create",
+                        duration_ms=duration_s * 1000,
+                        label=label,
+                    ),
+                )
+
+        # -- Agenda: lembretes ------------------------------------------------
+        if _has(norm, "lembrete", "lembre") and _has(norm, "cancela", "cancelar"):
+            label = _extract_cancel_label(norm, "lembrete") or _extract_cancel_label(norm, "lembrete de")
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_reminder_cancel",
+                reply_text="Lembrete cancelado.",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NOD,
+                emot_event_id=_EMOT_NEUTRAL,
+                device_command=_agenda_command("reminder_cancel", label=label or ""),
+            )
+
+        if _has(norm, "me lembre", "lembre de"):
+            delay_s = _parse_duration_s(norm)
+            if delay_s is not None:
+                label = _extract_reminder_label(norm)
+                return IntentResolved(
+                    turn_id=turn_id,
+                    intent_name="local_reminder_create",
+                    reply_text=f"Combinado, vou lembrar: {label}.",
+                    expression_id=_EXPR_ATTENTIVE,
+                    action_id=_ACTION_NOD,
+                    emot_event_id=_EMOT_NEUTRAL,
+                    device_command=_agenda_command(
+                        "reminder_create",
+                        delay_ms=delay_s * 1000,
+                        label=label,
+                    ),
+                )
+
+        # -- Agenda: alarmes --------------------------------------------------
+        if _has(norm, "alarme") and _has(norm, "quais", "ativos"):
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_alarm_list",
+                reply_text="Os alarmes ativos estao no dashboard do robo.",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_NEUTRAL,
+            )
+
+        if _has(norm, "alarme") and _has(norm, "desativa", "desativar", "pausa", "pausar"):
+            label = _extract_cancel_label(norm, "alarme")
+            if label is None and "manha" in norm:
+                label = "manha"
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_alarm_disable",
+                reply_text="Alarme desativado.",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NOD,
+                emot_event_id=_EMOT_NEUTRAL,
+                device_command=_agenda_command("alarm_set_enabled", label=label or "", enabled=False),
+            )
+
+        if _has(norm, "alarme"):
+            alarm_time = _parse_alarm_time(norm)
+            if alarm_time is not None:
+                hour, minute = alarm_time
+                label = "manha" if "manha" in norm else "alarme"
+                return IntentResolved(
+                    turn_id=turn_id,
+                    intent_name="local_alarm_create",
+                    reply_text=f"Alarme criado para {hour:02d}:{minute:02d}.",
+                    expression_id=_EXPR_ATTENTIVE,
+                    action_id=_ACTION_NOD,
+                    emot_event_id=_EMOT_NEUTRAL,
+                    device_command=_agenda_command(
+                        "alarm_create",
+                        hour=hour,
+                        minute=minute,
+                        weekdays_mask=_parse_weekdays_mask(norm),
+                        label=label,
+                        enabled=True,
+                    ),
+                )
 
         # -- Tempo atual -------------------------------------------------------
         if _has(norm, "que horas", "horas sao", "hora e", "hora esta",

@@ -324,7 +324,6 @@ static void apply_touch_feedback_for_event(nb_event_type_t event)
         case NB_EVT_TOUCH_DOUBLE_TAP:
             led_effect_heartbeat();
             expression_service_overlay_heart(1200U);
-            synth_blip(740.0f, 70U);
             break;
         case NB_EVT_TOUCH_LONG_PRESS:
             led_blink(1U);
@@ -400,6 +399,22 @@ static const nb_action_t k_bridge_action_map[] = {
     [NB_BRIDGE_ACTION_LOOK_UP]    = NB_ACTION_CURIOUS,
     [NB_BRIDGE_ACTION_LOOK_DOWN]  = NB_ACTION_CURIOUS,
 };
+
+static uint32_t bridge_text_duration_ms(const char *text)
+{
+    if (!text || text[0] == '\0') return 1800U;
+
+    if (strstr(text, "Agora") == text &&
+        (strstr(text, "hora") || strstr(text, "minuto"))) {
+        return 6000U;
+    }
+
+    size_t len = strlen(text);
+    uint32_t duration_ms = 2600U + ((uint32_t)len * 55U);
+    if (duration_ms < 4200U) duration_ms = 4200U;
+    if (duration_ms > 12000U) duration_ms = 12000U;
+    return duration_ms;
+}
 
 /* ── Bridge — timer de resposta (8s após VOICE_END) ─────────────────────── */
 
@@ -515,10 +530,11 @@ static void bridge_on_event(const nb_event_t *evt)
     case NB_EVT_BRIDGE_TEXT_SCROLL: {
         const char *text = (const char *)evt->data.ptr;
         if (text) {
-            uint32_t duration_ms = (strstr(text, "Agora") == text &&
-                                    (strstr(text, "hora") || strstr(text, "minuto")))
-                                 ? 6000U : 1800U;
-            ui_overlay_show_text(text, duration_ms);
+            if (!s_bridge_say_started) {
+                s_bridge_say_started = true;
+                esp_timer_stop(s_bridge_resp_timer);
+            }
+            ui_overlay_show_text(text, bridge_text_duration_ms(text));
             NB_LOGI(TAG, "texto via bridge: %s", text);
         }
         break;

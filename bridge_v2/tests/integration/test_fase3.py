@@ -48,6 +48,8 @@ def _make_config() -> BridgeV2Config:
         llm=LlmConfig(
             provider=LlmProvider.NONE, model="none",
             timeout_s=5.0, max_output_tokens=140, max_reply_chars=180,
+            ollama_base_url="http://127.0.0.1:11434",
+            ollama_think=False,
             openai_key_configured=False, gemini_key_configured=False,
         ),
         pipeline_mode=PipelineMode.LOCAL_ONLY,

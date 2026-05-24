@@ -12,12 +12,17 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
 .venv/
 venv/
 
 # IDE
 .vscode/
 .idea/
+.claude/settings.local.json
 .codex_tmp/
 .obsidian/
 *.swp
@@ -33,6 +38,8 @@ desktop.ini
 *.log
 *.dmp
 *.core
+bridge_v2/*.wav
+bridge_v2/pytest-cache-files-*/
 
 # Binários compilados
 *.bin
@@ -42,6 +49,8 @@ desktop.ini
 # Modelos locais do bridge/TTS
 bridge/*.onnx
 bridge/*.onnx.json
+models/
+tools/piper/
 
 # Documentação gerada
 docs/_build/

@@ -214,11 +214,22 @@ void state_machine_on_wake_word(void)
         case NB_STATE_IDLE:
             do_transition(NB_STATE_ATTENTIVE, "wake word");
             break;
+        case NB_STATE_TOUCH_REACTING:
+            do_transition(NB_STATE_ATTENTIVE, "wake word durante touch");
+            break;
         case NB_STATE_SLEEPING:
             do_transition(NB_STATE_ATTENTIVE, "wake word em SLEEPING");
             break;
         default:
             break;
+    }
+}
+
+void state_machine_on_followup_listen(void)
+{
+    if (!s_initialized) return;
+    if (state_machine_get_state() == NB_STATE_IDLE) {
+        do_transition(NB_STATE_ATTENTIVE, "follow-up listen");
     }
 }
 

@@ -42,6 +42,7 @@ from .events import (
     BargeInDetected,
     TurnError,
     FinalTranscript,
+    TranscriptQuality,
     IntentResolved,
     LlmTokenDelta,
     LlmReplyComplete,
@@ -60,7 +61,9 @@ from ..audio.vad import BargeInMonitor
 
 log = logging.getLogger(__name__)
 
-TURN_DEADLINE_S = 30.0  # watchdog: turno máximo em segundos
+TURN_DEADLINE_S = 30.0  # watchdog antes de iniciar fala
+SPEAKING_PROGRESS_DEADLINE_S = 20.0  # durante SAY: tempo maximo sem progresso
+EMPTY_WAKE_REPLY = "Oi! Em que posso ajudar?"
 
 
 class Orchestrator:
@@ -383,6 +386,9 @@ class Orchestrator:
             self._store.record_turn_detail(event.turn_id, transcript=event.text)
 
         if not event.is_usable:
+            if self._should_prompt_after_empty_wake(session, event):
+                await self._prompt_after_empty_wake(session, event)
+                return
             log.debug("Turno %d: transcript não utilizável (%s)", event.turn_id, event.quality.name)
             self._fsm.try_transition(TurnState.IDLE)
             await self._finish_turn()
@@ -457,6 +463,66 @@ class Orchestrator:
             )
             self._fsm.try_transition(TurnState.IDLE)
             await self._finish_turn()
+
+    def _should_prompt_after_empty_wake(
+        self,
+        session: SessionContext,
+        event: FinalTranscript,
+    ) -> bool:
+        """True quando houve wake/voz real, mas o usuario nao falou nada util."""
+        if event.quality not in (TranscriptQuality.EMPTY, TranscriptQuality.NO_SPEECH):
+            return False
+        return session.total_samples >= 8000
+
+    async def _prompt_after_empty_wake(
+        self,
+        session: SessionContext,
+        event: FinalTranscript,
+    ) -> None:
+        """Responde localmente quando o usuario chama o robo e fica em silencio."""
+        log.info(
+            "Turno %d: wake sem fala utilizavel (%s) -> prompt local",
+            event.turn_id,
+            event.quality.name,
+        )
+
+        if self._fsm.state != TurnState.COMMITTING_TURN:
+            self._fsm.try_transition(TurnState.COMMITTING_TURN, turn_id=event.turn_id)
+        self._fsm.transition(TurnState.THINKING, turn_id=event.turn_id)
+        session.mark("thinking_start")
+
+        intent = IntentResolved(
+            turn_id=event.turn_id,
+            intent_name="local_empty_wake_prompt",
+            reply_text=EMPTY_WAKE_REPLY,
+            expression_id=3,  # HAPPY
+            action_id=1,      # nod
+            emot_event_id=3,  # happy
+        )
+        session.intent_name = intent.intent_name
+        session.reply_text = EMPTY_WAKE_REPLY
+        if self._store:
+            self._store.record_turn_detail(
+                event.turn_id,
+                transcript=event.text,
+                reply=EMPTY_WAKE_REPLY,
+                route="local_intent",
+            )
+
+        await self._bus.publish(intent)
+        session.mark("intent_resolved")
+
+        self._fsm.transition(TurnState.SPEAKING, turn_id=event.turn_id)
+        session.mark("speaking_start")
+        await self._robot.emit_for_intent(intent, self.adapter)
+
+        if self._tts is not None:
+            self._turn_task = asyncio.create_task(
+                self._speak_reply(event.turn_id, EMPTY_WAKE_REPLY, session),
+                name=f"nb_tts_{event.turn_id}",
+            )
+        else:
+            await self._bus.publish(SpeechDone(turn_id=event.turn_id))
 
     async def _run_llm_worker(
         self, session: SessionContext, text: str, turn_id: int
@@ -618,6 +684,10 @@ class Orchestrator:
                 session.mark("first_audio_out", t)
                 log.info("Turno %d: primeiro SAY %.0f ms de VOICE_END", tid, elapsed_ms)
 
+        def _on_progress(_tid: int) -> None:
+            session.set_deadline(SPEAKING_PROGRESS_DEADLINE_S)
+
+        session.set_deadline(SPEAKING_PROGRESS_DEADLINE_S)
         scheduler = OutputScheduler()
 
         async def _aiter_sentences():
@@ -629,6 +699,7 @@ class Orchestrator:
             pcm_iter=self._tts.synthesize_stream(_aiter_sentences()),
             adapter=self.adapter,
             on_first_audio=_on_first,
+            on_audio_progress=_on_progress,
         )
 
     async def _on_speech_done(self, event: SpeechDone) -> None:
@@ -755,15 +826,16 @@ class Orchestrator:
                 if self._session is not session:
                     return   # turno terminou normalmente
                 if session.is_past_deadline():
+                    overdue_s = max(0.0, time.monotonic() - (session.deadline or 0.0))
                     log.warning(
-                        "Watchdog: turno %d excedeu deadline de %.0f s — cancelando",
-                        session.turn_id, TURN_DEADLINE_S,
+                        "Watchdog: turno %d excedeu deadline (atraso %.1f s, estado=%s) — cancelando",
+                        session.turn_id, overdue_s, self._fsm.state.name,
                     )
                     if self._store:
                         self._store.record_error(
                             kind="watchdog_timeout",
                             turn_id=session.turn_id,
-                            message=f"deadline {TURN_DEADLINE_S}s excedido",
+                            message=f"deadline excedido em {self._fsm.state.name}",
                         )
                     await self._bus.publish(TurnError(
                         turn_id=session.turn_id,

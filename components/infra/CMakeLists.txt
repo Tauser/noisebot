@@ -59,6 +59,8 @@ idf_component_register(
         sound_analysis_service
         idle_service
         wake_service
+        time_service
+        agenda_service
     EMBED_TXTFILES
         "dashboard.html"
 )

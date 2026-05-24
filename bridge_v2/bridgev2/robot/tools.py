@@ -115,22 +115,25 @@ TOOL_CATALOG = {
     "noisebot.robot.create_reminder": ToolSpec(
         name="noisebot.robot.create_reminder",
         command_name=None,
-        description="Cria um lembrete local no bridge.",
+        description="Lembretes pertencem ao firmware; use comando de agenda via MSG_SESSION.",
         args={
             "text": ToolArgSpec(str, max_len=120),
             "due_at_epoch": ToolArgSpec(int, minimum=0, maximum=4102444800),
         },
+        supported=False,
     ),
     "noisebot.robot.stop_reminder": ToolSpec(
         name="noisebot.robot.stop_reminder",
         command_name=None,
-        description="Cancela um lembrete local pelo id.",
+        description="Lembretes pertencem ao firmware; use comando de agenda via MSG_SESSION.",
         args={"reminder_id": ToolArgSpec(int, minimum=1, maximum=100000)},
+        supported=False,
     ),
     "noisebot.robot.get_reminders": ToolSpec(
         name="noisebot.robot.get_reminders",
         command_name=None,
-        description="Lista lembretes locais ativos.",
+        description="Lembretes pertencem ao firmware; consulte o dashboard do robo.",
+        supported=False,
     ),
 }
 
@@ -185,8 +188,6 @@ def validate_tool_call(name: str, args: dict[str, Any] | None) -> ToolValidation
 
 class RobotToolRuntime:
     def __init__(self):
-        self._reminders: dict[int, dict[str, Any]] = {}
-        self._next_reminder_id = 1
         self.status: dict[str, Any] = {}
 
     def update_status(self, status: dict[str, Any] | None):
@@ -201,24 +202,4 @@ class RobotToolRuntime:
 
         if validation.tool_name == "noisebot.robot.get_status":
             return ToolExecutionResult(validation.tool_name, ok=True, payload={"status": dict(self.status)})
-        if validation.tool_name == "noisebot.robot.create_reminder":
-            reminder_id = self._next_reminder_id
-            self._next_reminder_id += 1
-            reminder = {
-                "id": reminder_id,
-                "text": validation.args["text"],
-                "due_at_epoch": validation.args["due_at_epoch"],
-            }
-            self._reminders[reminder_id] = reminder
-            return ToolExecutionResult(validation.tool_name, ok=True, payload={"reminder": dict(reminder)})
-        if validation.tool_name == "noisebot.robot.stop_reminder":
-            reminder_id = validation.args["reminder_id"]
-            removed = self._reminders.pop(reminder_id, None)
-            if removed is None:
-                return ToolExecutionResult(validation.tool_name, ok=False, error="reminder_not_found")
-            return ToolExecutionResult(validation.tool_name, ok=True, payload={"reminder": dict(removed)})
-        if validation.tool_name == "noisebot.robot.get_reminders":
-            reminders = [dict(item) for item in sorted(self._reminders.values(), key=lambda item: item["id"])]
-            return ToolExecutionResult(validation.tool_name, ok=True, payload={"reminders": reminders})
-
         return ToolExecutionResult(validation.tool_name, ok=False, error="local_tool_not_implemented")

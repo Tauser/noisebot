@@ -45,6 +45,7 @@ class OutputScheduler:
         pcm_iter: AsyncIterator[bytes],
         adapter: Any,
         on_first_audio: Callable[[int], None] | None = None,
+        on_audio_progress: Callable[[int], None] | None = None,
     ) -> None:
         """Drena pcm_iter, enviando chunks ao firmware com pacing baseado em tempo.
 
@@ -53,6 +54,7 @@ class OutputScheduler:
             pcm_iter:       iterador async de chunks PCM (int16 LE, ≤512 bytes).
             adapter:        FirmwareAdapter ou None (modo headless).
             on_first_audio: callback chamado com turn_id ao enviar o 1º chunk.
+            on_audio_progress: callback chamado a cada chunk enviado.
         """
         self._chunks_sent = 0
         self._t_first = None
@@ -86,6 +88,8 @@ class OutputScheduler:
                     )
 
             self._chunks_sent += 1
+            if on_audio_progress is not None:
+                on_audio_progress(turn_id)
             # Cede o event loop entre chunks para não bloquear outros coroutines
             await asyncio.sleep(0)
 

@@ -84,6 +84,14 @@ class RobotOutputProvider:
                 intent.turn_id,
             )
 
+        # -- Comandos locais precisam chegar antes de qualquer reply/TTS. --------
+        if intent.device_command:
+            await self._emit(
+                adapter, "session",
+                intent.device_command,
+                intent.turn_id,
+            )
+
         # -- Texto de reply no display -----------------------------------------
         if intent.reply_text:
             await self._emit(
@@ -138,5 +146,7 @@ class RobotOutputProvider:
                 await adapter.send_text_scroll(payload["text"])
             elif kind == "volume":
                 await adapter.send_volume(payload.get("percent", 50))
+            elif kind == "session":
+                await adapter.send_session(payload)
         except Exception:
             log.exception("RobotOutputProvider: erro ao enviar %s turn_id=%d", kind, turn_id)

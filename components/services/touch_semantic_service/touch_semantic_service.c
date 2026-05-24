@@ -22,7 +22,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
 #include "esp_log.h"
-#include "synth_service.h"
 
 #define TAG "nb_touchsem"
 
@@ -184,7 +183,6 @@ void touch_semantic_tick(uint32_t dt_ms)
             if (!s_deep_fired && dur >= DEEP_MS) {
                 s_deep_fired = true;
                 publish(NB_EVT_TOUCH_DEEP);
-                synth_purr(3000U, 0.60f);
                 ESP_LOGI(TAG, "TOUCH_DEEP");
             }
 
@@ -192,7 +190,6 @@ void touch_semantic_tick(uint32_t dt_ms)
             if (!s_caress_fired && dur >= CARESS_MS) {
                 s_caress_fired = true;
                 publish(NB_EVT_TOUCH_CARESS);
-                synth_purr(6000U, 0.80f);
                 ESP_LOGI(TAG, "TOUCH_CARESS");
             }
         }

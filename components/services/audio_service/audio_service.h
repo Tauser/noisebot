@@ -167,6 +167,7 @@ uint8_t audio_get_volume(void);
 typedef enum {
     NB_LISTEN_SOURCE_TOUCH,      /**< Legado: listen por toque desabilitado */
     NB_LISTEN_SOURCE_WAKE_WORD,  /**< Ativado por wake word                */
+    NB_LISTEN_SOURCE_FOLLOWUP,   /**< Janela curta apos resposta do bridge */
     NB_LISTEN_SOURCE_DEBUG,      /**< Ativado pelo VAD em modo de debug    */
 } nb_listen_source_t;
 

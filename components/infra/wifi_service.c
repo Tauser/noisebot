@@ -30,15 +30,20 @@
 
 #define BACKOFF_MIN_US   1000000LL    /*  1s */
 #define BACKOFF_MAX_US  60000000LL    /* 60s */
+#define HEALTH_PERIOD_US 30000000LL    /* 30s */
 
 /* ── Estado ──────────────────────────────────────────────────────────────── */
 
 static bool               s_initialized    = false;
+static bool               s_enabled        = false;
 static bool               s_connected      = false;
 static char               s_ip[16]         = "";
 static char               s_ssid[33]       = "";
+static uint16_t           s_last_disc_reason = 0U;
+static uint32_t           s_disconnect_count = 0U;
 static portMUX_TYPE       s_mux            = portMUX_INITIALIZER_UNLOCKED;
 static esp_timer_handle_t s_reconnect_tmr  = NULL;
+static esp_timer_handle_t s_health_tmr     = NULL;
 static int64_t            s_backoff_us     = BACKOFF_MIN_US;
 
 /* ── Reconexão com backoff ────────────────────────────────────────────────── */
@@ -46,18 +51,36 @@ static int64_t            s_backoff_us     = BACKOFF_MIN_US;
 static void reconnect_cb(void *arg)
 {
     (void)arg;
+    if (!s_enabled) return;
     NB_LOGI(TAG, "tentando reconectar...");
     esp_wifi_connect();
 }
 
 static void schedule_reconnect(void)
 {
+    if (!s_enabled) return;
     if (!s_reconnect_tmr) return;
     esp_timer_stop(s_reconnect_tmr);
     NB_LOGI(TAG, "próxima tentativa em %.1fs", (double)s_backoff_us / 1e6);
     esp_timer_start_once(s_reconnect_tmr, s_backoff_us);
     s_backoff_us = s_backoff_us * 2;
     if (s_backoff_us > BACKOFF_MAX_US) s_backoff_us = BACKOFF_MAX_US;
+}
+
+static void health_cb(void *arg)
+{
+    (void)arg;
+    if (!s_initialized || !s_enabled) return;
+    if (wifi_service_is_connected()) return;
+
+    bool reconnect_active = false;
+    if (s_reconnect_tmr) {
+        reconnect_active = esp_timer_is_active(s_reconnect_tmr);
+    }
+    if (!reconnect_active) {
+        NB_LOGW(TAG, "watchdog WiFi: desconectado sem timer ativo — reagendando");
+        schedule_reconnect();
+    }
 }
 
 /* ── Handlers de eventos WiFi ────────────────────────────────────────────── */
@@ -96,7 +119,16 @@ static void on_wifi_event(void *arg, esp_event_base_t base,
 
             wifi_event_sta_disconnected_t *ev =
                 (wifi_event_sta_disconnected_t *)data;
-            NB_LOGW(TAG, "desconectado (reason=%d)", ev ? (int)ev->reason : -1);
+            uint16_t reason = ev ? (uint16_t)ev->reason : 0U;
+            uint32_t disconnect_count;
+            taskENTER_CRITICAL(&s_mux);
+            s_last_disc_reason = reason;
+            s_disconnect_count++;
+            disconnect_count = s_disconnect_count;
+            taskEXIT_CRITICAL(&s_mux);
+            NB_LOGW(TAG, "desconectado (reason=%u, count=%lu)",
+                    (unsigned)reason,
+                    (unsigned long)disconnect_count);
 
             if (was_connected) {
                 nb_event_t e = { .type = NB_EVT_WIFI_DISCONNECTED };
@@ -177,6 +209,7 @@ esp_err_t wifi_service_init(void)
         NB_LOGW(TAG, "WiFi sem credenciais — offline");
         return ESP_OK;
     }
+    s_enabled = true;
 
     /* Infraestrutura de rede (idempotente). */
     esp_netif_init();
@@ -221,6 +254,12 @@ esp_err_t wifi_service_init(void)
     };
     esp_timer_create(&tmr, &s_reconnect_tmr);
 
+    const esp_timer_create_args_t health_tmr = {
+        .callback = health_cb,
+        .name     = "wifi_health",
+    };
+    esp_timer_create(&health_tmr, &s_health_tmr);
+
     /* mDNS (hostname definido depois do IP). */
     err = mdns_init();
     if (err != ESP_OK) {
@@ -236,6 +275,9 @@ esp_err_t wifi_service_init(void)
     }
 
     s_initialized = true;
+    if (s_health_tmr) {
+        esp_timer_start_periodic(s_health_tmr, HEALTH_PERIOD_US);
+    }
     NB_LOGI(TAG, "WiFi init OK — conectando a '%s'", ssid);
     return ESP_OK;
 }
@@ -267,6 +309,24 @@ int8_t wifi_service_get_rssi(void)
     return 0;
 }
 
+uint16_t wifi_service_get_last_disconnect_reason(void)
+{
+    uint16_t result;
+    taskENTER_CRITICAL(&s_mux);
+    result = s_last_disc_reason;
+    taskEXIT_CRITICAL(&s_mux);
+    return result;
+}
+
+uint32_t wifi_service_get_disconnect_count(void)
+{
+    uint32_t result;
+    taskENTER_CRITICAL(&s_mux);
+    result = s_disconnect_count;
+    taskEXIT_CRITICAL(&s_mux);
+    return result;
+}
+
 esp_err_t wifi_service_set_credentials(const char *ssid, const char *pass)
 {
     if (!ssid || ssid[0] == '\0') return ESP_ERR_INVALID_ARG;
@@ -284,6 +344,7 @@ esp_err_t wifi_service_set_credentials(const char *ssid, const char *pass)
     taskENTER_CRITICAL(&s_mux);
     strlcpy(s_ssid, ssid, sizeof(s_ssid));
     taskEXIT_CRITICAL(&s_mux);
+    s_enabled = true;
 
     if (s_initialized) {
         wifi_config_t cfg = { 0 };
@@ -311,6 +372,7 @@ esp_err_t wifi_service_clear_credentials(void)
         nvs_close(nvs);
     }
     if (s_initialized) {
+        s_enabled = false;
         esp_wifi_disconnect();
         esp_timer_stop(s_reconnect_tmr);
     }

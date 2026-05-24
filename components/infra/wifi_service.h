@@ -21,6 +21,7 @@
 
 #include "esp_err.h"
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,6 +62,15 @@ const char *wifi_service_get_ssid(void);
  * @brief Retorna o RSSI do AP atual (dBm). 0 se desconectado.
  */
 int8_t wifi_service_get_rssi(void);
+
+/**
+ * @brief Retorna o último reason code informado por WIFI_EVENT_STA_DISCONNECTED.
+ * 0 significa que ainda não houve desconexão desde o boot.
+ */
+uint16_t wifi_service_get_last_disconnect_reason(void);
+
+/** @brief Número de eventos STA_DISCONNECTED desde o boot. */
+uint32_t wifi_service_get_disconnect_count(void);
 
 /**
  * @brief Grava novas credenciais em NVS e reconecta ao AP.

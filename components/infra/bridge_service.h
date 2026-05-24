@@ -15,8 +15,8 @@
  * Transporte TCP:
  *   ESP32 age como servidor TCP na porta NB_BRIDGE_TCP_PORT (9000).
  *   Keep-alive: detecta queda em < 10s.
- *   Reconexão: aceita nova conexão do bridge a cada 5s por 60s após queda.
- *   Após 60s sem reconexão, permanece offline até próximo boot.
+ *   Reconexão: aceita nova conexão do bridge indefinidamente após queda.
+ *   Se o WiFi ainda não estiver pronto, o serviço permanece vivo aguardando IP.
  *
  * Transporte UART (fallback de desenvolvimento):
  *   USB CDC nativo do ESP32-S3 (usb_serial_jtag), 921600 baud equivalente.
@@ -24,9 +24,9 @@
  *   o console de debug da interface bridge.
  *
  * Seleção de transporte no boot:
- *   WiFi com IP → aguarda TCP por 2s → timeout → tenta UART handshake (200ms)
- *   Sem WiFi   → tenta UART handshake (200ms) diretamente
- *   Sem resposta em ambos → modo OFFLINE (operação normal sem bridge)
+ *   WiFi com IP → abre TCP e aguarda bridge.
+ *   Sem WiFi   → tenta UART handshake (se habilitado) e continua aguardando WiFi.
+ *   Sem resposta em ambos → opera offline-first, mantendo reconexão em background.
  *
  * Mensagens ESP32 → Bridge:
  *   AUDIO_CHUNK: int16_t pcm[256] (256 samples × 2 bytes = 512 bytes DATA)
@@ -44,7 +44,7 @@
  *
  * Thread-safety: todas as funções públicas são thread-safe via mutex.
  *
- * Task: "nb_bridge_task"  Core 0  Prio 4  Stack 4KB
+ * Task: "nb_bridge_task"  Core 0  Prio 4  Stack 8KB
  */
 
 #ifndef NB_BRIDGE_SERVICE_H
@@ -62,7 +62,7 @@ extern "C" {
 
 /* ── Configuração ─────────────────────────────────────────────────────────── */
 
-#define NB_BRIDGE_TASK_STACK        4096U
+#define NB_BRIDGE_TASK_STACK        8192U
 #define NB_BRIDGE_TASK_PRIORITY     4U
 #define NB_BRIDGE_TASK_CORE         0
 
@@ -170,6 +170,15 @@ nb_bridge_transport_t bridge_service_get_transport(void);
  * Thread-safe.
  */
 bool bridge_service_is_connected(void);
+
+/**
+ * @brief Consome a intenção de abrir follow-up após a resposta atual.
+ *
+ * O flag é armado quando o bridge envia TEXT_SCROLL com uma pergunta. Retorna
+ * true uma única vez e limpa o flag, para o firmware só abrir escuta contínua
+ * quando a resposta realmente pede continuidade.
+ */
+bool bridge_service_consume_followup_request(void);
 
 /**
  * @brief Limpa a fila de transmissão do bridge.

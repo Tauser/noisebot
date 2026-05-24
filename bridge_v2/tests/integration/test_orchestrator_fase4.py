@@ -52,6 +52,8 @@ def _make_config() -> BridgeV2Config:
         llm=LlmConfig(
             provider=LlmProvider.NONE, model="none",
             timeout_s=5.0, max_output_tokens=140, max_reply_chars=180,
+            ollama_base_url="http://127.0.0.1:11434",
+            ollama_think=False,
             openai_key_configured=False, gemini_key_configured=False,
         ),
         pipeline_mode=PipelineMode.LOCAL_ONLY,
@@ -249,6 +251,37 @@ class TestSttWorkerFlow:
 
             cmds = await _drain(q_cmd)
             assert cmds, "Esperado ao menos um RobotCommand"
+        finally:
+            await orch.shutdown()
+            orch_task.cancel()
+            await asyncio.gather(orch_task, return_exceptions=True)
+
+    async def test_empty_real_wake_prompts_help(self):
+        """Wake com audio suficiente mas sem fala util responde localmente."""
+        bus = EventBus(default_maxsize=512)
+        stt = MockSTT(result=FinalTranscript(
+            turn_id=0,
+            text="",
+            quality=TranscriptQuality.EMPTY,
+        ))
+        orch = Orchestrator(bus, _make_config(), get_adapter=lambda: None, stt_provider=stt)
+        q_cmd = bus.subscribe(RobotCommand, maxsize=64)
+        q_intent = bus.subscribe(IntentResolved)
+        q_done = bus.subscribe(SpeechDone)
+
+        orch_task = asyncio.create_task(orch.run(), name="orch")
+        try:
+            await _simulate_voice_session(bus)
+            await _wait_event(q_done, timeout=3.0)
+
+            intent = await _wait_event(q_intent, timeout=1.0)
+            assert intent.intent_name == "local_empty_wake_prompt"
+            assert intent.reply_text == "Oi! Em que posso ajudar?"
+
+            cmds = await _drain(q_cmd)
+            texts = [c.payload["text"] for c in cmds if c.kind == "text"]
+            assert texts == ["Oi! Em que posso ajudar?"]
+            assert orch._fsm.state == TurnState.IDLE
         finally:
             await orch.shutdown()
             orch_task.cancel()

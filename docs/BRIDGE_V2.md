@@ -794,11 +794,13 @@ implementações concretas — só as interfaces abaixo.
 
 ### 7.6 `TTSProvider`
 
-- **Papel:** sintetizar fala frase a frase, sem spawn por turno.
-- **Implementação:** `PiperServerTTS` — processo Piper **persistente** de longa
-  duração; comunicação por pipe. `sentencizer` quebra o texto; `cache` LRU
-  (RAM + disco) guarda PCM por frase.
+- **Papel:** sintetizar fala frase a frase e entregar PCM pronto ao scheduler.
+- **Implementação atual:** `PiperServerTTS` — Piper local via `--output_raw`,
+  síntese por frase, reamostragem para 16 kHz e `cache` LRU (RAM + disco) de
+  PCM por frase. O spike de processo persistente permanece como otimização
+  futura se a versão local do Piper provar framing estável no Windows/Linux.
 - **Interface:** `synthesize_stream(sentences) -> AsyncIterator[pcm]`.
+- **Instalação local:** ver [`BRIDGE_V2_TTS_LOCAL.md`](BRIDGE_V2_TTS_LOCAL.md).
 
 ### 7.7 `RobotOutputProvider`
 

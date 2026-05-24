@@ -324,6 +324,80 @@ class TestLocalVolume:
         assert result.intent_name == "local_volume_down"
 
 
+# ── Agenda local → firmware ---------------------------------------------------
+
+class TestLocalAgendaCommands:
+    def test_alert_silence(self, provider):
+        result = match(provider, "silencia o alarme")
+        assert result.intent_name == "local_alert_silence"
+        assert result.device_command["event"] == "ALERT_COMMAND"
+        assert result.device_command["action"] == "silence"
+
+    def test_timer_create_simple(self, provider):
+        result = match(provider, "timer de 15 minutos")
+        assert result.intent_name == "local_timer_create"
+        assert result.device_command["event"] == "AGENDA_COMMAND"
+        assert result.device_command["action"] == "timer_create"
+        assert result.device_command["duration_ms"] == 15 * 60 * 1000
+
+    def test_timer_create_named(self, provider):
+        result = match(provider, "cria um timer chamado chá de 4 minutos")
+        assert result.intent_name == "local_timer_create"
+        assert result.device_command["label"] == "cha"
+        assert result.device_command["duration_ms"] == 4 * 60 * 1000
+
+    def test_timer_cancel_named(self, provider):
+        result = match(provider, "cancela o timer do chá")
+        assert result.intent_name == "local_timer_cancel"
+        assert result.device_command["action"] == "timer_cancel"
+        assert result.device_command["label"] == "cha"
+
+    @pytest.mark.parametrize("text", [
+        "cancele o timer",
+        "para o temporizador",
+        "desliga o timing",
+        "encerra a contagem",
+    ])
+    def test_timer_cancel_without_label_variants(self, provider, text):
+        result = match(provider, text)
+        assert result.intent_name == "local_timer_cancel"
+        assert result.device_command["action"] == "timer_cancel"
+        assert result.device_command["label"] == ""
+
+    @pytest.mark.parametrize("text", [
+        "pare o timer do cha",
+        "cancele o temporizador do cha",
+        "encerra o timing chamado cha",
+    ])
+    def test_timer_cancel_named_variants(self, provider, text):
+        result = match(provider, text)
+        assert result.intent_name == "local_timer_cancel"
+        assert result.device_command["action"] == "timer_cancel"
+        assert result.device_command["label"] == "cha"
+
+    def test_reminder_create(self, provider):
+        result = match(provider, "me lembre de tomar água daqui a 15 minutos")
+        assert result.intent_name == "local_reminder_create"
+        assert result.device_command["action"] == "reminder_create"
+        assert result.device_command["label"] == "tomar agua"
+        assert result.device_command["delay_ms"] == 15 * 60 * 1000
+
+    def test_alarm_create_weekdays(self, provider):
+        result = match(provider, "cria um alarme às 7 e meia de segunda a sexta")
+        assert result.intent_name == "local_alarm_create"
+        assert result.device_command["action"] == "alarm_create"
+        assert result.device_command["hour"] == 7
+        assert result.device_command["minute"] == 30
+        assert result.device_command["weekdays_mask"] == 0x3E
+
+    def test_alarm_disable_morning(self, provider):
+        result = match(provider, "desativa o alarme da manhã")
+        assert result.intent_name == "local_alarm_disable"
+        assert result.device_command["action"] == "alarm_set_enabled"
+        assert result.device_command["label"] == "manha"
+        assert result.device_command["enabled"] is False
+
+
 # ── Normalização ──────────────────────────────────────────────────────────────
 
 class TestNormalization:

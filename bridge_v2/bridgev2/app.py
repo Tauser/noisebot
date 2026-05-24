@@ -11,6 +11,7 @@ from typing import Callable
 
 from .config import BridgeV2Config, LlmProvider, PipelineMode
 from .llm.gemini_provider import GeminiProvider
+from .llm.ollama_provider import OllamaProvider
 from .llm.openai_provider import OpenAIStreamingProvider
 from .runtime.bus import EventBus
 from .runtime.orchestrator import Orchestrator
@@ -105,6 +106,13 @@ class Application:
                 model=llm.model,
                 max_tokens=llm.max_output_tokens,
             )
+        if llm.provider == LlmProvider.OLLAMA:
+            return OllamaProvider(
+                model=llm.model,
+                base_url=llm.ollama_base_url,
+                max_tokens=llm.max_output_tokens,
+                think=llm.ollama_think,
+            )
         log.warning("LLM provider %s ainda não implementado; rodando sem LLM.", llm.provider)
         return None
 
@@ -130,6 +138,7 @@ class Application:
             model=tts.piper_model,
             cache_size=tts.cache_size,
             sample_rate=tts.sample_rate,
+            target_peak=tts.target_peak,
         )
 
     def _build_supervisor(self):

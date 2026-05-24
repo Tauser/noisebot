@@ -151,14 +151,14 @@ class TestPiperServerTTSWithMockProcess:
 
     @pytest.mark.asyncio
     async def test_chunks_are_at_most_chunk_bytes(self):
-        wav = _make_wav_bytes(num_samples=1024)
         tts = PiperServerTTS(model="m.onnx")
-        tts._proc = self._make_mock_process(wav)
+        raw_pcm = b"\x00\x00" * 1024
 
-        # Patch _ensure_process para retornar nosso mock
-        async def _fake_ensure():
-            return tts._proc
-        tts._ensure_process = _fake_ensure
+        async def _fake_run_piper_raw(text: str) -> bytes:
+            assert text == "texto de teste"
+            return raw_pcm
+
+        tts._run_piper_raw = _fake_run_piper_raw
 
         async def _sentences():
             yield "texto de teste"
@@ -197,13 +197,14 @@ class TestPiperServerTTSWithMockProcess:
 
     @pytest.mark.asyncio
     async def test_synthesize_caches_result(self):
-        wav = _make_wav_bytes(num_samples=256)
         tts = PiperServerTTS(model="m.onnx", cache_size=4)
-        tts._proc = self._make_mock_process(wav)
+        raw_pcm = b"\x00\x00" * 256
 
-        async def _fake_ensure():
-            return tts._proc
-        tts._ensure_process = _fake_ensure
+        async def _fake_run_piper_raw(text: str) -> bytes:
+            assert text == "nova frase"
+            return raw_pcm
+
+        tts._run_piper_raw = _fake_run_piper_raw
 
         result = await tts._synthesize_sentence("nova frase")
         assert tts._cache.get("nova frase") == result

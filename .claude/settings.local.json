@@ -37,7 +37,8 @@
       "Bash(python -m pytest tests/integration/test_memory.py::TestMemorySmoke::test_watchdog_tasks_not_accumulated -v -s)",
       "Bash(python -m pytest tests/integration/test_resilience.py::TestLlmFailures::test_llm_exception_ends_turn_in_idle -v -s)",
       "Bash(python -m pytest \"tests/integration/test_resilience.py::TestLlmFailures::test_llm_exception_ends_turn_in_idle\" -v)",
-      "Bash(python -m pytest tests/integration/test_dashboard_api.py -q)"
+      "Bash(python -m pytest tests/integration/test_dashboard_api.py -q)",
+      "Bash(python *)"
     ]
   }
 }

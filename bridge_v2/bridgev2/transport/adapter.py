@@ -25,7 +25,7 @@ from ..protocol.messages import (
     encode_hello, decode_hello, decode_event, decode_status, decode_session,
     encode_expr, encode_action, encode_emot_event, encode_gaze,
     encode_text_scroll, encode_volume, encode_speech_cancel,
-    encode_say_begin, encode_say_end,
+    encode_say_begin, encode_say_end, encode_session,
 )
 from ..runtime.bus import EventBus
 from ..runtime.events import (
@@ -126,10 +126,16 @@ class FirmwareAdapter:
     # -- Handshake ----------------------------------------------------------
 
     async def _handshake(self) -> None:
-        """Envia HELLO v2 e aguarda HELLO do firmware."""
-        hello_frame = encode_frame(MSG_HELLO, encode_hello(self._capabilities))
+        """Envia HELLO compatível, aguarda firmware e anuncia capabilities v2.
+
+        O firmware atual faz handshake v1: envia HELLO vazio e espera receber
+        HELLO vazio antes de entrar no loop de I/O. Enviar capabilities JSON logo
+        no primeiro frame faz o ESP fechar a conexão. Por isso a primeira troca é
+        vazia; depois anunciamos as capabilities v2 como re-negociação normal.
+        """
+        hello_frame = encode_frame(MSG_HELLO)
         await self._transport.send(hello_frame)
-        log.debug("Handshake: HELLO enviado")
+        log.debug("Handshake: HELLO compat enviado")
 
         decoder = FrameDecoder()
         deadline = time.monotonic() + HANDSHAKE_TIMEOUT_S
@@ -157,6 +163,10 @@ class FirmwareAdapter:
                         self._peer_capabilities.get("version"),
                         self._peer_capabilities.get("features", []),
                     )
+                    await self._transport.send(
+                        encode_frame(MSG_HELLO, encode_hello(self._capabilities))
+                    )
+                    log.debug("Handshake: capabilities v2 enviadas apos HELLO compat")
                     return
                 else:
                     log.debug(
@@ -263,6 +273,9 @@ class FirmwareAdapter:
 
     async def send_text_scroll(self, text: str) -> None:
         await self._enqueue(encode_frame(MSG_TEXT_SCROLL, encode_text_scroll(text)))
+
+    async def send_session(self, payload: dict[str, Any]) -> None:
+        await self._enqueue(encode_frame(MSG_SESSION, encode_session(payload)))
 
     async def send_volume(self, percent: int) -> None:
         await self._enqueue(encode_frame(MSG_VOLUME, encode_volume(percent)))

@@ -110,14 +110,21 @@ static constexpr float GAZE_PERSP_OPEN_FACTOR = 0.14f;
 static constexpr float GAZE_PERSP_SQUINT_ADD  = 0.08f;
 static constexpr float GAZE_X_MAX             = 0.65f;
 
+/* Pose de fala: durante RESPONDING a composição fica fixa para manter
+ * distância previsível entre olhos, boca e balão de texto. */
+static constexpr float   SPEAKING_EYE_Y_NORM  = -0.55f;
+static constexpr float   SPEAKING_EYE_OPEN    = 0.70f;
+
 /* Boca de fala: pequena, centralizada abaixo dos olhos, ativada durante
- * RESPONDING. Fica dentro do dirty rect fixo da face. */
+ * RESPONDING. Fica acima da cauda do balão inferior. */
 static constexpr int16_t MOUTH_CX             = 160;
-static constexpr int16_t MOUTH_CY             = 171;
+static constexpr int16_t MOUTH_CY             = 166;
 static constexpr int16_t MOUTH_MIN_W          = 38;
 static constexpr int16_t MOUTH_MAX_W          = 58;
 static constexpr int16_t MOUTH_MIN_H          = 3;
 static constexpr int16_t MOUTH_MAX_H          = 13;
+static constexpr int16_t MOUTH_EYE_GAP_PX     = 10;
+static constexpr int16_t MOUTH_MAX_BOTTOM_Y   = 174;
 static constexpr int64_t MOUTH_PERIOD_US      = 320000LL;
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
@@ -967,7 +974,11 @@ static void draw_anger_mark(LGFX_Sprite *spr)
                       soft);
 }
 
-static void draw_speaking_mouth(LGFX_Sprite *spr, int64_t now_us, uint16_t color)
+static void draw_speaking_mouth(LGFX_Sprite *spr,
+                                int64_t now_us,
+                                uint16_t color,
+                                float left_eye_bottom,
+                                float right_eye_bottom)
 {
     if (!s_speaking_mouth_enabled) return;
 
@@ -985,12 +996,33 @@ static void draw_speaking_mouth(LGFX_Sprite *spr, int64_t now_us, uint16_t color
     int16_t mouth_h = (int16_t)((float)MOUTH_MIN_H
                      + ((float)(MOUTH_MAX_H - MOUTH_MIN_H) * open)
                      + 0.5f);
+    float eye_bottom = (left_eye_bottom > right_eye_bottom) ? left_eye_bottom : right_eye_bottom;
     int16_t mouth_x = MOUTH_CX - (mouth_w / 2);
     int16_t mouth_y = MOUTH_CY - (mouth_h / 2);
+    int16_t safe_y = (int16_t)(eye_bottom + (float)MOUTH_EYE_GAP_PX + 0.5f);
+    if (mouth_y < safe_y) mouth_y = safe_y;
+    if ((mouth_y + mouth_h) > MOUTH_MAX_BOTTOM_Y) {
+        mouth_y = (int16_t)(MOUTH_MAX_BOTTOM_Y - mouth_h);
+    }
     int16_t radius  = mouth_h / 2;
     if (radius < 2) radius = 2;
 
     spr->fillRoundRect(mouth_x, mouth_y, mouth_w, mouth_h, radius, color);
+}
+
+static void apply_speaking_pose(nb_face_state_t *face)
+{
+    if (!face) return;
+
+    uint32_t color = face->color;
+    *face = NB_EXPRESSIONS[NB_EXPR_NEUTRAL];
+    face->color = color;
+    face->open_l = SPEAKING_EYE_OPEN;
+    face->open_r = SPEAKING_EYE_OPEN;
+    face->y_l = SPEAKING_EYE_Y_NORM;
+    face->y_r = SPEAKING_EYE_Y_NORM;
+    face->squint_l = 0.0f;
+    face->squint_r = 0.0f;
 }
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
@@ -1396,6 +1428,7 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
     }
 
     bool wake_anim = s_wake_seq_active;
+    bool speaking_anim = s_speaking_mouth_enabled;
 
     /* Blink (atualiza fase de cada olho) */
     blink_update(now_us);
@@ -1423,11 +1456,13 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
         int64_t elapsed_us = now_us - s_sleep_anim_start_us;
         if (elapsed_us < 0) elapsed_us = 0;
         apply_sleep_visual_stage(&face, (float)elapsed_us / 1000.0f, &sleep_bob_norm);
+    } else if (speaking_anim && !wake_anim) {
+        apply_speaking_pose(&face);
     }
 
     /* Centros X dos olhos com x_off (convergência) e gaze_x (translation) aplicados */
-    float   gx        = (sleep_anim || wake_anim) ? 0.0f : s_gaze_x;
-    float   gy        = (sleep_anim || wake_anim) ? 0.0f
+    float   gx        = (sleep_anim || wake_anim || speaking_anim) ? 0.0f : s_gaze_x;
+    float   gy        = (sleep_anim || wake_anim || speaking_anim) ? 0.0f
                                    : damp_vertical_for_lateral_gaze(gx, clamp_abs(s_gaze_y, GAZE_Y_MAX));
     int16_t gaze_shift = (int16_t)(gx * GAZE_X_TRAVEL_PX + (gx >= 0.0f ? 0.5f : -0.5f));
     int16_t left_cx   = BASE_L_CX
@@ -1439,10 +1474,10 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
 
     /* Idle overlay assimétrico (head_tilt, curious_tilt) — aditivo, contornável
      * pelos clamps abaixo. Em sleep_anim ignoramos para não interferir. */
-    float dy_l_ovl    = (sleep_anim || wake_anim) ? 0.0f : s_idle_dy_l;
-    float dy_r_ovl    = (sleep_anim || wake_anim) ? 0.0f : s_idle_dy_r;
-    float dopen_l_ovl = (sleep_anim || wake_anim) ? 0.0f : s_idle_dopen_l;
-    float dopen_r_ovl = (sleep_anim || wake_anim) ? 0.0f : s_idle_dopen_r;
+    float dy_l_ovl    = (sleep_anim || wake_anim || speaking_anim) ? 0.0f : s_idle_dy_l;
+    float dy_r_ovl    = (sleep_anim || wake_anim || speaking_anim) ? 0.0f : s_idle_dy_r;
+    float dopen_l_ovl = (sleep_anim || wake_anim || speaking_anim) ? 0.0f : s_idle_dopen_l;
+    float dopen_r_ovl = (sleep_anim || wake_anim || speaking_anim) ? 0.0f : s_idle_dopen_r;
 
     /* Offsets Y combinados com gaze_y e overlay.
      * Em sleep_anim, face.y_l/y_r já contêm o valor animado e gy=0. */
@@ -1521,7 +1556,7 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
     /* Rotação: usa rot_l como ângulo único para ambos os olhos (sempre igual).
      * Sprite combinado 320×96 garante que os dois giram ao redor do centro
      * da face (x=160), não ao redor do centro individual de cada olho. */
-    bool  use_rot = !sleep_anim && !wake_anim && is_neutral && s_face_spr_ready
+    bool  use_rot = !sleep_anim && !wake_anim && !speaking_anim && is_neutral && s_face_spr_ready
                  && (rot_l > 0.5f || rot_l < -0.5f);
 
     /*
@@ -1615,7 +1650,9 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
     int16_t cy_l_i = (int16_t)(cy_l_f + (cy_l_f >= 0.0f ? 0.5f : -0.5f));
     int16_t cy_r_i = (int16_t)(cy_r_f + (cy_r_f >= 0.0f ? 0.5f : -0.5f));
     if (!sleep_anim) {
-        draw_speaking_mouth(spr, now_us, face.color);
+        float eye_bottom_l = cy_l_f + face.open_l * MAX_HH_F;
+        float eye_bottom_r = cy_r_f + face.open_r * MAX_HH_F;
+        draw_speaking_mouth(spr, now_us, face.color, eye_bottom_l, eye_bottom_r);
     }
     draw_blush_overlay(spr, now_us, left_cx, right_cx, cy_l_i, cy_r_i);
     draw_heart_overlay(spr, now_us, right_cx, eye_cy);

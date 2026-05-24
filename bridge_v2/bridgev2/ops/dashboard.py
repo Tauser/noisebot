@@ -256,6 +256,7 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
         <select id="cfg-provider" onchange="onProviderChange()">
           <option value="openai">openai</option>
           <option value="gemini">gemini</option>
+          <option value="ollama">ollama</option>
           <option value="none">none</option>
         </select>
       </div>
@@ -383,6 +384,7 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
 const CATALOG = {
   openai: ['gpt-4o-mini','gpt-4o','gpt-4.1-mini','gpt-4.1','gpt-4-turbo'],
   gemini: ['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.5-pro'],
+  ollama: ['qwen2.5:7b','qwen2.5:14b','llama3.1:8b','llama3.2:3b','mistral:7b'],
   none:   [],
 };
 

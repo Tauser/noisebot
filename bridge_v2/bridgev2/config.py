@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 class LlmProvider(str, Enum):
     OPENAI = "openai"
     GEMINI = "gemini"
+    OLLAMA = "ollama"
     NONE = "none"
 
 
@@ -62,6 +63,8 @@ class LlmConfig:
     timeout_s: float
     max_output_tokens: int
     max_reply_chars: int
+    ollama_base_url: str
+    ollama_think: bool
     # api_key_configured: apenas indica presenca -- nunca o valor
     openai_key_configured: bool
     gemini_key_configured: bool
@@ -139,6 +142,8 @@ class BridgeV2Config:
                 "model": self.llm.model,
                 "timeout_s": self.llm.timeout_s,
                 "max_output_tokens": self.llm.max_output_tokens,
+                "ollama_base_url": self.llm.ollama_base_url,
+                "ollama_think": self.llm.ollama_think,
                 "openai_key_configured": self.llm.openai_key_configured,
                 "gemini_key_configured": self.llm.gemini_key_configured,
             },
@@ -261,6 +266,8 @@ def load_config(env_path: str | os.PathLike | None = None) -> BridgeV2Config:
             timeout_s=_env_float("NOISEBOT_LLM_TIMEOUT_S", 10.0),
             max_output_tokens=_env_int("NOISEBOT_LLM_MAX_OUTPUT_TOKENS", 256),
             max_reply_chars=_env_int("NOISEBOT_LLM_MAX_REPLY_CHARS", 180),
+            ollama_base_url=_env("NOISEBOT_OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
+            ollama_think=_env_bool("NOISEBOT_OLLAMA_THINK", False),
             openai_key_configured=bool(_env("OPENAI_API_KEY")),
             gemini_key_configured=bool(_env("GEMINI_API_KEY")),
         ),
@@ -276,7 +283,7 @@ def load_config(env_path: str | os.PathLike | None = None) -> BridgeV2Config:
             piper_model=_env("NOISEBOT_PIPER_MODEL", ""),
             cache_size=_env_int("NOISEBOT_TTS_CACHE_SIZE", 64),
             sample_rate=16000,
-            target_peak=_env_int("NOISEBOT_TTS_TARGET_PEAK", 8000),
+            target_peak=_env_int("NOISEBOT_TTS_TARGET_PEAK", 12000),
         ),
         audio=AudioConfig(
             chunk_samples=256,

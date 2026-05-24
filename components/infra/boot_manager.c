@@ -58,9 +58,13 @@
 #include "web_service.h"
 #include "bridge_service.h"
 #include "wake_service.h"
+#include "time_service.h"
+#include "agenda_service.h"
 #include "esp_ota_ops.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
+#include <string.h>
+#include <sys/stat.h>
 
 #define TAG "nb_boot"
 
@@ -89,6 +93,8 @@ static bool     s_initialized       = false;
 static uint32_t s_silence_ms        = 0;    /* ms sem interação — acumula em IDLE/SLEEPING */
 static bool     s_milestone_100h    = false; /* greet especial de 100h pendente ao primeiro IDLE */
 static bool     s_wake_word_triggered = false; /* sinaliza que ATTENTIVE foi ativado via wake word */
+static bool     s_followup_listen_triggered = false; /* ATTENTIVE abriu por continuacao de conversa */
+static bool     s_bridge_reply_playing = false; /* PLAYBACK atual veio de SAY do bridge */
 static uint32_t s_sleep_touch_guard_ms = 0; /* ignora toque residual ao entrar em SLEEPING */
 static uint32_t s_sleep_wake_guard_ms  = 0; /* evita falso wake word logo após dormir */
 
@@ -360,6 +366,7 @@ static void on_idle_alone(void)
 static void on_audio_event(nb_audio_event_t evt, uint32_t data)
 {
     bool session_voice_evt = (data != 0U) || audio_service_is_listening();
+    bool start_followup = false;
     nb_event_t bus_evt = {
         .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000LL),
         .data.u32     = data,
@@ -377,11 +384,21 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;
             break;
         case NB_AUDIO_EVT_PLAYBACK_START:
+            s_bridge_reply_playing = (data == 0U);
             state_machine_on_audio_started();
             bus_evt.type = NB_EVT_AUDIO_STARTED;
             break;
         case NB_AUDIO_EVT_PLAYBACK_END:
+            start_followup = s_bridge_reply_playing;
+            s_bridge_reply_playing = false;
             state_machine_on_audio_ended();
+            if (start_followup &&
+                bridge_service_is_connected() &&
+                bridge_service_consume_followup_request()) {
+                s_followup_listen_triggered = true;
+                state_machine_on_followup_listen();
+                s_followup_listen_triggered = false;
+            }
             bus_evt.type = NB_EVT_AUDIO_ENDED;
             break;
         default: return;
@@ -390,6 +407,12 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
 }
 
 /* ── Relay de eventos de touch → event bus + state machine + emotion ─────── */
+
+static void silence_active_alert(const char *source)
+{
+    synth_stop();
+    NB_LOGI(TAG, "alerta silenciado (%s)", source ? source : "unknown");
+}
 
 /* Relay de touch: chama SM diretamente (contexto da touch task, não dispatcher)
  * e depois publica no bus para o behavior_engine reagir.
@@ -416,6 +439,9 @@ static void on_touch_event(nb_touch_event_t evt)
     switch (evt) {
         case NB_TOUCH_EVT_TAP:
             s_silence_ms = 0;
+            if (synth_is_active()) {
+                silence_active_alert("touch");
+            }
             led_effect_touch();           /* feedback LED imediato — não é comportamento */
             state_machine_on_touch_tap();
             touch_semantic_on_tap();      /* delega publicação ao serviço semântico */
@@ -520,13 +546,18 @@ static void on_state_changed(nb_robot_state_t new_state,
     switch (new_state) {
         case NB_STATE_ATTENTIVE:
             /* Escuta ativa abre apenas por wake word. Touch fica reservado para interação afetiva. */
+            synth_stop();
             if (s_wake_word_triggered) {
                 audio_service_begin_listen_session(NB_LISTEN_SOURCE_WAKE_WORD);
                 s_wake_word_triggered = false;
+            } else if (s_followup_listen_triggered) {
+                audio_service_begin_listen_session(NB_LISTEN_SOURCE_FOLLOWUP);
+                s_followup_listen_triggered = false;
             }
             led_base_set(NB_LED_BASE_ATTENTIVE, true);
             break;
         case NB_STATE_RESPONDING:
+            synth_stop();
             led_base_set(NB_LED_BASE_RESPONDING, true);
             wake_service_suspend();
             break;
@@ -537,7 +568,6 @@ static void on_state_changed(nb_robot_state_t new_state,
         case NB_STATE_MEDITATION:
             led_base_set(NB_LED_BASE_MEDITATION, true);
             wake_service_suspend();
-            synth_purr(60000, 0.2f);
             break;
         case NB_STATE_SILENT_COMPANY:
             led_base_set(NB_LED_BASE_SILENT_COMPANY, true);
@@ -545,6 +575,7 @@ static void on_state_changed(nb_robot_state_t new_state,
             break;
         case NB_STATE_IDLE:
             s_wake_word_triggered = false;
+            s_followup_listen_triggered = false;
             if (old_state == NB_STATE_ATTENTIVE) {
                 led_base_set(NB_LED_BASE_ATTENTIVE, false);
                 expression_service_set(NB_EXPR_NEUTRAL, 600.0f);
@@ -592,6 +623,135 @@ static void on_motion_fault_event(const nb_event_t *evt, void *ctx)
 {
     (void)evt; (void)ctx;
     state_machine_on_motion_fault();
+}
+
+static void on_bridge_alert_command(const nb_event_t *ev, void *ctx)
+{
+    (void)ctx;
+    const char *payload = (const char *)ev->data.ptr;
+    if (!payload) return;
+    if (strstr(payload, "\"event\":\"ALERT_COMMAND\"") &&
+        strstr(payload, "\"action\":\"silence\"")) {
+        silence_active_alert("bridge");
+    }
+}
+
+/* ── Callbacks de agenda ─────────────────────────────────────────────────── */
+
+static bool play_agenda_audio_asset(const char *path)
+{
+    if (!path) return false;
+    if (!sd_hal_is_mounted() && sd_hal_try_remount() != ESP_OK) {
+        NB_LOGW(TAG, "audio agenda indisponivel: SD nao montado");
+        return false;
+    }
+
+    struct stat st;
+    if (stat(path, &st) != 0 || S_ISDIR(st.st_mode)) {
+        NB_LOGW(TAG, "audio agenda nao encontrado: %s", path);
+        return false;
+    }
+
+    esp_err_t err = audio_play_file(path);
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "audio agenda falhou %s: %s", path, esp_err_to_name(err));
+        return false;
+    }
+
+    NB_LOGI(TAG, "audio agenda: %s", path);
+    return true;
+}
+
+static void play_timer_done_chime(void)
+{
+    if (play_agenda_audio_asset(NB_SD_MOUNT_POINT "/assets/audio/timer_done.wav")) {
+        return;
+    }
+
+    synth_set_timbre(NB_SYNTH_TIMBRE_SINE);
+    const nb_note_t notes[] = {
+        { 523.25f, 90U },  /* C5 */
+        { 659.25f, 90U },  /* E5 */
+        { 783.99f, 140U }, /* G5 */
+        { 0.0f,    35U },
+        { 1046.5f, 180U }, /* C6 */
+    };
+    synth_melody(notes, (uint8_t)(sizeof(notes) / sizeof(notes[0])));
+}
+
+static void play_reminder_chime(void)
+{
+    if (play_agenda_audio_asset(NB_SD_MOUNT_POINT "/assets/audio/reminder_due.wav")) {
+        return;
+    }
+
+    synth_set_timbre(NB_SYNTH_TIMBRE_SINE);
+    const nb_note_t notes[] = {
+        { 659.25f, 140U }, /* E5 */
+        { 783.99f, 180U }, /* G5 */
+        { 987.77f, 220U }, /* B5 */
+    };
+    synth_melody(notes, (uint8_t)(sizeof(notes) / sizeof(notes[0])));
+}
+
+static void play_alarm_chime(void)
+{
+    if (play_agenda_audio_asset(NB_SD_MOUNT_POINT "/assets/audio/alarm_due.wav")) {
+        return;
+    }
+
+    synth_set_timbre(NB_SYNTH_TIMBRE_SINE);
+    const nb_note_t notes[] = {
+        { 783.99f, 120U }, /* G5 */
+        { 0.0f,    35U },
+        { 783.99f, 120U },
+        { 0.0f,    35U },
+        { 987.77f, 160U }, /* B5 */
+        { 1174.66f, 220U },/* D6 */
+    };
+    synth_melody(notes, (uint8_t)(sizeof(notes) / sizeof(notes[0])));
+}
+
+static void on_agenda_timer_done(const nb_event_t *ev, void *ctx)
+{
+    (void)ctx;
+    uint8_t id = (uint8_t)ev->data.u32;
+    nb_timer_t t;
+    play_timer_done_chime();
+    if (agenda_timer_get(id, &t) && t.label[0] != '\0') {
+        NB_LOGI("nb_boot", "timer %u venceu: %s", (unsigned)id, t.label);
+        ui_overlay_show_toast(t.label, NB_UI_OVERLAY_INFO, 4000U);
+    } else {
+        NB_LOGI("nb_boot", "timer %u venceu", (unsigned)id);
+    }
+}
+
+static void on_agenda_reminder_due(const nb_event_t *ev, void *ctx)
+{
+    (void)ctx;
+    uint8_t id = (uint8_t)ev->data.u32;
+    nb_reminder_t r;
+    play_reminder_chime();
+    if (agenda_reminder_get(id, &r) && r.label[0] != '\0') {
+        NB_LOGI("nb_boot", "lembrete %u: %s", (unsigned)id, r.label);
+        ui_overlay_show_toast(r.label, NB_UI_OVERLAY_INFO, 5000U);
+    } else {
+        NB_LOGI("nb_boot", "lembrete %u ativado", (unsigned)id);
+    }
+}
+
+static void on_agenda_alarm_due(const nb_event_t *ev, void *ctx)
+{
+    (void)ctx;
+    uint8_t id = (uint8_t)ev->data.u32;
+    nb_alarm_t a;
+    play_alarm_chime();
+    if (agenda_alarm_get(id, &a) && a.label[0] != '\0') {
+        NB_LOGI("nb_boot", "alarme %u: %s", (unsigned)id, a.label);
+        ui_overlay_show_toast(a.label, NB_UI_OVERLAY_WARNING, 6000U);
+    } else {
+        NB_LOGI("nb_boot", "alarme %u disparou", (unsigned)id);
+    }
 }
 
 /* VOICE_FOLLOWUP_TIMEOUT: gaze sweep lateral — "cadê você?" */
@@ -649,7 +809,9 @@ static void on_wake_word_detected(const nb_event_t *evt, void *ctx)
 {
     (void)evt; (void)ctx;
     nb_robot_state_t st = state_machine_get_state();
-    if (st != NB_STATE_IDLE && st != NB_STATE_SLEEPING) {
+    if (st != NB_STATE_IDLE &&
+        st != NB_STATE_SLEEPING &&
+        st != NB_STATE_TOUCH_REACTING) {
         NB_LOGI(TAG, "wake word ignorada em estado %s",
                 state_machine_state_name(st));
         return;
@@ -720,6 +882,7 @@ static void behavior_task(void *arg)
         touch_semantic_tick(100);
         circadian_tick(100);
         idle_service_update(100);
+        agenda_service_tick(100);
         ltm_tick(100);
 
         /* Timer de companhia silenciosa: 2h sem interação → SILENT_COMPANY. */
@@ -1047,6 +1210,24 @@ static esp_err_t phase_services(void)
     err = schedule_service_init();
     NB_ASSERT(err == ESP_OK, TAG, "schedule_service_init falhou: %s",
               esp_err_to_name(err));
+
+    /* time_service (Etapa 13.1): SNTP + timezone configurável */
+    err = time_service_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "time_service_init falhou: %s — sem hora local", esp_err_to_name(err));
+    }
+
+    /* agenda_service (Etapa 13.1): timers, lembretes e alarmes locais */
+    err = agenda_service_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "agenda_service_init falhou: %s — agenda desativada",
+                esp_err_to_name(err));
+    } else {
+        nb_event_subscribe(NB_EVT_TIMER_DONE,      on_agenda_timer_done,    NULL, NULL);
+        nb_event_subscribe(NB_EVT_REMINDER_DUE,    on_agenda_reminder_due,  NULL, NULL);
+        nb_event_subscribe(NB_EVT_ALARM_DUE,       on_agenda_alarm_due,     NULL, NULL);
+    }
+    nb_event_subscribe(NB_EVT_BRIDGE_SESSION, on_bridge_alert_command, NULL, NULL);
 
     /* diagnostics_service (Etapa 9.1): observabilidade e health score */
     {

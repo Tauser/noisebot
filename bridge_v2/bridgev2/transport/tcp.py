@@ -63,18 +63,23 @@ class TcpTransport(Transport):
     async def recv(self, n: int = 4096) -> bytes:
         if self._reader is None:
             return b""
-        try:
-            data = await asyncio.wait_for(
-                self._reader.read(n), timeout=self._read_timeout
-            )
-            if not data:
-                log.debug("TCP: EOF recebido de %s:%d", self._host, self._port)
-            return data
-        except asyncio.TimeoutError:
-            return b""  # timeout de leitura — nao e desconexao
-        except (ConnectionResetError, ConnectionAbortedError, OSError) as e:
-            log.debug("TCP: recv error: %s", e)
-            return b""
+        while True:
+            try:
+                data = await asyncio.wait_for(
+                    self._reader.read(n), timeout=self._read_timeout
+                )
+                if not data:
+                    log.debug("TCP: EOF recebido de %s:%d", self._host, self._port)
+                return data
+            except asyncio.TimeoutError:
+                log.debug(
+                    "TCP: recv timeout sem dados de %s:%d — mantendo conexao",
+                    self._host, self._port,
+                )
+                continue
+            except (ConnectionResetError, ConnectionAbortedError, OSError) as e:
+                log.debug("TCP: recv error: %s", e)
+                return b""
 
     @property
     def is_connected(self) -> bool:

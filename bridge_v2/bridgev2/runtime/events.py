@@ -129,6 +129,7 @@ class IntentResolved:
     expression_id: int | None = None   # hint para RobotOutputProvider
     action_id: int | None = None       # hint para RobotOutputProvider
     emot_event_id: int | None = None   # hint para RobotOutputProvider
+    device_command: dict[str, Any] | None = None
     t: float = field(default_factory=_now)
 
     @property

@@ -109,6 +109,28 @@ typedef enum {
     /* Persona (Layer 7) */
     NB_EVT_PERSONA_REFRESHED,       /* dimensões recalculadas; sem payload      */
 
+    /* Tempo / SNTP (time_service, Etapa 13.1) */
+    NB_EVT_TIME_SYNCED,             /* SNTP sincronizou; sem payload            */
+    NB_EVT_TIME_SYNC_FAILED,        /* SNTP não respondeu em tempo hábil        */
+
+    /* Agenda — Timers (agenda_service, Etapa 13.1) */
+    NB_EVT_TIMER_STARTED,           /* data.u32 = timer_id (0–7)               */
+    NB_EVT_TIMER_UPDATED,           /* data.u32 = timer_id                      */
+    NB_EVT_TIMER_CANCELLED,         /* data.u32 = timer_id                      */
+    NB_EVT_TIMER_DONE,              /* data.u32 = timer_id                      */
+
+    /* Agenda — Lembretes */
+    NB_EVT_REMINDER_SCHEDULED,      /* data.u32 = reminder_id (0–7)            */
+    NB_EVT_REMINDER_UPDATED,        /* data.u32 = reminder_id                   */
+    NB_EVT_REMINDER_CANCELLED,      /* data.u32 = reminder_id                   */
+    NB_EVT_REMINDER_DUE,            /* data.u32 = reminder_id                   */
+
+    /* Agenda — Alarmes */
+    NB_EVT_ALARM_SCHEDULED,         /* data.u32 = alarm_id (0–7)               */
+    NB_EVT_ALARM_UPDATED,           /* data.u32 = alarm_id                      */
+    NB_EVT_ALARM_CANCELLED,         /* data.u32 = alarm_id                      */
+    NB_EVT_ALARM_DUE,               /* data.u32 = alarm_id                      */
+
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
 } nb_event_type_t;
 

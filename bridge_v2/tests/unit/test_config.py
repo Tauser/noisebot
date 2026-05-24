@@ -21,6 +21,7 @@ class TestLoadConfig:
         keys = [
             "NOISEBOT_HOST", "NOISEBOT_PORT", "NOISEBOT_UART",
             "NOISEBOT_LLM_PROVIDER", "NOISEBOT_LLM_MODEL", "NOISEBOT_PIPELINE_MODE",
+            "NOISEBOT_OLLAMA_BASE_URL", "NOISEBOT_OLLAMA_THINK",
             "OPENAI_API_KEY", "GEMINI_API_KEY",
             "NOISEBOT_WHISPER_MODEL", "NOISEBOT_DRY_RUN", "NOISEBOT_LOG_LEVEL",
         ]
@@ -69,6 +70,22 @@ class TestLoadConfig:
         cfg = load_config(env_path="/nonexistent/.env")
         assert cfg.llm.provider == LlmProvider.GEMINI
         assert cfg.llm.model == "gemini-2.5-flash"
+
+    def test_llm_provider_ollama(self, monkeypatch):
+        monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "ollama")
+        monkeypatch.setenv("NOISEBOT_LLM_MODEL", "qwen2.5:7b")
+        monkeypatch.setenv("NOISEBOT_OLLAMA_BASE_URL", "http://localhost:11434")
+        cfg = load_config(env_path="/nonexistent/.env")
+        assert cfg.llm.provider == LlmProvider.OLLAMA
+        assert cfg.llm.model == "qwen2.5:7b"
+        assert cfg.llm.ollama_base_url == "http://localhost:11434"
+        assert cfg.llm.ollama_think is False
+
+    def test_llm_provider_ollama_think_opt_in(self, monkeypatch):
+        monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "ollama")
+        monkeypatch.setenv("NOISEBOT_OLLAMA_THINK", "true")
+        cfg = load_config(env_path="/nonexistent/.env")
+        assert cfg.llm.ollama_think is True
 
     def test_api_key_configured_flag(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret-key")

@@ -111,6 +111,10 @@ def encode_speech_cancel(turn_id: int) -> bytes:
     return struct.pack("<I", turn_id)
 
 
+def encode_session(payload: dict[str, Any]) -> bytes:
+    return json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")[:256]
+
+
 # ── Decode helpers ─────────────────────────────────────────────────────────
 
 

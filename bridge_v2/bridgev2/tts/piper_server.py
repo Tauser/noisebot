@@ -1,20 +1,14 @@
-"""bridgev2.tts.piper_server — Processo Piper persistente (Fase 6).
+"""bridgev2.tts.piper_server — Piper TTS local (Fase 6).
 
-Mantém o processo piper rodando de longa duração via stdin/stdout.
-Elimina o custo de spawn por turno do bridge v1.
-
-Protocolo de framing: piper sem --output_raw escreve WAV para stdout.
-O cabeçalho WAV contém o tamanho exato dos dados PCM, tornando o stream
-auto-descritivo — uma sentença → um WAV completo no stdout.
-
-Escolha de design (Fase 5.5 spike):
-  Opção adotada: (a) piper CLI em processo persistente via pipe stdin/stdout.
-  Protocolo: cada linha de texto no stdin → um WAV completo no stdout.
-  Vantagem: sem spawn por turno, framing limpo via WAV.
+O Piper CLI no Windows escreve mensagens de caminho/log no stdout quando usado
+sem ``--output_raw``. Para manter o transporte limpo, cada frase é sintetizada
+em subprocesso curto com stdout PCM bruto. O cache LRU evita repetir sínteses
+para frases comuns.
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import struct
 from pathlib import Path
@@ -30,14 +24,13 @@ CHUNK_BYTES = CHUNK_SAMPLES * 2   # 512 bytes = 16 ms @ 16 kHz
 
 
 class PiperServerTTS(TTSProvider):
-    """Processo Piper persistente de longa duração.
+    """TTS local via Piper CLI com saída PCM bruta.
 
-    Cada chamada a synthesize_stream() escreve frases no stdin do piper
-    e lê as respostas WAV auto-descritivas do stdout.
-    O resultado é dividido em chunks de 512 bytes (256 amostras int16).
+    Cada chamada a synthesize_stream() sintetiza uma frase por vez, aplica
+    cache LRU e entrega chunks de 512 bytes (256 amostras int16) ao firmware.
 
     Thread-safety: não é thread-safe. Projetado para rodar no event loop asyncio.
-    A trava _lock serializa sínteses (uma por vez no processo piper).
+    A trava _lock serializa sínteses para evitar subprocessos concorrentes.
     """
 
     def __init__(
@@ -47,10 +40,13 @@ class PiperServerTTS(TTSProvider):
         cache_size: int = 64,
         disk_cache_dir: Path | None = None,
         sample_rate: int = 16000,
+        target_peak: int = 8000,
     ) -> None:
         self._executable = executable
         self._model = model
         self._sample_rate = sample_rate
+        self._source_sample_rate = _load_model_sample_rate(model) or sample_rate
+        self._target_peak = max(0, min(32767, target_peak))
         self._cache = PhrasePcmCache(maxsize=cache_size, disk_dir=disk_cache_dir)
         self._proc: asyncio.subprocess.Process | None = None
         self._lock = asyncio.Lock()
@@ -58,16 +54,28 @@ class PiperServerTTS(TTSProvider):
     # -- TTSProvider interface ------------------------------------------------
 
     async def initialize(self) -> None:
-        """Inicia o processo piper. Pode demorar se o modelo for grande."""
+        """Valida o Piper e o modelo. A síntese abre subprocessos por frase."""
         if not self._model:
             log.warning("PiperServerTTS: NOISEBOT_PIPER_MODEL não configurado — TTS desabilitado.")
             return
         try:
-            await self._ensure_process()
-            log.info("PiperServerTTS: processo iniciado. modelo=%s", self._model)
+            proc = await asyncio.create_subprocess_exec(
+                self._executable,
+                "--help",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+            if not Path(self._model).exists():
+                raise RuntimeError(f"modelo não encontrado: {self._model}")
         except Exception as exc:
             log.error("PiperServerTTS: falha ao iniciar piper (%s). TTS desabilitado.", exc)
             raise RuntimeError("PiperServerTTS: falha ao iniciar piper") from exc
+
+        log.info(
+            "PiperServerTTS: pronto. modelo=%s sample_rate=%d→%d",
+            self._model, self._source_sample_rate, self._sample_rate,
+        )
 
     async def synthesize_stream(
         self, sentences: AsyncIterator[str]
@@ -88,7 +96,7 @@ class PiperServerTTS(TTSProvider):
                     yield chunk
 
     async def shutdown(self) -> None:
-        """Encerra o processo piper graciosamente."""
+        """Encerra processo pendente, se existir."""
         proc = self._proc
         self._proc = None
         if proc is None:
@@ -129,28 +137,49 @@ class PiperServerTTS(TTSProvider):
         cached = self._cache.get(text)
         if cached is not None:
             log.debug("TTS cache hit: %r (%d bytes)", text[:40], len(cached))
-            return cached
+            return _normalize_pcm16_peak(cached, self._target_peak)
 
         if not self._model:
             return b""
 
         async with self._lock:
             try:
-                proc = await self._ensure_process()
-                assert proc.stdin is not None
-                proc.stdin.write(text.encode("utf-8") + b"\n")
-                await proc.stdin.drain()
-                pcm = await self._read_wav_pcm(proc)
+                pcm = await self._run_piper_raw(text)
+                if self._source_sample_rate != self._sample_rate:
+                    pcm = _resample_pcm16_linear(
+                        pcm,
+                        src_rate=self._source_sample_rate,
+                        dst_rate=self._sample_rate,
+                    )
+                pcm = _normalize_pcm16_peak(pcm, self._target_peak)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 log.error("PiperServerTTS: erro na síntese de %r: %s", text[:40], exc)
-                self._proc = None   # força restart na próxima chamada
                 return b""
 
         self._cache.put(text, pcm)
         log.debug("TTS sintetizado: %r → %d bytes PCM", text[:40], len(pcm))
         return pcm
+
+    async def _run_piper_raw(self, text: str) -> bytes:
+        proc = await asyncio.create_subprocess_exec(
+            self._executable,
+            "--model", self._model,
+            "--output_raw",
+            "--quiet",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        self._proc = proc
+        stdout, _ = await proc.communicate(text.encode("utf-8") + b"\n")
+        self._proc = None
+        if proc.returncode not in (0, None):
+            raise RuntimeError(f"piper saiu com código {proc.returncode}")
+        if not stdout:
+            raise RuntimeError("piper não gerou áudio")
+        return stdout
 
     async def _read_wav_pcm(self, proc: asyncio.subprocess.Process) -> bytes:
         """Lê um frame WAV completo do stdout do piper. Retorna apenas PCM."""
@@ -187,3 +216,51 @@ async def _read_exact(stream: asyncio.StreamReader, n: int) -> bytes:
             )
         data += chunk
     return data
+
+
+def _load_model_sample_rate(model: str) -> int | None:
+    if not model:
+        return None
+    cfg = Path(f"{model}.json")
+    if not cfg.exists():
+        return None
+    try:
+        data = json.loads(cfg.read_text(encoding="utf-8"))
+        rate = data.get("audio", {}).get("sample_rate")
+        return int(rate) if rate else None
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def _resample_pcm16_linear(pcm: bytes, *, src_rate: int, dst_rate: int) -> bytes:
+    if src_rate <= 0 or dst_rate <= 0 or src_rate == dst_rate or len(pcm) < 4:
+        return pcm
+    samples = memoryview(pcm).cast("h")
+    src_len = len(samples)
+    dst_len = max(1, int(src_len * dst_rate / src_rate))
+    out = bytearray(dst_len * 2)
+    for i in range(dst_len):
+        src_pos = i * src_rate / dst_rate
+        j = int(src_pos)
+        if j >= src_len - 1:
+            val = samples[src_len - 1]
+        else:
+            frac = src_pos - j
+            val = int(samples[j] * (1.0 - frac) + samples[j + 1] * frac)
+        struct.pack_into("<h", out, i * 2, max(-32768, min(32767, val)))
+    return bytes(out)
+
+
+def _normalize_pcm16_peak(pcm: bytes, target_peak: int) -> bytes:
+    if target_peak <= 0 or len(pcm) < 2:
+        return pcm
+    samples = memoryview(pcm).cast("h")
+    peak = max((abs(int(s)) for s in samples), default=0)
+    if peak <= 0 or peak == target_peak:
+        return pcm
+    gain = target_peak / peak
+    out = bytearray(len(pcm))
+    for i, sample in enumerate(samples):
+        val = int(int(sample) * gain)
+        struct.pack_into("<h", out, i * 2, max(-32768, min(32767, val)))
+    return bytes(out)

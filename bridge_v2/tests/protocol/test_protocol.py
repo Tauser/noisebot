@@ -20,7 +20,7 @@ from bridgev2.runtime.events import (
     VoiceActivityStart, VoiceActivityEnd, AudioChunkIn, StatusUpdate,
 )
 from bridgev2.config import ReconnectConfig
-from bridgev2.protocol.messages import MSG_HELLO, MSG_SPEECH_CANCEL
+from bridgev2.protocol.messages import MSG_HELLO, MSG_SPEECH_CANCEL, decode_hello
 
 _PORT_BASE = 19100
 
@@ -63,7 +63,7 @@ class TestHandshake:
             await transport.disconnect()
 
     async def test_bridge_hello_received_by_firmware(self, bus: EventBus):
-        """Firmware recebe MSG_HELLO do bridge com protocol correto."""
+        """Firmware recebe HELLO compat e depois capabilities v2 do bridge."""
         port = _port(2)
         fw = FakeFirmware(port=port)
         async with fw.running():
@@ -74,6 +74,17 @@ class TestHandshake:
 
             assert await fw.wait_connected(timeout=2.0)
             caps = fw.bridge_capabilities
+            assert caps.get("version") == 1
+
+            for _ in range(20):
+                hello_frames = fw.received_of_type(MSG_HELLO)
+                if hello_frames:
+                    break
+                await asyncio.sleep(0.01)
+
+            hello_frames = fw.received_of_type(MSG_HELLO)
+            assert hello_frames, "capabilities v2 nao recebidas apos HELLO compat"
+            caps = decode_hello(hello_frames[-1].payload)
             assert caps.get("protocol") == "noisebot-bridge"
             assert "features" in caps
 
