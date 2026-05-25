@@ -32,16 +32,16 @@ instead of copying firmware dashboard code back into the ESP32.
 
 ## Migration status
 
-Phase 1 is intentionally conservative:
+The migration is now server-first:
 
-- `noisebot_server` is now an importable package under `server/`.
-- `noisebot-server` delegates to the existing `bridgev2` entrypoint.
-- `NoiseBotServer` is a facade over `bridgev2.app.Application`.
-- No firmware behavior is changed by this phase.
-- Runtime code remains owned by `bridge_v2` until each server module has parity
-  tests.
+- `noisebot_server` is the importable package under `server/`.
+- `noisebot-server` owns the CLI, normal runtime shell, debug tools and service
+  management.
+- `NoiseBotServer` owns application composition and lifecycle.
+- Core providers still enter through server boundaries that delegate to proven
+  `bridge_v2` modules until each implementation is moved with parity tests.
 
-Next phases should move responsibilities one boundary at a time:
+Next phases should continue moving responsibilities one boundary at a time:
 
 1. `internal/transport`: firmware connection, framing and reconnect.
 2. `internal/ops`: health, metrics, debug and config API.
@@ -111,9 +111,16 @@ and agenda work.
 ## Runtime shell
 
 Normal `noisebot-server` startup is now owned by `noisebot_server.cli` and
-`noisebot_server.runtime`. The runtime still composes bridge-backed classes, but
-the server package owns config loading, logging and event-loop startup for the
-main path.
+`noisebot_server.runtime`. The server package owns config loading, logging,
+event-loop startup and the main application graph.
+
+## Application graph
+
+`NoiseBotServer` now composes the runtime inside `noisebot_server.app` instead
+of inheriting from `bridgev2.app.Application`. Transport, ops, agent and service
+dependencies are imported through `noisebot_server.internal.*` boundaries, which
+still delegate to bridge implementations where that is the safest compatible
+step.
 
 ## Debug tools
 

@@ -3,6 +3,73 @@ from __future__ import annotations
 import importlib
 
 
+def _make_server_config(
+    *,
+    host: str | None = None,
+    port: int = 9000,
+    uart: str | None = None,
+    dry_run: bool = True,
+    piper_model: str = "",
+):
+    config_module = importlib.import_module("noisebot_server.config")
+
+    return config_module.BridgeV2Config(
+        transport=config_module.TransportConfig(
+            host=host,
+            port=port,
+            uart=uart,
+            baudrate=1000000,
+        ),
+        llm=config_module.LlmConfig(
+            provider=config_module.LlmProvider.NONE,
+            model="none",
+            timeout_s=10.0,
+            max_output_tokens=256,
+            max_reply_chars=180,
+            ollama_base_url="http://127.0.0.1:11434",
+            ollama_think=False,
+            openai_key_configured=False,
+            gemini_key_configured=False,
+        ),
+        pipeline_mode=config_module.PipelineMode.LOCAL_ONLY,
+        stt=config_module.SttConfig(
+            model="small",
+            backend="faster",
+            device="cpu",
+            compute_type="int8",
+        ),
+        tts=config_module.TtsConfig(
+            piper_executable="piper",
+            piper_model=piper_model,
+            cache_size=64,
+            sample_rate=16000,
+            target_peak=12000,
+        ),
+        audio=config_module.AudioConfig(
+            chunk_samples=256,
+            sample_rate=16000,
+            min_transcribe_rms=140.0,
+            min_transcribe_peak=1600,
+            min_utterance_samples=8000,
+            max_no_speech_prob=0.75,
+            min_avg_logprob=-1.10,
+            max_compression_ratio=2.60,
+        ),
+        reconnect=config_module.ReconnectConfig(
+            delay_s=0.05,
+            max_delay_s=0.2,
+            connect_timeout_s=2.0,
+        ),
+        ops=config_module.OpsConfig(
+            port=8765,
+            token_configured=False,
+        ),
+        log_level=config_module.LogLevel.INFO,
+        dry_run=dry_run,
+        replay_path=None,
+    )
+
+
 def test_bridgev2_compat_path_allows_application_import() -> None:
     compat = importlib.import_module("noisebot_server._compat")
     compat.ensure_bridgev2_path()
@@ -228,6 +295,37 @@ def test_server_runtime_uses_noisebot_server_app() -> None:
     app_module = importlib.import_module("noisebot_server.app")
 
     assert runtime.NoiseBotServer is app_module.NoiseBotServer
+
+
+def test_server_app_no_longer_inherits_bridge_application() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    app_module = importlib.import_module("noisebot_server.app")
+    bridge_app = importlib.import_module("bridgev2.app")
+
+    assert not issubclass(app_module.NoiseBotServer, bridge_app.Application)
+
+
+def test_server_app_dry_run_suppresses_supervisor() -> None:
+    app_module = importlib.import_module("noisebot_server.app")
+
+    app = app_module.NoiseBotServer(
+        _make_server_config(host="127.0.0.1", dry_run=True)
+    )
+
+    assert app._supervisor is None
+
+
+def test_server_app_tcp_config_creates_supervisor() -> None:
+    app_module = importlib.import_module("noisebot_server.app")
+
+    app = app_module.NoiseBotServer(
+        _make_server_config(host="127.0.0.1", dry_run=False)
+    )
+
+    assert app._supervisor is not None
+    assert app._get_adapter() is None
 
 
 def test_server_transport_exports_bridge_compatible_protocol() -> None:

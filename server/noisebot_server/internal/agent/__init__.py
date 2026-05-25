@@ -8,7 +8,13 @@ local intents, LLM providers, STT and TTS through this package.
 from __future__ import annotations
 
 from .intents import LocalIntentProvider
-from .llm import LLMProvider, StreamingLLMProvider
+from .llm import (
+    GeminiProvider,
+    LLMProvider,
+    OllamaProvider,
+    OpenAIStreamingProvider,
+    StreamingLLMProvider,
+)
 from .orchestrator import Orchestrator
 from .runtime import EventBus, SessionContext, TurnManager, TurnState
 from .stt import STTProvider, WhisperLocalSTT
@@ -16,8 +22,11 @@ from .tts import PiperServerTTS, Sentencizer, TTSProvider
 
 __all__ = [
     "EventBus",
+    "GeminiProvider",
     "LLMProvider",
     "LocalIntentProvider",
+    "OllamaProvider",
+    "OpenAIStreamingProvider",
     "Orchestrator",
     "PiperServerTTS",
     "STTProvider",
