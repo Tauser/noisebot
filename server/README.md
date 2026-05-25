@@ -72,3 +72,14 @@ unchanged while future app-facing APIs move into the server package.
 ```python
 from noisebot_server.internal.ops import OpsHttpServer, StatusStore
 ```
+
+## Agent boundary
+
+`noisebot_server.internal.agent` is the server-owned import boundary for the
+voice/agent pipeline: conversation runtime, local intents, STT, LLM providers,
+TTS and orchestration. It delegates to `bridge_v2` in this phase so voice,
+barge-in, local LLM configuration and Piper playback behavior stay unchanged.
+
+```python
+from noisebot_server.internal.agent import LocalIntentProvider, Orchestrator
+```

@@ -153,3 +153,56 @@ def test_server_ops_config_controller_validates_like_bridge() -> None:
     assert server_config.ConfigController is bridge_config.ConfigController
     assert "ollama" in server_config.PROVIDER_CATALOG
     assert "local_only" in server_config.VALID_MODES
+
+
+def test_server_agent_exports_bridge_orchestrator_runtime() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    server_agent = importlib.import_module("noisebot_server.internal.agent")
+    bridge_orchestrator = importlib.import_module("bridgev2.runtime.orchestrator")
+    bridge_bus = importlib.import_module("bridgev2.runtime.bus")
+
+    assert server_agent.Orchestrator is bridge_orchestrator.Orchestrator
+    assert server_agent.EventBus is bridge_bus.EventBus
+
+
+def test_server_agent_local_intent_matches_time() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("que horas sao", turn_id=44)
+
+    assert result.intent_name == "local_time"
+    assert result.reply_text
+
+
+def test_server_agent_exports_provider_boundaries() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    server_llm = importlib.import_module("noisebot_server.internal.agent.llm")
+    bridge_llm = importlib.import_module("bridgev2.llm.base")
+    server_stt = importlib.import_module("noisebot_server.internal.agent.stt")
+    bridge_stt = importlib.import_module("bridgev2.stt.base")
+    server_tts = importlib.import_module("noisebot_server.internal.agent.tts")
+    bridge_tts = importlib.import_module("bridgev2.tts.base")
+
+    assert server_llm.StreamingLLMProvider is bridge_llm.StreamingLLMProvider
+    assert server_stt.STTProvider is bridge_stt.STTProvider
+    assert server_tts.TTSProvider is bridge_tts.TTSProvider
+
+
+def test_server_agent_sentencizer_keeps_bridge_behavior() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    sentencizer = agent.Sentencizer()
+
+    sentences = list(sentencizer.feed("Ola. Tudo bem?")) + list(sentencizer.flush())
+
+    assert sentences == ["Ola. Tudo bem?"]
