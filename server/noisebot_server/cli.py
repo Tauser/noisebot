@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 from collections.abc import Sequence
 
@@ -91,14 +92,38 @@ def apply_env_overrides(args: argparse.Namespace) -> None:
         os.environ["NOISEBOT_LOG_LEVEL"] = args.log_level
 
 
+def run_debug_command(args: argparse.Namespace) -> None:
+    """Run server-owned debug commands."""
+    from .internal.debug.manual import run_fake_firmware_debug, run_transcript_debug
+
+    if args.debug_command == "transcript":
+        raise SystemExit(asyncio.run(run_transcript_debug(args.text, args.turn_id)))
+    if args.debug_command == "fake-fw":
+        features = [item.strip() for item in args.features.split(",") if item.strip()]
+        raise SystemExit(
+            asyncio.run(
+                run_fake_firmware_debug(
+                    args.host,
+                    args.port,
+                    features,
+                    args.auto_silence_chunks,
+                )
+            )
+        )
+    raise SystemExit(2)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     args = parse_args(argv)
 
-    if args.command in {"service", "debug"}:
+    if args.command == "service":
         ensure_bridgev2_path()
         from bridgev2.__main__ import main as bridge_main
 
         bridge_main()
+        return
+    if args.command == "debug":
+        run_debug_command(args)
         return
 
     apply_env_overrides(args)

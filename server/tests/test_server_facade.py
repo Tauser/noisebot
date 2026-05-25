@@ -76,6 +76,37 @@ def test_server_cli_applies_env_overrides(monkeypatch) -> None:
     assert os.environ["NOISEBOT_LLM_MODEL"] == "none"
 
 
+def test_server_cli_runs_debug_transcript_without_bridge_entrypoint(monkeypatch) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    manual = importlib.import_module("noisebot_server.internal.debug.manual")
+
+    calls: dict[str, object] = {}
+
+    async def fake_run_transcript_debug(text: str, turn_id: int = 1) -> int:
+        calls["text"] = text
+        calls["turn_id"] = turn_id
+        return 7
+
+    monkeypatch.setattr(manual, "run_transcript_debug", fake_run_transcript_debug)
+
+    try:
+        cli.main(["debug", "transcript", "oi noise", "--turn-id", "42"])
+    except SystemExit as exc:
+        assert exc.code == 7
+    else:
+        raise AssertionError("debug command must exit with helper return code")
+
+    assert calls == {"text": "oi noise", "turn_id": 42}
+
+
+def test_server_debug_msg_name_uses_server_boundary() -> None:
+    manual = importlib.import_module("noisebot_server.internal.debug.manual")
+    protocol = importlib.import_module("noisebot_server.internal.transport.protocol")
+
+    assert manual.msg_name(protocol.MSG_HELLO) == "HELLO"
+    assert manual.msg_name(0xFE) == "0xFE"
+
+
 def test_server_runtime_uses_noisebot_server_app() -> None:
     runtime = importlib.import_module("noisebot_server.runtime")
     app_module = importlib.import_module("noisebot_server.app")
