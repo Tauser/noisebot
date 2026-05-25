@@ -67,6 +67,7 @@ class TestLoadConfig:
 
     def test_llm_provider_gemini(self, monkeypatch):
         monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "gemini")
+        monkeypatch.delenv("NOISEBOT_LLM_MODEL", raising=False)
         cfg = load_config(env_path="/nonexistent/.env")
         assert cfg.llm.provider == LlmProvider.GEMINI
         assert cfg.llm.model == "gemini-2.5-flash"

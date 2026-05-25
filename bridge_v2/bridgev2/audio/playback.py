@@ -60,42 +60,49 @@ class OutputScheduler:
         self._chunks_sent = 0
         self._t_first = None
 
-        async for chunk in pcm_iter:
-            if not chunk:
-                continue
+        try:
+            async for chunk in pcm_iter:
+                if not chunk:
+                    continue
 
-            if self._t_first is None:
-                self._t_first = time.monotonic()
-                await _maybe_call_adapter(adapter, "send_say_begin", turn_id)
-                if on_first_audio is not None:
-                    result = on_first_audio(turn_id)
-                    if inspect.isawaitable(result):
-                        await result
+                if self._t_first is None:
+                    self._t_first = time.monotonic()
+                    await _maybe_call_adapter(adapter, "send_say_begin", turn_id)
+                    if on_first_audio is not None:
+                        result = on_first_audio(turn_id)
+                        if inspect.isawaitable(result):
+                            await result
 
-            # Pacing: quantos chunks o firmware já reproduziu?
-            elapsed = time.monotonic() - self._t_first
-            chunks_played = int(elapsed / CHUNK_DURATION_S)
-            buffer_fill = self._chunks_sent - chunks_played
+                # Pacing: quantos chunks o firmware já reproduziu?
+                elapsed = time.monotonic() - self._t_first
+                chunks_played = int(elapsed / CHUNK_DURATION_S)
+                buffer_fill = self._chunks_sent - chunks_played
 
-            if buffer_fill >= FIRMWARE_SAY_QUEUE:
-                # Fila cheia: aguarda pelo menos 1 slot livre.
-                sleep_s = (buffer_fill - FIRMWARE_SAY_QUEUE + 1) * CHUNK_DURATION_S
-                await asyncio.sleep(sleep_s)
+                if buffer_fill >= FIRMWARE_SAY_QUEUE:
+                    # Fila cheia: aguarda pelo menos 1 slot livre.
+                    sleep_s = (buffer_fill - FIRMWARE_SAY_QUEUE + 1) * CHUNK_DURATION_S
+                    await asyncio.sleep(sleep_s)
 
-            if adapter is not None:
-                try:
-                    await adapter.send_say(chunk)
-                except Exception as exc:
-                    log.exception(
-                        "OutputScheduler: erro ao enviar SAY turn_id=%d", turn_id
-                    )
-                    raise ConnectionError("falha ao enviar audio ao firmware") from exc
+                if adapter is not None:
+                    try:
+                        await adapter.send_say(chunk)
+                    except Exception as exc:
+                        log.exception(
+                            "OutputScheduler: erro ao enviar SAY turn_id=%d", turn_id
+                        )
+                        raise ConnectionError("falha ao enviar audio ao firmware") from exc
 
-            self._chunks_sent += 1
-            if on_audio_progress is not None:
-                on_audio_progress(turn_id)
-            # Cede o event loop entre chunks para não bloquear outros coroutines
-            await asyncio.sleep(0)
+                self._chunks_sent += 1
+                if on_audio_progress is not None:
+                    on_audio_progress(turn_id)
+                # Cede o event loop entre chunks para não bloquear outros coroutines
+                await asyncio.sleep(0)
+        finally:
+            close_iter = getattr(pcm_iter, "aclose", None)
+            if close_iter is not None:
+                result = close_iter()
+                if inspect.isawaitable(result):
+                    await result
 
         if self._chunks_sent:
             await _maybe_call_adapter(adapter, "send_say_end", turn_id)
