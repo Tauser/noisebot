@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import sys
 from collections.abc import Sequence
 
-from ._compat import ensure_bridgev2_path
 from .config import LlmProvider, PipelineMode, find_env_file, load_config
 from .runtime import DEFAULT_LOG_FILE, run_server
 
@@ -113,14 +113,36 @@ def run_debug_command(args: argparse.Namespace) -> None:
     raise SystemExit(2)
 
 
+def run_service_command(args: argparse.Namespace) -> None:
+    """Run server-owned service commands."""
+    from .internal.service.manager import get_manager
+
+    manager = get_manager()
+    try:
+        if args.service_command == "install":
+            manager.install()
+        elif args.service_command == "uninstall":
+            manager.uninstall()
+        elif args.service_command == "status":
+            print(manager.status())
+        elif args.service_command == "start":
+            manager.start()
+            print("Servico iniciado.")
+        elif args.service_command == "stop":
+            manager.stop()
+            print("Servico parado.")
+        else:
+            raise SystemExit(2)
+    except Exception as exc:
+        print(f"Erro: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     args = parse_args(argv)
 
     if args.command == "service":
-        ensure_bridgev2_path()
-        from bridgev2.__main__ import main as bridge_main
-
-        bridge_main()
+        run_service_command(args)
         return
     if args.command == "debug":
         run_debug_command(args)

@@ -113,8 +113,7 @@ and agenda work.
 Normal `noisebot-server` startup is now owned by `noisebot_server.cli` and
 `noisebot_server.runtime`. The runtime still composes bridge-backed classes, but
 the server package owns config loading, logging and event-loop startup for the
-main path. Legacy `service` subcommands still delegate to `bridge_v2` until
-service installation is migrated.
+main path.
 
 ## Debug tools
 
@@ -127,5 +126,18 @@ python -m noisebot_server debug fake-fw --port 9001
 
 `debug transcript` injects a synthetic transcript into the server agent path.
 `debug fake-fw` starts a TCP firmware simulator that speaks the same bridge
-protocol used by the ESP32. The `service` subcommands still delegate to
-`bridge_v2` until service installation is migrated.
+protocol used by the ESP32.
+
+## Service tools
+
+The `service` subcommands are owned by `noisebot_server`:
+
+```powershell
+python -m noisebot_server service status
+python -m noisebot_server service install
+python -m noisebot_server service start
+python -m noisebot_server service stop
+```
+
+On Windows this registers the `NoiseBot Server` Task Scheduler entry. On Linux
+it writes a user-level `noisebot-server.service` unit.

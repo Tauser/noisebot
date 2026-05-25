@@ -99,12 +99,128 @@ def test_server_cli_runs_debug_transcript_without_bridge_entrypoint(monkeypatch)
     assert calls == {"text": "oi noise", "turn_id": 42}
 
 
+def test_server_cli_runs_service_status_without_bridge_entrypoint(
+    monkeypatch,
+    capsys,
+) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    manager_module = importlib.import_module("noisebot_server.internal.service.manager")
+
+    class FakeManager:
+        def install(self) -> None:
+            raise AssertionError("unexpected install")
+
+        def uninstall(self) -> None:
+            raise AssertionError("unexpected uninstall")
+
+        def status(self) -> str:
+            return "ok server"
+
+        def start(self) -> None:
+            raise AssertionError("unexpected start")
+
+        def stop(self) -> None:
+            raise AssertionError("unexpected stop")
+
+    monkeypatch.setattr(manager_module, "get_manager", lambda: FakeManager())
+
+    cli.main(["service", "status"])
+
+    captured = capsys.readouterr()
+    assert "ok server" in captured.out
+
+
 def test_server_debug_msg_name_uses_server_boundary() -> None:
     manual = importlib.import_module("noisebot_server.internal.debug.manual")
     protocol = importlib.import_module("noisebot_server.internal.transport.protocol")
 
     assert manual.msg_name(protocol.MSG_HELLO) == "HELLO"
     assert manual.msg_name(0xFE) == "0xFE"
+
+
+def test_server_service_manager_uses_server_identity() -> None:
+    manager = importlib.import_module("noisebot_server.internal.service.manager")
+
+    assert manager.TASK_NAME == "NoiseBot Server"
+    assert manager.SERVICE_NAME == "noisebot-server"
+    assert "-m noisebot_server" in manager.SYSTEMD_TEMPLATE
+    assert "SyslogIdentifier=noisebot-server" in manager.SYSTEMD_TEMPLATE
+
+
+def test_server_service_selects_windows_manager(monkeypatch) -> None:
+    manager = importlib.import_module("noisebot_server.internal.service.manager")
+
+    monkeypatch.setattr(manager.platform, "system", lambda: "Windows")
+
+    assert isinstance(manager.get_manager(), manager.WindowsTaskSchedulerManager)
+
+
+def test_server_service_selects_systemd_manager(monkeypatch) -> None:
+    manager = importlib.import_module("noisebot_server.internal.service.manager")
+
+    monkeypatch.setattr(manager.platform, "system", lambda: "Linux")
+
+    assert isinstance(manager.get_manager(), manager.SystemdManager)
+
+
+def test_server_service_windows_install_uses_noisebot_module(monkeypatch) -> None:
+    manager = importlib.import_module("noisebot_server.internal.service.manager")
+    calls: list[list[str]] = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd: list[str], **_: object) -> Result:
+        calls.append(cmd)
+        return Result()
+
+    monkeypatch.setattr(manager.subprocess, "run", fake_run)
+    workdir = manager.Path("D:/NoiseBot")
+    monkeypatch.setattr(manager, "service_workdir", lambda: workdir)
+
+    manager.WindowsTaskSchedulerManager().install()
+
+    script = calls[0][-1]
+    assert manager.TASK_NAME in script
+    assert "-m noisebot_server" in script
+    assert str(workdir) in script
+
+
+def test_server_service_systemd_install_writes_noisebot_unit(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    manager = importlib.import_module("noisebot_server.internal.service.manager")
+    calls: list[list[str]] = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd: list[str], **_: object) -> Result:
+        calls.append(cmd)
+        return Result()
+
+    service = manager.SystemdManager()
+    monkeypatch.setattr(type(service), "_unit_dir", property(lambda _: tmp_path))
+    monkeypatch.setattr(manager.subprocess, "run", fake_run)
+    workdir = manager.Path("/noisebot")
+    monkeypatch.setattr(manager, "service_workdir", lambda: workdir)
+
+    service.install()
+
+    unit_file = tmp_path / f"{manager.SERVICE_NAME}.service"
+    content = unit_file.read_text(encoding="utf-8")
+    assert unit_file.exists()
+    assert "ExecStart=" in content
+    assert "-m noisebot_server" in content
+    assert f"WorkingDirectory={workdir}" in content
+    assert "Restart=on-failure" in content
+    assert any("daemon-reload" in call for call in calls)
+    assert any("enable" in call for call in calls)
 
 
 def test_server_runtime_uses_noisebot_server_app() -> None:
