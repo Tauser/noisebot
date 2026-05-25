@@ -290,6 +290,27 @@ def test_server_service_systemd_install_writes_noisebot_unit(
     assert any("enable" in call for call in calls)
 
 
+def test_server_healthcheck_is_server_owned(monkeypatch, tmp_path) -> None:
+    health = importlib.import_module("noisebot_server.internal.service.healthcheck")
+
+    health_file = tmp_path / "noisebot-server.health"
+    monkeypatch.setattr(health, "HEALTHCHECK_FILE", health_file)
+
+    health.write_healthy("ok")
+
+    assert health_file.exists()
+    assert health.is_healthy(max_age_s=60.0)
+    assert "ok" in health_file.read_text(encoding="utf-8")
+
+    health.write_unhealthy("teste")
+
+    assert not health.is_healthy(max_age_s=60.0)
+
+    health.remove_healthcheck()
+
+    assert not health_file.exists()
+
+
 def test_server_runtime_uses_noisebot_server_app() -> None:
     runtime = importlib.import_module("noisebot_server.runtime")
     app_module = importlib.import_module("noisebot_server.app")
