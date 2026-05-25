@@ -611,16 +611,42 @@ def test_server_ops_config_controller_validates_like_bridge() -> None:
     assert "local_only" in server_config.VALID_MODES
 
 
-def test_server_agent_exports_bridge_orchestrator_runtime() -> None:
+def test_server_agent_orchestrator_is_server_owned() -> None:
     compat = importlib.import_module("noisebot_server._compat")
     compat.ensure_bridgev2_path()
 
     server_agent = importlib.import_module("noisebot_server.internal.agent")
     bridge_orchestrator = importlib.import_module("bridgev2.runtime.orchestrator")
-    bridge_bus = importlib.import_module("bridgev2.runtime.bus")
 
-    assert server_agent.Orchestrator is bridge_orchestrator.Orchestrator
-    assert server_agent.EventBus is bridge_bus.EventBus
+    assert server_agent.Orchestrator is not bridge_orchestrator.Orchestrator
+
+
+def test_server_agent_runtime_is_server_owned() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    bridge_bus = importlib.import_module("bridgev2.runtime.bus")
+    bridge_events = importlib.import_module("bridgev2.runtime.events")
+    bridge_turn = importlib.import_module("bridgev2.runtime.turn_manager")
+
+    assert runtime.EventBus is not bridge_bus.EventBus
+    assert runtime.VoiceEndReason.SILENCE.value == bridge_events.VoiceEndReason.SILENCE.value
+    assert runtime.TurnState.IDLE.name == bridge_turn.TurnState.IDLE.name
+
+
+def test_server_agent_turn_manager_keeps_transition_rules() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    manager = runtime.TurnManager()
+
+    manager.transition(runtime.TurnState.LISTENING, turn_id=42)
+    manager.transition(runtime.TurnState.COMMITTING_TURN)
+    manager.transition(runtime.TurnState.THINKING)
+
+    assert manager.current_turn_id == 42
+    assert manager.can_interrupt is True
+    assert manager.try_transition(runtime.TurnState.COMMITTING_TURN) is False
+    assert manager.state == runtime.TurnState.THINKING
 
 
 def test_server_agent_local_intent_matches_time() -> None:
