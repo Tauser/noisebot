@@ -58,12 +58,16 @@ from ..metrics.registry import MetricsRegistry
 from ..tts.sentencizer import Sentencizer
 from ..audio.playback import OutputScheduler
 from ..audio.vad import BargeInMonitor
+from ..vision import VisionClient
 
 log = logging.getLogger(__name__)
 
 TURN_DEADLINE_S = 30.0  # watchdog antes de iniciar fala
 SPEAKING_PROGRESS_DEADLINE_S = 20.0  # durante SAY: tempo maximo sem progresso
 EMPTY_WAKE_REPLY = "Oi! Em que posso ajudar?"
+LLM_CONFIG_FALLBACK_REPLY = (
+    "Estou sem acesso à IA agora, mas continuo ouvindo os comandos locais."
+)
 
 
 class Orchestrator:
@@ -107,7 +111,9 @@ class Orchestrator:
         self._running = False
 
         # Providers Fase 3
-        self._intent = LocalIntentProvider()
+        self._intent = LocalIntentProvider(
+            vision_client=VisionClient.from_config(config) if config is not None else None
+        )
         self._robot = RobotOutputProvider(bus)
 
         # STT Provider Fase 4 (opcional — None = modo Fase 3)
@@ -128,6 +134,7 @@ class Orchestrator:
 
         # StatusStore Fase 9.5: telemetria para a ops API
         self._store: Any | None = status_store
+        self._last_status: dict[str, Any] = {}
 
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
@@ -213,6 +220,13 @@ class Orchestrator:
             case FinalTranscript():
                 await self._on_final_transcript(event)
             case StatusUpdate():
+                self._last_status = {
+                    "state": event.state,
+                    "valence": event.valence,
+                    "activation": event.activation,
+                    "attention": event.attention,
+                    "health": event.health,
+                }
                 log.debug("StatusUpdate: state=%d valence=%.2f", event.state, event.valence)
             case BargeInDetected():
                 await self._on_barge_in(event)
@@ -401,7 +415,7 @@ class Orchestrator:
         session.mark("thinking_start")
 
         # Resolve intent local (< 5 ms, sem I/O)
-        context: dict = {"status": {}}
+        context: dict = {"status": self._last_status}
         t_intent_start = time.monotonic()
         intent = self._intent.match(
             text=event.text,
@@ -432,16 +446,31 @@ class Orchestrator:
             )
             self._fsm.transition(TurnState.SPEAKING, turn_id=event.turn_id)
             session.mark("speaking_start")
-            await self._robot.emit_for_intent(intent, self.adapter)
+            has_tts_reply = self._tts is not None and bool(intent.reply_text)
+            await self._robot.emit_for_intent(
+                intent,
+                self.adapter,
+                include_reply_text=not has_tts_reply,
+            )
 
             if self._tts is not None and intent.reply_text:
                 # Fase 6: sintetiza e envia SAY (cancelável por barge-in)
+                log.info(
+                    "Turno %d: iniciando TTS local para intent=%s",
+                    event.turn_id,
+                    intent.intent_name,
+                )
                 self._turn_task = asyncio.create_task(
                     self._speak_reply(event.turn_id, intent.reply_text, session),
                     name=f"nb_tts_{event.turn_id}",
                 )
             else:
                 # Compat Fase 3–5: sem TTS → SpeechDone imediato
+                if intent.reply_text:
+                    log.warning(
+                        "Turno %d: resposta tem texto, mas TTS esta desabilitado",
+                        event.turn_id,
+                    )
                 await self._bus.publish(SpeechDone(turn_id=event.turn_id))
 
         elif self._llm is not None:
@@ -514,7 +543,11 @@ class Orchestrator:
 
         self._fsm.transition(TurnState.SPEAKING, turn_id=event.turn_id)
         session.mark("speaking_start")
-        await self._robot.emit_for_intent(intent, self.adapter)
+        await self._robot.emit_for_intent(
+            intent,
+            self.adapter,
+            include_reply_text=self._tts is None,
+        )
 
         if self._tts is not None:
             self._turn_task = asyncio.create_task(
@@ -626,7 +659,12 @@ class Orchestrator:
             # THINKING → SPEAKING + reação visual imediata (< 300 ms)
             self._fsm.transition(TurnState.SPEAKING, turn_id=turn_id)
             session.mark("speaking_start")
-            await self._robot.emit_for_intent(llm_intent, self.adapter)
+            has_tts_reply = self._tts is not None and bool(sentences)
+            await self._robot.emit_for_intent(
+                llm_intent,
+                self.adapter,
+                include_reply_text=not has_tts_reply,
+            )
 
             # Fase 6: TTS síntese frase a frase + SAY paginado
             if self._tts is not None and sentences:
@@ -636,12 +674,98 @@ class Orchestrator:
         except asyncio.CancelledError:
             log.info("LLM worker turn_id=%d cancelado (barge-in?)", turn_id)
         except Exception as exc:
+            if self._is_llm_config_error(exc):
+                log.warning(
+                    "LLM indisponível por configuração turn_id=%d: %s",
+                    turn_id,
+                    exc,
+                )
+                try:
+                    await self._emit_llm_fallback(
+                        session=session,
+                        turn_id=turn_id,
+                        transcript=text,
+                        reply_text=LLM_CONFIG_FALLBACK_REPLY,
+                        reason="llm_config",
+                    )
+                    return
+                except Exception as fallback_exc:
+                    log.exception(
+                        "Fallback LLM turn_id=%d falhou: %s",
+                        turn_id,
+                        fallback_exc,
+                    )
             log.exception("LLM worker turn_id=%d erro: %s", turn_id, exc)
             await self._bus.publish(TurnError(
                 turn_id=turn_id,
                 stage="llm",
                 reason=type(exc).__name__,
             ))
+
+    @staticmethod
+    def _is_llm_config_error(exc: Exception) -> bool:
+        return (
+            isinstance(exc, ValueError)
+            and "OPENAI_API_KEY" in str(exc)
+        )
+
+    async def _emit_llm_fallback(
+        self,
+        session: SessionContext,
+        turn_id: int,
+        transcript: str,
+        reply_text: str,
+        reason: str,
+    ) -> None:
+        sz = Sentencizer()
+        sentences: list[str] = list(sz.feed(reply_text)) + list(sz.flush())
+
+        for idx, sentence in enumerate(sentences):
+            await self._bus.publish(
+                SentenceReady(turn_id=turn_id, sentence=sentence, index=idx)
+            )
+
+        complete = LlmReplyComplete(
+            turn_id=turn_id,
+            reply=reply_text,
+            expression_id=4,
+            action_id=0,
+            emot_event_id=0,
+            provider="local_fallback",
+            model=reason,
+        )
+        await self._bus.publish(complete)
+
+        fallback_intent = IntentResolved(
+            turn_id=turn_id,
+            intent_name="llm_fallback",
+            reply_text=reply_text,
+            expression_id=complete.expression_id,
+            action_id=complete.action_id,
+            emot_event_id=complete.emot_event_id,
+        )
+        session.intent_name = "llm_fallback"
+        session.reply_text = reply_text
+        if self._store:
+            self._store.record_turn_detail(
+                turn_id,
+                transcript=transcript,
+                reply=reply_text,
+                route="fallback",
+            )
+
+        self._fsm.transition(TurnState.SPEAKING, turn_id=turn_id)
+        session.mark("speaking_start")
+        has_tts_reply = self._tts is not None and bool(sentences)
+        await self._robot.emit_for_intent(
+            fallback_intent,
+            self.adapter,
+            include_reply_text=not has_tts_reply,
+        )
+
+        if self._tts is not None and sentences:
+            await self._run_tts_and_speak(turn_id, sentences, session)
+        await self._bus.publish(SpeechDone(turn_id=turn_id))
 
     async def _speak_reply(
         self, turn_id: int, reply_text: str, session: SessionContext
@@ -650,6 +774,12 @@ class Orchestrator:
         try:
             sz = Sentencizer()
             sentences = list(sz.feed(reply_text)) + list(sz.flush())
+            log.info(
+                "TTS reply turn_id=%d preparado frases=%d chars=%d",
+                turn_id,
+                len(sentences),
+                len(reply_text),
+            )
             if sentences:
                 await self._run_tts_and_speak(turn_id, sentences, session)
             await self._bus.publish(SpeechDone(turn_id=turn_id))
@@ -673,7 +803,7 @@ class Orchestrator:
         """
         first_audio_recorded = False
 
-        def _on_first(tid: int) -> None:
+        async def _on_first(tid: int) -> None:
             nonlocal first_audio_recorded
             if not first_audio_recorded:
                 first_audio_recorded = True
@@ -683,6 +813,11 @@ class Orchestrator:
                 self._metrics.record("first_audio_out_ms", elapsed_ms)
                 session.mark("first_audio_out", t)
                 log.info("Turno %d: primeiro SAY %.0f ms de VOICE_END", tid, elapsed_ms)
+                if self.adapter is not None and session.reply_text:
+                    asyncio.create_task(
+                        self._send_reply_text_scroll(session.reply_text[:128]),
+                        name=f"nb_reply_text_{tid}",
+                    )
 
         def _on_progress(_tid: int) -> None:
             session.set_deadline(SPEAKING_PROGRESS_DEADLINE_S)
@@ -701,6 +836,21 @@ class Orchestrator:
             on_first_audio=_on_first,
             on_audio_progress=_on_progress,
         )
+        if not first_audio_recorded:
+            log.warning(
+                "Turno %d: TTS nao gerou nenhum chunk de audio para %d frase(s)",
+                turn_id,
+                len(sentences),
+            )
+
+    async def _send_reply_text_scroll(self, text: str) -> None:
+        adapter = self.adapter
+        if adapter is None or not text:
+            return
+        try:
+            await adapter.send_text_scroll(text)
+        except Exception as exc:
+            log.warning("Text scroll de resposta falhou sem bloquear TTS: %s", exc)
 
     async def _on_speech_done(self, event: SpeechDone) -> None:
         """Turno de fala encerrado → volta a IDLE com baseline."""

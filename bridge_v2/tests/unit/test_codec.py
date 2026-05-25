@@ -5,7 +5,13 @@ import pytest
 
 from bridgev2.protocol.codec import FrameDecoder
 from bridgev2.protocol.framing import encode_frame, FRAME_OVERHEAD
-from bridgev2.protocol.messages import MSG_HELLO, MSG_AUDIO_CHUNK, MSG_EVENT, MSG_STATUS
+from bridgev2.protocol.messages import (
+    MSG_HELLO,
+    MSG_AUDIO_CHUNK,
+    MSG_EVENT,
+    MSG_STATUS,
+    encode_text_scroll,
+)
 
 
 def _make_frame(msg_type: int, payload: bytes = b"") -> bytes:
@@ -47,6 +53,10 @@ class TestFrameDecoderBasic:
         dec.feed(_make_frame(MSG_HELLO, b"X"))
         found = list(dec)
         assert found == [(MSG_HELLO, b"X")]
+
+    def test_text_scroll_payload_preserves_utf8_accents(self):
+        payload = encode_text_scroll("Olá, você está em Brasília?")
+        assert payload == "Olá, você está em Brasília?".encode("utf-8")
 
 
 class TestFrameDecoderSplit:

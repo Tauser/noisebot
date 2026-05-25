@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 from .app import Application
-from .config import load_config, PipelineMode
+from .config import find_env_file, load_config, PipelineMode, LlmProvider
 
 _DEFAULT_LOG_FILE = Path.home() / ".bridgev2" / "logs" / "bridge.log"
 _LOG_MAX_BYTES    = 5 * 1024 * 1024   # 5 MB por arquivo
@@ -79,6 +79,15 @@ def _parse_args() -> argparse.Namespace:
         "--pipeline",
         choices=[m.value for m in PipelineMode],
         help="Modo do pipeline (sobrescreve NOISEBOT_PIPELINE_MODE)",
+    )
+    p.add_argument(
+        "--llm",
+        choices=[p.value for p in LlmProvider],
+        help="Provider LLM (sobrescreve NOISEBOT_LLM_PROVIDER)",
+    )
+    p.add_argument(
+        "--model",
+        help="Modelo LLM (sobrescreve NOISEBOT_LLM_MODEL)",
     )
     p.add_argument(
         "--log-level",
@@ -196,14 +205,23 @@ def main() -> None:
         os.environ["NOISEBOT_DRY_RUN"] = "true"
     if args.pipeline:
         os.environ["NOISEBOT_PIPELINE_MODE"] = args.pipeline
+    if args.llm:
+        os.environ["NOISEBOT_LLM_PROVIDER"] = args.llm
+    if args.model:
+        os.environ["NOISEBOT_LLM_MODEL"] = args.model
     if args.log_level:
         os.environ["NOISEBOT_LOG_LEVEL"] = args.log_level
 
-    config = load_config(args.env)
+    env_file = find_env_file(args.env)
+    config = load_config(env_file)
 
     _setup_logging(config.log_level.value, getattr(args, "log_file", None))
     log = logging.getLogger("bridgev2")
     log.info("Bridge v2 iniciando. pipeline_mode=%s", config.pipeline_mode.value)
+    if env_file is not None:
+        log.info("Config: .env carregado de %s", env_file)
+    else:
+        log.warning("Config: nenhum .env encontrado")
     log.info("Config: %s", config.safe_dict())
 
     app = Application(config)

@@ -42,6 +42,7 @@ class RobotOutputProvider:
         self,
         intent: IntentResolved,
         adapter: Any,   # FirmwareAdapter | None
+        include_reply_text: bool = True,
     ) -> None:
         """Emite comandos de robot baseados em IntentResolved.
 
@@ -93,7 +94,7 @@ class RobotOutputProvider:
             )
 
         # -- Texto de reply no display -----------------------------------------
-        if intent.reply_text:
+        if include_reply_text and intent.reply_text:
             await self._emit(
                 adapter, "text",
                 {"text": intent.reply_text[:128]},

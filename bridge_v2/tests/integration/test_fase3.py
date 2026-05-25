@@ -34,6 +34,7 @@ from bridgev2.runtime.events import (
     IntentResolved,
     RobotCommand,
     SpeechDone,
+    StatusUpdate,
     TranscriptQuality,
 )
 from bridgev2.runtime.orchestrator import Orchestrator
@@ -143,6 +144,27 @@ class TestFinalTranscriptInjection:
             assert isinstance(intent_evt, IntentResolved)
             assert intent_evt.intent_name == "local_greeting"
             assert intent_evt.turn_id == 2
+        finally:
+            await orch.shutdown()
+            orch_task.cancel()
+            await asyncio.gather(orch_task, return_exceptions=True)
+
+    async def test_mood_intent_uses_latest_status_update(self):
+        bus = EventBus(default_maxsize=256)
+        orch = Orchestrator(bus, _make_config(), get_adapter=lambda: None)
+        q_intent = bus.subscribe(IntentResolved)
+        q_done = bus.subscribe(SpeechDone)
+
+        orch_task = asyncio.create_task(orch.run(), name="orch")
+        try:
+            await bus.publish(
+                StatusUpdate(state=1, valence=-0.6, activation=0.4, attention=0.7, health=90)
+            )
+            await _run_turn(bus, FinalTranscript(turn_id=12, text="como voce esta"), q_done=q_done)
+
+            intent_evt = await _wait_event(q_intent)
+            assert intent_evt.intent_name == "local_mood"
+            assert "atravessado" in intent_evt.reply_text
         finally:
             await orch.shutdown()
             orch_task.cancel()
@@ -312,7 +334,7 @@ class TestMultipleTurns:
             await asyncio.gather(orch_task, return_exceptions=True)
 
     async def test_three_sequential_turns_different_intents(self):
-        """Três turnos: greeting, status, farewell."""
+        """Tres turnos: greeting, mood social, farewell."""
         bus = EventBus(default_maxsize=256)
         orch = Orchestrator(bus, _make_config(), get_adapter=lambda: None)
         q_intent = bus.subscribe(IntentResolved, maxsize=64)
@@ -326,7 +348,7 @@ class TestMultipleTurns:
             intents = await _drain(q_intent)
             names = [i.intent_name for i in intents]
             assert "local_greeting" in names
-            assert "local_status" in names
+            assert "local_mood" in names
             assert "local_farewell" in names
         finally:
             await orch.shutdown()

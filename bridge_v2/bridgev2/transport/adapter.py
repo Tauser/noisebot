@@ -12,6 +12,7 @@ import asyncio
 import logging
 import struct
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from ..protocol.codec import FrameDecoder
@@ -41,6 +42,16 @@ log = logging.getLogger(__name__)
 
 HANDSHAKE_TIMEOUT_S = 5.0
 HELLO_WAIT_TIMEOUT_S = 3.0
+TX_ENQUEUE_TIMEOUT_S = 2.0
+TX_SEND_TIMEOUT_S = 5.0
+HEARTBEAT_INTERVAL_S = 30.0
+HEARTBEAT_TIMEOUT_S = 90.0
+
+
+@dataclass
+class _TxItem:
+    frame: bytes
+    ack: asyncio.Future[None]
 
 
 class FirmwareAdapter:
@@ -61,8 +72,9 @@ class FirmwareAdapter:
         self._capabilities = capabilities or BRIDGE_V2_HELLO_CAPABILITIES
         self._peer_capabilities: dict[str, Any] = {}
         self._decoder = FrameDecoder()
-        self._tx_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=256)
+        self._tx_queue: asyncio.Queue[_TxItem] = asyncio.Queue(maxsize=256)
         self._connected = False
+        self._last_rx_mono = 0.0
 
     @property
     def peer_capabilities(self) -> dict[str, Any]:
@@ -75,22 +87,33 @@ class FirmwareAdapter:
     def peer_supports(self, feature: str) -> bool:
         return feature in self.peer_features
 
+    @property
+    def is_connected(self) -> bool:
+        if not (self._connected and self._transport.is_connected):
+            return False
+        if self._last_rx_mono <= 0.0:
+            return False
+        return (time.monotonic() - self._last_rx_mono) <= HEARTBEAT_TIMEOUT_S
+
     # -- Ciclo principal ----------------------------------------------------
 
     async def run(self) -> None:
         """Faz handshake e inicia loops RX + TX. Termina quando a conexao cai."""
         rx_task: asyncio.Task | None = None
         tx_task: asyncio.Task | None = None
+        hb_task: asyncio.Task | None = None
         try:
             await self._handshake()
             self._connected = True
+            self._last_rx_mono = time.monotonic()
             await self._bus.publish(
                 FirmwareConnected(peer_capabilities=self._peer_capabilities)
             )
             rx_task = asyncio.create_task(self._rx_loop(), name="nb_fw_rx")
             tx_task = asyncio.create_task(self._tx_loop(), name="nb_fw_tx")
+            hb_task = asyncio.create_task(self._heartbeat_loop(), name="nb_fw_hb")
             done, pending = await asyncio.wait(
-                {rx_task, tx_task},
+                {rx_task, tx_task, hb_task},
                 return_when=asyncio.FIRST_COMPLETED,
             )
             for t in pending:
@@ -110,11 +133,11 @@ class FirmwareAdapter:
         finally:
             self._connected = False
             # Cancelar inner tasks em qualquer caminho de saida (inclusive CancelledError)
-            for t in (rx_task, tx_task):
+            for t in (rx_task, tx_task, hb_task):
                 if t is not None and not t.done():
                     t.cancel()
-            if rx_task is not None or tx_task is not None:
-                tasks = [t for t in (rx_task, tx_task) if t is not None]
+            if rx_task is not None or tx_task is not None or hb_task is not None:
+                tasks = [t for t in (rx_task, tx_task, hb_task) if t is not None]
                 try:
                     await asyncio.gather(*tasks, return_exceptions=True)
                 except asyncio.CancelledError:
@@ -187,6 +210,7 @@ class FirmwareAdapter:
                 break
             self._decoder.feed(data)
             for msg_type, payload in self._decoder.frames():
+                self._last_rx_mono = time.monotonic()
                 await self._dispatch_rx(msg_type, payload)
 
     async def _dispatch_rx(self, msg_type: int, payload: bytes) -> None:
@@ -227,7 +251,7 @@ class FirmwareAdapter:
                           sess.get("event"), sess.get("session_id"))
 
             elif msg_type == MSG_HELLO:
-                log.info("RX: HELLO recebido apos handshake (re-negociacao)")
+                log.debug("RX: HELLO recebido apos handshake")
                 try:
                     self._peer_capabilities = decode_hello(payload)
                 except ValueError:
@@ -239,6 +263,23 @@ class FirmwareAdapter:
         except Exception:
             log.exception("RX dispatch error type=0x%02X", msg_type)
 
+    async def _heartbeat_loop(self) -> None:
+        """Mantem a conexao viva com HELLO v2 em baixa frequencia."""
+        try:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL_S)
+                await self._enqueue(
+                    encode_frame(MSG_HELLO, encode_hello(self._capabilities))
+                )
+                rx_age = time.monotonic() - self._last_rx_mono
+                if rx_age > HEARTBEAT_TIMEOUT_S:
+                    self._connected = False
+                    raise ConnectionError(
+                        f"heartbeat sem resposta do firmware ha {rx_age:.1f}s"
+                    )
+        except asyncio.CancelledError:
+            pass
+
     # -- Loop TX ------------------------------------------------------------
 
     async def _tx_loop(self) -> None:
@@ -246,16 +287,27 @@ class FirmwareAdapter:
         log.debug("FirmwareAdapter: TX loop iniciado")
         try:
             while True:
-                frame = await self._tx_queue.get()
+                item = await self._tx_queue.get()
                 try:
-                    await self._transport.send(frame)
+                    await asyncio.wait_for(
+                        self._transport.send(item.frame),
+                        timeout=TX_SEND_TIMEOUT_S,
+                    )
                 except Exception as e:
                     log.warning("TX: erro ao enviar frame: %s", e)
+                    self._connected = False
+                    if not item.ack.done():
+                        item.ack.set_exception(ConnectionError("TX: falha ao enviar frame"))
                     self._tx_queue.task_done()
                     break
+                if not item.ack.done():
+                    item.ack.set_result(None)
                 self._tx_queue.task_done()
         except asyncio.CancelledError:
+            self._fail_pending_tx("TX: conexao cancelada")
             pass
+        finally:
+            self._fail_pending_tx("TX: loop encerrado")
 
     # -- API de envio -------------------------------------------------------
 
@@ -297,7 +349,28 @@ class FirmwareAdapter:
             await self._enqueue(encode_frame(MSG_SPEECH_CANCEL, encode_speech_cancel(turn_id)))
 
     async def _enqueue(self, frame: bytes) -> None:
+        if not self._connected:
+            raise ConnectionError("FirmwareAdapter: desconectado")
+        loop = asyncio.get_running_loop()
+        item = _TxItem(frame=frame, ack=loop.create_future())
         try:
-            self._tx_queue.put_nowait(frame)
-        except asyncio.QueueFull:
-            log.warning("TX: fila cheia -- frame descartado")
+            await asyncio.wait_for(self._tx_queue.put(item), timeout=TX_ENQUEUE_TIMEOUT_S)
+        except asyncio.TimeoutError as exc:
+            log.warning(
+                "TX: fila cheia por %.1fs -- frame descartado len=%d qsize=%d",
+                TX_ENQUEUE_TIMEOUT_S,
+                len(frame),
+                self._tx_queue.qsize(),
+            )
+            raise asyncio.QueueFull from exc
+        await item.ack
+
+    def _fail_pending_tx(self, reason: str) -> None:
+        while True:
+            try:
+                item = self._tx_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if not item.ack.done():
+                item.ack.set_exception(ConnectionError(reason))
+            self._tx_queue.task_done()

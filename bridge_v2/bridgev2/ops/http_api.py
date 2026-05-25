@@ -152,8 +152,14 @@ class OpsHttpServer:
         else:
             api_key = provider == "ollama"
 
+        supervisor = getattr(self._app, "_supervisor", None)
+        live_connected = bool(
+            supervisor is not None and getattr(supervisor, "is_connected", False)
+        )
+        store.firmware_connected = live_connected
+
         return _json(ai_status_response(
-            connected=store.firmware_connected,
+            connected=live_connected,
             pipeline="v2",
             mode=config.pipeline_mode.value,
             provider=provider,

@@ -43,6 +43,10 @@ class Application:
 
         tts_provider = self._build_tts_provider()
         self._tts_provider = tts_provider
+        log.info(
+            "TTS provider: %s",
+            type(tts_provider).__name__ if tts_provider is not None else "desabilitado",
+        )
 
         # Fase 9.5: StatusStore — estado compartilhado entre orchestrator e ops API
         from .ops.status_store import StatusStore
@@ -87,6 +91,7 @@ class Application:
             min_avg_logprob=audio.min_avg_logprob,
             max_compression_ratio=audio.max_compression_ratio,
             min_rms=audio.min_transcribe_rms,
+            beam_size=stt.beam_size,
         )
 
     def _build_llm_provider(self):
@@ -133,6 +138,7 @@ class Application:
         if not tts.piper_model:
             log.warning("TTS: NOISEBOT_PIPER_MODEL não configurado — TTS desabilitado.")
             return None
+        log.info("TTS: Piper configurado modelo=%s", tts.piper_model)
         return PiperServerTTS(
             executable=tts.piper_executable,
             model=tts.piper_model,

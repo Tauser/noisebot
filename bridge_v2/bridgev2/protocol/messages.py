@@ -92,7 +92,8 @@ def encode_gaze(x: float, y: float) -> bytes:
 
 
 def encode_text_scroll(text: str) -> bytes:
-    return text.encode("utf-8")[:128]
+    raw = text.encode("utf-8")[:128]
+    return raw.decode("utf-8", "ignore").encode("utf-8")
 
 
 def encode_volume(percent: int) -> bytes:

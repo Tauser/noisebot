@@ -11,6 +11,7 @@ from bridgev2.config import (
     LogLevel,
     load_config,
     load_env_file,
+    find_env_file,
 )
 
 
@@ -32,8 +33,8 @@ class TestLoadConfig:
 
         assert cfg.transport.port == 9000
         assert cfg.transport.host is None
-        assert cfg.llm.provider == LlmProvider.OPENAI
-        assert cfg.llm.model == "gpt-4o-mini"
+        assert cfg.llm.provider == LlmProvider.OLLAMA
+        assert cfg.llm.model == "qwen2.5:7b"
         assert cfg.pipeline_mode == PipelineMode.NORMAL
         assert cfg.stt.model == "small"
         assert cfg.dry_run is False
@@ -66,10 +67,16 @@ class TestLoadConfig:
 
     def test_llm_provider_gemini(self, monkeypatch):
         monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "gemini")
-        monkeypatch.setenv("NOISEBOT_LLM_MODEL", "gemini-2.5-flash")
         cfg = load_config(env_path="/nonexistent/.env")
         assert cfg.llm.provider == LlmProvider.GEMINI
         assert cfg.llm.model == "gemini-2.5-flash"
+
+    def test_llm_provider_openai_uses_openai_default_model(self, monkeypatch):
+        monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "openai")
+        monkeypatch.delenv("NOISEBOT_LLM_MODEL", raising=False)
+        cfg = load_config(env_path="/nonexistent/.env")
+        assert cfg.llm.provider == LlmProvider.OPENAI
+        assert cfg.llm.model == "gpt-4o-mini"
 
     def test_llm_provider_ollama(self, monkeypatch):
         monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "ollama")
@@ -165,6 +172,37 @@ class TestLoadEnvFile:
         load_env_file(env_file)
 
         assert os.environ.get("NOISEBOT_PORT") == "9999"  # não sobrescrito
+
+    def test_env_file_fills_empty_existing_value(self, tmp_path, monkeypatch):
+        env_file = tmp_path / ".env"
+        env_file.write_text("NOISEBOT_PIPER_MODEL=D:/models/voice.onnx\n")
+        monkeypatch.setenv("NOISEBOT_PIPER_MODEL", "")
+
+        load_env_file(env_file)
+
+        assert os.environ.get("NOISEBOT_PIPER_MODEL") == "D:/models/voice.onnx"
+
+    def test_default_loader_finds_repo_bridge_env(self, tmp_path, monkeypatch):
+        import bridgev2.config as config_module
+
+        fake_pkg = tmp_path / "pkg" / "bridgev2"
+        fake_pkg.mkdir(parents=True)
+        monkeypatch.setattr(config_module, "__file__", str(fake_pkg / "config.py"))
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("NOISEBOT_PIPER_MODEL", raising=False)
+        env_dir = tmp_path / "bridge_v2"
+        env_dir.mkdir()
+        (env_dir / ".env").write_text("NOISEBOT_PIPER_MODEL=D:/models/fallback.onnx\n")
+
+        load_env_file()
+
+        assert os.environ.get("NOISEBOT_PIPER_MODEL") == "D:/models/fallback.onnx"
+
+    def test_find_env_file_uses_explicit_path(self, tmp_path):
+        env_file = tmp_path / ".env"
+        env_file.write_text("NOISEBOT_PIPER_MODEL=x\n")
+
+        assert find_env_file(env_file) == env_file.resolve()
 
     def test_nonexistent_file_ok(self):
         load_env_file("/nonexistent/.env")  # não lança exceção

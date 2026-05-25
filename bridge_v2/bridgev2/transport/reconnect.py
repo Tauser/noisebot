@@ -42,6 +42,10 @@ class ConnectionSupervisor:
     def adapter(self) -> FirmwareAdapter | None:
         return self._adapter
 
+    @property
+    def is_connected(self) -> bool:
+        return self._adapter is not None and self._adapter.is_connected
+
     async def run(self) -> None:
         """Loop principal: conecta, aguarda desconexao, reconecta com backoff."""
         log.info("ConnectionSupervisor: iniciando")

@@ -148,11 +148,11 @@ class TestOutputScheduler:
         assert adapter.send_say.call_count < 100
 
     @pytest.mark.asyncio
-    async def test_adapter_error_does_not_crash(self):
+    async def test_adapter_error_fails_turn(self):
         adapter = MagicMock()
         adapter.send_say = AsyncMock(side_effect=OSError("send falhou"))
 
         chunks = [b"\x00" * CHUNK_BYTES] * 3
         scheduler = OutputScheduler()
-        # Não deve levantar mesmo com erro no adapter
-        await scheduler.run(turn_id=1, pcm_iter=_aiter(chunks), adapter=adapter)
+        with pytest.raises(ConnectionError, match="falha ao enviar audio"):
+            await scheduler.run(turn_id=1, pcm_iter=_aiter(chunks), adapter=adapter)

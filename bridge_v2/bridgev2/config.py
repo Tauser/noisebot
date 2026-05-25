@@ -15,6 +15,14 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
+DEFAULT_LLM_PROVIDER = "ollama"
+DEFAULT_LLM_MODELS = {
+    "openai": "gpt-4o-mini",
+    "gemini": "gemini-2.5-flash",
+    "ollama": "qwen2.5:7b",
+    "none": "none",
+}
+
 
 # -- Enums ------------------------------------------------------------------
 
@@ -76,6 +84,7 @@ class SttConfig:
     backend: str   # "faster" | "openai"
     device: str    # "cpu" | "cuda"
     compute_type: str  # "int8" | "float16" | ...
+    beam_size: int = 3
 
 
 @dataclass(frozen=True)
@@ -153,6 +162,7 @@ class BridgeV2Config:
                 "backend": self.stt.backend,
                 "device": self.stt.device,
                 "compute_type": self.stt.compute_type,
+                "beam_size": self.stt.beam_size,
             },
             "tts": {
                 "piper_executable": self.tts.piper_executable,
@@ -182,15 +192,40 @@ class BridgeV2Config:
 # -- Carregamento de .env ---------------------------------------------------
 
 
-def load_env_file(path: str | os.PathLike | None = None) -> None:
+def _default_env_candidates() -> list[Path]:
+    package_env = Path(__file__).resolve().parents[1] / ".env"
+    cwd = Path.cwd()
+    candidates = [
+        package_env,
+        cwd / ".env",
+        cwd / "bridge_v2" / ".env",
+    ]
+    for parent in Path(__file__).resolve().parents:
+        candidates.append(parent / ".env")
+        candidates.append(parent / "bridge_v2" / ".env")
+    return candidates
+
+
+def find_env_file(path: str | os.PathLike | None = None) -> Path | None:
+    candidates = [Path(path)] if path is not None else _default_env_candidates()
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.exists():
+            return resolved
+    return None
+
+
+def load_env_file(path: str | os.PathLike | None = None) -> Path | None:
     """Le arquivo .env e injeta em os.environ (sem sobrescrever variaveis existentes)."""
-    env_path = (
-        Path(path)
-        if path is not None
-        else Path(__file__).resolve().parents[1] / ".env"
-    )
-    if not env_path.exists():
-        return
+    env_path = find_env_file(path)
+    if env_path is None:
+        return None
+
+    log.info("Config: .env carregado de %s", env_path)
 
     for raw_line in env_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -199,8 +234,9 @@ def load_env_file(path: str | os.PathLike | None = None) -> None:
         key, _, value = line.partition("=")
         key = key.strip()
         value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
+        if key and not os.environ.get(key):
             os.environ[key] = value
+    return env_path
 
 
 def _env(key: str, default: str = "") -> str:
@@ -237,10 +273,10 @@ def load_config(env_path: str | os.PathLike | None = None) -> BridgeV2Config:
     load_env_file(env_path)
 
     try:
-        llm_provider = LlmProvider(_env("NOISEBOT_LLM_PROVIDER", "openai"))
+        llm_provider = LlmProvider(_env("NOISEBOT_LLM_PROVIDER", DEFAULT_LLM_PROVIDER))
     except ValueError:
-        log.warning("NOISEBOT_LLM_PROVIDER invalido, usando 'openai'")
-        llm_provider = LlmProvider.OPENAI
+        log.warning("NOISEBOT_LLM_PROVIDER invalido, usando '%s'", DEFAULT_LLM_PROVIDER)
+        llm_provider = LlmProvider(DEFAULT_LLM_PROVIDER)
 
     try:
         pipeline_mode = PipelineMode(_env("NOISEBOT_PIPELINE_MODE", "normal"))
@@ -262,7 +298,7 @@ def load_config(env_path: str | os.PathLike | None = None) -> BridgeV2Config:
         ),
         llm=LlmConfig(
             provider=llm_provider,
-            model=_env("NOISEBOT_LLM_MODEL", "gpt-4o-mini"),
+            model=_env("NOISEBOT_LLM_MODEL", DEFAULT_LLM_MODELS[llm_provider.value]),
             timeout_s=_env_float("NOISEBOT_LLM_TIMEOUT_S", 10.0),
             max_output_tokens=_env_int("NOISEBOT_LLM_MAX_OUTPUT_TOKENS", 256),
             max_reply_chars=_env_int("NOISEBOT_LLM_MAX_REPLY_CHARS", 180),
@@ -277,6 +313,7 @@ def load_config(env_path: str | os.PathLike | None = None) -> BridgeV2Config:
             backend=_env("NOISEBOT_WHISPER_BACKEND", "faster"),
             device=_env("NOISEBOT_WHISPER_DEVICE", "cpu"),
             compute_type=_env("NOISEBOT_WHISPER_COMPUTE_TYPE", "int8"),
+            beam_size=_env_int("NOISEBOT_WHISPER_BEAM_SIZE", 3),
         ),
         tts=TtsConfig(
             piper_executable=_env("NOISEBOT_PIPER_EXECUTABLE", "piper"),

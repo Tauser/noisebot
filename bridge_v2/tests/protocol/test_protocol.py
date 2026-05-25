@@ -12,6 +12,7 @@ import pytest
 
 from bridgev2.debug.fake_firmware import FakeFirmware
 from bridgev2.transport.tcp import TcpTransport
+import bridgev2.transport.adapter as adapter_module
 from bridgev2.transport.adapter import FirmwareAdapter
 from bridgev2.transport.reconnect import ConnectionSupervisor
 from bridgev2.runtime.bus import EventBus
@@ -87,6 +88,50 @@ class TestHandshake:
             caps = decode_hello(hello_frames[-1].payload)
             assert caps.get("protocol") == "noisebot-bridge"
             assert "features" in caps
+
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            await transport.disconnect()
+
+    async def test_periodic_heartbeat_keeps_firmware_response_compatible(
+        self,
+        bus: EventBus,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Heartbeat periodico usa HELLO v2 para firmware atual responder."""
+        monkeypatch.setattr(adapter_module, "HEARTBEAT_INTERVAL_S", 0.05)
+        monkeypatch.setattr(adapter_module, "HEARTBEAT_TIMEOUT_S", 1.0)
+
+        port = _port(4)
+        fw = FakeFirmware(port=port)
+        async with fw.running():
+            transport = TcpTransport(host="127.0.0.1", port=port, connect_timeout=2.0)
+            await transport.connect()
+            adapter = FirmwareAdapter(transport, bus)
+            task = asyncio.create_task(adapter.run(), name="test_empty_heartbeat")
+
+            q_conn = bus.subscribe(FirmwareConnected)
+            await asyncio.wait_for(q_conn.get(), timeout=2.0)
+
+            for _ in range(20):
+                hello_frames = fw.received_of_type(MSG_HELLO)
+                if hello_frames and hello_frames[-1].payload:
+                    break
+                await asyncio.sleep(0.01)
+            assert fw.received_of_type(MSG_HELLO), "capabilities v2 nao chegaram no handshake"
+
+            fw.clear_received()
+            for _ in range(20):
+                hello_frames = fw.received_of_type(MSG_HELLO)
+                if hello_frames:
+                    break
+                await asyncio.sleep(0.01)
+
+            hello_frames = fw.received_of_type(MSG_HELLO)
+            assert hello_frames, "heartbeat HELLO v2 nao foi enviado"
+            caps = decode_hello(hello_frames[-1].payload)
+            assert caps.get("protocol") == "noisebot-bridge"
+            assert caps.get("version") == 2
 
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)

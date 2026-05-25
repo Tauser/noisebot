@@ -21,11 +21,38 @@ import pytest
 
 from bridgev2.llm.local_intent import LocalIntentProvider
 from bridgev2.runtime.events import IntentResolved
+from bridgev2.vision import VisionError, VisionObservation
 
 
 @pytest.fixture()
 def provider() -> LocalIntentProvider:
     return LocalIntentProvider()
+
+
+class FakeVisionClient:
+    def __init__(self, observation: VisionObservation | None = None, error: Exception | None = None) -> None:
+        self.observation = observation or VisionObservation(
+            valid=True,
+            scene="normal",
+            timestamp_ms=123,
+            width=640,
+            height=480,
+            jpeg_bytes=54000,
+            capture_ms=900,
+            luma_avg=122,
+            luma_min=0,
+            luma_max=255,
+            contrast=255,
+            motion_score=5,
+        )
+        self.error = error
+        self.calls = 0
+
+    def observe(self) -> VisionObservation:
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return self.observation
 
 
 def match(provider: LocalIntentProvider, text: str, turn_id: int = 1, **kwargs) -> IntentResolved:
@@ -99,6 +126,16 @@ class TestLocalTime:
         assert result.turn_id == 99
 
 
+# ── local_date ────────────────────────────────────────────────────────────────
+
+class TestLocalDate:
+    def test_today_date(self, provider):
+        result = match(provider, "que dia é hoje", now=datetime(2026, 4, 23, 10, 30))
+
+        assert result.intent_name == "local_date"
+        assert result.reply_text == "Hoje e quinta-feira, 23 de abril de 2026."
+
+
 # ── local_bridge_test ─────────────────────────────────────────────────────────
 
 class TestLocalBridgeTest:
@@ -123,12 +160,9 @@ class TestLocalBridgeTest:
 
 class TestLocalStatus:
     _phrases = [
-        "como você está",
-        "como voce esta",
-        "tudo bem",
-        "tudo certo",
         "seu status",
         "status do sistema",
+        "diagnóstico",
     ]
 
     @pytest.mark.parametrize("text", _phrases)
@@ -138,12 +172,12 @@ class TestLocalStatus:
 
     def test_reply_with_health_and_attention(self, provider):
         ctx = {"status": {"health": 85, "attention": 0.72}}
-        result = match(provider, "tudo bem", context=ctx)
+        result = match(provider, "status do sistema", context=ctx)
         assert "85" in result.reply_text
         assert "72" in result.reply_text
 
     def test_reply_without_status_context(self, provider):
-        result = match(provider, "tudo bem", context={})
+        result = match(provider, "status do sistema", context={})
         assert "operacional" in result.reply_text.lower()
 
 
@@ -196,10 +230,129 @@ class TestLocalBtcPrice:
         assert len(result.reply_text) > 0
 
 
+# ── local_weather ─────────────────────────────────────────────────────────────
+
+class TestLocalWeather:
+    def test_temperature_intent_uses_weather_provider(self, provider, monkeypatch):
+        import bridgev2.llm.local_intent as local_intent
+        from bridgev2.llm.weather import WeatherNow
+
+        monkeypatch.setattr(
+            local_intent,
+            "fetch_weather_now",
+            lambda: WeatherNow(temperature_c=24.4, weather_code=2, location="Brasilia"),
+        )
+
+        result = match(provider, "qual a temperatura atual")
+
+        assert result.intent_name == "local_weather"
+        assert result.reply_text == "Agora em Brasilia esta 24 graus, com parcialmente nublado."
+
+    def test_climate_phrase_uses_weather_provider(self, provider, monkeypatch):
+        import bridgev2.llm.local_intent as local_intent
+        from bridgev2.llm.weather import WeatherNow
+
+        monkeypatch.setattr(
+            local_intent,
+            "fetch_weather_now",
+            lambda: WeatherNow(temperature_c=19.8, weather_code=61, location="Sao Paulo"),
+        )
+
+        result = match(provider, "como está o clima hoje")
+
+        assert result.intent_name == "local_weather"
+        assert "20 graus" in result.reply_text
+
+
+# ── local_vision_* ───────────────────────────────────────────────────────────
+
+class TestLocalVision:
+    def test_what_are_you_seeing_uses_vision_observation(self):
+        vision = FakeVisionClient()
+        provider = LocalIntentProvider(vision_client=vision)
+
+        result = match(provider, "o que você está vendo")
+
+        assert result.intent_name == "local_vision_scene"
+        assert "640 por 480" in result.reply_text
+        assert "contraste 255" in result.reply_text
+        assert vision.calls == 1
+
+    def test_light_question_formats_luma(self):
+        vision = FakeVisionClient(
+            VisionObservation(
+                valid=True,
+                scene="dim",
+                timestamp_ms=1,
+                width=640,
+                height=480,
+                jpeg_bytes=1000,
+                capture_ms=100,
+                luma_avg=60,
+                luma_min=0,
+                luma_max=140,
+                contrast=140,
+                motion_score=0,
+            )
+        )
+        provider = LocalIntentProvider(vision_client=vision)
+
+        result = match(provider, "como está a luz")
+
+        assert result.intent_name == "local_vision_light"
+        assert "pouca luz" in result.reply_text
+        assert "60 de 255" in result.reply_text
+
+    def test_motion_question_formats_motion_score(self):
+        vision = FakeVisionClient(
+            VisionObservation(
+                valid=True,
+                scene="normal",
+                timestamp_ms=1,
+                width=640,
+                height=480,
+                jpeg_bytes=1000,
+                capture_ms=100,
+                luma_avg=120,
+                luma_min=0,
+                luma_max=255,
+                contrast=255,
+                motion_score=28,
+            )
+        )
+        provider = LocalIntentProvider(vision_client=vision)
+
+        result = match(provider, "tem movimento aí")
+
+        assert result.intent_name == "local_vision_motion"
+        assert "movimento forte" in result.reply_text
+        assert "28" in result.reply_text
+
+    def test_person_question_is_honest_about_missing_detector(self):
+        provider = LocalIntentProvider(vision_client=FakeVisionClient())
+
+        result = match(provider, "você está me vendo")
+
+        assert result.intent_name == "local_vision_person"
+        assert "deteccao de pessoa" in result.reply_text
+
+    def test_vision_unavailable_still_matches_intent(self):
+        provider = LocalIntentProvider(vision_client=FakeVisionClient(error=VisionError("offline")))
+
+        result = match(provider, "o que você vê")
+
+        assert result.intent_name == "local_vision_scene"
+        assert "camera" in result.reply_text.lower()
+
+
 # ── local_mood ────────────────────────────────────────────────────────────────
 
 class TestLocalMood:
     _phrases = [
+        "como você está",
+        "como voce esta",
+        "tudo bem",
+        "tudo certo",
         "como você se sente",
         "como voce se sente",
         "está feliz",
@@ -215,6 +368,49 @@ class TestLocalMood:
     def test_expression_happy(self, provider):
         result = match(provider, "está feliz")
         assert result.expression_id == 3  # HAPPY
+
+    def test_social_wellbeing_is_not_technical_status(self, provider):
+        ctx = {"status": {"health": 85, "attention": 0.72}}
+        result = match(provider, "como voce esta", context=ctx)
+
+        assert result.intent_name == "local_mood"
+        assert "operacional" not in result.reply_text.lower()
+        assert "Status:" not in result.reply_text
+
+    def test_social_wellbeing_reflects_low_valence(self, provider):
+        ctx = {"status": {"valence": -0.6, "activation": 0.4, "attention": 0.6}}
+        result = match(provider, "como voce esta", context=ctx)
+
+        assert result.intent_name == "local_mood"
+        assert "atravessado" in result.reply_text
+        assert result.expression_id == 7
+
+    def test_social_wellbeing_reflects_high_activation(self, provider):
+        ctx = {"status": {"valence": 0.1, "activation": 0.8, "attention": 0.6}}
+        result = match(provider, "tudo bem", context=ctx)
+
+        assert result.intent_name == "local_mood"
+        assert "acordado" in result.reply_text
+        assert result.expression_id == 1
+
+
+# ── local_expression_* ───────────────────────────────────────────────────────
+
+class TestLocalExpression:
+    def test_short_happy_keyword(self, provider):
+        result = match(provider, "feliz")
+        assert result.intent_name == "local_expression_happy"
+        assert result.expression_id == 3
+
+    def test_happy_synonym(self, provider):
+        result = match(provider, "sorria")
+        assert result.intent_name == "local_expression_happy"
+        assert result.expression_id == 3
+
+    def test_curious_keyword(self, provider):
+        result = match(provider, "modo curioso")
+        assert result.intent_name == "local_expression_curious"
+        assert result.expression_id == 4
 
 
 # ── local_greeting ────────────────────────────────────────────────────────────

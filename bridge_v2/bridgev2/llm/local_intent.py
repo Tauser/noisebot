@@ -1,7 +1,8 @@
 """bridgev2.llm.local_intent -- LocalIntentProvider: intents PT-BR determinísticos.
 
 Portado de noisebot_bridge/intent_router.py para bridgev2 standalone.
-Sem dependencia do bridge v1. Latencia < 5 ms. Nenhuma chamada de rede.
+Sem dependencia do bridge v1. Intents locais sao determinísticos; clima usa
+consulta HTTP curta quando solicitado explicitamente.
 """
 from __future__ import annotations
 
@@ -10,6 +11,8 @@ import unicodedata
 from datetime import datetime
 
 from ..runtime.events import IntentResolved
+from ..vision import VisionClient, VisionError, VisionObservation
+from .weather import fetch_weather_now, format_weather_reply
 
 
 # -- Normalizacao de texto ---------------------------------------------------
@@ -25,6 +28,10 @@ def _normalize(text: str) -> str:
 
 def _has(text: str, *terms: str) -> bool:
     return any(t in text for t in terms)
+
+
+def _word_count(text: str) -> int:
+    return len(text.split())
 
 
 # -- Agenda helpers ---------------------------------------------------------
@@ -169,6 +176,145 @@ def _time_reply(now: datetime) -> str:
     return f"Agora {verb} {hour} {hour_unit} e {minute:02d} {minute_unit}.{date_suffix}"
 
 
+def _date_reply(now: datetime) -> str:
+    weekdays = (
+        "segunda-feira",
+        "terca-feira",
+        "quarta-feira",
+        "quinta-feira",
+        "sexta-feira",
+        "sabado",
+        "domingo",
+    )
+    months = (
+        "janeiro",
+        "fevereiro",
+        "marco",
+        "abril",
+        "maio",
+        "junho",
+        "julho",
+        "agosto",
+        "setembro",
+        "outubro",
+        "novembro",
+        "dezembro",
+    )
+    return f"Hoje e {weekdays[now.weekday()]}, {now.day} de {months[now.month - 1]} de {now.year}."
+
+
+def _float_status(status: dict, key: str, default: float = 0.0) -> float:
+    try:
+        return float(status.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _mood_reply(status: dict) -> tuple[str, int, int, int]:
+    valence = _float_status(status, "valence")
+    activation = _float_status(status, "activation")
+    attention = _float_status(status, "attention")
+
+    if valence <= -0.35:
+        return (
+            "Estou um pouco atravessado agora, mas ainda aqui com voce.",
+            7,
+            _ACTION_NONE,
+            _EMOT_NEUTRAL,
+        )
+    if activation >= 0.70:
+        return (
+            "Estou bem acordado e meio eletrico. Pronto para alguma coisa interessante.",
+            _EXPR_ATTENTIVE,
+            _ACTION_NOD,
+            _EMOT_CURIOUS,
+        )
+    if activation <= 0.20:
+        return (
+            "Estou calmo, num ritmo mais quietinho. Mas estou prestando atencao.",
+            3,
+            _ACTION_NONE,
+            _EMOT_NEUTRAL,
+        )
+    if attention <= 0.25:
+        return (
+            "Estou bem, so um pouco disperso. Sua voz me trouxe de volta.",
+            _EXPR_CURIOUS,
+            _ACTION_NONE,
+            _EMOT_CURIOUS,
+        )
+    if valence >= 0.45:
+        return (
+            "Estou bem. Leve, curioso, e feliz por voce ter perguntado.",
+            _EXPR_HAPPY,
+            _ACTION_NOD,
+            _EMOT_HAPPY,
+        )
+    return (
+        "Estou bem. Meio atento, meio curioso, e feliz por voce ter perguntado.",
+        _EXPR_HAPPY,
+        _ACTION_NOD,
+        _EMOT_HAPPY,
+    )
+
+
+def _vision_unavailable_reply() -> str:
+    return "Ainda nao consegui acessar minha camera agora."
+
+
+def _scene_label(scene: str) -> str:
+    labels = {
+        "dark": "escura",
+        "dim": "com pouca luz",
+        "normal": "com iluminacao normal",
+        "bright": "bem clara",
+        "flat": "com pouco contraste",
+    }
+    return labels.get(scene, "indefinida")
+
+
+def _vision_scene_reply(obs: VisionObservation) -> str:
+    if not obs.valid:
+        return "Consegui consultar a camera, mas a observacao ainda nao ficou valida."
+    return (
+        f"Estou vendo uma cena {_scene_label(obs.scene)}. "
+        f"A imagem veio em {obs.width} por {obs.height}, com contraste {obs.contrast}."
+    )
+
+
+def _vision_light_reply(obs: VisionObservation) -> str:
+    if not obs.valid:
+        return "A camera respondeu, mas nao tenho leitura confiavel de luz ainda."
+    if obs.luma_avg < 45:
+        level = "esta bem escuro"
+    elif obs.luma_avg < 90:
+        level = "esta com pouca luz"
+    elif obs.luma_avg > 210:
+        level = "esta bem claro"
+    else:
+        level = "esta com luz normal"
+    return f"Pela camera, {level}. O brilho medio esta em {obs.luma_avg} de 255."
+
+
+def _vision_motion_reply(obs: VisionObservation) -> str:
+    if not obs.valid:
+        return "A camera respondeu, mas ainda nao tenho movimento confiavel."
+    if obs.motion_score >= 24:
+        return f"Percebi movimento forte agora. O score ficou em {obs.motion_score}."
+    if obs.motion_score >= 10:
+        return f"Percebi algum movimento na cena. O score ficou em {obs.motion_score}."
+    return f"Nao percebi muito movimento agora. O score ficou em {obs.motion_score}."
+
+
+def _vision_person_reply(obs: VisionObservation) -> str:
+    if not obs.valid:
+        return "Minha camera respondeu, mas ainda nao tenho leitura visual confiavel."
+    return (
+        "Minha camera esta funcionando, mas eu ainda nao tenho deteccao de pessoa ligada. "
+        "Consigo medir luz, contraste e movimento por enquanto."
+    )
+
+
 # -- Mapeamentos de intents --------------------------------------------------
 
 # expression_id: 1=ATTENTIVE, 2=NEUTRAL, 3=HAPPY, 4=CURIOUS, 5=FOCUSED
@@ -191,6 +337,9 @@ class LocalIntentProvider:
 
     match() retorna IntentResolved com intent_name=None se nao houver intent local.
     """
+
+    def __init__(self, vision_client: VisionClient | None = None) -> None:
+        self._vision = vision_client
 
     def match(
         self,
@@ -358,6 +507,17 @@ class LocalIntentProvider:
                 emot_event_id=_EMOT_NEUTRAL,
             )
 
+        if _has(norm, "que dia e hoje", "qual dia e hoje", "data de hoje",
+                "qual a data", "dia de hoje", "hoje e que dia"):
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_date",
+                reply_text=_date_reply(now),
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_NEUTRAL,
+            )
+
         # -- Teste de bridge ---------------------------------------------------
         if _has(norm, "teste do bridge", "bridge teste", "test bridge",
                 "bridge funcionando", "bridge ok"):
@@ -370,9 +530,70 @@ class LocalIntentProvider:
                 emot_event_id=_EMOT_NEUTRAL,
             )
 
-        # -- Status do sistema -------------------------------------------------
+        if _has(norm, "temperatura", "clima", "tempo") and _has(
+            norm, "atual", "agora", "hoje", "esta", "como", "qual"
+        ):
+            weather = fetch_weather_now()
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_weather",
+                reply_text=format_weather_reply(weather),
+                expression_id=_EXPR_CURIOUS,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_CURIOUS,
+            )
+
+        # -- Visao local -------------------------------------------------------
+        if _has(norm, "o que voce esta vendo", "o que vc esta vendo",
+                "o que esta vendo", "o que voce ve", "o que vc ve",
+                "descreve a cena", "descreva a cena"):
+            return self._match_vision(
+                turn_id=turn_id,
+                intent_name="local_vision_scene",
+                formatter=_vision_scene_reply,
+            )
+
+        if _has(norm, "voce esta me vendo", "vc esta me vendo",
+                "consegue me ver", "esta me vendo", "me ve"):
+            return self._match_vision(
+                turn_id=turn_id,
+                intent_name="local_vision_person",
+                formatter=_vision_person_reply,
+            )
+
+        if _has(norm, "como esta a luz", "como esta iluminacao",
+                "como esta a iluminacao", "esta claro", "esta escuro",
+                "tem luz", "luz ambiente"):
+            return self._match_vision(
+                turn_id=turn_id,
+                intent_name="local_vision_light",
+                formatter=_vision_light_reply,
+            )
+
+        if _has(norm, "tem movimento", "viu movimento", "percebe movimento",
+                "alguma coisa mexeu", "algo se mexeu"):
+            return self._match_vision(
+                turn_id=turn_id,
+                intent_name="local_vision_motion",
+                formatter=_vision_motion_reply,
+            )
+
+        # -- Humor/sentimento do robo ------------------------------------------
         if _has(norm, "como voce esta", "como vc esta", "tudo bem", "tudo certo",
-                "como esta", "seu status", "status do sistema"):
+                "como esta", "como voce se sente", "esta feliz", "esta triste",
+                "seu humor", "esta bem", "se sente"):
+            reply_text, expression_id, action_id, emot_event_id = _mood_reply(status)
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_mood",
+                reply_text=reply_text,
+                expression_id=expression_id,
+                action_id=action_id,
+                emot_event_id=emot_event_id,
+            )
+
+        # -- Status do sistema -------------------------------------------------
+        if _has(norm, "seu status", "status do sistema", "diagnostico", "diagnostico do sistema"):
             health = status.get("health")
             attention = status.get("attention")
             details = []
@@ -417,17 +638,36 @@ class LocalIntentProvider:
                 emot_event_id=_EMOT_CURIOUS,
             )
 
-        # -- Humor/sentimento do robo ------------------------------------------
-        if _has(norm, "como voce se sente", "esta feliz", "esta triste",
-                "seu humor", "esta bem", "se sente"):
-            return IntentResolved(
-                turn_id=turn_id,
-                intent_name="local_mood",
-                reply_text="Estou bem, obrigado por perguntar!",
-                expression_id=_EXPR_HAPPY,
-                action_id=_ACTION_NOD,
-                emot_event_id=_EMOT_HAPPY,
-            )
+        # -- Expressao direta --------------------------------------------------
+        has_expression_trigger = _has(norm, "fique", "fica", "expressao", "rosto", "cara", "modo")
+        if has_expression_trigger or _word_count(norm) <= 3:
+            if _has(norm, "feliz", "alegre", "sorria", "sorriso"):
+                return IntentResolved(
+                    turn_id=turn_id,
+                    intent_name="local_expression_happy",
+                    reply_text="Pronto, feliz.",
+                    expression_id=_EXPR_HAPPY,
+                    action_id=_ACTION_NONE,
+                    emot_event_id=_EMOT_HAPPY,
+                )
+            if _has(norm, "curioso", "curiosa", "curiosidade"):
+                return IntentResolved(
+                    turn_id=turn_id,
+                    intent_name="local_expression_curious",
+                    reply_text="Pronto, curioso.",
+                    expression_id=_EXPR_CURIOUS,
+                    action_id=_ACTION_NONE,
+                    emot_event_id=_EMOT_CURIOUS,
+                )
+            if _has(norm, "focado", "focada", "foco"):
+                return IntentResolved(
+                    turn_id=turn_id,
+                    intent_name="local_expression_focused",
+                    reply_text="Pronto, focado.",
+                    expression_id=5,
+                    action_id=_ACTION_NONE,
+                    emot_event_id=_EMOT_NEUTRAL,
+                )
 
         # -- Saudacoes ---------------------------------------------------------
         if _has(norm, "ola", "oi ", "oi!", "oi.", "bom dia", "boa tarde",
@@ -518,3 +758,19 @@ class LocalIntentProvider:
 
         # -- Sem intent local --------------------------------------------------
         return IntentResolved(turn_id=turn_id, intent_name=None)
+
+    def _match_vision(self, turn_id: int, intent_name: str, formatter) -> IntentResolved:
+        reply = _vision_unavailable_reply()
+        if self._vision is not None:
+            try:
+                reply = formatter(self._vision.observe())
+            except VisionError:
+                reply = _vision_unavailable_reply()
+        return IntentResolved(
+            turn_id=turn_id,
+            intent_name=intent_name,
+            reply_text=reply,
+            expression_id=_EXPR_CURIOUS,
+            action_id=_ACTION_NONE,
+            emot_event_id=_EMOT_CURIOUS,
+        )

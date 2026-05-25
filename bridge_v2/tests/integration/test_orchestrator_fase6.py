@@ -87,6 +87,33 @@ async def test_local_intent_uses_tts_and_sends_say_chunks():
 
 
 @pytest.mark.asyncio
+async def test_text_scroll_failure_does_not_block_first_say():
+    bus = EventBus()
+    tts = MockTTS()
+    adapter = _mock_adapter()
+    adapter.send_text_scroll.side_effect = RuntimeError("display busy")
+    orch = Orchestrator(bus, get_adapter=lambda: adapter, tts_provider=tts)
+    task = asyncio.create_task(orch.run())
+
+    try:
+        done_task = asyncio.create_task(_wait_speech_done(bus))
+        await bus.publish(FinalTranscript(
+            turn_id=12,
+            text="que horas sao",
+            quality=TranscriptQuality.GOOD,
+        ))
+
+        done = await done_task
+        assert done.turn_id == 12
+        assert adapter.send_say.call_count == len(tts.sentences) * 2
+        assert orch.metrics.count("tts_first_audio_ms") == 1
+    finally:
+        await orch.shutdown()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
 async def test_llm_reply_uses_tts_and_sends_say_chunks():
     bus = EventBus()
     tts = MockTTS()

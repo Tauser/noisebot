@@ -1,9 +1,9 @@
 """bridgev2.audio.playback — Output Scheduler: pacing de SAY para firmware (Fase 6).
 
-A fila SAY do firmware tem apenas 4 chunks (~64 ms). Enviar mais rápido
-que o firmware consome resulta em overflow silencioso. O scheduler monitora
-quantos chunks o firmware já consumiu desde o início da reprodução e espera
-quando a fila virtual está cheia.
+A fila SAY do firmware é limitada. Enviar mais rápido que o firmware consome
+resulta em overflow silencioso. O scheduler monitora quantos chunks o firmware
+já consumiu desde o início da reprodução e espera quando a fila virtual está
+cheia.
 
 Cancelável via asyncio.Task.cancel() para barge-in.
 """
@@ -20,15 +20,16 @@ log = logging.getLogger(__name__)
 CHUNK_SAMPLES = 256                             # int16 amostras por chunk
 SAMPLE_RATE = 16_000                            # Hz
 CHUNK_DURATION_S = CHUNK_SAMPLES / SAMPLE_RATE  # 16 ms por chunk
-FIRMWARE_SAY_QUEUE = 4                          # chunks máximos na fila SAY
+FIRMWARE_SAY_QUEUE = 16                         # janela segura da fila SAY
 
 
 class OutputScheduler:
-    """Envia chunks PCM para o firmware respeitando a fila de 4 chunks.
+    """Envia chunks PCM para o firmware respeitando a fila SAY.
 
     Estratégia: rastreia quantos chunks o firmware já deve ter reproduzido
     (tempo decorrido / duração por chunk) e aguarda quando o buffer virtual
-    ficaria cheio. Isso mantém a fila entre 1–4 chunks sem underrun.
+    ficaria cheio. Isso mantém folga suficiente para absorver jitter do TTS/TCP
+    sem empurrar chunks rápido demais para o firmware.
 
     Uso típico:
         scheduler = OutputScheduler()
@@ -44,7 +45,7 @@ class OutputScheduler:
         turn_id: int,
         pcm_iter: AsyncIterator[bytes],
         adapter: Any,
-        on_first_audio: Callable[[int], None] | None = None,
+        on_first_audio: Callable[[int], Any] | None = None,
         on_audio_progress: Callable[[int], None] | None = None,
     ) -> None:
         """Drena pcm_iter, enviando chunks ao firmware com pacing baseado em tempo.
@@ -67,7 +68,9 @@ class OutputScheduler:
                 self._t_first = time.monotonic()
                 await _maybe_call_adapter(adapter, "send_say_begin", turn_id)
                 if on_first_audio is not None:
-                    on_first_audio(turn_id)
+                    result = on_first_audio(turn_id)
+                    if inspect.isawaitable(result):
+                        await result
 
             # Pacing: quantos chunks o firmware já reproduziu?
             elapsed = time.monotonic() - self._t_first
@@ -75,17 +78,18 @@ class OutputScheduler:
             buffer_fill = self._chunks_sent - chunks_played
 
             if buffer_fill >= FIRMWARE_SAY_QUEUE:
-                # Fila cheia — aguarda pelo menos 1 slot livre
+                # Fila cheia: aguarda pelo menos 1 slot livre.
                 sleep_s = (buffer_fill - FIRMWARE_SAY_QUEUE + 1) * CHUNK_DURATION_S
                 await asyncio.sleep(sleep_s)
 
             if adapter is not None:
                 try:
                     await adapter.send_say(chunk)
-                except Exception:
+                except Exception as exc:
                     log.exception(
                         "OutputScheduler: erro ao enviar SAY turn_id=%d", turn_id
                     )
+                    raise ConnectionError("falha ao enviar audio ao firmware") from exc
 
             self._chunks_sent += 1
             if on_audio_progress is not None:

@@ -87,6 +87,20 @@ class MockBatchLLM:
             yield token
 
 
+class MissingOpenAIKeyLLM:
+    """Simula provider OpenAI sem OPENAI_API_KEY configurada."""
+
+    _provider_name = "openai"
+    _model = "gpt-test"
+
+    def generate_stream(self, text: str, context: dict) -> AsyncIterator[str]:
+        return self._do_stream(text, context)
+
+    async def _do_stream(self, text: str, context: dict):
+        raise ValueError("OPENAI_API_KEY não definida no ambiente")
+        yield
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _good_transcript(turn_id: int = 1, text: str = "me conta uma historia") -> FinalTranscript:
@@ -370,6 +384,24 @@ class TestNoLLMProvider:
         except (asyncio.CancelledError, Exception):
             pass
         assert isinstance(done, SpeechDone)
+
+
+class TestLLMConfigFallback:
+    @pytest.mark.asyncio
+    async def test_missing_openai_key_uses_local_fallback(self, bus):
+        """OPENAI_API_KEY ausente gera fallback local, não TurnError."""
+        orch = _make_orch(bus, MissingOpenAIKeyLLM())
+        asyncio.create_task(orch.run())
+        await asyncio.sleep(0)
+
+        collected, final = await _run_llm_turn(bus, _good_transcript())
+
+        assert isinstance(final, SpeechDone)
+        assert not any(isinstance(e, TurnError) for e in collected)
+        replies = [e for e in collected if isinstance(e, LlmReplyComplete)]
+        assert replies
+        assert replies[0].provider == "local_fallback"
+        assert "sem acesso à IA" in replies[0].reply
 
 
 class TestBatchLLMProvider:
