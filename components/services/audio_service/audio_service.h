@@ -205,6 +205,14 @@ esp_err_t audio_service_end_listen_session(nb_listen_end_reason_t reason);
  */
 bool audio_service_is_listening(void);
 
+/**
+ * @brief Retorna true se o áudio está em caminho conversacional ou playback.
+ *
+ * Usado por subsistemas diagnósticos pesados, como câmera, para não disputar
+ * I2S/DMA/CPU com escuta, fala local ou resposta do bridge.
+ */
+bool audio_service_is_busy(void);
+
 /* ── Bridge SAY (Etapa 12.2) ─────────────────────────────────────────────── */
 
 /**

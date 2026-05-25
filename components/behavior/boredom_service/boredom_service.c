@@ -26,6 +26,7 @@
 
 #include "esp_random.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -285,9 +286,17 @@ esp_err_t boredom_service_init(void)
         return ESP_ERR_NO_MEM;
     }
 
-    BaseType_t ok = xTaskCreate(nb_boredom_task, "nb_boredom_task",
-                                BOREDOM_TASK_STACK, NULL,
-                                BOREDOM_TASK_PRIO, NULL);
+    BaseType_t ok;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+    ok = xTaskCreateWithCaps(nb_boredom_task, "nb_boredom_task",
+                             BOREDOM_TASK_STACK, NULL,
+                             BOREDOM_TASK_PRIO, NULL,
+                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    ok = xTaskCreate(nb_boredom_task, "nb_boredom_task",
+                     BOREDOM_TASK_STACK, NULL,
+                     BOREDOM_TASK_PRIO, NULL);
+#endif
     if (ok != pdPASS) {
         NB_LOGE(TAG, "falha ao criar task");
         vSemaphoreDelete(s.check_sem);

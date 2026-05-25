@@ -36,8 +36,17 @@ static constexpr int     SLEEP_MSG_W            = 142;
 static constexpr int     SLEEP_MSG_H            = 52;
 static constexpr int     SLEEP_MSG_Y_OFFSET     = 24;
 static constexpr int     SLEEP_MSG_MARGIN       = 6;
+static constexpr int     LISTENING_ICON_W       = 24;
+static constexpr int     LISTENING_ICON_H       = 24;
+static constexpr int     LISTENING_ICON_MARGIN  = 8;
+static constexpr int     TIMER_BADGE_W          = 94;
+static constexpr int     TIMER_BADGE_H          = 20;
+static constexpr int     TIMER_BADGE_MARGIN     = 8;
 
 static volatile bool  s_sleep_bubble_active   = false;
+static volatile bool  s_listening_indicator_active = false;
+static volatile bool  s_timer_badge_active = false;
+static volatile uint32_t s_timer_badge_remaining_ms = 0;
 static int64_t        s_sleep_bubble_start_us = 0;
 static bool           s_sleep_bubble_was_active = false;
 static int16_t        s_eye_left_cx = 96;
@@ -47,6 +56,16 @@ static int            s_bubble_prev_x = 0;
 static int            s_bubble_prev_y = 0;
 static int            s_bubble_prev_w = 0;
 static int            s_bubble_prev_h = 0;
+static bool           s_listening_was_active = false;
+static int            s_listening_prev_x = 0;
+static int            s_listening_prev_y = 0;
+static int            s_listening_prev_w = 0;
+static int            s_listening_prev_h = 0;
+static bool           s_timer_badge_was_active = false;
+static int            s_timer_badge_prev_x = 0;
+static int            s_timer_badge_prev_y = 0;
+static int            s_timer_badge_prev_w = 0;
+static int            s_timer_badge_prev_h = 0;
 
 static inline float bubble_smoothstep(float v)
 {
@@ -209,6 +228,96 @@ static void draw_speaker_icon(LGFX_Sprite *spr, int x, int y, uint16_t color)
     spr->drawArc(x + 20, y + 17, 17, 15, 305, 55, color);
 }
 
+static void listening_icon_rect(int *x, int *y, int *w, int *h)
+{
+    int dw = display_hal_width();
+    if (dw <= 0) dw = 320;
+
+    *w = LISTENING_ICON_W;
+    *h = LISTENING_ICON_H;
+    *x = dw - LISTENING_ICON_W - LISTENING_ICON_MARGIN;
+    *y = LISTENING_ICON_MARGIN;
+}
+
+static void draw_listening_icon(LGFX_Sprite *spr, int x, int y, int w, int h, int64_t now_us)
+{
+    const float phase = (float)((now_us / 1000LL) % 1400LL) / 1400.0f;
+    const float pulse = 0.5f + (0.5f * sinf(phase * 2.0f * BUBBLE_NB_PI_F));
+    const uint8_t glow = (uint8_t)(190.0f + (pulse * 52.0f));
+    const uint16_t fg = spr->color565(122, glow, 246);
+
+    const int mx = x + (w / 2);
+    const int my = y + 1;
+    spr->fillRoundRect(mx - 5, my, 10, 14, 5, fg);
+    spr->drawArc(mx, my + 8, 10, 9, 28, 152, fg);
+    spr->drawLine(mx, my + 18, mx, my + 22, fg);
+    spr->drawLine(mx - 6, my + 22, mx + 6, my + 22, fg);
+}
+
+static void timer_badge_rect(int *x, int *y, int *w, int *h)
+{
+    *w = TIMER_BADGE_W;
+    *h = TIMER_BADGE_H;
+    *x = TIMER_BADGE_MARGIN;
+    *y = TIMER_BADGE_MARGIN;
+}
+
+static void format_timer_remaining(uint32_t remaining_ms, char *out, size_t out_size)
+{
+    if (!out || out_size == 0U) return;
+
+    uint32_t total_s = remaining_ms / 1000U;
+    if ((remaining_ms % 1000U) != 0U) {
+        total_s++;
+    }
+    uint32_t hours = total_s / 3600U;
+    uint32_t minutes = (total_s / 60U) % 60U;
+    uint32_t seconds = total_s % 60U;
+
+    if (hours > 0U) {
+        if (hours > 99U) hours = 99U;
+        std::snprintf(out, out_size, "%lu:%02lu",
+                      (unsigned long)hours, (unsigned long)minutes);
+    } else {
+        std::snprintf(out, out_size, "%lu:%02lu",
+                      (unsigned long)minutes, (unsigned long)seconds);
+    }
+}
+
+static void draw_timer_badge(LGFX_Sprite *spr,
+                             int x,
+                             int y,
+                             int w,
+                             int h,
+                             uint32_t remaining_ms)
+{
+    const uint16_t fg = TFT_WHITE;
+    const uint16_t shadow = spr->color565(4, 9, 13);
+    char label[8];
+    (void)w;
+    (void)h;
+    format_timer_remaining(remaining_ms, label, sizeof(label));
+
+    const int cx = x + 9;
+    const int cy = y + 9;
+    spr->drawCircle(cx + 1, cy + 1, 7, shadow);
+    spr->drawLine(cx + 1, cy + 1, cx + 1, cy - 4, shadow);
+    spr->drawLine(cx + 1, cy + 1, cx + 5, cy + 3, shadow);
+    spr->drawLine(cx - 2, y + 2, cx + 4, y + 2, shadow);
+    spr->drawCircle(cx, cy, 7, fg);
+    spr->drawLine(cx, cy, cx, cy - 5, fg);
+    spr->drawLine(cx, cy, cx + 4, cy + 2, fg);
+    spr->drawLine(cx - 3, y + 1, cx + 3, y + 1, fg);
+
+    spr->setFont(&lgfx::fonts::Font0);
+    spr->setTextSize(2);
+    spr->setTextColor(shadow);
+    spr->drawString(label, x + 23, y + 1);
+    spr->setTextColor(fg);
+    spr->drawString(label, x + 22, y);
+    spr->setTextSize(1);
+}
+
 static bool parse_percent_text(const char *text, uint8_t *percent)
 {
     if (!text || !percent) return false;
@@ -320,6 +429,150 @@ static void draw_volume_overlay(LGFX_Sprite *spr,
     spr->drawString(label, x + w - 52, y + 18);
 }
 
+typedef enum {
+    PT_MARK_NONE = 0,
+    PT_MARK_ACUTE,
+    PT_MARK_GRAVE,
+    PT_MARK_CIRC,
+    PT_MARK_TILDE,
+    PT_MARK_CEDILLA,
+} pt_mark_t;
+
+typedef struct {
+    int x;
+    int w;
+    pt_mark_t mark;
+} pt_text_mark_t;
+
+static bool pt_char_from_codepoint(uint32_t cp, char *base, pt_mark_t *mark)
+{
+    *mark = PT_MARK_NONE;
+    switch (cp) {
+    case 0x00E1: *base = 'a'; *mark = PT_MARK_ACUTE; return true; /* á */
+    case 0x00C1: *base = 'A'; *mark = PT_MARK_ACUTE; return true; /* Á */
+    case 0x00E9: *base = 'e'; *mark = PT_MARK_ACUTE; return true; /* é */
+    case 0x00C9: *base = 'E'; *mark = PT_MARK_ACUTE; return true; /* É */
+    case 0x00ED: *base = 'i'; *mark = PT_MARK_ACUTE; return true; /* í */
+    case 0x00CD: *base = 'I'; *mark = PT_MARK_ACUTE; return true; /* Í */
+    case 0x00F3: *base = 'o'; *mark = PT_MARK_ACUTE; return true; /* ó */
+    case 0x00D3: *base = 'O'; *mark = PT_MARK_ACUTE; return true; /* Ó */
+    case 0x00FA: *base = 'u'; *mark = PT_MARK_ACUTE; return true; /* ú */
+    case 0x00DA: *base = 'U'; *mark = PT_MARK_ACUTE; return true; /* Ú */
+    case 0x00E0: *base = 'a'; *mark = PT_MARK_GRAVE; return true; /* à */
+    case 0x00C0: *base = 'A'; *mark = PT_MARK_GRAVE; return true; /* À */
+    case 0x00E2: *base = 'a'; *mark = PT_MARK_CIRC; return true;  /* â */
+    case 0x00CA: *base = 'E'; *mark = PT_MARK_CIRC; return true;  /* Ê */
+    case 0x00EA: *base = 'e'; *mark = PT_MARK_CIRC; return true;  /* ê */
+    case 0x00F4: *base = 'o'; *mark = PT_MARK_CIRC; return true;  /* ô */
+    case 0x00D4: *base = 'O'; *mark = PT_MARK_CIRC; return true;  /* Ô */
+    case 0x00E3: *base = 'a'; *mark = PT_MARK_TILDE; return true; /* ã */
+    case 0x00C3: *base = 'A'; *mark = PT_MARK_TILDE; return true; /* Ã */
+    case 0x00F5: *base = 'o'; *mark = PT_MARK_TILDE; return true; /* õ */
+    case 0x00D5: *base = 'O'; *mark = PT_MARK_TILDE; return true; /* Õ */
+    case 0x00E7: *base = 'c'; *mark = PT_MARK_CEDILLA; return true; /* ç */
+    case 0x00C7: *base = 'C'; *mark = PT_MARK_CEDILLA; return true; /* Ç */
+    default:
+        break;
+    }
+    return false;
+}
+
+static uint32_t utf8_next_codepoint(const char **p)
+{
+    const uint8_t *s = (const uint8_t *)(*p);
+    if (s[0] < 0x80u) {
+        (*p)++;
+        return s[0];
+    }
+    if ((s[0] & 0xE0u) == 0xC0u && (s[1] & 0xC0u) == 0x80u) {
+        *p += 2;
+        return ((uint32_t)(s[0] & 0x1Fu) << 6) | (uint32_t)(s[1] & 0x3Fu);
+    }
+    if ((s[0] & 0xF0u) == 0xE0u &&
+        (s[1] & 0xC0u) == 0x80u &&
+        (s[2] & 0xC0u) == 0x80u) {
+        *p += 3;
+        return ((uint32_t)(s[0] & 0x0Fu) << 12) |
+               ((uint32_t)(s[1] & 0x3Fu) << 6) |
+               (uint32_t)(s[2] & 0x3Fu);
+    }
+    (*p)++;
+    return '?';
+}
+
+static void build_pt_display_text(LGFX_Sprite *spr,
+                                  const char *src,
+                                  char *out,
+                                  size_t out_size,
+                                  pt_text_mark_t *marks,
+                                  size_t *mark_count,
+                                  size_t mark_capacity)
+{
+    if (!out || out_size == 0U) return;
+    out[0] = '\0';
+    *mark_count = 0;
+    if (!src) return;
+
+    size_t len = 0;
+    const char *p = src;
+    while (*p && len + 1U < out_size) {
+        uint32_t cp = utf8_next_codepoint(&p);
+        char base = '?';
+        pt_mark_t mark = PT_MARK_NONE;
+        if (cp < 0x80u) {
+            base = (char)cp;
+        } else if (!pt_char_from_codepoint(cp, &base, &mark)) {
+            base = ' ';
+        }
+
+        int before_w = spr->textWidth(out);
+        char tmp[2] = { base, '\0' };
+        int char_w = spr->textWidth(tmp);
+        out[len++] = base;
+        out[len] = '\0';
+
+        if (mark != PT_MARK_NONE && *mark_count < mark_capacity) {
+            marks[*mark_count] = { before_w, char_w, mark };
+            (*mark_count)++;
+        }
+    }
+}
+
+static void draw_pt_marks(LGFX_Sprite *spr,
+                          int text_x,
+                          int text_y,
+                          const pt_text_mark_t *marks,
+                          size_t mark_count,
+                          uint16_t color)
+{
+    for (size_t i = 0; i < mark_count; i++) {
+        int cx = text_x + marks[i].x + (marks[i].w / 2);
+        switch (marks[i].mark) {
+        case PT_MARK_ACUTE:
+            spr->drawLine(cx - 3, text_y - 2, cx + 2, text_y - 7, color);
+            break;
+        case PT_MARK_GRAVE:
+            spr->drawLine(cx - 2, text_y - 7, cx + 3, text_y - 2, color);
+            break;
+        case PT_MARK_CIRC:
+            spr->drawLine(cx - 4, text_y - 2, cx, text_y - 7, color);
+            spr->drawLine(cx, text_y - 7, cx + 4, text_y - 2, color);
+            break;
+        case PT_MARK_TILDE:
+            spr->drawLine(cx - 5, text_y - 4, cx - 2, text_y - 7, color);
+            spr->drawLine(cx - 2, text_y - 7, cx + 2, text_y - 4, color);
+            spr->drawLine(cx + 2, text_y - 4, cx + 5, text_y - 7, color);
+            break;
+        case PT_MARK_CEDILLA:
+            spr->drawLine(cx, text_y + 17, cx - 2, text_y + 20, color);
+            spr->drawLine(cx - 2, text_y + 20, cx + 1, text_y + 22, color);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 static void draw_message_bubble(LGFX_Sprite *spr,
                                 int x,
                                 int y,
@@ -332,8 +585,16 @@ static void draw_message_bubble(LGFX_Sprite *spr,
 {
     const int pad_x = 18;
 
+    char display_text[TEXT_MAX_LEN];
+    pt_text_mark_t marks[32];
+    size_t mark_count = 0;
+
+    spr->setFont(&lgfx::fonts::Font0);
     spr->setTextSize(2);
-    int text_w = spr->textWidth(text);
+    build_pt_display_text(spr, text, display_text, sizeof(display_text),
+                          marks, &mark_count, 32U);
+
+    int text_w = spr->textWidth(display_text);
     int text_h = 16;
     int max_w = w - 18;
     int desired_w = text_w + (pad_x * 2);
@@ -361,7 +622,9 @@ static void draw_message_bubble(LGFX_Sprite *spr,
 
     spr->setTextColor(fg, bg);
     if (text_w <= text_area_w) {
-        spr->drawString(text, text_x, text_y);
+        spr->drawString(display_text, text_x, text_y);
+        draw_pt_marks(spr, text_x, text_y, marks, mark_count, fg);
+        spr->setFont(&lgfx::fonts::Font0);
         return;
     }
 
@@ -377,8 +640,10 @@ static void draw_message_bubble(LGFX_Sprite *spr,
     if (offset > overflow) offset = overflow;
 
     spr->setClipRect(text_x, bar_y, text_area_w, bar_h);
-    spr->drawString(text, text_x - offset, text_y);
+    spr->drawString(display_text, text_x - offset, text_y);
+    draw_pt_marks(spr, text_x - offset, text_y, marks, mark_count, fg);
     spr->clearClipRect();
+    spr->setFont(&lgfx::fonts::Font0);
 }
 
 static void draw_text_overlay(LGFX_Sprite *spr,
@@ -592,6 +857,47 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
     }
     s_sleep_bubble_was_active = bubble;
 
+    bool listening = s_listening_indicator_active;
+    if (listening) {
+        int dirty_x = 0, dirty_y = 0, dirty_w = 0, dirty_h = 0;
+        listening_icon_rect(&dirty_x, &dirty_y, &dirty_w, &dirty_h);
+        if (s_listening_was_active) {
+            render_service_mark_dirty(s_listening_prev_x, s_listening_prev_y,
+                                      s_listening_prev_w, s_listening_prev_h);
+        }
+        draw_listening_icon(spr, dirty_x, dirty_y, dirty_w, dirty_h, now_us);
+        render_service_mark_dirty(dirty_x, dirty_y, dirty_w, dirty_h);
+        s_listening_prev_x = dirty_x;
+        s_listening_prev_y = dirty_y;
+        s_listening_prev_w = dirty_w;
+        s_listening_prev_h = dirty_h;
+    } else if (s_listening_was_active) {
+        render_service_mark_dirty(s_listening_prev_x, s_listening_prev_y,
+                                  s_listening_prev_w, s_listening_prev_h);
+    }
+    s_listening_was_active = listening;
+
+    bool timer_badge = s_timer_badge_active;
+    if (timer_badge) {
+        int dirty_x = 0, dirty_y = 0, dirty_w = 0, dirty_h = 0;
+        timer_badge_rect(&dirty_x, &dirty_y, &dirty_w, &dirty_h);
+        if (s_timer_badge_was_active) {
+            render_service_mark_dirty(s_timer_badge_prev_x, s_timer_badge_prev_y,
+                                      s_timer_badge_prev_w, s_timer_badge_prev_h);
+        }
+        draw_timer_badge(spr, dirty_x, dirty_y, dirty_w, dirty_h,
+                         s_timer_badge_remaining_ms);
+        render_service_mark_dirty(dirty_x, dirty_y, dirty_w, dirty_h);
+        s_timer_badge_prev_x = dirty_x;
+        s_timer_badge_prev_y = dirty_y;
+        s_timer_badge_prev_w = dirty_w;
+        s_timer_badge_prev_h = dirty_h;
+    } else if (s_timer_badge_was_active) {
+        render_service_mark_dirty(s_timer_badge_prev_x, s_timer_badge_prev_y,
+                                  s_timer_badge_prev_w, s_timer_badge_prev_h);
+    }
+    s_timer_badge_was_active = timer_badge;
+
     int x, y, w, h;
     overlay_rect(state.kind, &x, &y, &w, &h);
 
@@ -714,6 +1020,25 @@ extern "C" void ui_overlay_show_text(const char *text, uint32_t duration_ms)
     render_service_force_full_refresh();
 }
 
+extern "C" void ui_overlay_clear_text(void)
+{
+    if (!s_initialized || !s_mutex) return;
+
+    bool changed = false;
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    if (s_state.kind == OVERLAY_TEXT) {
+        s_state.kind = OVERLAY_NONE;
+        s_state.text[0] = '\0';
+        s_state.expires_us = 0;
+        changed = true;
+    }
+    xSemaphoreGive(s_mutex);
+
+    if (changed) {
+        render_service_force_full_refresh();
+    }
+}
+
 extern "C" void ui_overlay_show_toast(const char *text,
                                       nb_ui_overlay_tone_t tone,
                                       uint32_t duration_ms)
@@ -746,6 +1071,19 @@ extern "C" void ui_overlay_clear(void)
     s_state.expires_us = 0;
     xSemaphoreGive(s_mutex);
 
+    render_service_force_full_refresh();
+}
+
+extern "C" void ui_overlay_listening_set(bool enabled)
+{
+    s_listening_indicator_active = enabled;
+    render_service_force_full_refresh();
+}
+
+extern "C" void ui_overlay_timer_badge_set(bool enabled, uint32_t remaining_ms)
+{
+    s_timer_badge_remaining_ms = remaining_ms;
+    s_timer_badge_active = enabled;
     render_service_force_full_refresh();
 }
 

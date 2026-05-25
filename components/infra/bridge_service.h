@@ -68,6 +68,7 @@ extern "C" {
 
 #define NB_BRIDGE_TCP_PORT          9000
 #define NB_BRIDGE_TCP_LISTEN_MS     2000    /* espera por cliente TCP no boot  */
+#define NB_BRIDGE_TCP_HANDSHAKE_MS  3000    /* tolera bridge Python/Windows     */
 #define NB_BRIDGE_UART_HANDSHAKE_MS 200     /* timeout handshake UART          */
 #define NB_BRIDGE_KEEPALIVE_IDLE_S  5       /* TCP keep-alive idle             */
 #define NB_BRIDGE_KEEPALIVE_INT_S   2       /* TCP keep-alive intervalo        */

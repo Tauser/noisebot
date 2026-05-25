@@ -37,6 +37,10 @@ static float s_warmth    = 0.0f;
 static float s_energy    = 0.0f;
 static float s_curiosity = 1.0f;   /* curioso por padrão */
 static float s_trust     = 0.0f;
+static float s_saved_warmth;
+static float s_saved_energy;
+static float s_saved_curiosity;
+static float s_saved_trust;
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -55,15 +59,30 @@ static void load_from_nvs(void)
     s_energy    = clampf(u2f(nvs_hal_get_u32(s_h, KEY_ENERGY,    f2u(s_energy))));
     s_curiosity = clampf(u2f(nvs_hal_get_u32(s_h, KEY_CURIOSITY, f2u(s_curiosity))));
     s_trust     = clampf(u2f(nvs_hal_get_u32(s_h, KEY_TRUST,     f2u(s_trust))));
+    s_saved_warmth    = s_warmth;
+    s_saved_energy    = s_energy;
+    s_saved_curiosity = s_curiosity;
+    s_saved_trust     = s_trust;
 }
 
 static void save_to_nvs(void)
 {
+    if (fabsf(s_warmth - s_saved_warmth) < 0.001f &&
+        fabsf(s_energy - s_saved_energy) < 0.001f &&
+        fabsf(s_curiosity - s_saved_curiosity) < 0.001f &&
+        fabsf(s_trust - s_saved_trust) < 0.001f) {
+        return;
+    }
+
     nvs_hal_set_u32(s_h, KEY_WARMTH,    f2u(s_warmth));
     nvs_hal_set_u32(s_h, KEY_ENERGY,    f2u(s_energy));
     nvs_hal_set_u32(s_h, KEY_CURIOSITY, f2u(s_curiosity));
     nvs_hal_set_u32(s_h, KEY_TRUST,     f2u(s_trust));
     nvs_hal_commit(s_h);
+    s_saved_warmth    = s_warmth;
+    s_saved_energy    = s_energy;
+    s_saved_curiosity = s_curiosity;
+    s_saved_trust     = s_trust;
 }
 
 /* ── API ─────────────────────────────────────────────────────────────────── */
@@ -80,12 +99,12 @@ esp_err_t persona_service_init(void)
     }
 
     load_from_nvs();
+    s_initialized = true;
 
     if (ltm_get_total_sessions() > 0u) {
         persona_service_refresh();
     }
 
-    s_initialized = true;
     ESP_LOGI(TAG, "persona: W=%.2f E=%.2f C=%.2f T=%.2f",
              s_warmth, s_energy, s_curiosity, s_trust);
     return ESP_OK;

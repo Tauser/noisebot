@@ -30,6 +30,7 @@
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
 
 #define TAG "nb_cond"
 
@@ -406,8 +407,15 @@ esp_err_t conductor_init(void)
     s_trigger_sem = xSemaphoreCreateBinary();
     if (!s_trigger_sem) return ESP_ERR_NO_MEM;
 
-    BaseType_t rc = xTaskCreate(conductor_task, "conductor_task",
-                                4096, NULL, 6, NULL);
+    BaseType_t rc;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+    rc = xTaskCreateWithCaps(conductor_task, "conductor_task",
+                             4096, NULL, 6, NULL,
+                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    rc = xTaskCreate(conductor_task, "conductor_task",
+                     4096, NULL, 6, NULL);
+#endif
     if (rc != pdPASS) {
         vSemaphoreDelete(s_trigger_sem);
         return ESP_ERR_NO_MEM;

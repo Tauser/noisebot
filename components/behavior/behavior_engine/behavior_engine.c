@@ -545,14 +545,20 @@ static void bridge_on_event(const nb_event_t *evt)
         if (!payload) break;
 
         if (strstr(payload, "\"event\":\"LISTEN_START\"")) {
+            ui_overlay_listening_set(true);
             ui_overlay_show_toast("Ouvindo...", NB_UI_OVERLAY_INFO, 2200U);
+        } else if (strstr(payload, "\"event\":\"LISTEN_STOP\"") ||
+                   strstr(payload, "\"event\":\"SESSION_DONE\"")) {
+            ui_overlay_listening_set(false);
         } else if (strstr(payload, "\"event\":\"TRANSCRIBE_START\"")) {
+            ui_overlay_listening_set(false);
             ui_overlay_show_toast("Transcrevendo...", NB_UI_OVERLAY_INFO, 2200U);
         } else if (strstr(payload, "\"event\":\"THINKING_START\"")) {
             ui_overlay_show_toast("Pensando...", NB_UI_OVERLAY_INFO, 2200U);
         } else if (strstr(payload, "\"event\":\"TTS_START\"")) {
             ui_overlay_show_toast("Falando...", NB_UI_OVERLAY_SUCCESS, 2200U);
         } else if (strstr(payload, "\"event\":\"SESSION_ERROR\"")) {
+            ui_overlay_listening_set(false);
             if (strstr(payload, "\"reason\":\"llm_quota_exceeded\"")) {
                 ui_overlay_show_toast("Cota da LLM", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
             } else if (strstr(payload, "\"reason\":\"llm_unavailable\"") ||
@@ -573,12 +579,14 @@ static void bridge_on_event(const nb_event_t *evt)
         s_bridge_voice_pending = false;
         esp_timer_stop(s_bridge_resp_timer);
         expression_service_set(NB_EXPR_NEUTRAL, 500.0f);
+        ui_overlay_listening_set(false);
         ui_overlay_show_toast("Bridge offline", NB_UI_OVERLAY_WARNING, BRIDGE_ERROR_TOAST_MS);
         break;
 
     case NB_EVT_BRIDGE_RESPONSE_TIMEOUT:
         s_bridge_voice_pending = false;
         expression_service_set(NB_EXPR_NEUTRAL, 500.0f);
+        ui_overlay_listening_set(false);
         ui_overlay_show_toast("Sem resposta", NB_UI_OVERLAY_WARNING, BRIDGE_ERROR_TOAST_MS);
         NB_LOGW(TAG, "bridge sem resposta em 8s — retornando a idle");
         break;

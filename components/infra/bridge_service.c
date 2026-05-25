@@ -63,6 +63,7 @@ static const char BRIDGE_HELLO_V2[] =
 #define TX_QUEUE_DEPTH  128u /* PSRAM: absorve bursts de WiFi sem cortar fala */
 #define TX_ITEM_SIZE    (sizeof(uint16_t) + FRAME_MAX_SIZE)
 #define TX_AUDIO_BACKLOG_MAX  124u /* reserva espaço para eventos de controle */
+#define TCP_SEND_BLOCK_RETRIES  250u /* 250 * 10ms = 2.5s de tolerância */
 
 typedef struct {
     uint16_t len;
@@ -485,12 +486,16 @@ static tcp_send_result_t tcp_send_progress(int fd,
 static bool tcp_send_all(int fd, const uint8_t *data, uint16_t len)
 {
     uint16_t offset = 0u;
-    int retries = 0;
+    uint32_t retries = 0;
     while (offset < len) {
         tcp_send_result_t res = tcp_send_progress(fd, data, len, &offset);
         if (res == TCP_SEND_OK) return true;
         if (res == TCP_SEND_FATAL) return false;
-        if (++retries >= 10) return false;
+        if (++retries >= TCP_SEND_BLOCK_RETRIES) {
+            NB_LOGW(TAG, "TCP send bloqueado por %u tentativas sent=%u/%u",
+                    (unsigned)retries, (unsigned)offset, (unsigned)len);
+            return false;
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
     return true;
@@ -524,6 +529,8 @@ static int tcp_recv_timeout(int fd, uint8_t *buf, int max_len, uint32_t timeout_
             return 0;
         }
         NB_LOGW(TAG, "TCP recv erro errno=%d", err);
+    } else if (received == 0) {
+        NB_LOGW(TAG, "TCP recv EOF — cliente fechou conexao");
     }
     return (received == 0) ? -1 : received;
 }
@@ -974,8 +981,9 @@ static void nb_bridge_task(void *arg)
 
         if (s.client_fd < 0) continue;
 
-        if (!do_handshake_tcp(s.client_fd, 300u)) {
-            NB_LOGD(TAG, "TCP handshake falhou — aguardando próximo cliente");
+        if (!do_handshake_tcp(s.client_fd, NB_BRIDGE_TCP_HANDSHAKE_MS)) {
+            NB_LOGW(TAG, "TCP handshake falhou (%ums) — aguardando proximo cliente",
+                    (unsigned)NB_BRIDGE_TCP_HANDSHAKE_MS);
             close(s.client_fd);
             s.client_fd = -1;
             continue;
@@ -1033,6 +1041,8 @@ esp_err_t bridge_service_init(void)
     s.state      = BS_STATE_INIT;
     s.uart_installed = false;
 
+    /* Stack interna: o bridge publica eventos síncronos; handlers podem tocar
+     * NVS/flash (ex.: last_emotion). Flash desabilita cache/PSRAM. */
     BaseType_t ret = xTaskCreatePinnedToCore(
         nb_bridge_task, "nb_bridge_task",
         NB_BRIDGE_TASK_STACK, NULL,

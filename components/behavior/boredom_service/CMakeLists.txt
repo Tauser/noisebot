@@ -6,6 +6,7 @@ idf_component_register(
         freertos
         esp_timer
         esp_hw_support
+        esp_common
         infra
         state_machine
         expression_service

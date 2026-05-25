@@ -7,6 +7,7 @@
 #include "nb_hw_config.h"
 #include "logger.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -50,6 +51,8 @@ static QueueHandle_t    s_queue         = NULL;
 static SemaphoreHandle_t s_flush_sem    = NULL;
 static bool             s_initialized  = false;
 static volatile bool    s_sd_available = false;
+static StaticQueue_t    s_queue_static;
+static uint8_t         *s_queue_storage = NULL;
 
 /* Vprintf original do ESP-IDF — salvo ao instalar o hook. */
 static vprintf_like_t   s_orig_vprintf = NULL;
@@ -193,8 +196,21 @@ static void persistence_task(void *arg)
 esp_err_t persistence_mgr_init(void)
 {
     /* Fila de operações. */
-    s_queue = xQueueCreate(QUEUE_DEPTH, sizeof(nb_persist_item_t));
+    s_queue_storage = (uint8_t *)heap_caps_malloc(
+        QUEUE_DEPTH * sizeof(nb_persist_item_t),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (s_queue_storage) {
+        s_queue = xQueueCreateStatic(QUEUE_DEPTH,
+                                     sizeof(nb_persist_item_t),
+                                     s_queue_storage,
+                                     &s_queue_static);
+    } else {
+        ESP_LOGW(TAG, "PSRAM indisponivel para fila — usando heap interno");
+        s_queue = xQueueCreate(QUEUE_DEPTH, sizeof(nb_persist_item_t));
+    }
     if (s_queue == NULL) {
+        heap_caps_free(s_queue_storage);
+        s_queue_storage = NULL;
         ESP_LOGE(TAG, "xQueueCreate falhou — sem memoria");
         return ESP_ERR_NO_MEM;
     }
@@ -203,6 +219,8 @@ esp_err_t persistence_mgr_init(void)
     s_flush_sem = xSemaphoreCreateBinary();
     if (s_flush_sem == NULL) {
         vQueueDelete(s_queue);
+        heap_caps_free(s_queue_storage);
+        s_queue_storage = NULL;
         s_queue = NULL;
         ESP_LOGE(TAG, "xSemaphoreCreateBinary falhou");
         return ESP_ERR_NO_MEM;
@@ -221,7 +239,19 @@ esp_err_t persistence_mgr_init(void)
     s_orig_vprintf = esp_log_set_vprintf(nb_log_vprintf);
 
     /* Criar persistence_task. */
-    BaseType_t ret = xTaskCreatePinnedToCore(
+    BaseType_t ret;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+    ret = xTaskCreateWithCaps(
+        persistence_task,
+        "persist_task",
+        TASK_STACK_SIZE,
+        NULL,
+        TASK_PRIORITY,
+        NULL,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
+    );
+#else
+    ret = xTaskCreatePinnedToCore(
         persistence_task,
         "persist_task",
         TASK_STACK_SIZE,
@@ -230,11 +260,14 @@ esp_err_t persistence_mgr_init(void)
         NULL,
         TASK_CORE
     );
+#endif
 
     if (ret != pdPASS) {
         esp_log_set_vprintf(s_orig_vprintf);  /* restaurar vprintf */
         vSemaphoreDelete(s_flush_sem);
         vQueueDelete(s_queue);
+        heap_caps_free(s_queue_storage);
+        s_queue_storage = NULL;
         s_queue     = NULL;
         s_flush_sem = NULL;
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore falhou");

@@ -5,6 +5,7 @@ idf_component_register(
     REQUIRES
         freertos
         log
+        esp_common
         esp_timer
         esp_hw_support
         expression_service

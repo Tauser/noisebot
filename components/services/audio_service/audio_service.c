@@ -74,9 +74,14 @@ extern void vad_destroy(nb_esp_vad_handle_t handle);
  * ambiente distante. */
 #define VAD_MIN_RMS_ABS           24000.0f
 #define VAD_MIN_RMS_SOFT          18000.0f
+#define VAD_LISTEN_MIN_RMS_ABS    12000.0f
+#define VAD_LISTEN_MIN_RMS_SOFT    9000.0f
 #define VAD_NOISE_MULT_ENTER          1.35f
 #define VAD_NOISE_MULT_SOFT           1.05f
 #define VAD_NOISE_MULT_ACTIVE         1.6f
+#define VAD_LISTEN_NOISE_MULT_ENTER   1.10f
+#define VAD_LISTEN_NOISE_MULT_SOFT    0.90f
+#define VAD_LISTEN_NOISE_MULT_ACTIVE  1.25f
 #define VAD_ZCR_MIN                  0.04f
 #define VAD_ZCR_MAX                  0.26f
 #define VAD_VOICE_RATIO_MIN          0.55f
@@ -217,8 +222,8 @@ static struct {
 
 /* ── Fila estática de SAY chunks (sem malloc) ─────────────────────────────── */
 
-#define BRIDGE_SAY_QUEUE_DEPTH  32U
-#define BRIDGE_SAY_IDLE_END_MS  500U
+#define BRIDGE_SAY_QUEUE_DEPTH  16U
+#define BRIDGE_SAY_IDLE_END_MS  1200U
 
 typedef struct {
     int16_t  samples[NB_BRIDGE_AUDIO_CHUNK_SAMPLES];
@@ -229,6 +234,8 @@ static uint8_t          s_bridge_say_q_storage[BRIDGE_SAY_QUEUE_DEPTH * sizeof(b
 static StaticQueue_t    s_bridge_say_q_static;
 static bridge_say_item_t s_bridge_say_chunk; /* buffer de saída para o speaker */
 static uint32_t         s_bridge_say_drop_count;
+static uint32_t         s_bridge_say_rx_count;
+static uint32_t         s_bridge_say_play_count;
 
 /* ── Pre-roll ring buffer (SRAM, 10 KB) ──────────────────────────────────── */
 
@@ -693,10 +700,16 @@ static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
     float dom_freq    = sound_analysis_get_dominant_freq();
     nb_sound_class_t cls = sound_analysis_get_class();
 
-    float enter_thr = fmaxf(VAD_MIN_RMS_ABS, s.vad_noise_ema * VAD_NOISE_MULT_ENTER);
-    float active_thr = fmaxf(VAD_MIN_RMS_ABS * 0.75f,
-                             s.vad_noise_ema * VAD_NOISE_MULT_ACTIVE);
-    float soft_thr = fmaxf(VAD_MIN_RMS_SOFT, s.vad_noise_ema * VAD_NOISE_MULT_SOFT);
+    bool listen_profile = s.listen_session_active;
+    float min_rms_abs = listen_profile ? VAD_LISTEN_MIN_RMS_ABS : VAD_MIN_RMS_ABS;
+    float min_rms_soft = listen_profile ? VAD_LISTEN_MIN_RMS_SOFT : VAD_MIN_RMS_SOFT;
+    float enter_mult = listen_profile ? VAD_LISTEN_NOISE_MULT_ENTER : VAD_NOISE_MULT_ENTER;
+    float soft_mult = listen_profile ? VAD_LISTEN_NOISE_MULT_SOFT : VAD_NOISE_MULT_SOFT;
+    float active_mult = listen_profile ? VAD_LISTEN_NOISE_MULT_ACTIVE : VAD_NOISE_MULT_ACTIVE;
+    float enter_thr = fmaxf(min_rms_abs, s.vad_noise_ema * enter_mult);
+    float active_thr = fmaxf(min_rms_abs * 0.75f,
+                             s.vad_noise_ema * active_mult);
+    float soft_thr = fmaxf(min_rms_soft, s.vad_noise_ema * soft_mult);
     s.vad_threshold = (int32_t)((s.vad_state == VAD_ACTIVE) ? active_thr : enter_thr);
 
     bool zcr_ok      = (zcr >= VAD_ZCR_MIN) && (zcr <= VAD_ZCR_MAX);
@@ -722,14 +735,16 @@ static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
     bool esp_vad_speech = (esp_vad_state == ESP_SR_VAD_SPEECH);
     bool speech_strong = esp_vad_speech;
     bool is_speech = esp_vad_speech;
+    bool listen_heuristic = s.listen_session_active && heuristic_speech;
+    if (listen_heuristic) {
+        is_speech = true;
+        speech_strong = speech_strong || heuristic_speech_strong;
+    }
 #if NB_AUDIO_HEURISTIC_LISTEN_FALLBACK
     if (!s.esp_vad_enabled) {
         speech_strong = heuristic_speech_strong;
         is_speech = heuristic_speech;
     }
-#else
-    (void)heuristic_speech_strong;
-    (void)heuristic_speech;
 #endif
 
     int64_t now_us = esp_timer_get_time();
@@ -970,6 +985,11 @@ static void audio_task(void *arg)
                 }
                 esp_err_t wr = audio_hal_spk_write(s_bridge_say_chunk.samples, n, pdMS_TO_TICKS(100));
                 audio_note_spk_result(wr, "bridge_say");
+                if ((++s_bridge_say_play_count % 64U) == 1U) {
+                    ESP_LOGI(TAG, "Bridge SAY playback chunks=%lu q=%u",
+                             (unsigned long)s_bridge_say_play_count,
+                             (unsigned)uxQueueMessagesWaiting(s.bridge_say_q));
+                }
                 wrote_audio = true;
             } else {
                 /* Fila vazia pode ser jitter de TCP/TTS. Segura o modo SAY por
@@ -1210,10 +1230,22 @@ esp_err_t audio_service_init(void)
     s.listen_speech_elapsed_ms    = 0;
     s.listen_voice_detected       = false;
     s_bridge_say_drop_count       = 0;
+    s_bridge_say_rx_count         = 0;
+    s_bridge_say_play_count       = 0;
     s.bridge_say_q = xQueueCreateStatic(BRIDGE_SAY_QUEUE_DEPTH,
                                          sizeof(bridge_say_item_t),
                                          s_bridge_say_q_storage,
                                          &s_bridge_say_q_static);
+    if (!s.bridge_say_q) {
+        if (s.esp_vad) {
+            vad_destroy(s.esp_vad);
+            s.esp_vad = NULL;
+            s.esp_vad_enabled = false;
+        }
+        vSemaphoreDelete(s.mutex);
+        audio_hal_deinit();
+        return ESP_ERR_NO_MEM;
+    }
 
     BaseType_t rc = xTaskCreatePinnedToCore(
         audio_task, "audio_task",
@@ -1228,6 +1260,8 @@ esp_err_t audio_service_init(void)
             s.esp_vad = NULL;
             s.esp_vad_enabled = false;
         }
+        vQueueDelete(s.bridge_say_q);
+        s.bridge_say_q = NULL;
         vSemaphoreDelete(s.mutex);
         audio_hal_deinit();
         return ESP_ERR_NO_MEM;
@@ -1391,6 +1425,15 @@ bool audio_service_is_listening(void)
     return s.initialized && s.listen_session_active;
 }
 
+bool audio_service_is_busy(void)
+{
+    return s.initialized &&
+           (s.listen_session_active ||
+            s.play_state == PLAY_ACTIVE ||
+            s.play_state == PLAY_BRIDGE_SAY ||
+            s.bridge_say_playing);
+}
+
 /* ── Bridge SAY (Etapa 12.2) ─────────────────────────────────────────────── */
 
 void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
@@ -1409,8 +1452,14 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         s.bridge_say_empty_ms = 0;
         xSemaphoreGive(s.mutex);
         if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, 0);
+        ESP_LOGI(TAG, "Bridge SAY iniciado");
     }
     if (xQueueSend(s.bridge_say_q, &item, 0) == pdTRUE) {
+        if ((++s_bridge_say_rx_count % 64U) == 1U) {
+            ESP_LOGI(TAG, "Bridge SAY recebido chunks=%lu q=%u",
+                     (unsigned long)s_bridge_say_rx_count,
+                     (unsigned)uxQueueMessagesWaiting(s.bridge_say_q));
+        }
         s.bridge_say_empty_ms = 0;
     } else {
         s_bridge_say_drop_count++;
