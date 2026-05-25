@@ -26,6 +26,7 @@ from bridgev2.runtime.events import (
     TurnError,
     VoiceActivityEnd,
     VoiceActivityStart,
+    VoiceEndReason,
     WakeDetected,
 )
 from bridgev2.runtime.session import SessionContext, new_turn_id
@@ -54,6 +55,7 @@ __all__ = [
     "TurnState",
     "VoiceActivityEnd",
     "VoiceActivityStart",
+    "VoiceEndReason",
     "WakeDetected",
     "new_turn_id",
 ]

@@ -34,4 +34,5 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore:'asyncio\\.iscoroutinefunction' is deprecated:DeprecationWarning:pytest_asyncio\\.plugin",
     "ignore:'asyncio\\.get_event_loop_policy' is deprecated:DeprecationWarning:pytest_asyncio\\.plugin",
+    "ignore:'asyncio\\.set_event_loop_policy' is deprecated:DeprecationWarning:pytest_asyncio\\.plugin",
 ]

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
+import struct
 
 
 def _make_server_config(
@@ -481,14 +483,51 @@ def test_server_transport_is_server_owned() -> None:
     compat.ensure_bridgev2_path()
 
     server_transport = importlib.import_module("noisebot_server.internal.transport")
+    bridge_adapter = importlib.import_module("bridgev2.transport.adapter")
     bridge_tcp = importlib.import_module("bridgev2.transport.tcp")
     bridge_supervisor = importlib.import_module("bridgev2.transport.reconnect")
 
+    assert server_transport.FirmwareAdapter is not bridge_adapter.FirmwareAdapter
     assert server_transport.TcpTransport is not bridge_tcp.TcpTransport
     assert (
         server_transport.ConnectionSupervisor
         is not bridge_supervisor.ConnectionSupervisor
     )
+
+
+async def test_server_firmware_adapter_dispatches_voice_end_event() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    adapter_module = importlib.import_module("noisebot_server.internal.transport.adapter")
+    protocol = importlib.import_module("noisebot_server.internal.transport.protocol")
+
+    class DummyTransport:
+        is_connected = True
+        description = "dummy"
+
+        async def connect(self) -> None:
+            pass
+
+        async def disconnect(self) -> None:
+            pass
+
+        async def send(self, data: bytes) -> None:
+            pass
+
+        async def recv(self, n: int = 4096) -> bytes:
+            return b""
+
+    bus = runtime.EventBus()
+    queue = bus.subscribe(runtime.VoiceActivityEnd)
+    adapter = adapter_module.FirmwareAdapter(DummyTransport(), bus)
+    payload = struct.pack(
+        "<I",
+        protocol.NB_EVT_VOICE_ACTIVITY_END,
+    ) + bytes([runtime.VoiceEndReason.TIMEOUT])
+
+    await adapter._dispatch_rx(protocol.MSG_EVENT, payload)
+
+    event = await asyncio.wait_for(queue.get(), timeout=0.1)
+    assert event.reason == runtime.VoiceEndReason.TIMEOUT
 
 
 def test_server_transport_factory_creates_uart_transport() -> None:
