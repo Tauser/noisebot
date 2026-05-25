@@ -47,3 +47,17 @@ Next phases should move responsibilities one boundary at a time:
 2. `internal/ops`: health, metrics, debug and config API.
 3. `internal/agent`: STT, local intents, LLM providers and TTS.
 4. `internal/vision`: snapshot orchestration and higher-level observations.
+
+## Transport boundary
+
+`noisebot_server.internal.transport` is the first real server boundary. It
+currently delegates to `bridge_v2` for byte-compatible behavior, but new code
+should import transport and protocol symbols from the server package:
+
+```python
+from noisebot_server.internal.transport import TcpTransport
+from noisebot_server.internal.transport.protocol import encode_frame
+```
+
+This keeps the migration reversible and avoids a risky one-shot move of TCP,
+UART, reconnect, handshake and framing code.

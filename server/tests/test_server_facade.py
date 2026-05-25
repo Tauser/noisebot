@@ -19,3 +19,90 @@ def test_server_cli_delegates_to_bridgev2_entrypoint() -> None:
     cli_module = importlib.import_module("noisebot_server.__main__")
 
     assert callable(cli_module.main)
+
+
+def test_server_transport_exports_bridge_compatible_protocol() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    server_protocol = importlib.import_module(
+        "noisebot_server.internal.transport.protocol"
+    )
+    bridge_protocol = importlib.import_module("bridgev2.protocol.framing")
+    bridge_messages = importlib.import_module("bridgev2.protocol.messages")
+
+    payload = bridge_messages.encode_expr(3, 1500)
+
+    assert server_protocol.encode_frame(bridge_messages.MSG_EXPR, payload) == (
+        bridge_protocol.encode_frame(bridge_messages.MSG_EXPR, payload)
+    )
+
+
+def test_server_transport_factory_creates_tcp_transport() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    config_module = importlib.import_module("bridgev2.config")
+    factory_module = importlib.import_module(
+        "noisebot_server.internal.transport.factory"
+    )
+
+    config = config_module.BridgeV2Config(
+        transport=config_module.TransportConfig(
+            host="192.168.1.30",
+            port=9000,
+            uart=None,
+            baudrate=1000000,
+        ),
+        llm=config_module.LlmConfig(
+            provider=config_module.LlmProvider.NONE,
+            model="none",
+            timeout_s=10.0,
+            max_output_tokens=256,
+            max_reply_chars=180,
+            ollama_base_url="http://127.0.0.1:11434",
+            ollama_think=False,
+            openai_key_configured=False,
+            gemini_key_configured=False,
+        ),
+        pipeline_mode=config_module.PipelineMode.LOCAL_ONLY,
+        stt=config_module.SttConfig(
+            model="small",
+            backend="faster",
+            device="cpu",
+            compute_type="int8",
+        ),
+        tts=config_module.TtsConfig(
+            piper_executable="piper",
+            piper_model="",
+            cache_size=64,
+            sample_rate=16000,
+            target_peak=12000,
+        ),
+        audio=config_module.AudioConfig(
+            chunk_samples=256,
+            sample_rate=16000,
+            min_transcribe_rms=140.0,
+            min_transcribe_peak=1600,
+            min_utterance_samples=8000,
+            max_no_speech_prob=0.75,
+            min_avg_logprob=-1.10,
+            max_compression_ratio=2.60,
+        ),
+        reconnect=config_module.ReconnectConfig(
+            delay_s=1.0,
+            max_delay_s=30.0,
+            connect_timeout_s=5.0,
+        ),
+        ops=config_module.OpsConfig(
+            port=8765,
+            token_configured=False,
+        ),
+        log_level=config_module.LogLevel.INFO,
+        dry_run=True,
+        replay_path=None,
+    )
+
+    transport = factory_module.create_transport_factory(config)()
+
+    assert transport.description == "TCP 192.168.1.30:9000"
