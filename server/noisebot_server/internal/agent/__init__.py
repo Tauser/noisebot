@@ -1,9 +1,4 @@
-"""STT, LLM, TTS and turn orchestration internals.
-
-Phase 4 owns the server-side Agent boundary while preserving the existing
-``bridge_v2`` implementation. New code should import conversation runtime,
-local intents, LLM providers, STT and TTS through this package.
-"""
+"""STT, LLM, TTS and turn orchestration internals."""
 
 from __future__ import annotations
 

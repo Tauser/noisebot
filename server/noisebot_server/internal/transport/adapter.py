@@ -20,7 +20,6 @@ from ..agent.runtime import (
 )
 from .base import Transport
 from .protocol import (
-    BRIDGE_V2_HELLO_CAPABILITIES,
     MSG_ACTION,
     MSG_AUDIO_CHUNK,
     MSG_EMOT_EVENT,
@@ -39,6 +38,7 @@ from .protocol import (
     NB_EVT_VOICE_ACTIVITY_END,
     NB_EVT_VOICE_ACTIVITY_START,
     FrameDecoder,
+    SERVER_HELLO_CAPABILITIES,
     decode_event,
     decode_hello,
     decode_session,
@@ -84,7 +84,7 @@ class FirmwareAdapter:
     ) -> None:
         self._transport = transport
         self._bus = bus
-        self._capabilities = capabilities or BRIDGE_V2_HELLO_CAPABILITIES
+        self._capabilities = capabilities or SERVER_HELLO_CAPABILITIES
         self._peer_capabilities: dict[str, Any] = {}
         self._decoder = FrameDecoder()
         self._tx_queue: asyncio.Queue[_TxItem] = asyncio.Queue(maxsize=256)

@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any
 
-from .config import BridgeV2Config, LlmProvider, PipelineMode
+from .config import LlmProvider, NoiseBotServerConfig, PipelineMode
 from .internal.agent import (
     EventBus,
     GeminiProvider,
@@ -26,13 +26,11 @@ log = logging.getLogger(__name__)
 class NoiseBotServer:
     """Server-owned application graph.
 
-    The concrete providers still come through server import boundaries, many of
-    which delegate to the proven ``bridge_v2`` modules in this migration phase.
     This class owns composition and lifecycle, so normal startup no longer
-    inherits from ``bridgev2.app.Application``.
+    depends on the legacy bridge application object.
     """
 
-    def __init__(self, config: BridgeV2Config) -> None:
+    def __init__(self, config: NoiseBotServerConfig) -> None:
         self._config = config
         self._bus = EventBus(default_maxsize=256)
         self._supervisor: Any | None = None

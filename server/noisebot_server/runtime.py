@@ -1,8 +1,7 @@
 """NoiseBot server runtime shell.
 
-This is the first server-owned composition point. The concrete implementation
-still uses bridge-backed classes through server boundaries, but startup no
-longer has to delegate normal execution to ``bridgev2.__main__``.
+This is the server-owned composition point for startup, logging and graceful
+shutdown.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .app import NoiseBotServer
-from .config import BridgeV2Config
+from .config import NoiseBotServerConfig
 
 DEFAULT_LOG_FILE = Path.home() / ".noisebot" / "logs" / "server.log"
 LOG_MAX_BYTES = 5 * 1024 * 1024
@@ -64,10 +63,10 @@ def setup_logging(level: str, log_file: str | None = None) -> None:
 
 
 def run_server(
-    config: BridgeV2Config,
+    config: NoiseBotServerConfig,
     *,
     log_file: str | None = None,
-    app_factory: Callable[[BridgeV2Config], Any] = NoiseBotServer,
+    app_factory: Callable[[NoiseBotServerConfig], Any] = NoiseBotServer,
 ) -> None:
     """Run the server application until shutdown."""
     setup_logging(config.log_level.value, log_file)

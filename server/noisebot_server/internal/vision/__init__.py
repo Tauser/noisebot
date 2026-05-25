@@ -1,8 +1,6 @@
 """Vision orchestration internals.
 
-Phase 5 owns the server-side Vision boundary while preserving the existing
-``bridge_v2`` implementation. Heavy visual analysis belongs on the server, not
-inside ESP32 firmware.
+Heavy visual analysis belongs on the server, not inside ESP32 firmware.
 """
 
 from __future__ import annotations

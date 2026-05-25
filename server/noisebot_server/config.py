@@ -110,7 +110,7 @@ class OpsConfig:
 
 
 @dataclass(frozen=True)
-class BridgeV2Config:
+class NoiseBotServerConfig:
     """Complete server config without secret values."""
 
     transport: TransportConfig
@@ -177,20 +177,15 @@ class BridgeV2Config:
         }
 
 
-NoiseBotServerConfig = BridgeV2Config
-
-
 def _default_env_candidates() -> list[Path]:
     package_env = Path(__file__).resolve().parents[1] / ".env"
     cwd = Path.cwd()
     candidates = [
         package_env,
         cwd / ".env",
-        cwd / "bridge_v2" / ".env",
     ]
     for parent in Path(__file__).resolve().parents:
         candidates.append(parent / ".env")
-        candidates.append(parent / "bridge_v2" / ".env")
     return candidates
 
 
@@ -251,7 +246,7 @@ def _env_bool(key: str, default: bool = False) -> bool:
     return value in ("1", "true", "yes", "on")
 
 
-def load_config(env_path: str | os.PathLike[str] | None = None) -> BridgeV2Config:
+def load_config(env_path: str | os.PathLike[str] | None = None) -> NoiseBotServerConfig:
     load_env_file(env_path)
 
     try:
@@ -271,7 +266,7 @@ def load_config(env_path: str | os.PathLike[str] | None = None) -> BridgeV2Confi
     except ValueError:
         log_level = LogLevel.INFO
 
-    return BridgeV2Config(
+    return NoiseBotServerConfig(
         transport=TransportConfig(
             host=_env("NOISEBOT_HOST") or None,
             port=_env_int("NOISEBOT_PORT", 9000),
@@ -331,7 +326,6 @@ def load_config(env_path: str | os.PathLike[str] | None = None) -> BridgeV2Confi
 
 __all__ = [
     "AudioConfig",
-    "BridgeV2Config",
     "DEFAULT_LLM_MODELS",
     "DEFAULT_LLM_PROVIDER",
     "LlmConfig",

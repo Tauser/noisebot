@@ -2,7 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import sys
 import struct
+from pathlib import Path
+
+
+def _ensure_bridgev2_path() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    bridge_v2_path = repo_root / "bridge_v2"
+    bridge_v2_str = str(bridge_v2_path)
+    if bridge_v2_path.exists() and bridge_v2_str not in sys.path:
+        sys.path.insert(0, bridge_v2_str)
 
 
 def _make_server_config(
@@ -15,7 +25,7 @@ def _make_server_config(
 ):
     config_module = importlib.import_module("noisebot_server.config")
 
-    return config_module.BridgeV2Config(
+    return config_module.NoiseBotServerConfig(
         transport=config_module.TransportConfig(
             host=host,
             port=port,
@@ -72,9 +82,8 @@ def _make_server_config(
     )
 
 
-def test_bridgev2_compat_path_allows_application_import() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+def test_bridgev2_reference_path_allows_application_import() -> None:
+    _ensure_bridgev2_path()
 
     app_module = importlib.import_module("noisebot_server.app")
 
@@ -82,8 +91,7 @@ def test_bridgev2_compat_path_allows_application_import() -> None:
 
 
 def test_server_entrypoint_exposes_server_cli() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     cli_module = importlib.import_module("noisebot_server.__main__")
 
@@ -146,13 +154,13 @@ def test_server_cli_applies_env_overrides(monkeypatch) -> None:
 
 
 def test_server_config_is_server_owned() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     server_config = importlib.import_module("noisebot_server.config")
     bridge_config = importlib.import_module("bridgev2.config")
 
-    assert server_config.BridgeV2Config is not bridge_config.BridgeV2Config
+    assert hasattr(server_config, "NoiseBotServerConfig")
+    assert not hasattr(server_config, "BridgeV2Config")
     assert server_config.LlmProvider.OLLAMA.value == bridge_config.LlmProvider.OLLAMA.value
     assert server_config.PipelineMode.LOCAL_ONLY.value == (
         bridge_config.PipelineMode.LOCAL_ONLY.value
@@ -335,8 +343,7 @@ def test_server_runtime_uses_noisebot_server_app() -> None:
 
 
 def test_server_app_no_longer_inherits_bridge_application() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     app_module = importlib.import_module("noisebot_server.app")
     bridge_app = importlib.import_module("bridgev2.app")
@@ -366,8 +373,7 @@ def test_server_app_tcp_config_creates_supervisor() -> None:
 
 
 def test_server_transport_exports_bridge_compatible_protocol() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     server_protocol = importlib.import_module(
         "noisebot_server.internal.transport.protocol"
@@ -383,8 +389,7 @@ def test_server_transport_exports_bridge_compatible_protocol() -> None:
 
 
 def test_server_transport_protocol_is_server_owned() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     server_protocol = importlib.import_module(
         "noisebot_server.internal.transport.protocol"
@@ -428,7 +433,7 @@ def test_server_transport_factory_creates_tcp_transport() -> None:
         "noisebot_server.internal.transport.factory"
     )
 
-    config = config_module.BridgeV2Config(
+    config = config_module.NoiseBotServerConfig(
         transport=config_module.TransportConfig(
             host="192.168.1.30",
             port=9000,
@@ -490,8 +495,7 @@ def test_server_transport_factory_creates_tcp_transport() -> None:
 
 
 def test_server_transport_is_server_owned() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     server_transport = importlib.import_module("noisebot_server.internal.transport")
     bridge_adapter = importlib.import_module("bridgev2.transport.adapter")
@@ -564,17 +568,24 @@ def test_server_connection_supervisor_backoff_caps() -> None:
     assert supervisor._next_delay(0.2) == 0.2
 
 
-def test_server_ops_exports_bridge_compatible_status_store() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+def test_server_ops_status_store_is_server_owned() -> None:
+    _ensure_bridgev2_path()
 
     server_ops = importlib.import_module("noisebot_server.internal.ops")
     bridge_status = importlib.import_module("bridgev2.ops.status_store")
 
-    assert server_ops.StatusStore is bridge_status.StatusStore
+    assert server_ops.StatusStore is not bridge_status.StatusStore
 
     store = server_ops.StatusStore()
+    bridge_store = bridge_status.StatusStore()
     store.record_turn(
+        11,
+        "llm",
+        transcript="minha chave sk-abcdef1234567890",
+        reply="ok",
+        route="llm",
+    )
+    bridge_store.record_turn(
         11,
         "llm",
         transcript="minha chave sk-abcdef1234567890",
@@ -584,11 +595,11 @@ def test_server_ops_exports_bridge_compatible_status_store() -> None:
 
     assert "sk-abcdef1234567890" not in store.last_transcript
     assert "<redacted>" in store.last_transcript
+    assert store.last_transcript == bridge_store.last_transcript
 
 
 def test_server_ops_exports_bridge_compatible_schemas() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     server_schemas = importlib.import_module("noisebot_server.internal.ops.schemas")
     bridge_schemas = importlib.import_module("bridgev2.ops.schemas")
@@ -599,21 +610,21 @@ def test_server_ops_exports_bridge_compatible_schemas() -> None:
     )
 
 
-def test_server_ops_config_controller_validates_like_bridge() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+def test_server_ops_config_controller_is_server_owned() -> None:
+    _ensure_bridgev2_path()
 
     server_config = importlib.import_module("noisebot_server.internal.ops.config")
     bridge_config = importlib.import_module("bridgev2.ops.config_controller")
 
-    assert server_config.ConfigController is bridge_config.ConfigController
+    assert server_config.ConfigController is not bridge_config.ConfigController
+    assert server_config.PROVIDER_CATALOG == bridge_config.PROVIDER_CATALOG
+    assert server_config.VALID_MODES == bridge_config.VALID_MODES
     assert "ollama" in server_config.PROVIDER_CATALOG
     assert "local_only" in server_config.VALID_MODES
 
 
 def test_server_agent_orchestrator_is_server_owned() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     server_agent = importlib.import_module("noisebot_server.internal.agent")
     bridge_orchestrator = importlib.import_module("bridgev2.runtime.orchestrator")
@@ -622,8 +633,7 @@ def test_server_agent_orchestrator_is_server_owned() -> None:
 
 
 def test_server_agent_runtime_is_server_owned() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     bridge_bus = importlib.import_module("bridgev2.runtime.bus")
@@ -650,8 +660,7 @@ def test_server_agent_turn_manager_keeps_transition_rules() -> None:
 
 
 def test_server_agent_local_intent_matches_time() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     agent = importlib.import_module("noisebot_server.internal.agent")
     provider = agent.LocalIntentProvider()
@@ -663,8 +672,7 @@ def test_server_agent_local_intent_matches_time() -> None:
 
 
 def test_server_agent_llm_and_intents_are_server_owned() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     server_agent = importlib.import_module("noisebot_server.internal.agent")
     server_llm = importlib.import_module("noisebot_server.internal.agent.llm")
@@ -676,8 +684,7 @@ def test_server_agent_llm_and_intents_are_server_owned() -> None:
 
 
 def test_server_agent_stt_tts_are_server_owned() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     server_stt = importlib.import_module("noisebot_server.internal.agent.stt")
     bridge_stt = importlib.import_module("bridgev2.stt.base")
@@ -689,8 +696,7 @@ def test_server_agent_stt_tts_are_server_owned() -> None:
 
 
 def test_server_agent_sentencizer_keeps_bridge_behavior() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     agent = importlib.import_module("noisebot_server.internal.agent")
     sentencizer = agent.Sentencizer()
@@ -701,8 +707,7 @@ def test_server_agent_sentencizer_keeps_bridge_behavior() -> None:
 
 
 def test_server_vision_is_server_owned() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
+    _ensure_bridgev2_path()
 
     server_vision = importlib.import_module("noisebot_server.internal.vision")
     bridge_vision = importlib.import_module("bridgev2.vision")

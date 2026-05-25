@@ -1,8 +1,8 @@
 """NoiseBot firmware wire protocol.
 
 This module owns the byte-level framing used by the server. It intentionally
-stays byte-compatible with ``bridge_v2.protocol`` while removing the runtime
-dependency from the server transport boundary.
+stays byte-compatible with the firmware protocol while keeping implementation
+local to the server transport boundary.
 """
 
 from __future__ import annotations
@@ -43,10 +43,10 @@ NB_EVT_VOICE_ACTIVITY_END: int = 10
 PROTOCOL_NAME: str = "noisebot-bridge"
 PROTOCOL_VERSION: int = 2
 
-BRIDGE_V2_HELLO_CAPABILITIES: dict[str, Any] = {
+SERVER_HELLO_CAPABILITIES: dict[str, Any] = {
     "protocol": PROTOCOL_NAME,
     "version": PROTOCOL_VERSION,
-    "role": "bridge_v2",
+    "role": "server",
     "audio": {
         "format": "pcm16",
         "sample_rate": 16000,
@@ -181,7 +181,7 @@ class FrameDecoder:
 
 
 def encode_hello(capabilities: dict[str, Any] | None = None) -> bytes:
-    caps = capabilities if capabilities is not None else BRIDGE_V2_HELLO_CAPABILITIES
+    caps = capabilities if capabilities is not None else SERVER_HELLO_CAPABILITIES
     return json.dumps(caps, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
 
 
@@ -268,7 +268,6 @@ def decode_session(payload: bytes) -> dict[str, Any]:
 
 
 __all__ = [
-    "BRIDGE_V2_HELLO_CAPABILITIES",
     "FRAME_OVERHEAD",
     "FrameDecoder",
     "MAX_FRAME_DATA_LEN",
@@ -291,6 +290,7 @@ __all__ = [
     "NB_EVT_VOICE_ACTIVITY_START",
     "PROTOCOL_NAME",
     "PROTOCOL_VERSION",
+    "SERVER_HELLO_CAPABILITIES",
     "SOF",
     "crc8",
     "decode_event",

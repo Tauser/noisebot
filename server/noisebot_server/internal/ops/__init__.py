@@ -1,8 +1,4 @@
-"""Operations, health and diagnostics internals.
-
-Phase 3 owns the server-side Ops boundary while preserving the existing
-``bridge_v2`` implementation. New server code should import Ops APIs here.
-"""
+"""Operations, health and diagnostics internals owned by the server."""
 
 from __future__ import annotations
 

@@ -11,11 +11,10 @@ from .uart import UartTransport
 
 
 def create_transport_factory(config: Any) -> Callable[[], Transport]:
-    """Create a transport factory from a bridge/server config object.
+    """Create a transport factory from a server config object.
 
-    The current config shape is ``bridgev2.config.BridgeV2Config``. Keeping this
-    helper in the server package gives us a stable seam for the later config
-    migration without changing connection behavior now.
+    Keeping this helper small lets transports evolve without leaking socket
+    details into the application object.
     """
     transport = config.transport
     reconnect = config.reconnect
