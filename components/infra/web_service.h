@@ -5,6 +5,8 @@
  *   GET  /           — Dashboard HTML (SD ou fallback embutido)
  *   GET  /api/status — JSON: state, expression, attention, health, uptime, fps
  *   GET  /api/persona — JSON: warmth, energy, curiosity, trust
+ *   GET  /api/camera/status — JSON: camera, bloqueio de bridge e heap
+ *   GET  /api/camera/snapshot — JPEG QQVGA sob demanda, se camera pronta
  *   GET  /api/config  — JSON com todas as chaves NVS relevantes
  *   POST /api/config  — Atualiza chave NVS (body: {"key":"vol","value":50})
  *   POST /api/command — Injeta ação (body: {"type":"ACTION","value":"GREET"})

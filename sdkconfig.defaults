@@ -8,10 +8,13 @@ CONFIG_IDF_TARGET="esp32s3"
 # ── Compilador ───────────────────────────────────────────────────────────────
 # GCC ICE em esp_lcd_panel_rgb.c com -O2 no IDF 5.5. -Og resolve sem custo
 # perceptível no S3 @ 240MHz.
-CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y
+CONFIG_COMPILER_OPTIMIZATION_DEBUG=y
+# StackChan usa size optimization para reduzir pressão geral de código/IRAM.
+# Mantemos -Og por causa do ICE documentado acima; revisar quando o toolchain
+# ou IDF forem atualizados.
 
 # ── CPU ───────────────────────────────────────────────────────────────────────
-CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 
 # ── Flash ─────────────────────────────────────────────────────────────────────
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
@@ -27,20 +30,22 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
-CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+CONFIG_SPIRAM_MEMTEST=n
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=512
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=65536
 # Reservar headroom de PSRAM para câmera futura (~300KB).
 # Monitorar uso via heap_caps_get_free_size(MALLOC_CAP_SPIRAM) em produção.
 
 # ── Brownout ──────────────────────────────────────────────────────────────────
 CONFIG_ESP_BROWNOUT_DET=y
-# Nível 0 ≈ 2.44V no rail de 3.3V — conservador. Ajustar empiricamente
-# se houver resets espúrios com protoboard. Níveis: 0–7 (0=mais sensível).
-CONFIG_ESP_BROWNOUT_DET_LVL_SEL_0=y
+# Nível 7 ≈ 2.44V no ESP32-S3/IDF 5.5.4 — menor threshold disponível.
+# Ajustar empiricamente se houver resets espúrios com protoboard.
+CONFIG_ESP_BROWNOUT_DET_LVL_SEL_7=y
 
 # ── Watchdog ──────────────────────────────────────────────────────────────────
 CONFIG_ESP_TASK_WDT_EN=y
 CONFIG_ESP_TASK_WDT_INIT=y
-CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
 # Não monitorar idle tasks — o watchdog monitora as tasks críticas via código.
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
@@ -51,6 +56,7 @@ CONFIG_ESP_TASK_WDT_PANIC=y
 CONFIG_FREERTOS_HZ=1000
 CONFIG_FREERTOS_USE_TRACE_FACILITY=y
 CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=y
 
 # ── Log ───────────────────────────────────────────────────────────────────────
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
@@ -73,6 +79,12 @@ CONFIG_FATFS_MAX_LFN=255
 # Console está em UART0 — desabilitar USB JTAG não causa perda funcional.
 CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n
 
+# ── Drivers legados mantidos temporariamente ─────────────────────────────────
+# Touch HAL ainda usa a API v1 do ESP-IDF. Suprimimos apenas o aviso oficial
+# para manter build limpo; a migração para touch_sens.h fica como refactor
+# separado para não mexer no comportamento de toque agora.
+CONFIG_TOUCH_SUPPRESS_DEPRECATE_WARN=y
+
 # ── SPI / Display ─────────────────────────────────────────────────────────────
 # LovyanGFX controla o SPI diretamente via driver de baixo nível.
 # Não usar CONFIG_SPI_MASTER_IN_ISR — LovyanGFX gerencia DMA.
@@ -82,9 +94,58 @@ CONFIG_USJ_ENABLE_USB_SERIAL_JTAG=n
 # CMakeLists (infra). BT permanece excluído — não há uso planejado.
 # Credenciais em NVS namespace "nb_wifi" (ssid, pass, enabled).
 # Sem credenciais: sistema opera offline sem erro.
+#
+# Perfil conservador inspirado no StackChan/CoreS3: menos throughput, mais SRAM
+# interna livre para áudio, SD, HTTP e event loop. O bridge local não precisa de
+# janelas WiFi grandes; estabilidade de heap é mais importante que vazão.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=3
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_DYNAMIC_RX_MGMT_BUFFER=y
+CONFIG_ESP_WIFI_RX_BA_WIN=3
+CONFIG_ESP_WIFI_TX_BA_WIN=3
+CONFIG_ESP_WIFI_MGMT_SBUF_NUM=16
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
+
+# ── LwIP — perfil local enxuto ─────────────────────────────────────────────
+# O NoiseBot usa poucos sockets locais: HTTP dashboard, WebSocket e bridge TCP.
+# O HTTP server reserva 3 sockets internos; com 4 clientes abertos e 1 bridge,
+# o minimo pratico e 8. Reduzir janelas/filas libera SRAM interna e pbufs.
+CONFIG_LWIP_MAX_SOCKETS=8
+CONFIG_LWIP_MAX_ACTIVE_TCP=8
+CONFIG_LWIP_MAX_LISTENING_TCP=8
+CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=16
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=2920
+CONFIG_LWIP_TCP_WND_DEFAULT=2920
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=4
+CONFIG_LWIP_TCP_ACCEPTMBOX_SIZE=4
+CONFIG_LWIP_TCP_QUEUE_OOSEQ=n
+CONFIG_LWIP_MAX_UDP_PCBS=8
+CONFIG_LWIP_UDP_RECVMBOX_SIZE=4
+
+# ── mbedTLS — nunca usar HTTPS no firmware ─────────────────────────────────
+# Mantem compatibilidade de build, mas evita buffers internos grandes quando
+# algum componente de rede criar contexto TLS por acidente.
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=4096
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=1024
+CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE=n
+CONFIG_MBEDTLS_SSL_RENEGOTIATION=n
 
 # ── HTTP Server + WebSocket (Etapa 15.1) ─────────────────────────────────────
 CONFIG_HTTPD_WS_SUPPORT=y
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
+CONFIG_HTTPD_MAX_URI_LEN=2048
+
+# ── Camera — backend esp_video/V4L2 inspirado no StackChan ─────────────────
+CONFIG_NB_CAMERA_DIAG_ENABLED=y
+CONFIG_ESP_VIDEO_ENABLE_DVP_VIDEO_DEVICE=y
+CONFIG_CAMERA_OV2640=y
+CONFIG_CAMERA_OV2640_DVP_YUV422_640X480_6FPS=y
 
 # ── OTA com rollback automático (Etapa 15.2) ──────────────────────────────────
 # Rollback ativo: firmware OTA deve chamar esp_ota_mark_app_valid_cancel_rollback()
@@ -93,6 +154,7 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # ── Stack mínimo de tasks ─────────────────────────────────────────────────────
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
 
 # ── Coredump (diagnóstico em crash) ──────────────────────────────────────────
 CONFIG_ESP_COREDUMP_ENABLE_TO_UART=y

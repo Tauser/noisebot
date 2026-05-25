@@ -124,6 +124,8 @@ details .panel-body{padding-top:0}
 .file-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:6px;align-items:center;border:1px solid var(--line);border-radius:6px;background:#f8fafb;padding:8px}
 .file-name{font-weight:700;overflow-wrap:anywhere}
 .file-meta{color:var(--muted);font-size:12px}
+.camera-preview{width:100%;aspect-ratio:4/3;border:1px solid var(--line);border-radius:8px;background:#101820;
+  object-fit:contain;display:block}
 @media(max-width:840px){
   .app{padding:14px}
   .topbar{align-items:flex-start;flex-direction:column}
@@ -366,8 +368,13 @@ details .panel-body{padding-top:0}
       <article class="panel">
         <div class="panel-head"><h2>Saude</h2><button class="btn" onclick="fetchHealth()">Atualizar</button></div>
         <div class="panel-body metric-list">
-          <div class="metric"><span>DRAM livre</span><strong class="value" id="h-dram">--</strong></div>
+          <div class="metric"><span>Heap livre</span><strong class="value" id="h-dram">--</strong></div>
           <div class="bar-track"><div class="bar-fill" id="hb-dram"></div></div>
+          <div class="metric"><span>Interna livre</span><strong class="value" id="h-internal">--</strong></div>
+          <div class="bar-track"><div class="bar-fill" id="hb-internal"></div></div>
+          <div class="metric"><span>DMA livre</span><strong class="value" id="h-dma">--</strong></div>
+          <div class="bar-track"><div class="bar-fill" id="hb-dma"></div></div>
+          <div class="metric"><span>Maior bloco DMA</span><strong class="value" id="h-dma-largest">--</strong></div>
           <div class="metric"><span>PSRAM livre</span><strong class="value" id="h-psram">--</strong></div>
           <div class="bar-track"><div class="bar-fill" id="hb-psram"></div></div>
           <div class="metric"><span>Tasks</span><strong class="value" id="h-tasks">--</strong></div>
@@ -398,6 +405,28 @@ details .panel-body{padding-top:0}
               <div id="wifi-msg"></div>
             </div>
           </details>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-head"><h2>Camera</h2><span class="status-chip" id="cam-chip">--</span></div>
+        <div class="panel-body metric-list">
+          <img class="camera-preview" id="cam-preview" alt="">
+          <div class="metric"><span>Formato</span><strong class="value" id="cam-format">--</strong></div>
+          <div class="metric"><span>Resolucao</span><strong class="value" id="cam-size">--</strong></div>
+          <div class="segmented">
+            <button class="seg active" id="cam-mode-safe" onclick="setCameraMode('safe')">160x120</button>
+            <button class="seg" id="cam-mode-better" onclick="setCameraMode('better')">320x240</button>
+          </div>
+          <div class="metric"><span>DMA livre</span><strong class="value" id="cam-dma">--</strong></div>
+          <div class="metric"><span>Maior bloco DMA</span><strong class="value" id="cam-dma-largest">--</strong></div>
+          <div class="metric"><span>Interna livre</span><strong class="value" id="cam-internal">--</strong></div>
+          <div class="metric"><span>Ultima captura</span><strong class="value" id="cam-last-capture">--</strong></div>
+          <div class="metric"><span>DMA captura</span><strong class="value" id="cam-dma-capture">--</strong></div>
+          <div class="metric"><span>Interna captura</span><strong class="value" id="cam-int-capture">--</strong></div>
+          <div class="metric"><span>Capturas</span><strong class="value" id="cam-count">--</strong></div>
+          <div class="metric"><span>Ultimo erro</span><strong class="value" id="cam-last-error">--</strong></div>
+          <button class="btn" id="cam-refresh" onclick="refreshCameraSnapshot()">Atualizar imagem</button>
         </div>
       </article>
     </div>
@@ -454,6 +483,9 @@ var dashboardSlowUntil = 0;
 var wsRetryMs = 3000;
 var staticLoaded = false;
 var fsPath = '/assets/audio';
+var lastCameraStatus = null;
+var cameraSnapshotBusy = false;
+var cameraModeWsPaused = false;
 
 (function init(){
   document.querySelectorAll('.tab').forEach(function(tab){
@@ -462,21 +494,33 @@ var fsPath = '/assets/audio';
 })();
 
 function setView(name){
+  var wasSystem = activeView === 'system';
   activeView = name;
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.view === name); });
   document.querySelectorAll('.view').forEach(function(v){ v.classList.toggle('active', v.id === 'view-' + name); });
   if(name === 'settings') fetchConfig();
   if(name === 'op') fetchPersona();
-  if(name === 'system') { fetchVersion(); fetchLogs(); fetchFiles(); }
+  if(name === 'system') {
+    pauseWsForCameraMode();
+    fetchVersion();
+    setTimeout(fetchCameraStatus, 150);
+    setTimeout(fetchLogs, 300);
+    setTimeout(fetchFiles, 450);
+  } else if(wasSystem) {
+    resumeWsAfterCameraMode();
+  }
   pollDashboard(true);
 }
 
 function connect(){
+  if(activeView === 'system' || cameraSnapshotBusy || ws) return;
   var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(proto + '//' + location.host + '/ws');
   ws.onopen = function(){ wsRetryMs = 3000; dot('#16a085'); fetchAll(); };
   ws.onclose = function(){
     dot('#b42318');
+    ws = null;
+    if(activeView === 'system' || cameraSnapshotBusy || cameraModeWsPaused) return;
     var delay = wsRetryMs;
     wsRetryMs = Math.min(15000, wsRetryMs + 3000);
     setTimeout(connect, delay);
@@ -489,6 +533,22 @@ function connect(){
     if (d.type === 'persona_update') { onPersona(d); return; }
     if (d.state !== undefined) onStatus(d);
   };
+}
+
+function pauseWsForCameraMode(){
+  cameraModeWsPaused = true;
+  if(ws) {
+    try { ws.onclose = null; ws.close(); } catch(e) {}
+    ws = null;
+  }
+  dot('#b42318');
+}
+
+function resumeWsAfterCameraMode(){
+  cameraModeWsPaused = false;
+  post('/api/camera/session/close', {}, function(){
+    setTimeout(connect, 800);
+  });
 }
 
 function dot(c){ document.getElementById('ws-dot').style.background = c; }
@@ -526,6 +586,7 @@ function fetchAll(){
 }
 
 function pollDashboard(force){
+  if(cameraSnapshotBusy) return;
   if(activeView === 'op' || activeView === 'settings') return;
   if(document.hidden && !force) return;
   if(dashboardBusy) return;
@@ -712,13 +773,96 @@ function fetchHealth(){
   });
 }
 
+function fetchCameraStatus(){
+  if(cameraSnapshotBusy) return;
+  get('/api/camera/status', function(d){
+    lastCameraStatus = d;
+    var chip = document.getElementById('cam-chip');
+    var btn = document.getElementById('cam-refresh');
+    if(chip){
+      var blocked = d.blocked_by_audio || d.blocked_by_memory;
+      chip.textContent = !d.supported ? 'desabilitada' :
+        (d.blocked_by_audio ? 'audio ativo' :
+        (d.blocked_by_memory ? 'driver sem memoria' :
+        (d.last_error ? 'erro camera' :
+        (d.ready ? 'pronta' : 'diagnostico'))));
+      chip.className = 'status-chip ' + (!d.supported ? 'warn' : (d.last_error ? 'bad' : (blocked ? 'warn' : 'ok')));
+    }
+    if(btn) btn.disabled = !d.supported || d.blocked_by_audio || cameraSnapshotBusy;
+    set('cam-format', d.format || '--');
+    set('cam-size', d.mode_width && d.mode_height ? d.mode_width + 'x' + d.mode_height : (d.width && d.height ? d.width + 'x' + d.height : '--'));
+    document.getElementById('cam-mode-safe').classList.toggle('active', d.mode !== 'better');
+    document.getElementById('cam-mode-better').classList.toggle('active', d.mode === 'better');
+    set('cam-dma', d.heap_dma_free != null ? fmtBytes(d.heap_dma_free) + ' / driver' : '--');
+    set('cam-dma-largest', d.heap_dma_largest != null ? fmtBytes(d.heap_dma_largest) + ' / driver' : '--');
+    set('cam-internal', d.heap_internal_free != null ? fmtBytes(d.heap_internal_free) + ' / driver' : '--');
+    set('cam-last-capture', d.last_jpeg_bytes ? fmtBytes(d.last_jpeg_bytes) + ' / ' + d.last_capture_ms + 'ms' : '--');
+    set('cam-dma-capture', d.last_dma_before ? fmtBytes(d.last_dma_before) + ' > ' + fmtBytes(d.last_dma_after_capture) + ' > ' + fmtBytes(d.last_dma_after_release) : '--');
+    set('cam-int-capture', d.last_internal_before ? fmtBytes(d.last_internal_before) + ' > ' + fmtBytes(d.last_internal_after_capture) + ' > ' + fmtBytes(d.last_internal_after_release) : '--');
+    set('cam-count', d.capture_count != null ? d.capture_count + ' ok / ' + d.fail_count + ' falhas' : '--');
+    set('cam-last-error', d.last_error ? d.last_error_name : '--');
+  });
+}
+
+function setCameraMode(mode){
+  if(cameraSnapshotBusy) return;
+  post('/api/camera/mode', {mode:mode}, function(){
+    fetchCameraStatus();
+  });
+}
+
+function refreshCameraSnapshot(){
+  var img = document.getElementById('cam-preview');
+  if(!img) return;
+  var btn = document.getElementById('cam-refresh');
+  if(btn && btn.disabled) return;
+  if(!lastCameraStatus ||
+     !lastCameraStatus.supported ||
+     lastCameraStatus.blocked_by_audio) {
+    fetchCameraStatus();
+    return;
+  }
+  cameraSnapshotBusy = true;
+  dashboardSlowUntil = Date.now() + 7000;
+  if(btn) btn.disabled = true;
+  if(ws) {
+    try { ws.onclose = null; ws.close(); } catch(e) {}
+    ws = null;
+  }
+  setTimeout(function(){ startCameraImageLoad(img); }, 1000);
+}
+
+function startCameraImageLoad(img){
+  fetch('/api/camera/snapshot?t=' + Date.now()).then(function(resp){
+    if(!resp.ok) throw new Error('snapshot');
+    return resp.blob();
+  }).then(function(blob){
+    if(img.dataset.objectUrl) URL.revokeObjectURL(img.dataset.objectUrl);
+    var url = URL.createObjectURL(blob);
+    img.dataset.objectUrl = url;
+    img.src = url;
+  }).catch(function(){
+  }).finally(function(){
+    cameraSnapshotBusy = false;
+    fetchCameraStatus();
+    if(!cameraModeWsPaused) setTimeout(connect, 1200);
+  });
+}
+
 function renderHealth(d){
-  var dPct = d.heap_dram_free / (512*1024) * 100;
-  var pPct = d.heap_psram_free / (8*1024*1024) * 100;
-  set('h-dram', fmtBytes(d.heap_dram_free) + ' / min ' + fmtBytes(d.heap_dram_min));
-  set('h-psram', fmtBytes(d.heap_psram_free) + ' / min ' + fmtBytes(d.heap_psram_min));
+  var dPct = barFromTarget(d.heap_dram_free, 1024*1024);
+  var iPct = barFromTarget(d.heap_internal_free, 128*1024);
+  var dmaPct = barFromTarget(d.heap_dma_free, 160*1024);
+  var pPct = barFromTarget(d.heap_psram_free, 1024*1024);
+  set('h-dram', fmtBytes(d.heap_dram_free) + ' / minimo ' + fmtBytes(d.heap_dram_min));
+  set('h-internal', fmtBytes(d.heap_internal_free) + ' / minimo desde boot ' + fmtBytes(d.heap_internal_min));
+  set('h-dma', fmtBytes(d.heap_dma_free) + ' / minimo desde boot ' + fmtBytes(d.heap_dma_min));
+  set('h-dma-largest', fmtBytes(d.heap_dma_largest));
+  set('h-psram', fmtBytes(d.heap_psram_free) + ' / minimo ' + fmtBytes(d.heap_psram_min));
   set('h-tasks', d.task_count);
   setBar('hb-dram', dPct);
+  setBar('hb-internal', iPct);
+  setBar('hb-dma', dmaPct);
   setBar('hb-psram', pPct);
 }
 
@@ -1012,6 +1156,7 @@ function fmtTime(s){
   return (h ? h + 'h ' : '') + m + 'm ' + ss + 's';
 }
 function fmtBytes(n){
+  n = Math.max(0, +n || 0);
   if(n >= 1048576) return (n/1048576).toFixed(1) + 'MB';
   if(n >= 1024) return (n/1024).toFixed(0) + 'KB';
   return n + 'B';
@@ -1029,6 +1174,11 @@ function setBar(id,pct){
   el.style.width = p.toFixed(1) + '%';
   el.classList.toggle('bar-warn', p <= 40 && p > 15);
   el.classList.toggle('bar-crit', p <= 15);
+}
+function barFromTarget(value,target){
+  value = Math.max(0, +value || 0);
+  target = Math.max(1, +target || 1);
+  return value / target * 100;
 }
 function flash(id,msg){
   set(id,msg);

@@ -61,6 +61,8 @@ idf_component_register(
         wake_service
         time_service
         agenda_service
+        camera_service
+        vision_service
     EMBED_TXTFILES
         "dashboard.html"
 )

@@ -44,6 +44,8 @@
 #include "touch_service.h"
 #include "time_service.h"
 #include "agenda_service.h"
+#include "camera_service.h"
+#include "vision_service.h"
 #include "synth_service.h"
 #include "sd_hal.h"
 #include "nb_hw_config.h"
@@ -65,6 +67,7 @@
 #define FILE_PATH_MAX    192
 #define FILE_UPLOAD_MAX  (256u * 1024u)
 #define FILE_READ_MAX    (8u * 1024u)
+#define HTTPD_TASK_STACK_SIZE 8192
 
 /* ── Log ring buffer ─────────────────────────────────────────────────────── */
 
@@ -418,6 +421,299 @@ static esp_err_t handle_api_persona(httpd_req_t *req)
         (double)persona_get_curiosity(), (double)persona_get_trust());
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);
+}
+
+static bool recv_body(httpd_req_t *req, char *buf, size_t size, int *out_len);
+
+static esp_err_t handle_api_camera_snapshot(httpd_req_t *req)
+{
+    if (!camera_service_is_supported()) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"camera_disabled\"}");
+    }
+    if (audio_service_is_busy()) {
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
+    }
+
+    nb_camera_snapshot_t snap;
+    esp_err_t err = camera_service_capture_snapshot(&snap);
+    if (err != ESP_OK) {
+        char buf[96];
+        snprintf(buf, sizeof(buf), "{\"ok\":false,\"error\":\"%s\"}", esp_err_to_name(err));
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, buf);
+    }
+
+    uint8_t *snapshot_copy = (uint8_t *)heap_caps_malloc(snap.len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!snapshot_copy) {
+        camera_service_release_snapshot();
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"snapshot_copy_no_mem\"}");
+    }
+    memcpy(snapshot_copy, snap.data, snap.len);
+
+    char dim[16];
+    snprintf(dim, sizeof(dim), "%u", (unsigned)snap.width);
+    httpd_resp_set_hdr(req, "X-Camera-Width", dim);
+    snprintf(dim, sizeof(dim), "%u", (unsigned)snap.height);
+    httpd_resp_set_hdr(req, "X-Camera-Height", dim);
+    size_t snapshot_len = snap.len;
+    camera_service_release_snapshot();
+
+    httpd_resp_set_type(req, "image/jpeg");
+    err = httpd_resp_send(req, (const char *)snapshot_copy, (ssize_t)snapshot_len);
+    heap_caps_free(snapshot_copy);
+    return err;
+}
+
+static esp_err_t handle_api_camera_mode(httpd_req_t *req)
+{
+    char body[96];
+    int len = 0;
+    if (!recv_body(req, body, sizeof(body), &len)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
+        return ESP_OK;
+    }
+
+    cJSON *root = cJSON_ParseWithLength(body, (size_t)len);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+        return ESP_OK;
+    }
+
+    const cJSON *mode_j = cJSON_GetObjectItem(root, "mode");
+    const char *mode_s = cJSON_IsString(mode_j) ? mode_j->valuestring : "";
+    nb_camera_mode_t mode;
+    if (strcmp(mode_s, "better") == 0 || strcmp(mode_s, "qvga") == 0) {
+        mode = NB_CAMERA_MODE_BETTER_QVGA;
+    } else if (strcmp(mode_s, "safe") == 0 || strcmp(mode_s, "qqvga") == 0) {
+        mode = NB_CAMERA_MODE_SAFE_QQVGA;
+    } else {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid mode");
+        return ESP_OK;
+    }
+    cJSON_Delete(root);
+
+    esp_err_t err = camera_service_set_mode(mode);
+    if (err != ESP_OK) {
+        char buf[80];
+        snprintf(buf, sizeof(buf), "{\"ok\":false,\"error\":\"%s\"}", esp_err_to_name(err));
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, buf);
+    }
+
+    char buf[96];
+    snprintf(buf, sizeof(buf), "{\"ok\":true,\"mode\":\"%s\",\"width\":%u,\"height\":%u}",
+             camera_hal_mode_name(mode),
+             (unsigned)camera_hal_mode_width(mode),
+             (unsigned)camera_hal_mode_height(mode));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_camera_session_close(httpd_req_t *req)
+{
+    esp_err_t err = camera_service_close_session();
+    if (err != ESP_OK) {
+        char buf[80];
+        snprintf(buf, sizeof(buf), "{\"ok\":false,\"error\":\"%s\"}", esp_err_to_name(err));
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, buf);
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}");
+}
+
+static esp_err_t handle_api_camera_status(httpd_req_t *req)
+{
+    nb_camera_diag_status_t diag;
+    camera_service_get_diag_status(&diag);
+    const char *last_error = diag.has_last_error ? esp_err_to_name(diag.last_error) : "";
+    bool camera_ready = camera_service_is_ready();
+    bool blocked_by_memory = false;
+    char chunk[256];
+
+    httpd_resp_set_type(req, "application/json");
+
+    snprintf(chunk, sizeof(chunk),
+             "{\"supported\":%s,\"ready\":%s,\"active\":%s,"
+             "\"bridge_connected\":%s,",
+             camera_service_is_supported() ? "true" : "false",
+             camera_ready ? "true" : "false",
+             camera_ready ? "true" : "false",
+             bridge_service_is_connected() ? "true" : "false");
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+             "\"blocked_by_bridge\":false,\"blocked_by_audio\":%s,"
+             "\"blocked_by_memory\":%s,\"last_error\":%ld,",
+             audio_service_is_busy() ? "true" : "false",
+             blocked_by_memory ? "true" : "false",
+             (long)(diag.has_last_error ? diag.last_error : ESP_OK));
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+             "\"last_error_name\":\"%s\",\"last_error_phase\":\"%s\","
+             "\"mode\":\"%s\","
+             "\"mode_width\":%lu,\"mode_height\":%lu,",
+             last_error,
+             diag.last_error_phase ? diag.last_error_phase : "",
+             diag.mode_name,
+             (unsigned long)diag.mode_width,
+             (unsigned long)diag.mode_height);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+             "\"last_jpeg_bytes\":%lu,\"last_capture_ms\":%lu,"
+             "\"capture_count\":%lu,\"fail_count\":%lu,",
+             (unsigned long)diag.last_jpeg_bytes,
+             (unsigned long)diag.last_capture_ms,
+             (unsigned long)diag.capture_count,
+             (unsigned long)diag.fail_count);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+             "\"last_dma_before\":%lu,\"last_dma_after_capture\":%lu,"
+             "\"last_dma_after_release\":%lu,",
+             (unsigned long)diag.last_dma_before,
+             (unsigned long)diag.last_dma_after_capture,
+             (unsigned long)diag.last_dma_after_release);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+             "\"last_dma_largest_before\":%lu,"
+             "\"last_dma_largest_after_capture\":%lu,"
+             "\"last_dma_largest_after_release\":%lu,",
+             (unsigned long)diag.last_dma_largest_before,
+             (unsigned long)diag.last_dma_largest_after_capture,
+             (unsigned long)diag.last_dma_largest_after_release);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+             "\"last_internal_before\":%lu,"
+             "\"last_internal_after_capture\":%lu,"
+             "\"last_internal_after_release\":%lu,"
+             "\"last_psram_before\":%lu,",
+             (unsigned long)diag.last_internal_before,
+             (unsigned long)diag.last_internal_after_capture,
+             (unsigned long)diag.last_internal_after_release,
+             (unsigned long)diag.last_psram_before);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+             "\"last_psram_after_capture\":%lu,"
+             "\"last_psram_after_release\":%lu,",
+             (unsigned long)diag.last_psram_after_capture,
+             (unsigned long)diag.last_psram_after_release);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+             "\"format\":\"jpeg\",\"width\":%lu,\"height\":%lu,"
+             "\"heap_dma_free\":%lu,\"heap_dma_largest\":%lu,",
+             (unsigned long)diag.mode_width,
+             (unsigned long)diag.mode_height,
+             (unsigned long)diag.dma_free,
+             (unsigned long)diag.dma_largest);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+             "\"heap_internal_free\":%lu,\"heap_psram_free\":%lu,"
+             "\"min_dma_before\":%lu,\"min_dma_largest\":%lu,",
+             (unsigned long)diag.internal_free,
+             (unsigned long)diag.psram_free,
+             (unsigned long)diag.min_dma_before,
+             (unsigned long)diag.min_dma_largest);
+    httpd_resp_sendstr_chunk(req, chunk);
+
+    snprintf(chunk, sizeof(chunk),
+             "\"min_internal_before\":%lu}",
+             (unsigned long)diag.min_internal_before);
+    httpd_resp_sendstr_chunk(req, chunk);
+    return httpd_resp_sendstr_chunk(req, NULL);
+}
+
+static void vision_observation_json(const nb_vision_observation_t *obs,
+                                    char *buf,
+                                    size_t buf_len)
+{
+    if (!obs || !buf || buf_len == 0U) {
+        return;
+    }
+
+    snprintf(buf, buf_len,
+             "{\"valid\":%s,\"scene\":\"%s\",\"timestamp_ms\":%lu,"
+             "\"width\":%lu,\"height\":%lu,\"jpeg_bytes\":%lu,"
+             "\"capture_ms\":%lu,\"luma_avg\":%u,\"luma_min\":%u,"
+             "\"luma_max\":%u,\"contrast\":%u,\"motion_score\":%u}",
+             obs->valid ? "true" : "false",
+             vision_service_scene_name(obs->scene),
+             (unsigned long)obs->timestamp_ms,
+             (unsigned long)obs->width,
+             (unsigned long)obs->height,
+             (unsigned long)obs->jpeg_bytes,
+             (unsigned long)obs->capture_ms,
+             (unsigned)obs->luma_avg,
+             (unsigned)obs->luma_min,
+             (unsigned)obs->luma_max,
+             (unsigned)obs->contrast,
+             (unsigned)obs->motion_score);
+}
+
+static esp_err_t handle_api_vision_observe(httpd_req_t *req)
+{
+    if (!vision_service_is_available()) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"vision_unavailable\"}");
+    }
+    if (audio_service_is_busy()) {
+        httpd_resp_set_status(req, "409 Conflict");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
+    }
+
+    nb_vision_observation_t obs;
+    esp_err_t err = vision_service_observe(&obs);
+    if (err != ESP_OK) {
+        char err_buf[96];
+        snprintf(err_buf, sizeof(err_buf), "{\"ok\":false,\"error\":\"%s\"}",
+                 esp_err_to_name(err));
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, err_buf);
+    }
+
+    char obs_buf[384];
+    vision_observation_json(&obs, obs_buf, sizeof(obs_buf));
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr_chunk(req, "{\"ok\":true,\"observation\":");
+    httpd_resp_sendstr_chunk(req, obs_buf);
+    httpd_resp_sendstr_chunk(req, "}");
+    return httpd_resp_sendstr_chunk(req, NULL);
+}
+
+static esp_err_t handle_api_vision_status(httpd_req_t *req)
+{
+    nb_vision_observation_t obs;
+    vision_service_get_last(&obs);
+    char obs_buf[384];
+    vision_observation_json(&obs, obs_buf, sizeof(obs_buf));
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr_chunk(req, "{\"available\":");
+    httpd_resp_sendstr_chunk(req, vision_service_is_available() ? "true" : "false");
+    httpd_resp_sendstr_chunk(req, ",\"observation\":");
+    httpd_resp_sendstr_chunk(req, obs_buf);
+    httpd_resp_sendstr_chunk(req, "}");
+    return httpd_resp_sendstr_chunk(req, NULL);
 }
 
 static esp_err_t handle_api_config_get(httpd_req_t *req)
@@ -1045,7 +1341,12 @@ static esp_err_t handle_ws(httpd_req_t *req)
         return ESP_OK;
     }
 
-    uint8_t *buf = malloc(frame.len + 1);
+    uint8_t *buf = (uint8_t *)heap_caps_malloc(frame.len + 1,
+                                               MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!buf) {
+        buf = (uint8_t *)heap_caps_malloc(frame.len + 1,
+                                          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
     if (!buf) return ESP_ERR_NO_MEM;
 
     frame.payload = buf;
@@ -1055,7 +1356,7 @@ static esp_err_t handle_ws(httpd_req_t *req)
         ws_handle_text_frame(buf, frame.len);
     }
 
-    free(buf);
+    heap_caps_free(buf);
     return ret;
 }
 
@@ -1068,7 +1369,7 @@ static void ota_task(void *arg)
     ota_task_arg_t *a = (ota_task_arg_t *)arg;
     char url[256];
     strlcpy(url, a->url, sizeof(url));
-    free(a);
+    heap_caps_free(a);
 
     NB_LOGI(TAG, "OTA: iniciando de %s", url);
     led_base_set(NB_LED_BASE_SAFE_MODE, true);
@@ -1107,7 +1408,7 @@ static void ota_task(void *arg)
         return;
     }
 
-    uint8_t *buf = malloc(4096);
+    uint8_t *buf = (uint8_t *)heap_caps_malloc(4096, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!buf) {
         esp_ota_abort(ota_handle);
         esp_http_client_close(client);
@@ -1132,7 +1433,7 @@ static void ota_task(void *arg)
         if (pct != last_pct) { ws_push_ota(pct, "downloading", NULL); last_pct = pct; }
     }
 
-    free(buf);
+    heap_caps_free(buf);
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
 
@@ -1174,12 +1475,18 @@ static esp_err_t handle_api_ota(httpd_req_t *req)
         return ESP_OK;
     }
 
-    ota_task_arg_t *arg = malloc(sizeof(ota_task_arg_t));
+    ota_task_arg_t *arg = (ota_task_arg_t *)heap_caps_malloc(sizeof(ota_task_arg_t),
+                                                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!arg) {
+        arg = (ota_task_arg_t *)heap_caps_malloc(sizeof(ota_task_arg_t),
+                                                 MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
     if (arg) strlcpy(arg->url, url_j->valuestring, sizeof(arg->url));
     cJSON_Delete(root);
 
-    if (!arg || xTaskCreate(ota_task, "nb_ota", 8192, arg, 5, NULL) != pdPASS) {
-        free(arg);
+    BaseType_t ota_ok = arg ? xTaskCreate(ota_task, "nb_ota", 8192, arg, 5, NULL) : pdFAIL;
+    if (!arg || ota_ok != pdPASS) {
+        heap_caps_free(arg);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "failed");
         return ESP_OK;
     }
@@ -1275,16 +1582,27 @@ static esp_err_t handle_api_version(httpd_req_t *req)
 
 static void send_health_object(httpd_req_t *req, bool wrap)
 {
-    char buf[256];
+    char buf[512];
     snprintf(buf, sizeof(buf),
         "%s\"heap_dram_free\":%lu,\"heap_dram_min\":%lu,"
+        "\"heap_internal_free\":%lu,\"heap_internal_min\":%lu,"
+        "\"heap_internal_largest\":%lu,"
+        "\"heap_dma_free\":%lu,\"heap_dma_min\":%lu,\"heap_dma_largest\":%lu,"
         "\"heap_psram_free\":%lu,\"heap_psram_min\":%lu,"
+        "\"heap_psram_largest\":%lu,"
         "\"task_count\":%lu,\"uptime_s\":%lu,\"health\":%u%s",
         wrap ? "{" : "",
         (unsigned long)esp_get_free_heap_size(),
         (unsigned long)esp_get_minimum_free_heap_size(),
+        (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+        (unsigned long)heap_caps_get_free_size(MALLOC_CAP_DMA),
+        (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_DMA),
+        (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
         (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
         (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
+        (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
         (unsigned long)uxTaskGetNumberOfTasks(),
         (unsigned long)diagnostics_get_uptime_s(),
         (unsigned)diagnostics_get_health_score(),
@@ -2374,6 +2692,12 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/style.css",   .method = HTTP_GET,  .handler = handle_style_css },
     { .uri = "/api/status",  .method = HTTP_GET,  .handler = handle_api_status },
     { .uri = "/api/persona", .method = HTTP_GET,  .handler = handle_api_persona },
+    { .uri = "/api/camera/status", .method = HTTP_GET, .handler = handle_api_camera_status },
+    { .uri = "/api/camera/mode", .method = HTTP_POST, .handler = handle_api_camera_mode },
+    { .uri = "/api/camera/session/close", .method = HTTP_POST, .handler = handle_api_camera_session_close },
+    { .uri = "/api/camera/snapshot", .method = HTTP_GET, .handler = handle_api_camera_snapshot },
+    { .uri = "/api/vision/status", .method = HTTP_GET, .handler = handle_api_vision_status },
+    { .uri = "/api/vision/observe", .method = HTTP_GET, .handler = handle_api_vision_observe },
     { .uri = "/api/config",  .method = HTTP_GET,  .handler = handle_api_config_get },
     { .uri = "/api/config",  .method = HTTP_POST, .handler = handle_api_config_post },
     { .uri = "/api/command",        .method = HTTP_POST,   .handler = handle_api_command },
@@ -2449,9 +2773,10 @@ static void web_service_start(void)
     if (s_server) return;
 
     httpd_config_t cfg    = HTTPD_DEFAULT_CONFIG();
-    cfg.max_open_sockets  = 4;
+    cfg.max_open_sockets  = 3;
     cfg.max_uri_handlers  = 72;   /* handlers registrados + margem */
     cfg.server_port       = 80;
+    cfg.stack_size        = HTTPD_TASK_STACK_SIZE;
     cfg.recv_wait_timeout = 5;
     cfg.send_wait_timeout = 5;
     cfg.lru_purge_enable  = true;
@@ -2513,8 +2838,15 @@ static void web_health_cb(void *arg)
     if (wifi_service_is_connected() && !s_server) {
         if (!s_http_restart_pending) {
             s_http_restart_pending = true;
-            BaseType_t ok = xTaskCreate(web_recover_task, "nb_web_recover",
-                                        4096, NULL, 5, NULL);
+            BaseType_t ok;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+            ok = xTaskCreateWithCaps(web_recover_task, "nb_web_recover",
+                                     3072, NULL, 5, NULL,
+                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+            ok = xTaskCreate(web_recover_task, "nb_web_recover",
+                             3072, NULL, 5, NULL);
+#endif
             if (ok != pdPASS) {
                 s_http_restart_pending = false;
                 NB_LOGW(TAG, "watchdog HTTP: falha ao criar task de recovery");

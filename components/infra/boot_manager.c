@@ -60,6 +60,7 @@
 #include "wake_service.h"
 #include "time_service.h"
 #include "agenda_service.h"
+#include "vision_service.h"
 #include "esp_ota_ops.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
@@ -97,6 +98,7 @@ static bool     s_followup_listen_triggered = false; /* ATTENTIVE abriu por cont
 static bool     s_bridge_reply_playing = false; /* PLAYBACK atual veio de SAY do bridge */
 static uint32_t s_sleep_touch_guard_ms = 0; /* ignora toque residual ao entrar em SLEEPING */
 static uint32_t s_sleep_wake_guard_ms  = 0; /* evita falso wake word logo após dormir */
+static uint32_t s_timer_badge_tick_ms  = 0; /* atualiza badge visual do timer em 1 Hz */
 
 /* ── Helpers de NVS (acesso direto, sem config_manager) ──────────────────── */
 
@@ -380,6 +382,7 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             break;
         case NB_AUDIO_EVT_VOICE_END:
             if (!session_voice_evt) return;
+            ui_overlay_listening_set(false);
             state_machine_on_voice_end();
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;
             break;
@@ -391,6 +394,9 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
         case NB_AUDIO_EVT_PLAYBACK_END:
             start_followup = s_bridge_reply_playing;
             s_bridge_reply_playing = false;
+            if (start_followup) {
+                ui_overlay_clear_text();
+            }
             state_machine_on_audio_ended();
             if (start_followup &&
                 bridge_service_is_connected() &&
@@ -532,6 +538,7 @@ static void on_state_changed(nb_robot_state_t new_state,
     if (old_state == NB_STATE_ATTENTIVE && new_state != NB_STATE_ATTENTIVE) {
         led_base_set(NB_LED_BASE_ATTENTIVE, false);
         if (audio_service_is_listening()) {
+            ui_overlay_listening_set(false);
             audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
         }
     }
@@ -548,10 +555,14 @@ static void on_state_changed(nb_robot_state_t new_state,
             /* Escuta ativa abre apenas por wake word. Touch fica reservado para interação afetiva. */
             synth_stop();
             if (s_wake_word_triggered) {
-                audio_service_begin_listen_session(NB_LISTEN_SOURCE_WAKE_WORD);
+                if (audio_service_begin_listen_session(NB_LISTEN_SOURCE_WAKE_WORD) == ESP_OK) {
+                    ui_overlay_listening_set(true);
+                }
                 s_wake_word_triggered = false;
             } else if (s_followup_listen_triggered) {
-                audio_service_begin_listen_session(NB_LISTEN_SOURCE_FOLLOWUP);
+                if (audio_service_begin_listen_session(NB_LISTEN_SOURCE_FOLLOWUP) == ESP_OK) {
+                    ui_overlay_listening_set(true);
+                }
                 s_followup_listen_triggered = false;
             }
             led_base_set(NB_LED_BASE_ATTENTIVE, true);
@@ -582,6 +593,7 @@ static void on_state_changed(nb_robot_state_t new_state,
                 /* Encerra sessão se ainda ativa (fallback — normalmente VOICE_END
                  * já a fechou antes desta transição). */
                 if (audio_service_is_listening()) {
+                    ui_overlay_listening_set(false);
                     audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
                 }
             } else if (old_state == NB_STATE_MEDITATION) {
@@ -712,11 +724,44 @@ static void play_alarm_chime(void)
     synth_melody(notes, (uint8_t)(sizeof(notes) / sizeof(notes[0])));
 }
 
+static void update_timer_badge(void)
+{
+    nb_timer_t best = {0};
+    bool found = false;
+
+    for (uint8_t id = 0; id < NB_AGENDA_MAX_TIMERS; id++) {
+        nb_timer_t t;
+        if (!agenda_timer_get(id, &t) || !t.active) {
+            continue;
+        }
+        if (!found || t.remaining_ms < best.remaining_ms) {
+            best = t;
+            found = true;
+        }
+    }
+
+    if (found) {
+        ui_overlay_timer_badge_set(true, best.remaining_ms);
+    } else {
+        ui_overlay_timer_badge_set(false, 0U);
+    }
+}
+
+static void on_agenda_timer_changed(const nb_event_t *ev, void *ctx)
+{
+    (void)ev;
+    (void)ctx;
+    s_timer_badge_tick_ms = 0;
+    update_timer_badge();
+}
+
 static void on_agenda_timer_done(const nb_event_t *ev, void *ctx)
 {
     (void)ctx;
     uint8_t id = (uint8_t)ev->data.u32;
     nb_timer_t t;
+    s_timer_badge_tick_ms = 0;
+    update_timer_badge();
     play_timer_done_chime();
     if (agenda_timer_get(id, &t) && t.label[0] != '\0') {
         NB_LOGI("nb_boot", "timer %u venceu: %s", (unsigned)id, t.label);
@@ -825,11 +870,11 @@ static void on_wake_word_detected(const nb_event_t *evt, void *ctx)
 
 static void on_emotion_changed(nb_expression_t new_expr)
 {
-    /* SLEEPY é induzido pelo estado SLEEPING e não representa personalidade
-     * persistente. Não salvar evita que o próximo boot inicie com cara de dormindo. */
-    if (new_expr != NB_EXPR_SLEEPY) {
-        config_set_last_emotion((uint8_t)new_expr);
-    }
+    /* Emoções são transitórias e podem ser disparadas por bridge/event bus.
+     * Persistir cada mudança em NVS cria escrita de flash no caminho quente e
+     * quebra tasks com stack externa quando o cache é desligado. O boot volta
+     * para NEUTRAL por contrato de baseline de IDLE. */
+    (void)new_expr;
 }
 
 /* ── Task de behavior (10 Hz) ───────────────────────────────────────────── */
@@ -883,6 +928,11 @@ static void behavior_task(void *arg)
         circadian_tick(100);
         idle_service_update(100);
         agenda_service_tick(100);
+        s_timer_badge_tick_ms += 100u;
+        if (s_timer_badge_tick_ms >= 1000u) {
+            s_timer_badge_tick_ms = 0;
+            update_timer_badge();
+        }
         ltm_tick(100);
 
         /* Timer de companhia silenciosa: 2h sem interação → SILENT_COMPANY. */
@@ -968,8 +1018,15 @@ static esp_err_t phase_hal(void)
         NB_LOGW(TAG, "led_service_init falhou: %s — LEDs desativados", esp_err_to_name(err));
     } else {
         led_set_brightness(config_get_brightness());
-        BaseType_t rc = xTaskCreate(led_update_task, "led_task",
-                                    2048, NULL, 3, NULL);
+        BaseType_t rc;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+        rc = xTaskCreateWithCaps(led_update_task, "led_task",
+                                 2048, NULL, 3, NULL,
+                                 MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+        rc = xTaskCreate(led_update_task, "led_task",
+                         2048, NULL, 3, NULL);
+#endif
         NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate led_task falhou");
     }
 
@@ -999,8 +1056,15 @@ static esp_err_t phase_hal(void)
         } else {
             touch_service_set_sensitivity(sens_factor);
             touch_service_set_event_cb(on_touch_event);
-            BaseType_t rc = xTaskCreate(touch_update_task, "touch_task",
-                                        4096, NULL, 4, NULL);
+            BaseType_t rc;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+            rc = xTaskCreateWithCaps(touch_update_task, "touch_task",
+                                     4096, NULL, 4, NULL,
+                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+            rc = xTaskCreate(touch_update_task, "touch_task",
+                             4096, NULL, 4, NULL);
+#endif
             NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate touch_task falhou");
         }
     }
@@ -1138,6 +1202,9 @@ static esp_err_t phase_services(void)
      * Stack 4096: emotion_model_update → expression_service_set (C++) usa frame
      * considerável — 2048 causa overflow. */
     {
+        /* Stack interna: behavior_task pode chamar persona_service_refresh(),
+         * que grava NVS/flash. Operações de flash desabilitam cache/PSRAM e
+         * exigem stack acessível com cache desligado. */
         BaseType_t rc = xTaskCreate(behavior_task, "behav_task",
                                     4096, NULL, 5, NULL);
         NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate behav_task falhou");
@@ -1223,10 +1290,21 @@ static esp_err_t phase_services(void)
         NB_LOGW(TAG, "agenda_service_init falhou: %s — agenda desativada",
                 esp_err_to_name(err));
     } else {
+        nb_event_subscribe(NB_EVT_TIMER_STARTED,   on_agenda_timer_changed, NULL, NULL);
+        nb_event_subscribe(NB_EVT_TIMER_UPDATED,   on_agenda_timer_changed, NULL, NULL);
+        nb_event_subscribe(NB_EVT_TIMER_CANCELLED, on_agenda_timer_changed, NULL, NULL);
         nb_event_subscribe(NB_EVT_TIMER_DONE,      on_agenda_timer_done,    NULL, NULL);
         nb_event_subscribe(NB_EVT_REMINDER_DUE,    on_agenda_reminder_due,  NULL, NULL);
         nb_event_subscribe(NB_EVT_ALARM_DUE,       on_agenda_alarm_due,     NULL, NULL);
+        update_timer_badge();
     }
+
+    err = vision_service_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        NB_LOGW(TAG, "vision_service_init falhou: %s — percepcao visual desativada",
+                esp_err_to_name(err));
+    }
+
     nb_event_subscribe(NB_EVT_BRIDGE_SESSION, on_bridge_alert_command, NULL, NULL);
 
     /* diagnostics_service (Etapa 9.1): observabilidade e health score */

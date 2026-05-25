@@ -1,0 +1,17 @@
+menu "NoiseBot"
+
+    menu "Camera"
+
+        config NB_CAMERA_DIAG_ENABLED
+            bool "Enable OV2640 camera path"
+            default y
+            help
+                Enables the OV2640 capture path through esp_video/V4L2.
+
+                The camera service keeps capture on demand and uses a short
+                hot session to avoid repeated driver churn while preserving the
+                robot's WiFi, SD and audio headroom.
+
+    endmenu
+
+endmenu

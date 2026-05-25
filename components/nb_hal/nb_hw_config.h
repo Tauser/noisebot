@@ -172,7 +172,7 @@
  * I2C câmera (GPIO 4/5) pode ser compartilhado com IMU e fuel gauge
  * quando etapa-8.x for implementada (endereços não colidem).
  *
- * TODO(etapa-8.1): inicializar esp32-camera com os pinos acima.
+ * Camera diagnostica usa esp_video/V4L2 com os pinos acima.
  */
 #define NB_CAM_PIN_D0       11
 #define NB_CAM_PIN_D1       9
