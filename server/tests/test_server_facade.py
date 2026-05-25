@@ -436,6 +436,44 @@ def test_server_transport_factory_creates_tcp_transport() -> None:
     assert transport.description == "TCP 192.168.1.30:9000"
 
 
+def test_server_transport_is_server_owned() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    server_transport = importlib.import_module("noisebot_server.internal.transport")
+    bridge_tcp = importlib.import_module("bridgev2.transport.tcp")
+    bridge_supervisor = importlib.import_module("bridgev2.transport.reconnect")
+
+    assert server_transport.TcpTransport is not bridge_tcp.TcpTransport
+    assert (
+        server_transport.ConnectionSupervisor
+        is not bridge_supervisor.ConnectionSupervisor
+    )
+
+
+def test_server_transport_factory_creates_uart_transport() -> None:
+    factory_module = importlib.import_module(
+        "noisebot_server.internal.transport.factory"
+    )
+    config = _make_server_config(uart="COM9")
+
+    transport = factory_module.create_transport_factory(config)()
+
+    assert transport.description == "UART COM9@1000000"
+
+
+def test_server_connection_supervisor_backoff_caps() -> None:
+    transport = importlib.import_module("noisebot_server.internal.transport")
+    config = _make_server_config()
+    supervisor = transport.ConnectionSupervisor(
+        transport_factory=lambda: transport.TcpTransport("127.0.0.1"),
+        bus=object(),
+        reconnect=config.reconnect,
+    )
+
+    assert supervisor._next_delay(0.2) == 0.2
+
+
 def test_server_ops_exports_bridge_compatible_status_store() -> None:
     compat = importlib.import_module("noisebot_server._compat")
     compat.ensure_bridgev2_path()
