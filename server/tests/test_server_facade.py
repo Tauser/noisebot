@@ -662,20 +662,30 @@ def test_server_agent_local_intent_matches_time() -> None:
     assert result.reply_text
 
 
-def test_server_agent_exports_provider_boundaries() -> None:
+def test_server_agent_llm_and_intents_are_server_owned() -> None:
     compat = importlib.import_module("noisebot_server._compat")
     compat.ensure_bridgev2_path()
 
+    server_agent = importlib.import_module("noisebot_server.internal.agent")
     server_llm = importlib.import_module("noisebot_server.internal.agent.llm")
     bridge_llm = importlib.import_module("bridgev2.llm.base")
+    bridge_intents = importlib.import_module("bridgev2.llm.local_intent")
+
+    assert server_llm.StreamingLLMProvider is not bridge_llm.StreamingLLMProvider
+    assert server_agent.LocalIntentProvider is not bridge_intents.LocalIntentProvider
+
+
+def test_server_agent_stt_tts_are_server_owned() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
     server_stt = importlib.import_module("noisebot_server.internal.agent.stt")
     bridge_stt = importlib.import_module("bridgev2.stt.base")
     server_tts = importlib.import_module("noisebot_server.internal.agent.tts")
     bridge_tts = importlib.import_module("bridgev2.tts.base")
 
-    assert server_llm.StreamingLLMProvider is bridge_llm.StreamingLLMProvider
-    assert server_stt.STTProvider is bridge_stt.STTProvider
-    assert server_tts.TTSProvider is bridge_tts.TTSProvider
+    assert server_stt.STTProvider is not bridge_stt.STTProvider
+    assert server_tts.TTSProvider is not bridge_tts.TTSProvider
 
 
 def test_server_agent_sentencizer_keeps_bridge_behavior() -> None:
