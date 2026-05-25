@@ -12,13 +12,75 @@ def test_bridgev2_compat_path_allows_application_import() -> None:
     assert hasattr(app_module, "NoiseBotServer")
 
 
-def test_server_cli_delegates_to_bridgev2_entrypoint() -> None:
+def test_server_entrypoint_exposes_server_cli() -> None:
     compat = importlib.import_module("noisebot_server._compat")
     compat.ensure_bridgev2_path()
 
     cli_module = importlib.import_module("noisebot_server.__main__")
 
     assert callable(cli_module.main)
+
+
+def test_server_cli_parses_runtime_flags() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host", "192.168.1.30",
+        "--port", "9000",
+        "--pipeline", "local_only",
+        "--llm", "ollama",
+        "--model", "qwen2.5:7b",
+        "--log-file", "stderr",
+    ])
+
+    assert args.command is None
+    assert args.host == "192.168.1.30"
+    assert args.port == 9000
+    assert args.pipeline == "local_only"
+    assert args.llm == "ollama"
+    assert args.model == "qwen2.5:7b"
+    assert args.log_file == "stderr"
+
+
+def test_server_cli_applies_env_overrides(monkeypatch) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    for key in (
+        "NOISEBOT_HOST",
+        "NOISEBOT_PORT",
+        "NOISEBOT_DRY_RUN",
+        "NOISEBOT_PIPELINE_MODE",
+        "NOISEBOT_LLM_PROVIDER",
+        "NOISEBOT_LLM_MODEL",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    args = cli.parse_args([
+        "--host", "10.0.0.2",
+        "--port", "9010",
+        "--dry-run",
+        "--pipeline", "local_only",
+        "--llm", "none",
+        "--model", "none",
+    ])
+
+    cli.apply_env_overrides(args)
+
+    import os
+
+    assert os.environ["NOISEBOT_HOST"] == "10.0.0.2"
+    assert os.environ["NOISEBOT_PORT"] == "9010"
+    assert os.environ["NOISEBOT_DRY_RUN"] == "true"
+    assert os.environ["NOISEBOT_PIPELINE_MODE"] == "local_only"
+    assert os.environ["NOISEBOT_LLM_PROVIDER"] == "none"
+    assert os.environ["NOISEBOT_LLM_MODEL"] == "none"
+
+
+def test_server_runtime_uses_noisebot_server_app() -> None:
+    runtime = importlib.import_module("noisebot_server.runtime")
+    app_module = importlib.import_module("noisebot_server.app")
+
+    assert runtime.NoiseBotServer is app_module.NoiseBotServer
 
 
 def test_server_transport_exports_bridge_compatible_protocol() -> None:

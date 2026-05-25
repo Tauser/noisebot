@@ -107,3 +107,11 @@ from noisebot_server.api import default_app_contract, implemented_endpoints
 Endpoints marked as implemented are served by the current bridge-backed runtime.
 Reserved endpoints describe the next API surface for app, vision, agent, device
 and agenda work.
+
+## Runtime shell
+
+Normal `noisebot-server` startup is now owned by `noisebot_server.cli` and
+`noisebot_server.runtime`. The runtime still composes bridge-backed classes, but
+the server package owns config loading, logging and event-loop startup for the
+main path. Legacy `service` and `debug` subcommands still delegate to
+`bridge_v2` until their internals are migrated.
