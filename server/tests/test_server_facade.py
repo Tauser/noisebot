@@ -366,6 +366,46 @@ def test_server_transport_exports_bridge_compatible_protocol() -> None:
     )
 
 
+def test_server_transport_protocol_is_server_owned() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    server_protocol = importlib.import_module(
+        "noisebot_server.internal.transport.protocol"
+    )
+    bridge_codec = importlib.import_module("bridgev2.protocol.codec")
+
+    assert server_protocol.FrameDecoder is not bridge_codec.FrameDecoder
+
+
+def test_server_transport_protocol_decodes_split_frames() -> None:
+    protocol = importlib.import_module("noisebot_server.internal.transport.protocol")
+
+    payload = protocol.encode_text_scroll("ola noise")
+    frame = protocol.encode_frame(protocol.MSG_TEXT_SCROLL, payload)
+    decoder = protocol.FrameDecoder()
+
+    decoder.feed(frame[:3])
+
+    assert decoder.frames() == []
+    assert decoder.buffered_bytes == 3
+
+    decoder.feed(frame[3:])
+
+    assert decoder.frames() == [(protocol.MSG_TEXT_SCROLL, payload)]
+    assert decoder.buffered_bytes == 0
+
+
+def test_server_transport_protocol_discards_bad_crc() -> None:
+    protocol = importlib.import_module("noisebot_server.internal.transport.protocol")
+    frame = bytearray(protocol.encode_frame(protocol.MSG_VOLUME, protocol.encode_volume(50)))
+    frame[-1] ^= 0xFF
+    buf = bytearray(frame)
+
+    assert protocol.decode_frames(buf) == []
+    assert buf == bytearray()
+
+
 def test_server_transport_factory_creates_tcp_transport() -> None:
     compat = importlib.import_module("noisebot_server._compat")
     compat.ensure_bridgev2_path()
