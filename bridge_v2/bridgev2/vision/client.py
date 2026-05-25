@@ -8,6 +8,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
+from .analyzer import VisionAnalysis, analyze_jpeg
+
 
 class VisionError(RuntimeError):
     """Falha ao consultar a visao do firmware."""
@@ -78,14 +80,16 @@ class VisionClient:
             raise VisionError(str(payload.get("error", "visao indisponivel")))
         return VisionObservation.from_payload(payload)
 
+    def snapshot(self) -> bytes:
+        return self._get_bytes("/api/camera/snapshot")
+
+    def analyze(self) -> VisionAnalysis:
+        observation = self.observe()
+        jpeg = self.snapshot()
+        return analyze_jpeg(jpeg, observation)
+
     def _get_json(self, path: str) -> dict:
-        url = urljoin(self.base_url, path.lstrip("/"))
-        request = Request(url, headers={"User-Agent": "NoiseBot-BridgeV2/2.0"})
-        try:
-            with urlopen(request, timeout=self.timeout_s) as response:
-                data = response.read().decode("utf-8")
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
-            raise VisionError(str(exc)) from exc
+        data = self._get_bytes(path).decode("utf-8")
         try:
             payload = json.loads(data)
         except json.JSONDecodeError as exc:
@@ -93,6 +97,15 @@ class VisionClient:
         if not isinstance(payload, dict):
             raise VisionError("resposta de visao invalida")
         return payload
+
+    def _get_bytes(self, path: str) -> bytes:
+        url = urljoin(self.base_url, path.lstrip("/"))
+        request = Request(url, headers={"User-Agent": "NoiseBot-BridgeV2/2.0"})
+        try:
+            with urlopen(request, timeout=self.timeout_s) as response:
+                return response.read()
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            raise VisionError(str(exc)) from exc
 
 
 def _env_float(key: str, default: float) -> float:

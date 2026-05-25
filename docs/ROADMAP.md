@@ -2744,13 +2744,20 @@ e confiável antes de acionar comportamento autônomo.
   - "como está a luz?"
   - "tem movimento?"
   - "você está me vendo?"
-- A resposta é honesta: presença/rosto ainda não são afirmados sem detector dedicado.
+- Bridge v2 tem analisador visual opcional (`bridgev2.vision.analyzer`) que baixa
+  o JPEG de `/api/camera/snapshot` e executa detecção real de rosto via OpenCV
+  Haar cascade quando a extra `vision` está instalada.
+- A resposta continua honesta: se o detector do bridge não estiver disponível,
+  o robô informa que só tem luz/contraste/movimento; se detectar rosto, responde
+  posição aproximada no frame.
 
 **Critérios de aceitação:**
 
 - [x] `/api/vision/observe` retorna observação válida em 640×480.
 - [x] Bridge v2 responde perguntas locais de visão sem chamar LLM.
 - [x] Camera, bridge e TTS operam no mesmo firmware sem erro imediato.
+- [x] Bridge v2 possui caminho de visão real para rosto em snapshot JPEG
+      (`pip install .[vision]` no ambiente do bridge).
 - [ ] Métricas de visão registradas no snapshot de diagnóstico.
 - [ ] Observação visual repetida por 30 minutos sem degradação de heap ou latência.
 
@@ -2785,7 +2792,7 @@ e confiável antes de acionar comportamento autônomo.
 
 ---
 
-### Etapa 13.2 — Face Tracking (Layer 4/5)
+### Etapa 13.2 — Face Tracking (Layer 4/5 + Bridge)
 
 **Dependências:** 13.1 concluída
 **Hardware necessário:** Câmera OV2640
@@ -2798,6 +2805,12 @@ e confiável antes de acionar comportamento autônomo.
   - Output: posição normalizada do rosto detectado (-1.0 a 1.0 em x e y).
   - Confiança da detecção (0.0–1.0).
   - `NB_EVT_FACE_DETECTED` (data: posição), `NB_EVT_FACE_LOST`.
+- Caminho bridge-first já iniciado:
+  - `VisionClient.analyze()` usa snapshot JPEG + OpenCV Haar cascade no PC.
+  - Intents como "você está me vendo?" passam a responder com detecção real
+    quando o detector está disponível.
+  - Próximo passo: transformar esse resultado em comando de gaze/atenção para
+    o firmware sem manter câmera em loop contínuo.
 
 **Integração:**
 

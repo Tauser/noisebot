@@ -21,7 +21,7 @@ import pytest
 
 from bridgev2.llm.local_intent import LocalIntentProvider
 from bridgev2.runtime.events import IntentResolved
-from bridgev2.vision import VisionError, VisionObservation
+from bridgev2.vision import FaceBox, VisionAnalysis, VisionError, VisionObservation
 
 
 @pytest.fixture()
@@ -30,7 +30,12 @@ def provider() -> LocalIntentProvider:
 
 
 class FakeVisionClient:
-    def __init__(self, observation: VisionObservation | None = None, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        observation: VisionObservation | None = None,
+        error: Exception | None = None,
+        analysis: VisionAnalysis | None = None,
+    ) -> None:
         self.observation = observation or VisionObservation(
             valid=True,
             scene="normal",
@@ -46,6 +51,7 @@ class FakeVisionClient:
             motion_score=5,
         )
         self.error = error
+        self.analysis = analysis
         self.calls = 0
 
     def observe(self) -> VisionObservation:
@@ -53,6 +59,18 @@ class FakeVisionClient:
         if self.error:
             raise self.error
         return self.observation
+
+    def analyze(self) -> VisionAnalysis:
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return self.analysis or VisionAnalysis(
+            observation=self.observation,
+            detector="test",
+            detector_available=False,
+            face_detected=False,
+            face_count=0,
+        )
 
 
 def match(provider: LocalIntentProvider, text: str, turn_id: int = 1, **kwargs) -> IntentResolved:
@@ -328,13 +346,31 @@ class TestLocalVision:
         assert "movimento forte" in result.reply_text
         assert "28" in result.reply_text
 
-    def test_person_question_is_honest_about_missing_detector(self):
+    def test_person_question_reports_detector_unavailable(self):
         provider = LocalIntentProvider(vision_client=FakeVisionClient())
 
         result = match(provider, "você está me vendo")
 
         assert result.intent_name == "local_vision_person"
-        assert "deteccao de pessoa" in result.reply_text
+        assert "detector de rosto" in result.reply_text
+
+    def test_person_question_reports_detected_face(self):
+        obs = FakeVisionClient().observation
+        analysis = VisionAnalysis(
+            observation=obs,
+            detector="test",
+            detector_available=True,
+            face_detected=True,
+            face_count=1,
+            primary_face=FaceBox(x=260, y=120, width=100, height=120),
+        )
+        provider = LocalIntentProvider(vision_client=FakeVisionClient(analysis=analysis))
+
+        result = match(provider, "você está me vendo")
+
+        assert result.intent_name == "local_vision_person"
+        assert "Detectei um rosto" in result.reply_text
+        assert "centro" in result.reply_text
 
     def test_vision_unavailable_still_matches_intent(self):
         provider = LocalIntentProvider(vision_client=FakeVisionClient(error=VisionError("offline")))

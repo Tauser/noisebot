@@ -11,7 +11,7 @@ import unicodedata
 from datetime import datetime
 
 from ..runtime.events import IntentResolved
-from ..vision import VisionClient, VisionError, VisionObservation
+from ..vision import VisionAnalysis, VisionClient, VisionError, VisionObservation
 from .weather import fetch_weather_now, format_weather_reply
 
 
@@ -315,6 +315,32 @@ def _vision_person_reply(obs: VisionObservation) -> str:
     )
 
 
+def _face_position_label(analysis: VisionAnalysis) -> str:
+    x = analysis.face_center_norm_x
+    if x is None:
+        return "na imagem"
+    if x < -0.33:
+        return "mais para a esquerda da imagem"
+    if x > 0.33:
+        return "mais para a direita da imagem"
+    return "perto do centro da imagem"
+
+
+def _vision_person_analysis_reply(analysis: VisionAnalysis) -> str:
+    obs = analysis.observation
+    if not obs.valid:
+        return "Minha camera respondeu, mas ainda nao tenho leitura visual confiavel."
+    if not analysis.detector_available:
+        return (
+            "Minha camera esta funcionando, mas o detector de rosto do bridge nao esta disponivel. "
+            "Consigo medir luz, contraste e movimento por enquanto."
+        )
+    if analysis.face_detected:
+        rosto = "um rosto" if analysis.face_count == 1 else f"{analysis.face_count} rostos"
+        return f"Sim. Detectei {rosto} {_face_position_label(analysis)}."
+    return "Estou vendo a cena, mas nao detectei rosto agora."
+
+
 # -- Mapeamentos de intents --------------------------------------------------
 
 # expression_id: 1=ATTENTIVE, 2=NEUTRAL, 3=HAPPY, 4=CURIOUS, 5=FOCUSED
@@ -559,6 +585,7 @@ class LocalIntentProvider:
                 turn_id=turn_id,
                 intent_name="local_vision_person",
                 formatter=_vision_person_reply,
+                analyzer_formatter=_vision_person_analysis_reply,
             )
 
         if _has(norm, "como esta a luz", "como esta iluminacao",
@@ -759,11 +786,20 @@ class LocalIntentProvider:
         # -- Sem intent local --------------------------------------------------
         return IntentResolved(turn_id=turn_id, intent_name=None)
 
-    def _match_vision(self, turn_id: int, intent_name: str, formatter) -> IntentResolved:
+    def _match_vision(
+        self,
+        turn_id: int,
+        intent_name: str,
+        formatter,
+        analyzer_formatter=None,
+    ) -> IntentResolved:
         reply = _vision_unavailable_reply()
         if self._vision is not None:
             try:
-                reply = formatter(self._vision.observe())
+                if analyzer_formatter is not None and hasattr(self._vision, "analyze"):
+                    reply = analyzer_formatter(self._vision.analyze())
+                else:
+                    reply = formatter(self._vision.observe())
             except VisionError:
                 reply = _vision_unavailable_reply()
         return IntentResolved(
