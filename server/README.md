@@ -61,3 +61,14 @@ from noisebot_server.internal.transport.protocol import encode_frame
 
 This keeps the migration reversible and avoids a risky one-shot move of TCP,
 UART, reconnect, handshake and framing code.
+
+## Ops boundary
+
+`noisebot_server.internal.ops` is the server-owned import boundary for local
+operation surfaces: health, status, metrics, debug, config and token checks.
+It delegates to `bridge_v2` in this phase so the existing dashboard/API remains
+unchanged while future app-facing APIs move into the server package.
+
+```python
+from noisebot_server.internal.ops import OpsHttpServer, StatusStore
+```

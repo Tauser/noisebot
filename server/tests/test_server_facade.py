@@ -106,3 +106,50 @@ def test_server_transport_factory_creates_tcp_transport() -> None:
     transport = factory_module.create_transport_factory(config)()
 
     assert transport.description == "TCP 192.168.1.30:9000"
+
+
+def test_server_ops_exports_bridge_compatible_status_store() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    server_ops = importlib.import_module("noisebot_server.internal.ops")
+    bridge_status = importlib.import_module("bridgev2.ops.status_store")
+
+    assert server_ops.StatusStore is bridge_status.StatusStore
+
+    store = server_ops.StatusStore()
+    store.record_turn(
+        11,
+        "llm",
+        transcript="minha chave sk-abcdef1234567890",
+        reply="ok",
+        route="llm",
+    )
+
+    assert "sk-abcdef1234567890" not in store.last_transcript
+    assert "<redacted>" in store.last_transcript
+
+
+def test_server_ops_exports_bridge_compatible_schemas() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    server_schemas = importlib.import_module("noisebot_server.internal.ops.schemas")
+    bridge_schemas = importlib.import_module("bridgev2.ops.schemas")
+
+    assert server_schemas.ok_response("feito") == bridge_schemas.ok_response("feito")
+    assert server_schemas.error_response("falha", 503) == (
+        bridge_schemas.error_response("falha", 503)
+    )
+
+
+def test_server_ops_config_controller_validates_like_bridge() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    server_config = importlib.import_module("noisebot_server.internal.ops.config")
+    bridge_config = importlib.import_module("bridgev2.ops.config_controller")
+
+    assert server_config.ConfigController is bridge_config.ConfigController
+    assert "ollama" in server_config.PROVIDER_CATALOG
+    assert "local_only" in server_config.VALID_MODES
