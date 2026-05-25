@@ -145,6 +145,20 @@ def test_server_cli_applies_env_overrides(monkeypatch) -> None:
     assert os.environ["NOISEBOT_LLM_MODEL"] == "none"
 
 
+def test_server_config_is_server_owned() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    server_config = importlib.import_module("noisebot_server.config")
+    bridge_config = importlib.import_module("bridgev2.config")
+
+    assert server_config.BridgeV2Config is not bridge_config.BridgeV2Config
+    assert server_config.LlmProvider.OLLAMA.value == bridge_config.LlmProvider.OLLAMA.value
+    assert server_config.PipelineMode.LOCAL_ONLY.value == (
+        bridge_config.PipelineMode.LOCAL_ONLY.value
+    )
+
+
 def test_server_cli_runs_debug_transcript_without_bridge_entrypoint(monkeypatch) -> None:
     cli = importlib.import_module("noisebot_server.cli")
     manual = importlib.import_module("noisebot_server.internal.debug.manual")
@@ -409,10 +423,7 @@ def test_server_transport_protocol_discards_bad_crc() -> None:
 
 
 def test_server_transport_factory_creates_tcp_transport() -> None:
-    compat = importlib.import_module("noisebot_server._compat")
-    compat.ensure_bridgev2_path()
-
-    config_module = importlib.import_module("bridgev2.config")
+    config_module = importlib.import_module("noisebot_server.config")
     factory_module = importlib.import_module(
         "noisebot_server.internal.transport.factory"
     )
