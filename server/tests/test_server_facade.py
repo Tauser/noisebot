@@ -268,3 +268,34 @@ def test_server_vision_face_center_normalization() -> None:
 
     assert analysis.face_center_norm_x == 0.0
     assert analysis.face_center_norm_y == -0.25
+
+
+def test_server_app_contract_exposes_only_server_paths() -> None:
+    api = importlib.import_module("noisebot_server.api")
+
+    endpoints = api.default_app_contract()
+
+    assert endpoints
+    assert all(endpoint.path.startswith("/") for endpoint in endpoints)
+    assert all(not endpoint.path.startswith("http://") for endpoint in endpoints)
+    assert all(not endpoint.path.startswith("https://") for endpoint in endpoints)
+
+
+def test_server_app_contract_tracks_implemented_endpoints() -> None:
+    api = importlib.import_module("noisebot_server.api")
+
+    implemented = api.implemented_endpoints()
+    paths = {(endpoint.method, endpoint.path) for endpoint in implemented}
+
+    assert ("GET", "/health") in paths
+    assert ("GET", "/ai/status") in paths
+    assert ("POST", "/debug/transcript") in paths
+    assert all(endpoint.implemented for endpoint in implemented)
+
+
+def test_server_app_contract_reserves_future_domains() -> None:
+    api = importlib.import_module("noisebot_server.api")
+
+    domains = {endpoint.domain for endpoint in api.default_app_contract()}
+
+    assert {"ops", "vision", "agent", "device", "agenda"}.issubset(domains)

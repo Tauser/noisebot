@@ -94,3 +94,16 @@ heavier interpretation belongs here.
 ```python
 from noisebot_server.internal.vision import VisionClient, analyze_jpeg
 ```
+
+## App boundary
+
+The external app/dashboard should consume a server-owned contract instead of
+calling firmware endpoints directly. The current contract is defined in:
+
+```python
+from noisebot_server.api import default_app_contract, implemented_endpoints
+```
+
+Endpoints marked as implemented are served by the current bridge-backed runtime.
+Reserved endpoints describe the next API surface for app, vision, agent, device
+and agenda work.
