@@ -7,6 +7,7 @@ import re
 import unicodedata
 
 from .market import fetch_btc_price, format_btc_reply
+from .weather import fetch_weather_now, format_weather_reply
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,10 @@ def _has_any(text: str, terms: tuple[str, ...]) -> bool:
     return any(term in text for term in terms)
 
 
+def _word_count(text: str) -> int:
+    return len(text.split())
+
+
 def _time_reply(now: datetime) -> str:
     hour = now.hour
     minute = now.minute
@@ -53,6 +58,88 @@ def _time_reply(now: datetime) -> str:
         return f"Agora {verb} {hour} {hour_unit}.{date_suffix}"
     minute_unit = "minuto" if minute == 1 else "minutos"
     return f"Agora {verb} {hour} {hour_unit} e {minute:02d} {minute_unit}.{date_suffix}"
+
+
+def _date_reply(now: datetime) -> str:
+    weekdays = (
+        "segunda-feira",
+        "terça-feira",
+        "quarta-feira",
+        "quinta-feira",
+        "sexta-feira",
+        "sábado",
+        "domingo",
+    )
+    months = (
+        "janeiro",
+        "fevereiro",
+        "março",
+        "abril",
+        "maio",
+        "junho",
+        "julho",
+        "agosto",
+        "setembro",
+        "outubro",
+        "novembro",
+        "dezembro",
+    )
+    return f"Hoje é {weekdays[now.weekday()]}, {now.day} de {months[now.month - 1]} de {now.year}."
+
+
+def _float_status(status: dict, key: str, default: float = 0.0) -> float:
+    try:
+        return float(status.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _mood_reply(status: dict) -> tuple[str, int, int, int]:
+    valence = _float_status(status, "valence")
+    activation = _float_status(status, "activation")
+    attention = _float_status(status, "attention")
+
+    if valence <= -0.35:
+        return (
+            "Estou um pouco atravessado agora, mas ainda aqui com você.",
+            7,
+            0,
+            2,
+        )
+    if activation >= 0.70:
+        return (
+            "Estou bem acordado e meio elétrico. Pronto para alguma coisa interessante.",
+            1,
+            1,
+            4,
+        )
+    if activation <= 0.20:
+        return (
+            "Estou calmo, num ritmo mais quietinho. Mas estou prestando atenção.",
+            3,
+            0,
+            2,
+        )
+    if attention <= 0.25:
+        return (
+            "Estou bem, só um pouco disperso. Sua voz me trouxe de volta.",
+            2,
+            0,
+            4,
+        )
+    if valence >= 0.45:
+        return (
+            "Estou bem. Leve, curioso, e feliz por você ter perguntado.",
+            1,
+            1,
+            3,
+        )
+    return (
+        "Estou bem. Meio atento, meio curioso, e feliz por você ter perguntado.",
+        1,
+        1,
+        3,
+    )
 
 
 class LocalIntentRouter:
@@ -73,6 +160,16 @@ class LocalIntentRouter:
                 emot_event=2,
             )
 
+        if self._is_date(norm):
+            return LocalIntentResult(
+                intent="local_date",
+                confidence=0.90,
+                reply=_date_reply(now),
+                expression_id=2,
+                action=0,
+                emot_event=2,
+            )
+
         if self._is_bridge_test(norm):
             return LocalIntentResult(
                 intent="local_bridge_test",
@@ -81,6 +178,17 @@ class LocalIntentRouter:
                 expression_id=1,
                 action=1,
                 emot_event=2,
+            )
+
+        if self._is_mood(norm):
+            reply, expression_id, action, emot_event = _mood_reply(status)
+            return LocalIntentResult(
+                intent="local_mood",
+                confidence=0.88,
+                reply=reply,
+                expression_id=expression_id,
+                action=action,
+                emot_event=emot_event,
             )
 
         if self._is_status(norm):
@@ -124,6 +232,17 @@ class LocalIntentRouter:
                 emot_event=2,
             )
 
+        if self._is_weather(norm):
+            weather = fetch_weather_now()
+            return LocalIntentResult(
+                intent="local_weather",
+                confidence=0.84,
+                reply=format_weather_reply(weather),
+                expression_id=4,
+                action=0,
+                emot_event=4,
+            )
+
         expression = self._expression_command(norm)
         if expression is not None:
             return expression
@@ -163,6 +282,20 @@ class LocalIntentRouter:
         return False
 
     @staticmethod
+    def _is_date(text: str) -> bool:
+        return _has_any(
+            text,
+            (
+                "que dia e hoje",
+                "qual dia e hoje",
+                "data de hoje",
+                "qual a data",
+                "dia de hoje",
+                "hoje e que dia",
+            ),
+        )
+
+    @staticmethod
     def _is_bridge_test(text: str) -> bool:
         return _has_any(
             text,
@@ -177,7 +310,23 @@ class LocalIntentRouter:
 
     @staticmethod
     def _is_status(text: str) -> bool:
-        return _has_any(text, ("qual seu status", "como voce esta", "voce esta bem", "esta tudo bem", "status"))
+        return _has_any(text, ("qual seu status", "status do sistema", "diagnostico", "diagnostico do sistema"))
+
+    @staticmethod
+    def _is_mood(text: str) -> bool:
+        return _has_any(
+            text,
+            (
+                "como voce esta",
+                "como vc esta",
+                "voce esta bem",
+                "esta tudo bem",
+                "tudo bem",
+                "tudo certo",
+                "como voce se sente",
+                "seu humor",
+            ),
+        )
 
     @staticmethod
     def _is_network(text: str) -> bool:
@@ -190,18 +339,31 @@ class LocalIntentRouter:
         return has_asset and has_price
 
     @staticmethod
+    def _is_weather(text: str) -> bool:
+        has_weather = _has_any(text, ("temperatura", "clima", "tempo"))
+        has_now = _has_any(text, ("atual", "agora", "hoje", "esta", "como", "qual"))
+        return has_weather and has_now
+
+    @staticmethod
     def _expression_command(text: str) -> LocalIntentResult | None:
-        if not _has_any(text, ("fique", "fica", "expressao", "rosto", "cara", "modo")):
-            return None
+        has_expression_trigger = _has_any(text, ("fique", "fica", "expressao", "rosto", "cara", "modo"))
+        allow_short_expression = _word_count(text) <= 3
         expressions = {
             "feliz": (1, "feliz"),
+            "alegre": (1, "feliz"),
+            "sorria": (1, "feliz"),
+            "sorriso": (1, "feliz"),
             "curioso": (2, "curioso"),
             "curiosa": (2, "curioso"),
+            "curiosidade": (2, "curioso"),
             "sonolento": (3, "sonolento"),
             "sonolenta": (3, "sonolento"),
+            "sono": (3, "sonolento"),
             "focado": (4, "focado"),
             "focada": (4, "focado"),
+            "foco": (4, "focado"),
             "surpreso": (6, "surpreso"),
+            "surpresa": (6, "surpreso"),
             "triste": (7, "triste"),
             # ANGRY — sempre transitório, não vira baseline
             "bravo": (9, "bravo"),
@@ -214,6 +376,8 @@ class LocalIntentRouter:
         }
         for key, (expression_id, label) in expressions.items():
             if key in text:
+                if not has_expression_trigger and not allow_short_expression:
+                    return None
                 if expression_id == 9:
                     # ANGRY: speak_reply=True para dar feedback teatral ao usuário
                     return LocalIntentResult(
@@ -363,14 +527,17 @@ class LocalIntentRouter:
     def _volume_command(text: str, status: dict) -> LocalIntentResult | None:
         has_volume_term = _has_any(text, ("volume", "som", "audio"))
         has_volume_direction = _has_any(text, ("aument", "diminu", "baix"))
-        if not has_volume_term or not has_volume_direction and "volume" not in text:
+        has_direct_loudness = _has_any(text, ("mais alto", "mais baixo", "fala alto", "fala baixo"))
+        if not has_volume_term and not has_direct_loudness:
+            return None
+        if has_volume_term and not has_volume_direction and "volume" not in text:
             return None
         match = re.search(r"\b(\d{1,3})\s*%?\b", text)
         if match:
             percent = max(0, min(100, int(match.group(1))))
             reply = f"Volume em {percent} por cento."
             args = {"percent": percent}
-        elif "aument" in text:
+        elif "aument" in text or "alto" in text:
             percent = min(100, int(status.get("volume", 80)) + 10)
             reply = f"Volume em {percent} por cento."
             args = {"percent": percent}

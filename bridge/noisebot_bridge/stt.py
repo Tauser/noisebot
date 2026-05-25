@@ -6,7 +6,7 @@ import time
 
 import numpy as np
 
-from .config import WHISPER_MIN_PEAK_FOR_GAIN, WHISPER_TARGET_PEAK
+from .config import WHISPER_BEAM_SIZE, WHISPER_MIN_PEAK_FOR_GAIN, WHISPER_TARGET_PEAK
 
 log = logging.getLogger("noisebot_bridge.stt")
 
@@ -69,7 +69,7 @@ class WhisperStt:
                 audio,
                 language="pt",
                 task="transcribe",
-                beam_size=1,
+                beam_size=WHISPER_BEAM_SIZE,
                 best_of=1,
                 temperature=0.0,
                 condition_on_previous_text=False,
@@ -93,7 +93,7 @@ class WhisperStt:
                 task="transcribe",
                 fp16=False,
                 temperature=0.0,
-                beam_size=1,
+                beam_size=WHISPER_BEAM_SIZE,
                 best_of=1,
                 condition_on_previous_text=False,
                 initial_prompt="Comandos em português brasileiro para um robô chamado NoiseBot.",

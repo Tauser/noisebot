@@ -5,7 +5,14 @@ import logging
 import struct
 
 from .intent_router import DeviceCommand
-from .protocol import MSG_ACTION, MSG_EMOT_EVENT, MSG_EXPR, MSG_GAZE, MSG_TEXT_SCROLL, MSG_VOLUME
+from .protocol import (
+    MSG_ACTION,
+    MSG_EMOT_EVENT,
+    MSG_EXPR,
+    MSG_GAZE,
+    MSG_TEXT_SCROLL,
+    MSG_VOLUME,
+)
 from .tools import validate_tool_call
 
 log = logging.getLogger("noisebot_bridge.device_commands")
@@ -96,7 +103,8 @@ class DeviceCommandDispatcher:
         self.send_msg(MSG_EMOT_EVENT, struct.pack("<I", event_id))
 
     def _scroll_text(self, text: str):
-        payload = text.encode("utf-8")[:160]
+        raw = text.encode("utf-8")[:128]
+        payload = raw.decode("utf-8", "ignore").encode("utf-8")
         if payload:
             self.send_msg(MSG_TEXT_SCROLL, payload)
 
