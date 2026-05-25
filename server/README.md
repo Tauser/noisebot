@@ -83,3 +83,14 @@ barge-in, local LLM configuration and Piper playback behavior stay unchanged.
 ```python
 from noisebot_server.internal.agent import LocalIntentProvider, Orchestrator
 ```
+
+## Vision boundary
+
+`noisebot_server.internal.vision` is the server-owned import boundary for camera
+work: firmware snapshot/observe calls, local image analysis and future
+owner-recognition services. The firmware should stay responsible for capture;
+heavier interpretation belongs here.
+
+```python
+from noisebot_server.internal.vision import VisionClient, analyze_jpeg
+```

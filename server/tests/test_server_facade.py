@@ -206,3 +206,65 @@ def test_server_agent_sentencizer_keeps_bridge_behavior() -> None:
     sentences = list(sentencizer.feed("Ola. Tudo bem?")) + list(sentencizer.flush())
 
     assert sentences == ["Ola. Tudo bem?"]
+
+
+def test_server_vision_exports_bridge_client_and_analysis() -> None:
+    compat = importlib.import_module("noisebot_server._compat")
+    compat.ensure_bridgev2_path()
+
+    server_vision = importlib.import_module("noisebot_server.internal.vision")
+    bridge_vision = importlib.import_module("bridgev2.vision")
+
+    assert server_vision.VisionClient is bridge_vision.VisionClient
+    assert server_vision.VisionObservation is bridge_vision.VisionObservation
+    assert server_vision.analyze_jpeg is bridge_vision.analyze_jpeg
+
+
+def test_server_vision_observation_parses_firmware_payload() -> None:
+    vision = importlib.import_module("noisebot_server.internal.vision")
+
+    observation = vision.VisionObservation.from_payload({
+        "ok": True,
+        "observation": {
+            "valid": True,
+            "scene": "normal",
+            "timestamp_ms": 1234,
+            "width": 640,
+            "height": 480,
+            "jpeg_bytes": 54233,
+            "capture_ms": 897,
+            "luma_avg": 122,
+            "luma_min": 0,
+            "luma_max": 255,
+            "contrast": 255,
+            "motion_score": 5,
+        },
+    })
+
+    assert observation.valid is True
+    assert observation.width == 640
+    assert observation.height == 480
+    assert observation.scene == "normal"
+
+
+def test_server_vision_face_center_normalization() -> None:
+    vision = importlib.import_module("noisebot_server.internal.vision")
+
+    observation = vision.VisionObservation.from_payload({
+        "valid": True,
+        "scene": "normal",
+        "width": 640,
+        "height": 480,
+    })
+    face = vision.FaceBox(x=240, y=120, width=160, height=120)
+    analysis = vision.VisionAnalysis(
+        observation=observation,
+        detector="test",
+        detector_available=True,
+        face_detected=True,
+        face_count=1,
+        primary_face=face,
+    )
+
+    assert analysis.face_center_norm_x == 0.0
+    assert analysis.face_center_norm_y == -0.25
