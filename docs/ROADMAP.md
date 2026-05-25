@@ -497,7 +497,7 @@ Critérios adicionais de integração do Bloco 0:
 - Streaming: lê 512 bytes/chunk do SD, sem carregar arquivo inteiro. Suporta arquivos >1MB.
 - Volume: multiplicador digital aplicado ao PCM (level=0 → silêncio, level=100 → sem atenuação).
 - SD_MODE tied HIGH externamente — sem controle SW (conforme nb_hw_config.h).
-- Assets esperados em `/sdcard/assets/audio/`: greet_01–03, idle_01–03, touch_respond_01–03, error_01.
+- Assets esperados em `/sdcard/assets/audio/`: greet_01–03, wake_up, sleep_enter, timer_done, reminder_due, alarm_due, error_01. Estados visuais, touch e escuta não disparam áudio por padrão.
 - Eventos: `NB_EVT_AUDIO_STARTED` (data.u32 = duration_ms), `NB_EVT_AUDIO_ENDED`.
 
 **Critérios de aceitação:**
@@ -781,25 +781,39 @@ Critérios adicionais de integração do Bloco 0:
 
 ---
 
-### Etapa 8.1 — Câmera OV2640
+### Etapa 8.1 — Câmera OV2640 ✓ parcial
 
 **Dependências:** 8.0 concluída, 300KB PSRAM headroom verificado
 **Hardware necessário:** Sim (FPC câmera conectado — pinos já reservados)
 
 **O que entra:**
 
-- `camera_hal`: driver ESP-IDF esp32-camera, DVP, QVGA (320×240), 15fps.
+- `camera_hal`: backend ESP-IDF `esp_video`/V4L2, DVP, sessão diagnóstica sob demanda.
 - Usa `nb_i2c_hal_get_bus()` para comunicação SCCB — não inicializa I2C próprio.
-- Frame buffer único em PSRAM (~150KB). Sem double-buffer — não é display, é análise.
+- Buffers pertencem ao driver de vídeo via sessão V4L2; o serviço não pré-aloca framebuffer de display.
 - API: `camera_hal_capture()`, `camera_hal_get_frame()`, `camera_hal_release_frame()`.
 - Task de captura separada: Core 1, prio 4 (abaixo de safety e render).
+- Modos iniciais expostos pelo dashboard/API:
+  - `safe`: captura conservadora para diagnóstico.
+  - `better`: captura 640×480 usada pela visão/observação.
+
+**Implementado / validado em hardware (2026-05-25):**
+
+- Câmera OV2640 detectada via SCCB (`PID=0x26`).
+- Backend migrado para `esp_video`/V4L2, inspirado no modelo de sessão do StackChan, sem copiar C++ para fora do display.
+- Capturas 640×480 funcionando pelo dashboard e por endpoint HTTP.
+- `/api/vision/observe` retorna observação estruturada com resolução, tamanho JPEG, tempo de captura, brilho, contraste e movimento.
+- Sessão de câmera abre sob demanda e fecha por timeout para evitar pressão permanente de DMA/internal heap.
+- Bridge conectado e TTS funcionando junto ao suporte de câmera.
 
 **Critérios de aceitação:**
 
-- [ ] Frame capturado sem artefatos: verificado via dump para SD
-- [ ] PSRAM após alocação de framebuf: ≥ 300KB livre
-- [ ] FPS de render mantido ≥ 30fps com câmera ativa
-- [ ] Zero interferência com audio (I2S0) e display (SPI2)
+- [x] Frame capturado sem artefatos visuais graves: verificado via dashboard/endpoint
+- [x] PSRAM após captura: ≥ 300KB livre
+- [x] Bridge e TTS permanecem funcionais com câmera compilada e testada
+- [ ] FPS de render mantido ≥ 30fps com câmera ativa por teste longo
+- [ ] Zero interferência com áudio (I2S0) e display (SPI2) em teste de 30 minutos
+- [ ] Captura sob demanda repetida por 30 minutos sem OOM, watchdog ou queda de bridge
 
 ---
 
@@ -2709,18 +2723,52 @@ Metas de produto:
 
 ---
 
+### Etapa 13.0 — Observação Visual Básica ✓ parcial
+
+**Dependências:** 8.1 funcional, 15.1 dashboard/API local
+**Hardware necessário:** Câmera OV2640
+
+**Objetivo:** transformar a captura bruta da câmera em telemetria visual simples
+e confiável antes de acionar comportamento autônomo.
+
+**Implementado / validado em hardware (2026-05-25):**
+
+- `vision_service` expõe observação pontual sem manter a câmera ligada em boot.
+- `GET /api/vision/observe` retorna JSON com:
+  - `valid`, `scene`, `timestamp_ms`;
+  - `width`, `height`, `jpeg_bytes`, `capture_ms`;
+  - `luma_avg`, `luma_min`, `luma_max`, `contrast`;
+  - `motion_score`.
+- Bridge v2 consome a observação para intents locais:
+  - "o que você está vendo?"
+  - "como está a luz?"
+  - "tem movimento?"
+  - "você está me vendo?"
+- A resposta é honesta: presença/rosto ainda não são afirmados sem detector dedicado.
+
+**Critérios de aceitação:**
+
+- [x] `/api/vision/observe` retorna observação válida em 640×480.
+- [x] Bridge v2 responde perguntas locais de visão sem chamar LLM.
+- [x] Camera, bridge e TTS operam no mesmo firmware sem erro imediato.
+- [ ] Métricas de visão registradas no snapshot de diagnóstico.
+- [ ] Observação visual repetida por 30 minutos sem degradação de heap ou latência.
+
+---
+
 ### Etapa 13.1 — Detecção de Presença (Layer 4)
 
-**Dependências:** 8.1 (câmera), 10.1 (attention_service)
+**Dependências:** 13.0 validada, 10.1 (attention_service)
 **Hardware necessário:** Câmera OV2640
 
 **O que entra:**
 
 - `vision_service` em `components/services/vision_service/`:
-  - Frame differencing: compara frame atual com frame de referência.
-  - Presence score: % de pixels alterados acima de threshold.
+  - Frame differencing temporal e/ou heurística de região central sobre a observação 640×480.
+  - Presence score: combinação de movimento, contraste, estabilidade e mudança sustentada.
   - `NB_EVT_PRESENCE_DETECTED`, `NB_EVT_PRESENCE_LOST`.
-  - Frame de referência atualizado a cada 30s de ausência.
+  - Frame de referência atualizado apenas quando a cena estiver estável.
+  - Debounce temporal para não confundir sombra/iluminação com presença.
 
 **Integração:**
 
@@ -3131,11 +3179,13 @@ Metas de produto:
 | ROBOT EXPRESSIVO     | Etapa 5.4      | Conductor funcionando, outputs coordenados                      |
 | PRODUTO INICIAL      | Etapa 6.1      | 1h sem panic, latência OK, temperatura OK                       |
 | PRODUTO MADURO       | Etapa 7.3      | 8h contínuas, 100 power cycles, testes de produto               |
-| HARDWARE EXPANDIDO   | Etapa 8.3      | Câmera, IMU e bateria ativos e integrados                       |
+| CÂMERA ATIVA         | Etapa 8.1      | OV2640 captura 640×480 sob demanda com sessão V4L2              |
+| HARDWARE EXPANDIDO   | Etapa 8.3      | IMU, sensores ambientais e bateria ativos e integrados          |
 | STACK COMPLETA       | Etapa 9.6      | Todos os serviços da arquitetura existem, WiFi ativo            |
 | OUVIDOS INTELIGENTES | Etapa 10.4     | Robot distingue tipo, tom e padrão de estímulos                 |
 | PERSONALIDADE VIVA   | Etapa 11.4     | Comportamento perceptivelmente diferente após 1 semana de uso   |
 | ROBOT CONVERSADOR    | Etapa 12.2     | Conversa completa com LLM: fala → entende → responde → expressa |
+| ROBOT OBSERVADOR     | Etapa 13.0     | Responde sobre cena, luz e movimento sem LLM                    |
 | ROBOT VIDENTE        | Etapa 13.3     | Olha para quem está na frente, reage a gestos                   |
 | ROBOT CONECTADO      | Etapa 15.2     | Dashboard web ativo, OTA funcional, personalidade portável      |
 | ROBOT EXPRESSIVO+    | Etapa 16.4     | Fala, ruboriza, dança — expressividade completa                 |

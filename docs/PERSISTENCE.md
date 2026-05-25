@@ -68,12 +68,11 @@ Todos os dados com volume alto, append-only, ou que podem ser regenerados:
 │       ├── greet_01.wav       # 16kHz, mono, 16-bit PCM
 │       ├── greet_02.wav
 │       ├── greet_03.wav
-│       ├── idle_01.wav
-│       ├── idle_02.wav
-│       ├── idle_03.wav
-│       ├── touch_respond_01.wav
-│       ├── touch_respond_02.wav
-│       ├── touch_respond_03.wav
+│       ├── wake_up.wav
+│       ├── sleep_enter.wav
+│       ├── timer_done.wav
+│       ├── reminder_due.wav
+│       ├── alarm_due.wav
 │       └── error_01.wav
 │
 ├── memory/
