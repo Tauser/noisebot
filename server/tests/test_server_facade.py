@@ -690,16 +690,16 @@ def test_server_agent_sentencizer_keeps_bridge_behavior() -> None:
     assert sentences == ["Ola. Tudo bem?"]
 
 
-def test_server_vision_exports_bridge_client_and_analysis() -> None:
+def test_server_vision_is_server_owned() -> None:
     compat = importlib.import_module("noisebot_server._compat")
     compat.ensure_bridgev2_path()
 
     server_vision = importlib.import_module("noisebot_server.internal.vision")
     bridge_vision = importlib.import_module("bridgev2.vision")
 
-    assert server_vision.VisionClient is bridge_vision.VisionClient
-    assert server_vision.VisionObservation is bridge_vision.VisionObservation
-    assert server_vision.analyze_jpeg is bridge_vision.analyze_jpeg
+    assert server_vision.VisionClient is not bridge_vision.VisionClient
+    assert server_vision.VisionObservation is not bridge_vision.VisionObservation
+    assert server_vision.FaceBox is not bridge_vision.FaceBox
 
 
 def test_server_vision_observation_parses_firmware_payload() -> None:
