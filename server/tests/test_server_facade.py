@@ -545,6 +545,113 @@ async def test_server_firmware_adapter_dispatches_voice_end_event() -> None:
     assert event.reason == runtime.VoiceEndReason.TIMEOUT
 
 
+def _server_loud_pcm(samples: int = 256, amplitude: int = 3200) -> bytes:
+    return b"".join(struct.pack("<h", amplitude if i % 2 == 0 else -amplitude) for i in range(samples))
+
+
+async def _simulate_server_voice_session(bus, runtime, chunks: int = 40) -> None:
+    await bus.publish(runtime.WakeDetected())
+    await asyncio.sleep(0)
+    pcm = _server_loud_pcm()
+    for seq in range(chunks):
+        await bus.publish(runtime.AudioChunkIn(pcm=pcm, seq=seq))
+    await asyncio.sleep(0)
+    await bus.publish(runtime.VoiceActivityEnd())
+
+
+async def _wait_until(predicate, timeout_s: float = 1.0) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout_s
+    while not predicate():
+        if asyncio.get_running_loop().time() >= deadline:
+            raise AssertionError("condicao nao atendida dentro do timeout")
+        await asyncio.sleep(0.01)
+
+
+async def _drain_queue(queue: asyncio.Queue, duration_s: float = 0.05) -> list:
+    items = []
+    deadline = asyncio.get_running_loop().time() + duration_s
+    while True:
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            return items
+        try:
+            items.append(await asyncio.wait_for(queue.get(), timeout=remaining))
+        except asyncio.TimeoutError:
+            return items
+
+
+async def test_server_empty_wake_prompt_is_one_shot_until_real_speech() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class MockSequenceStt:
+        def __init__(self, results) -> None:
+            self._results = list(results)
+            self.finalize_calls = 0
+
+        async def initialize(self) -> None:
+            pass
+
+        def feed(self, pcm: bytes) -> None:
+            pass
+
+        async def finalize(self, full_pcm: bytes, turn_id: int):
+            self.finalize_calls += 1
+            text, quality = self._results.pop(0)
+            return runtime.FinalTranscript(turn_id=turn_id, text=text, quality=quality)
+
+        async def close(self) -> None:
+            pass
+
+    bus = runtime.EventBus(default_maxsize=512)
+    stt = MockSequenceStt([
+        ("", runtime.TranscriptQuality.EMPTY),
+        ("", runtime.TranscriptQuality.EMPTY),
+        ("olá", runtime.TranscriptQuality.GOOD),
+        ("", runtime.TranscriptQuality.EMPTY),
+    ])
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: None,
+        stt_provider=stt,
+    )
+    intents = bus.subscribe(runtime.IntentResolved)
+    speech_done = bus.subscribe(runtime.SpeechDone)
+    task = asyncio.create_task(orchestrator.run())
+
+    try:
+        await _simulate_server_voice_session(bus, runtime)
+        first_intent = await asyncio.wait_for(intents.get(), timeout=1.0)
+        await asyncio.wait_for(speech_done.get(), timeout=1.0)
+        await _wait_until(lambda: orchestrator._session is None)
+        assert first_intent.intent_name == "local_empty_wake_prompt"
+
+        await _simulate_server_voice_session(bus, runtime)
+        await _wait_until(
+            lambda: stt.finalize_calls >= 2 and orchestrator._session is None
+        )
+        assert await _drain_queue(intents) == []
+
+        await _simulate_server_voice_session(bus, runtime)
+        greeting_intent = await asyncio.wait_for(intents.get(), timeout=1.0)
+        await asyncio.wait_for(speech_done.get(), timeout=1.0)
+        await _wait_until(lambda: orchestrator._session is None)
+        assert greeting_intent.intent_name == "local_greeting"
+
+        await _simulate_server_voice_session(bus, runtime)
+        second_prompt = await asyncio.wait_for(intents.get(), timeout=1.0)
+        await asyncio.wait_for(speech_done.get(), timeout=1.0)
+        await _wait_until(lambda: orchestrator._session is None)
+        assert second_prompt.intent_name == "local_empty_wake_prompt"
+    finally:
+        await orchestrator.shutdown()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 def test_server_transport_factory_creates_uart_transport() -> None:
     factory_module = importlib.import_module(
         "noisebot_server.internal.transport.factory"
@@ -621,6 +728,158 @@ def test_server_ops_config_controller_is_server_owned() -> None:
     assert server_config.VALID_MODES == bridge_config.VALID_MODES
     assert "ollama" in server_config.PROVIDER_CATALOG
     assert "local_only" in server_config.VALID_MODES
+
+
+def test_server_app_state_persists_routine_and_basic_settings(tmp_path) -> None:
+    app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
+    state_path = tmp_path / "app_state.json"
+
+    store = app_state.AppStateStore(state_path)
+    timer = store.create_agenda_item("timer", {"title": "Cafe", "duration_min": 5})
+    settings = store.update_basic_settings(
+        {
+            "volume": 88,
+            "display_brightness": 42,
+            "led_brightness": 17,
+            "night_mode": True,
+        }
+    )
+
+    assert timer["kind"] == "timer"
+    assert timer["status"] == "ativo"
+    assert settings["volume"] == 88
+    assert settings["display_brightness"] == 42
+    assert settings["night_mode"] is True
+
+    reloaded = app_state.AppStateStore(state_path)
+    snapshot = reloaded.snapshot()
+
+    assert snapshot["routine"]["summary"]["timers"] == 1
+    assert snapshot["routine"]["items"][0]["title"] == "Cafe"
+    assert snapshot["settings"]["volume"] == 88
+
+
+def test_server_app_state_updates_and_deletes_agenda_items(tmp_path) -> None:
+    app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
+    store = app_state.AppStateStore(tmp_path / "app_state.json")
+
+    alarm = store.create_agenda_item("alarm", {"title": "Acordar", "time": "07:00"})
+    updated = store.update_agenda_item(alarm["id"], {"enabled": False})
+
+    assert updated is not None
+    assert updated["enabled"] is False
+    assert updated["status"] == "desligado"
+    assert store.list_agenda()["summary"]["alarms"] == 0
+    assert store.delete_agenda_item(alarm["id"]) is True
+    assert store.delete_agenda_item(alarm["id"]) is False
+
+
+def test_server_app_state_maps_alarm_repeat_to_firmware_mask(tmp_path) -> None:
+    app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
+    store = app_state.AppStateStore(tmp_path / "app_state.json")
+
+    daily = store.create_agenda_item("alarm", {"title": "Todo dia", "repeat": "diário"})
+    weekdays = store.create_agenda_item("alarm", {"title": "Trabalho", "repeat": "dias úteis"})
+    weekend = store.create_agenda_item("alarm", {"title": "Folga", "repeat": "fim de semana"})
+    updated = store.update_agenda_item(daily["id"], {"repeat": "uma vez", "time": "08:15"})
+
+    assert daily["weekdays_mask"] == 0x7F
+    assert weekdays["weekdays_mask"] == 0x3E
+    assert weekend["weekdays_mask"] == 0x41
+    assert updated is not None
+    assert updated["weekdays_mask"] == 0
+    assert updated["detail"] == "uma vez, 08:15"
+
+
+def test_server_app_state_imports_firmware_agenda_without_duplicates(tmp_path) -> None:
+    app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
+    store = app_state.AppStateStore(tmp_path / "app_state.json")
+    store.create_agenda_item("alarm", {"title": "Remedio", "time": "08:05"})
+
+    imported = store.import_firmware_agenda({
+        "alarms": [
+            {
+                "id": 2,
+                "label": "Remedio",
+                "hour": 8,
+                "minute": 5,
+                "weekdays_mask": 0,
+                "enabled": True,
+            }
+        ],
+        "timers": [
+            {
+                "id": 1,
+                "label": "Cafe",
+                "duration_ms": 300000,
+                "remaining_ms": 120000,
+            }
+        ],
+        "reminders": [],
+    })
+    imported_again = store.import_firmware_agenda({
+        "alarms": [
+            {
+                "id": 2,
+                "label": "Remedio",
+                "hour": 8,
+                "minute": 5,
+                "weekdays_mask": 0,
+                "enabled": False,
+            }
+        ],
+        "timers": [],
+        "reminders": [],
+    })
+
+    agenda = store.list_agenda()
+
+    assert imported == 2
+    assert imported_again == 1
+    assert agenda["summary"]["alarms"] == 0
+    assert agenda["summary"]["timers"] == 0
+    assert len(agenda["items"]) == 1
+    assert agenda["items"][0]["id"] == "fw_alarm_2"
+    assert agenda["items"][0]["source"] == "firmware"
+    assert agenda["items"][0]["firmware_id"] == 2
+    assert agenda["items"][0]["time"] == "08:05"
+    assert agenda["items"][0]["enabled"] is False
+
+    assert store.import_firmware_agenda({"alarms": [], "timers": [], "reminders": []}) == 0
+    assert store.list_agenda()["items"] == []
+
+
+def test_server_ops_serves_app_dist_when_available(tmp_path, monkeypatch) -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<div>NoiseBot App</div>", encoding="utf-8")
+
+    monkeypatch.setenv("NOISEBOT_APP_DIST", str(dist))
+
+    assert http._find_app_dist() == dist.resolve()
+
+
+def test_server_agenda_payload_recreates_edited_alarm() -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+
+    payload = http._agenda_session_payload(
+        {
+            "kind": "alarm",
+            "title": "Remedio",
+            "time": "08:15",
+            "weekdays_mask": 0x3E,
+            "enabled": True,
+            "firmware_id": 2,
+        },
+        "recreate",
+    )
+
+    assert isinstance(payload, list)
+    assert payload[0]["action"] == "alarm_cancel"
+    assert payload[0]["id"] == 2
+    assert payload[1]["action"] == "alarm_create"
+    assert payload[1]["weekdays_mask"] == 0x3E
 
 
 def test_server_agent_orchestrator_is_server_owned() -> None:

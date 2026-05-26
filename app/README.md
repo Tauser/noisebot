@@ -1,28 +1,51 @@
 # NoiseBot App
 
-External dashboard/client for NoiseBot.
+Dashboard amigavel do usuario para o NoiseBot.
 
-This mirrors StackChan's `app/` boundary. It is the correct place for rich UI,
-camera preview, diagnostics, setup flows and future mobile/desktop controls.
+O app segue a fronteira inspirada no StackChan:
 
-The app should talk to the local server first, and only use firmware REST
-endpoints through explicit server adapters when needed. The app must not depend
-on ESP32 routes directly.
+- `firmware/` ou `components/`: ESP32-S3 leve, sem UI pesada.
+- `server/`: backend local, IA, TTS, STT, visao, rotina e APIs.
+- `app/`: interface de produto para o usuario.
 
-Current phase:
+O app fala sempre com o `server`. Ele nao deve depender de rotas diretas do
+firmware.
 
-- No framework is selected yet.
-- No Android/iOS folders are created yet.
-- The first contract is server-first and lives in
-  `server/noisebot_server/api/contract.py`.
-- A future UI should consume only implemented server endpoints until reserved
-  endpoints become real server routes.
+## Stack inicial
 
-Suggested layout:
+- React
+- TypeScript
+- Vite
+- CSS proprio
+- Lucide React para icones
+
+## Rodando
+
+```bash
+cd app
+npm install
+npm run dev
+```
+
+Por padrao o app considera o server em `http://localhost:8765`. Para alterar:
+
+```bash
+VITE_NOISEBOT_SERVER_URL=http://localhost:8765 npm run dev
+```
+
+## Estrutura
 
 ```text
 app/
-├── lib/     # Client application source
-├── assets/  # App-owned assets
-└── test/    # Client tests
+├── src/       # Aplicacao React
+├── assets/    # Assets do app
+└── test/      # Testes futuros do app
 ```
+
+## Principios
+
+- Home nao e painel tecnico.
+- Rotina, timers, alarmes e agenda sao fluxos centrais.
+- Ajustes do dia a dia ficam separados de configuracoes avancadas.
+- Visao tem dois modos: inteligente e monitoramento.
+- Logs, bridge e detalhes de diagnostico ficam em configuracoes/avancado.

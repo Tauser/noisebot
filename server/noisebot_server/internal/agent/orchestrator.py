@@ -140,6 +140,7 @@ class Orchestrator:
 
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
+        self._empty_wake_prompted_at: float | None = None
 
         # Queue de eventos: o Orchestrator assina todos
         self._events = bus.subscribe(maxsize=-1)  # ilimitado para o maestro
@@ -410,6 +411,8 @@ class Orchestrator:
             await self._finish_turn()
             return
 
+        self._empty_wake_prompted_at = None
+
         # COMMITTING_TURN → THINKING
         if self._fsm.state != TurnState.COMMITTING_TURN:
             self._fsm.try_transition(TurnState.COMMITTING_TURN, turn_id=event.turn_id)
@@ -503,6 +506,12 @@ class Orchestrator:
         """True quando houve wake/voz real, mas o usuario nao falou nada util."""
         if event.quality not in (TranscriptQuality.EMPTY, TranscriptQuality.NO_SPEECH):
             return False
+        if self._empty_wake_prompted_at is not None:
+            log.info(
+                "Turno %d: wake vazio ignorado; prompt ja enviado nesta sequencia",
+                event.turn_id,
+            )
+            return False
         return session.total_samples >= 8000
 
     async def _prompt_after_empty_wake(
@@ -516,6 +525,7 @@ class Orchestrator:
             event.turn_id,
             event.quality.name,
         )
+        self._empty_wake_prompted_at = time.monotonic()
 
         if self._fsm.state != TurnState.COMMITTING_TURN:
             self._fsm.try_transition(TurnState.COMMITTING_TURN, turn_id=event.turn_id)

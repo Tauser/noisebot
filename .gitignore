@@ -40,6 +40,18 @@ desktop.ini
 *.core
 bridge_v2/*.wav
 bridge_v2/pytest-cache-files-*/
+server/.env
+server/.venv/
+server/__pycache__/
+server/**/__pycache__/
+server/*.wav
+server/pytest-cache-files-*/
+
+# App/client build artifacts
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
 
 # Binários compilados
 *.bin
@@ -61,4 +73,5 @@ assets/
 # Credenciais locais de dev — nunca commitar
 .env
 bridge/.env
+bridge_v2/.env
 components/infra/wifi_creds.h
