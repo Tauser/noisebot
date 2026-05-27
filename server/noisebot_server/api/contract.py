@@ -66,6 +66,13 @@ def default_app_contract() -> tuple[AppEndpoint, ...]:
         ),
         AppEndpoint(
             domain="ops",
+            method="GET",
+            path="/api/logs",
+            purpose="Recent sanitized server log lines for the Dev console.",
+            implemented=True,
+        ),
+        AppEndpoint(
+            domain="ops",
             method="POST",
             path="/ai/config",
             purpose="Apply safe runtime configuration changes.",

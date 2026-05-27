@@ -116,6 +116,13 @@ export type AiErrorEntry = {
   turn_id: number;
 };
 
+export type ServerLogEntry = {
+  ts: number;
+  level: string;
+  logger: string;
+  message: string;
+};
+
 export type AiConfig = {
   transport?: {
     type?: string;
@@ -176,6 +183,7 @@ export type FirmwareDiagnostics = {
 export type DevData = {
   metrics: AiMetrics;
   errors: AiErrorEntry[];
+  logs: ServerLogEntry[];
   config: AiConfig;
   device: DeviceStatus;
   vision: VisionStatus;
@@ -443,9 +451,10 @@ export async function analyzeVision(): Promise<VisionAnalysis> {
 }
 
 export async function loadDevData(): Promise<DevData> {
-  const [metrics, errors, config, device, vision, diagnostics] = await Promise.all([
+  const [metrics, errors, logs, config, device, vision, diagnostics] = await Promise.all([
     getJson<AiMetrics>("/ai/metrics"),
     getJson<{ errors: AiErrorEntry[] }>("/ai/errors?limit=20"),
+    getJsonOr<{ logs: ServerLogEntry[] }>("/api/logs?limit=80", { logs: [] }),
     getJson<AiConfig>("/ai/config"),
     getJson<DeviceStatus>("/api/device/status"),
     getJson<VisionStatus>("/api/vision/status"),
@@ -458,6 +467,7 @@ export async function loadDevData(): Promise<DevData> {
   return {
     metrics,
     errors: errors.errors,
+    logs: logs.logs,
     config,
     device,
     vision,

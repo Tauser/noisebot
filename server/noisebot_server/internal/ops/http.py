@@ -7,6 +7,7 @@ Endpoints operacionais:
   GET  /ai/metrics
   GET  /ai/errors
   GET  /ai/config
+  GET  /api/logs
   POST /ai/config       (token obrigatório)
   POST /ai/mode         (token obrigatório)
   POST /ai/restart      (token obrigatório)
@@ -38,6 +39,7 @@ from .schemas import (
 from .dashboard import get_dashboard_html
 from .firmware_agenda import FirmwareAgendaClient, FirmwareAgendaError
 from .firmware_diag import FirmwareDiagClient, FirmwareDiagError
+from .log_buffer import install_recent_log_handler
 from .security import check_token, load_or_create_token
 from .status import StatusStore
 from ..vision import VisionClient, VisionError
@@ -81,6 +83,7 @@ class OpsHttpServer:
         self._ctrl = ConfigController(app)
         self._metrics_api = MetricsApi(app._orchestrator.metrics, store)
         self._app_state = AppStateStore()
+        self._log_buffer = install_recent_log_handler()
         self._agenda_client = FirmwareAgendaClient.from_config(app._config)
         self._firmware_diag_client = FirmwareDiagClient.from_config(app._config)
         self._vision_client = VisionClient.from_config(app._config)
@@ -104,6 +107,7 @@ class OpsHttpServer:
         wa.router.add_post("/debug/transcript", self._post_debug_transcript)
         wa.router.add_post("/debug/voice-turn", self._post_debug_voice_turn)
         wa.router.add_get("/api/app/state", self._get_app_state)
+        wa.router.add_get("/api/logs", self._get_logs)
         wa.router.add_get("/api/agenda/items", self._get_agenda_items)
         wa.router.add_post("/api/agenda/timers", self._post_agenda_timer)
         wa.router.add_post("/api/agenda/alarms", self._post_agenda_alarm)
@@ -233,6 +237,13 @@ class OpsHttpServer:
         limit = int(request.rel_url.query.get("limit", "20"))
         errors = self._store.recent_errors[:limit]
         return _json({"errors": errors, "total": len(errors)})
+
+    async def _get_logs(self, request: web.Request) -> web.Response:
+        limit = _int_query(request, "limit", 80, min_value=1, max_value=300)
+        return _json({
+            "logs": self._log_buffer.recent(limit),
+            "total": self._log_buffer.count,
+        })
 
     async def _get_ai_config(self, request: web.Request) -> web.Response:
         return _json(self._ctrl.current_config_safe())
@@ -751,6 +762,21 @@ def _json(data: dict, status: int = 200) -> web.Response:
         status=status,
         content_type="application/json",
     )
+
+
+def _int_query(
+    request: web.Request,
+    key: str,
+    default: int,
+    *,
+    min_value: int,
+    max_value: int,
+) -> int:
+    try:
+        value = int(request.rel_url.query.get(key, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(min_value, min(max_value, value))
 
 
 async def _read_json_object(request: web.Request) -> dict[str, Any] | None:

@@ -137,6 +137,7 @@ const defaultDevData: DevData = {
     estimated_cost: null,
   },
   errors: [],
+  logs: [],
   config: {},
   device: {
     server_online: false,
@@ -613,7 +614,7 @@ function InteractionView({
         <h2 className="mb-3 text-lg font-semibold">Chat e comandos</h2>
         <div className="mb-4 grid gap-3">
           <TurnBubble label="Última fala" text={snapshot.robot.lastTranscript || "Sem transcrição recente."} />
-          <TurnBubble label="Última resposta" text={snapshot.robot.lastReply || "Sem resposta recente."} />
+          <TurnBubble label="Última resposta" text={lastReplyText(snapshot)} />
         </div>
         <form
           className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]"
@@ -830,8 +831,8 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
           <Metric label="Maior bloco interno" value={bytesValue(health.heap_internal_largest)} />
           <Metric label="DMA livre" value={bytesValue(health.heap_dma_free)} />
           <Metric label="Maior bloco DMA" value={bytesValue(health.heap_dma_largest)} />
-          <Metric label="DRAM livre" value={bytesValue(health.heap_dram_free)} />
-          <Metric label="DRAM mínima" value={bytesValue(health.heap_dram_min)} />
+          <Metric label="Heap total livre" value={bytesValue(health.heap_dram_free)} />
+          <Metric label="Heap total mínimo" value={bytesValue(health.heap_dram_min)} />
         </div>
       </DiagnosticCard>
 
@@ -1108,18 +1109,35 @@ function DevConsoleView({
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <section className={cardClass}>
-        <h2 className="mb-3 text-lg font-semibold">Console</h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Logs do server</h2>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+            {devData.logs.length} linhas
+          </span>
+        </div>
         <div className="min-h-72 overflow-auto rounded-xl bg-slate-950 p-4 font-mono text-sm text-slate-300">
-          <p>{">"} eventos recentes do server</p>
-          <p>{">"} último erro: {snapshot.robot.lastError || "--"}</p>
-          <p>{">"} firmware: {snapshot.robot.firmwareOnline ? "online" : "offline"}</p>
-          <p>{">"} turnos: {devData.metrics.turns.total ?? 0}</p>
-          {devData.errors.map((error) => (
-            <p className="mt-2 text-amber-300" key={`${error.ts}-${error.turn_id}-${error.kind}`}>
-              {">"} [{formatTime(error.ts)}] {error.kind} turn={error.turn_id} {error.message}
+          <p className="text-slate-500">{">"} firmware: {snapshot.robot.firmwareOnline ? "online" : "offline"} | turnos: {devData.metrics.turns.total ?? 0}</p>
+          {snapshot.robot.lastError && <p className="mt-2 text-rose-300">{">"} último erro: {snapshot.robot.lastError}</p>}
+          {devData.logs.length === 0 && <p className="mt-3 text-slate-500">{">"} sem logs recentes capturados pelo server</p>}
+          {devData.logs.map((entry, index) => (
+            <p className="mt-2 break-words" key={`${entry.ts}-${entry.level}-${index}`}>
+              <span className="text-slate-500">{formatTime(entry.ts)}</span>{" "}
+              <span className={logLevelClass(entry.level)}>{entry.level.padEnd(7, " ")}</span>{" "}
+              <span className="text-slate-500">{entry.logger}</span>{" "}
+              {entry.message}
             </p>
           ))}
         </div>
+        {devData.errors.length > 0 && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <strong className="block">Erros estruturados</strong>
+            {devData.errors.slice(0, 3).map((error) => (
+              <p className="mt-1" key={`${error.ts}-${error.turn_id}-${error.kind}`}>
+                [{formatTime(error.ts)}] {error.kind} turn={error.turn_id} {error.message}
+              </p>
+            ))}
+          </div>
+        )}
       </section>
       <aside className="grid content-start gap-4">
         <section className={cardClass}>
@@ -1365,6 +1383,22 @@ function voiceOutcomeClass(outcome: string | undefined) {
     return "rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-700";
   }
   return "rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700";
+}
+
+function lastReplyText(snapshot: DashboardSnapshot) {
+  if (snapshot.robot.lastReply) return snapshot.robot.lastReply;
+  if (snapshot.robot.lastTurnId > 0) {
+    return "Sem resposta registrada. Talvez eu não tenha entendido.";
+  }
+  return "Sem resposta recente.";
+}
+
+function logLevelClass(level: string) {
+  const normalized = level.toUpperCase();
+  if (normalized === "ERROR" || normalized === "CRITICAL") return "text-rose-300";
+  if (normalized === "WARNING" || normalized === "WARN") return "text-amber-300";
+  if (normalized === "DEBUG") return "text-sky-300";
+  return "text-emerald-300";
 }
 
 function ErrorLog({ errors }: { errors: DevData["errors"] }) {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import logging
 import sys
 import struct
 from pathlib import Path
@@ -722,6 +723,24 @@ def test_server_metrics_replaces_duplicate_voice_session_turn() -> None:
     assert reset_payload["recent_voice_sessions"] == []
 
 
+def test_server_metrics_accepts_good_transcript_quality() -> None:
+    metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
+    api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    store = status_module.StatusStore()
+    store.record_voice_session({
+        "turn_id": 8,
+        "outcome": "llm",
+        "duration_ms": 9584,
+        "transcript_quality": "good",
+    })
+
+    payload = api_module.MetricsApi(metrics_module.MetricsRegistry(), store).get_metrics()
+
+    assert payload["voice_alert"] is None
+
+
 def _server_loud_pcm(samples: int = 256, amplitude: int = 3200) -> bytes:
     return b"".join(struct.pack("<h", amplitude if i % 2 == 0 else -amplitude) for i in range(samples))
 
@@ -879,6 +898,58 @@ async def test_server_empty_wake_prompt_is_one_shot_until_real_speech() -> None:
         await asyncio.wait_for(speech_done.get(), timeout=1.0)
         await _wait_until(lambda: orchestrator._session is None)
         assert second_prompt.intent_name == "local_empty_wake_prompt"
+    finally:
+        await orchestrator.shutdown()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_server_unclear_transcript_asks_user_to_repeat() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class MockStt:
+        async def initialize(self) -> None:
+            pass
+
+        def feed(self, pcm: bytes) -> None:
+            pass
+
+        async def reset(self) -> None:
+            pass
+
+        async def finalize(self, full_pcm: bytes, turn_id: int):
+            return runtime.FinalTranscript(
+                turn_id=turn_id,
+                text="eslopo diaforo",
+                quality=runtime.TranscriptQuality.LOW_LOGPROB,
+                avg_logprob=-1.8,
+            )
+
+        async def close(self) -> None:
+            pass
+
+    bus = runtime.EventBus(default_maxsize=512)
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: None,
+        stt_provider=MockStt(),
+    )
+    intents = bus.subscribe(runtime.IntentResolved)
+    speech_done = bus.subscribe(runtime.SpeechDone)
+    task = asyncio.create_task(orchestrator.run())
+
+    try:
+        await _simulate_server_voice_session(bus, runtime)
+        intent = await asyncio.wait_for(intents.get(), timeout=1.0)
+        await asyncio.wait_for(speech_done.get(), timeout=1.0)
+        await _wait_until(lambda: orchestrator._session is None)
+
+        assert intent.intent_name == "local_unclear_transcript_prompt"
+        assert intent.reply_text == "Eu ouvi, mas não entendi direito. Pode repetir?"
     finally:
         await orchestrator.shutdown()
         task.cancel()
@@ -1476,3 +1547,28 @@ def test_server_app_contract_reserves_future_domains() -> None:
     domains = {endpoint.domain for endpoint in api.default_app_contract()}
 
     assert {"ops", "vision", "agent", "device", "agenda"}.issubset(domains)
+
+
+def test_server_recent_log_buffer_redacts_and_limits() -> None:
+    log_buffer = importlib.import_module("noisebot_server.internal.ops.log_buffer")
+    buffer = log_buffer.RecentLogBuffer(max_entries=2)
+
+    for index in range(3):
+        record = logging.LogRecord(
+            "noisebot.test",
+            logging.INFO,
+            __file__,
+            1,
+            "evento %d token=sk-secret-token-value-%d",
+            (index, index),
+            None,
+        )
+        record.created = float(index + 1)
+        buffer.append_record(record)
+
+    entries = buffer.recent(limit=10)
+
+    assert buffer.count == 2
+    assert [entry["ts"] for entry in entries] == [3.0, 2.0]
+    assert all("sk-secret" not in entry["message"] for entry in entries)
+    assert all("token=<redacted>" in entry["message"] for entry in entries)

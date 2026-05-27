@@ -67,6 +67,8 @@ log = logging.getLogger(__name__)
 TURN_DEADLINE_S = 30.0  # watchdog antes de iniciar fala
 SPEAKING_PROGRESS_DEADLINE_S = 20.0  # durante SAY: tempo maximo sem progresso
 EMPTY_WAKE_REPLY = "Oi! Em que posso ajudar?"
+MISUNDERSTOOD_REPLY = "Eu ouvi, mas não entendi direito. Pode repetir?"
+MISUNDERSTOOD_PROMPT_COOLDOWN_S = 4.0
 LLM_CONFIG_FALLBACK_REPLY = (
     "Estou sem acesso à IA agora, mas continuo ouvindo os comandos locais."
 )
@@ -141,6 +143,7 @@ class Orchestrator:
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
         self._empty_wake_prompted_at: float | None = None
+        self._misunderstood_prompted_at: float | None = None
 
         # Queue de eventos: o Orchestrator assina todos
         self._events = bus.subscribe(maxsize=-1)  # ilimitado para o maestro
@@ -427,6 +430,9 @@ class Orchestrator:
             if self._should_prompt_after_empty_wake(session, event):
                 await self._prompt_after_empty_wake(session, event)
                 return
+            if self._should_prompt_after_unclear_transcript(session, event):
+                await self._prompt_after_unclear_transcript(session, event)
+                return
             log.debug("Turno %d: transcript não utilizável (%s)", event.turn_id, event.quality.name)
             session.discard_reason = f"stt_{event.quality.name.lower()}"
             session.meta["outcome"] = "stt_rejected"
@@ -435,6 +441,7 @@ class Orchestrator:
             return
 
         self._empty_wake_prompted_at = None
+        self._misunderstood_prompted_at = None
 
         # COMMITTING_TURN → THINKING
         if self._fsm.state != TurnState.COMMITTING_TURN:
@@ -587,6 +594,90 @@ class Orchestrator:
         if self._tts is not None:
             self._turn_task = asyncio.create_task(
                 self._speak_reply(event.turn_id, EMPTY_WAKE_REPLY, session),
+                name=f"nb_tts_{event.turn_id}",
+            )
+        else:
+            await self._bus.publish(SpeechDone(turn_id=event.turn_id))
+
+    def _should_prompt_after_unclear_transcript(
+        self,
+        session: SessionContext,
+        event: FinalTranscript,
+    ) -> bool:
+        """True quando houve fala, mas a transcrição ficou insegura."""
+        if event.quality not in (
+            TranscriptQuality.LOW_RMS,
+            TranscriptQuality.LOW_LOGPROB,
+            TranscriptQuality.HIGH_COMPRESSION,
+        ):
+            return False
+        if session.total_samples < 8000:
+            return False
+        now = time.monotonic()
+        if (
+            self._misunderstood_prompted_at is not None
+            and now - self._misunderstood_prompted_at < MISUNDERSTOOD_PROMPT_COOLDOWN_S
+        ):
+            log.info(
+                "Turno %d: prompt de nao entendimento em cooldown (%s)",
+                event.turn_id,
+                event.quality.name,
+            )
+            return False
+        return True
+
+    async def _prompt_after_unclear_transcript(
+        self,
+        session: SessionContext,
+        event: FinalTranscript,
+    ) -> None:
+        """Pede repetição quando o usuário falou, mas o STT ficou incerto."""
+        reply = MISUNDERSTOOD_REPLY
+        log.info(
+            "Turno %d: transcript incerto (%s) -> pedido de repeticao",
+            event.turn_id,
+            event.quality.name,
+        )
+        self._misunderstood_prompted_at = time.monotonic()
+
+        if self._fsm.state != TurnState.COMMITTING_TURN:
+            self._fsm.try_transition(TurnState.COMMITTING_TURN, turn_id=event.turn_id)
+        self._fsm.transition(TurnState.THINKING, turn_id=event.turn_id)
+        session.mark("thinking_start")
+
+        intent = IntentResolved(
+            turn_id=event.turn_id,
+            intent_name="local_unclear_transcript_prompt",
+            reply_text=reply,
+            expression_id=4,  # FOCUSED
+            action_id=1,      # nod
+            emot_event_id=1,
+        )
+        session.intent_name = intent.intent_name
+        session.reply_text = reply
+        session.meta["unclear_reason"] = event.quality.name.lower()
+        if self._store:
+            self._store.record_turn_detail(
+                event.turn_id,
+                transcript=event.text,
+                reply=reply,
+                route="local_intent",
+            )
+
+        await self._bus.publish(intent)
+        session.mark("intent_resolved")
+
+        self._fsm.transition(TurnState.SPEAKING, turn_id=event.turn_id)
+        session.mark("speaking_start")
+        await self._robot.emit_for_intent(
+            intent,
+            self.adapter,
+            include_reply_text=self._tts is None,
+        )
+
+        if self._tts is not None:
+            self._turn_task = asyncio.create_task(
+                self._speak_reply(event.turn_id, reply, session),
                 name=f"nb_tts_{event.turn_id}",
             )
         else:

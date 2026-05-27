@@ -107,7 +107,7 @@ def _voice_alert(session: dict) -> dict | None:
             "detail": str(reason or outcome or "sem motivo detalhado"),
         }
     quality = session.get("transcript_quality")
-    if quality and quality != "ok":
+    if quality and str(quality).lower() not in {"ok", "good"}:
         return {
             "level": "warn",
             "title": "Transcrição com baixa confiança",
