@@ -106,7 +106,7 @@ extern void vad_destroy(nb_esp_vad_handle_t handle);
 #define LISTEN_EARLY_END_SILENCE_MS     1300U
 #define LISTEN_EARLY_GRACE_MS           6000U
 /* Contrato conversacional v1: a fala útil é curta e previsível. Mantemos o
- * teto do firmware abaixo do limite do server (160000 samples @16kHz = 10s)
+ * teto do firmware abaixo da folga do server (192000 samples @16kHz = 12s)
  * para o VOICE_END chegar antes do descarte por audio_longo. */
 #define LISTEN_MAX_SPEECH_MS            9200U
 #define BRIDGE_TX_FAIL_ABORT_COUNT     4U

@@ -65,6 +65,7 @@ from ..vision import VisionClient
 
 log = logging.getLogger(__name__)
 
+DEFAULT_MAX_UTTERANCE_SAMPLES = 192000
 TURN_DEADLINE_S = 30.0  # watchdog antes de iniciar fala
 PLAYBACK_BARGE_IN_GRACE_S = 0.9
 ENABLE_SECONDARY_BARGE_IN_VAD = False
@@ -1265,11 +1266,11 @@ class Orchestrator:
 
     def _max_utterance_samples(self) -> int:
         audio = getattr(self._config, "audio", None)
-        value = getattr(audio, "max_utterance_samples", 160000)
+        value = getattr(audio, "max_utterance_samples", DEFAULT_MAX_UTTERANCE_SAMPLES)
         try:
             return max(0, int(value))
         except (TypeError, ValueError):
-            return 160000
+            return DEFAULT_MAX_UTTERANCE_SAMPLES
 
     async def _run_watchdog(self, session: SessionContext) -> None:
         """Cancela o turno se o deadline for excedido — Invariante I-4."""

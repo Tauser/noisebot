@@ -165,6 +165,8 @@ class NoiseBotServerConfig:
                 "sample_rate": self.audio.sample_rate,
                 "min_transcribe_rms": self.audio.min_transcribe_rms,
                 "min_transcribe_peak": self.audio.min_transcribe_peak,
+                "min_utterance_samples": self.audio.min_utterance_samples,
+                "max_utterance_samples": self.audio.max_utterance_samples,
             },
             "reconnect": {
                 "delay_s": self.reconnect.delay_s,

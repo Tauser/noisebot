@@ -55,7 +55,7 @@ SERVER_HELLO_CAPABILITIES: dict[str, Any] = {
     },
     "listen": {
         "mode": "auto",
-        "max_speech_ms": 10000,
+        "max_speech_ms": 9200,
         "min_utterance_samples": 8000,
         "max_utterance_samples": 192000,
         "end_silence_ms": 900,

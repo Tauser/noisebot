@@ -2029,6 +2029,9 @@ Implementação:
 - [x] Server abriu folga de captura para 192000 samples (12 s), evitando que
   fala válida em torno de 10 s seja descartada por alinhamento de chunk
   (`160256/160000`).
+- [x] Contrato ficou alinhado ponta a ponta: fallback interno do server,
+  `HELLO` do server, `HELLO` do firmware e documentação deixam de anunciar
+  `160000` como teto efetivo do pipeline.
 - [ ] Ainda há `timeout` ocasional em fala/resposta longa; tratar como item de
   turn-taking antes de liberar modo narrativo ou realtime.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é

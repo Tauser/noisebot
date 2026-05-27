@@ -9,13 +9,13 @@ qualquer otimização de STT/TTS.
 - Formato: PCM16 little-endian, mono, 16 kHz.
 - Chunk: 256 samples, 512 bytes, 16 ms.
 - Modo de escuta: `auto`.
-- Duração máxima de fala: 10 s.
+- Duração máxima de fala no firmware: 9,2 s.
 - Áudio mínimo para STT: 8000 samples, 500 ms.
 - Áudio máximo para STT no server: 192000 samples, 12 s.
 - Silêncio final: 900 ms.
 - Pre-roll no firmware: 320 ms.
 
-O firmware anuncia o contrato base no `HELLO` do bridge e o server valida o
+O firmware anuncia esse contrato no `HELLO` do bridge e o server valida o
 tamanho dos chunks recebidos. O server mantém folga de 12 s para absorver
 atraso de `VOICE_END` e alinhamento por chunks sem descartar fala válida como
 `audio_longo`.

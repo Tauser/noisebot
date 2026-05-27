@@ -734,7 +734,7 @@ def test_server_hello_declares_voice_contract() -> None:
         "chunk_samples": 256,
     }
     assert hello["listen"]["mode"] == "auto"
-    assert hello["listen"]["max_speech_ms"] == 10000
+    assert hello["listen"]["max_speech_ms"] == 9200
     assert hello["listen"]["max_utterance_samples"] == 192000
 
 
