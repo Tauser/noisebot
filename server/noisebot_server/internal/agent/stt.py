@@ -20,6 +20,11 @@ _DEFAULT_MIN_LOGPROB = -1.10
 _DEFAULT_MAX_COMPRESSION = 2.60
 _DEFAULT_MIN_RMS = 140.0
 _DEFAULT_MIN_PEAK = 1600
+DEFAULT_INITIAL_PROMPT = (
+    "Comandos em português para um robô chamado Noisebot. Exemplos: "
+    "Noisebot, que horas são? Me conte uma piada curta. Como está o clima hoje? "
+    "Anote que eu bebi água. Vamos conversar um pouco. Pare de falar."
+)
 _REPEATED_TOKEN_MIN_WORDS = 10
 
 
@@ -82,6 +87,7 @@ class WhisperLocalSTT(STTProvider):
         beam_size: int = 5,
         denoise_enabled: bool = False,
         vad_filter_enabled: bool = False,
+        initial_prompt: str | None = None,
         noise_gate_mult: float = 1.8,
         noise_gate_floor: float = 0.003,
     ) -> None:
@@ -97,6 +103,7 @@ class WhisperLocalSTT(STTProvider):
         self._beam_size = beam_size
         self._denoise_enabled = denoise_enabled
         self._vad_filter_enabled = vad_filter_enabled
+        self._initial_prompt = initial_prompt
         self._noise_gate_mult = max(1.0, noise_gate_mult)
         self._noise_gate_floor = max(0.0, noise_gate_floor)
         self._model: Any = None
@@ -221,6 +228,7 @@ class WhisperLocalSTT(STTProvider):
             log_prob_threshold=self._min_avg_logprob,
             no_speech_threshold=self._max_no_speech_prob,
             temperature=0.0,
+            initial_prompt=self._initial_prompt,
             vad_filter=self._vad_filter_enabled,
             vad_parameters=(
                 {
@@ -253,7 +261,7 @@ class WhisperLocalSTT(STTProvider):
         if not text:
             return text, TranscriptQuality.EMPTY, no_speech_prob, avg_logprob, compression_ratio
         if no_speech_prob > self._max_no_speech_prob:
-            return text, TranscriptQuality.NO_SPEECH, no_speech_prob, avg_logprob, compression_ratio
+            return "", TranscriptQuality.NO_SPEECH, no_speech_prob, avg_logprob, compression_ratio
         if avg_logprob < self._min_avg_logprob:
             return text, TranscriptQuality.LOW_LOGPROB, no_speech_prob, avg_logprob, compression_ratio
         if compression_ratio > self._max_compression_ratio:
@@ -357,4 +365,4 @@ def _env_float(key: str, default: float) -> float:
         return default
 
 
-__all__ = ["STTProvider", "WhisperLocalSTT"]
+__all__ = ["DEFAULT_INITIAL_PROMPT", "STTProvider", "WhisperLocalSTT"]

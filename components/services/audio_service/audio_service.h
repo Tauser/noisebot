@@ -9,7 +9,10 @@
  *   - Gravação de diagnóstico: N segundos de PCM salvo como WAV no SD.
  *
  * Listening / VAD:
- *   - A sessão conversacional abre apenas por wake word.
+ *   - Modo auto é o único modo ativo nesta fase: wake word/follow-up abre uma
+ *     janela e o VAD encerra por silêncio.
+ *   - Modos manual e realtime são reservados e retornam ESP_ERR_NOT_SUPPORTED.
+ *   - A sessão conversacional abre apenas por wake word ou follow-up explícito.
  *   - ESP-SR VAD é a fonte primária de início/fim de fala dentro da sessão.
  *   - A heurística RMS + ZCR + assinatura espectral continua calculada para
  *     diagnóstico/calibração e fallback de bancada explicitamente habilitado,
@@ -163,11 +166,19 @@ uint8_t audio_get_volume(void);
 
 /* ── Sessão de escuta (Etapa 12.3) ──────────────────────────────────────── */
 
+/** Modo de escuta conversacional. */
+typedef enum {
+    NB_LISTEN_MODE_AUTO,      /**< Wake/follow-up abre janela; VAD encerra por silêncio */
+    NB_LISTEN_MODE_MANUAL,    /**< Reservado: toque/botão mantém aberto explicitamente  */
+    NB_LISTEN_MODE_REALTIME,  /**< Reservado: conversa com AEC validado                 */
+} nb_listen_mode_t;
+
 /** Quem abriu a sessão de escuta. */
 typedef enum {
     NB_LISTEN_SOURCE_TOUCH,      /**< Legado: listen por toque desabilitado */
     NB_LISTEN_SOURCE_WAKE_WORD,  /**< Ativado por wake word                */
     NB_LISTEN_SOURCE_FOLLOWUP,   /**< Janela curta apos resposta do bridge */
+    NB_LISTEN_SOURCE_BARGE_IN,   /**< Interrupção de TTS abre novo turno   */
     NB_LISTEN_SOURCE_DEBUG,      /**< Ativado pelo VAD em modo de debug    */
 } nb_listen_source_t;
 
@@ -182,13 +193,24 @@ typedef enum {
 /**
  * @brief Abre uma sessão de escuta.
  *
- * Abre uma janela visual de escuta. O VOICE_ACTIVITY_START e o streaming para a
- * bridge começam apenas quando o ESP-SR VAD detectar fala; se não houver fala, a
- * sessão fecha por timeout curto sem enviar sessão vazia ao bridge.
+ * Abre uma janela visual de escuta no modo auto. O VOICE_ACTIVITY_START e o
+ * streaming para a bridge começam apenas quando o ESP-SR VAD detectar fala; se
+ * não houver fala, a sessão fecha por timeout curto sem enviar sessão vazia ao
+ * bridge.
  *
  * @return ESP_OK, ESP_ERR_INVALID_STATE se já há sessão ativa ou não iniciado.
  */
 esp_err_t audio_service_begin_listen_session(nb_listen_source_t source);
+
+/**
+ * @brief Abre uma sessão de escuta em modo explícito.
+ *
+ * Nesta fase apenas NB_LISTEN_MODE_AUTO é suportado. Manual e realtime são
+ * formalizados para o contrato de turn-taking, mas só serão ativados depois dos
+ * critérios de segurança/AEC correspondentes.
+ */
+esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source,
+                                                       nb_listen_mode_t mode);
 
 /**
  * @brief Fecha a sessão de escuta ativa.

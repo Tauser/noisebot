@@ -58,6 +58,7 @@
 #include "web_service.h"
 #include "bridge_service.h"
 #include "wake_service.h"
+#include "audio_processor_service.h"
 #include "time_service.h"
 #include "agenda_service.h"
 #include "vision_service.h"
@@ -1339,6 +1340,14 @@ static esp_err_t phase_services(void)
                 esp_err_to_name(err));
     } else {
         nb_event_subscribe(NB_EVT_WAKE_WORD_DETECTED, on_wake_word_detected, NULL, NULL);
+    }
+
+    /* audio_processor_service (Voice Pipeline Fase 5): probe AFE_TYPE_VC
+     * opt-in por NVS. Não altera o pipeline principal de áudio. */
+    err = audio_processor_service_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        NB_LOGW(TAG, "audio_processor_service_init falhou: %s",
+                esp_err_to_name(err));
     }
 
     phase_ok(NB_BOOT_PHASE_SERVICES);

@@ -50,6 +50,9 @@ class MetricsApi:
         output_series = snap.get("output_tokens")
         output_total = _total_from_snapshot(output_series)
 
+        last_voice_session = self._store.last_voice_session.copy()
+        voice_alert = _voice_alert(last_voice_session)
+
         return {
             "latency_ms": latency_ms,
             "turns": self._store.turn_counters.copy(),
@@ -57,9 +60,10 @@ class MetricsApi:
                 "input": input_total,
                 "output": output_total,
             },
-            "last_voice_session": self._store.last_voice_session.copy(),
+            "last_voice_session": last_voice_session,
             "recent_voice_sessions": self._store.recent_voice_sessions,
-            "voice_alert": _voice_alert(self._store.last_voice_session),
+            "voice_alert": voice_alert,
+            "voice_diagnosis": _voice_diagnosis(last_voice_session, voice_alert),
             "estimated_cost": None,  # preenchido quando providers fornecerem uso
         }
 
@@ -114,3 +118,47 @@ def _voice_alert(session: dict) -> dict | None:
             "detail": str(quality),
         }
     return None
+
+
+def _voice_diagnosis(session: dict, alert: dict | None) -> dict | None:
+    if not session:
+        return None
+    reason = str(
+        session.get("error_reason")
+        or session.get("discard_reason")
+        or session.get("transcript_quality")
+        or session.get("outcome")
+        or ""
+    )
+    lower_reason = reason.lower()
+    title = alert["title"] if alert else "Turno de voz concluído"
+    detail = alert["detail"] if alert else "sem alerta"
+    next_check = "Comparar duração, qualidade STT e latência até o primeiro áudio."
+
+    if "audio_curto" in lower_reason:
+        detail = "áudio útil abaixo do mínimo para STT"
+        next_check = "Verificar wake sem fala, limiar de VAD e distância do microfone."
+    elif "audio_longo" in lower_reason:
+        detail = "fala excedeu o teto de 10 s antes do STT"
+        next_check = "Confirmar encerramento por silêncio e evitar sessão presa aberta."
+    elif "backpressure" in lower_reason:
+        detail = "bridge congestionado descartou áudio antes do STT"
+        next_check = "Verificar fila TCP, carga do server e pacing dos chunks."
+    elif "chunk_invalido" in lower_reason or "invalid_chunk" in lower_reason:
+        detail = "chunk fora do contrato PCM16/256 samples"
+        next_check = "Conferir contrato HELLO e tamanho dos frames no firmware."
+    elif "stt" in lower_reason or lower_reason in {"empty", "low_confidence", "bad"}:
+        detail = "STT rejeitou ou degradou a transcrição"
+        next_check = "Comparar RMS, peak, clipping e amostra enviada ao STT."
+    elif "barge" in lower_reason or session.get("outcome") == "interrupted":
+        detail = "turno interrompido por barge-in"
+        next_check = "Confirmar que SPEECH_CANCEL drenou áudio antigo e abriu turno limpo."
+    elif session.get("outcome") == "failed" or session.get("error_stage"):
+        detail = detail or "erro no pipeline de voz"
+        next_check = "Abrir eventos de sessão e checar o estágio indicado."
+
+    return {
+        "title": title,
+        "detail": detail,
+        "next_check": next_check,
+    }

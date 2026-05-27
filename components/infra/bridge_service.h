@@ -41,6 +41,7 @@
  *   GAZE       → NB_EVT_BRIDGE_GAZE      (data.bytes = float x,y)
  *   TEXT_SCROLL→ NB_EVT_BRIDGE_TEXT_SCROLL(data.ptr = static char[129])
  *   VOLUME     → NB_EVT_BRIDGE_VOLUME    (data.u32 = 0..100)
+ *   SPEECH_CANCEL → NB_EVT_BRIDGE_SPEECH_CANCEL(data.u32 = turn_id)
  *
  * Thread-safety: todas as funções públicas são thread-safe via mutex.
  *
@@ -95,6 +96,7 @@ typedef enum {
     NB_BRIDGE_MSG_GAZE         = 0x14,   /* float x, float y [-1..1]          */
     NB_BRIDGE_MSG_TEXT_SCROLL  = 0x15,   /* string UTF-8, máx 128 bytes       */
     NB_BRIDGE_MSG_VOLUME       = 0x16,   /* volume 0..100                     */
+    NB_BRIDGE_MSG_SPEECH_CANCEL = 0x20,  /* cancela fala atual; uint32 turn_id */
     /* Handshake */
     NB_BRIDGE_MSG_HELLO        = 0x00,   /* handshake hello (ambas direções)  */
 } nb_bridge_msg_type_t;
@@ -175,9 +177,9 @@ bool bridge_service_is_connected(void);
 /**
  * @brief Consome a intenção de abrir follow-up após a resposta atual.
  *
- * O flag é armado quando o bridge envia TEXT_SCROLL com uma pergunta. Retorna
- * true uma única vez e limpa o flag, para o firmware só abrir escuta contínua
- * quando a resposta realmente pede continuidade.
+ * O flag é armado quando o bridge envia SESSION/FOLLOWUP_ARM. Retorna true uma
+ * única vez e limpa o flag, para o firmware só abrir escuta contínua quando a
+ * resposta realmente pede continuidade.
  */
 bool bridge_service_consume_followup_request(void);
 

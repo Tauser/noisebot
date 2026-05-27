@@ -12,11 +12,12 @@ from .llm import (
 )
 from .orchestrator import Orchestrator
 from .runtime import EventBus, SessionContext, TurnManager, TurnState
-from .stt import STTProvider, WhisperLocalSTT
+from .stt import DEFAULT_INITIAL_PROMPT, STTProvider, WhisperLocalSTT
 from .tts import PiperServerTTS, Sentencizer, TTSProvider
 
 __all__ = [
     "EventBus",
+    "DEFAULT_INITIAL_PROMPT",
     "GeminiProvider",
     "LLMProvider",
     "LocalIntentProvider",

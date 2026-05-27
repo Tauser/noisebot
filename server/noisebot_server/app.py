@@ -11,6 +11,7 @@ from typing import Any
 from .config import LlmProvider, NoiseBotServerConfig, PipelineMode
 from .internal.agent import (
     EventBus,
+    DEFAULT_INITIAL_PROMPT,
     GeminiProvider,
     OllamaProvider,
     OpenAIStreamingProvider,
@@ -89,6 +90,7 @@ class NoiseBotServer:
             beam_size=stt.beam_size,
             denoise_enabled=_env_bool("NOISEBOT_STT_DENOISE", False),
             vad_filter_enabled=_env_bool("NOISEBOT_WHISPER_VAD_FILTER", False),
+            initial_prompt=os.environ.get("NOISEBOT_WHISPER_INITIAL_PROMPT", DEFAULT_INITIAL_PROMPT),
             noise_gate_mult=_env_float("NOISEBOT_STT_NOISE_GATE_MULT", 1.8),
             noise_gate_floor=_env_float("NOISEBOT_STT_NOISE_GATE_FLOOR", 0.003),
         )
@@ -102,17 +104,20 @@ class NoiseBotServer:
         if llm.provider == LlmProvider.OPENAI:
             return OpenAIStreamingProvider(
                 model=llm.model,
+                temperature=llm.temperature,
                 max_tokens=llm.max_output_tokens,
             )
         if llm.provider == LlmProvider.GEMINI:
             return GeminiProvider(
                 model=llm.model,
+                temperature=llm.temperature,
                 max_tokens=llm.max_output_tokens,
             )
         if llm.provider == LlmProvider.OLLAMA:
             return OllamaProvider(
                 model=llm.model,
                 base_url=llm.ollama_base_url,
+                temperature=llm.temperature,
                 max_tokens=llm.max_output_tokens,
                 think=llm.ollama_think,
             )

@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
 
@@ -42,6 +42,7 @@ class FirmwareDiagClient:
             "version": "api/version",
             "wifi": "api/wifi",
             "audio": "api/audio",
+            "audio_processor": "api/audio/processor",
             "camera": "api/camera/status",
             "vision": "api/vision/status",
             "touch": "api/touch",
@@ -86,12 +87,76 @@ class FirmwareDiagClient:
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             raise FirmwareDiagError(f"{path}: {exc}") from exc
 
+    def _post_json(self, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        url = urljoin(self.base_url, path.lstrip("/"))
+        body = json.dumps(payload or {}).encode("utf-8")
+        request = Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "NoiseBot-Server/0.1",
+            },
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_s) as response:
+                data = response.read().decode("utf-8")
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            raise FirmwareDiagError(f"{path}: {exc}") from exc
+        try:
+            decoded = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise FirmwareDiagError(f"{path}: resposta nao e JSON") from exc
+        if not isinstance(decoded, dict):
+            raise FirmwareDiagError(f"{path}: resposta invalida")
+        return decoded
+
+    def list_audio_files(self) -> dict[str, Any]:
+        payload = self._get_json("api/audio/files")
+        if not isinstance(payload, dict):
+            raise FirmwareDiagError("api/audio/files: resposta invalida")
+        return payload
+
+    def download_audio_file(self, name: str) -> bytes:
+        if not _valid_audio_filename(name):
+            raise FirmwareDiagError("nome de arquivo invalido")
+        return self._get_bytes(f"api/audio/file?{urlencode({'name': name})}")
+
+    def audio_processor_status(self) -> dict[str, Any]:
+        payload = self._get_json("api/audio/processor")
+        if not isinstance(payload, dict):
+            raise FirmwareDiagError("api/audio/processor: resposta invalida")
+        return payload
+
+    def audio_processor_probe(self) -> dict[str, Any]:
+        return self._post_json("api/audio/processor/probe")
+
+    def audio_processor_shadow_start(self) -> dict[str, Any]:
+        return self._post_json("api/audio/processor/shadow/start")
+
+    def audio_processor_shadow_stop(self) -> dict[str, Any]:
+        return self._post_json("api/audio/processor/shadow/stop")
+
+    def audio_processor_bridge_start(self) -> dict[str, Any]:
+        return self._post_json("api/audio/processor/bridge/start")
+
+    def audio_processor_bridge_stop(self) -> dict[str, Any]:
+        return self._post_json("api/audio/processor/bridge/stop")
+
 
 def _env_float(key: str, default: float) -> float:
     try:
         return float(os.environ.get(key, default))
     except (TypeError, ValueError):
         return default
+
+
+def _valid_audio_filename(name: str) -> bool:
+    if not name.endswith(".wav") or len(name) < 5 or len(name) > 80:
+        return False
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.")
+    return all(ch in allowed for ch in name)
 
 
 __all__ = ["FirmwareDiagClient", "FirmwareDiagError"]

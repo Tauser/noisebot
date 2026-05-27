@@ -18,6 +18,7 @@
 #include "synth_service.h"
 #include "bridge_service.h"
 #include "wake_service.h"
+#include "audio_processor_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -40,7 +41,8 @@
 typedef void *nb_esp_vad_handle_t;
 extern nb_esp_vad_handle_t vad_create_with_param(
     int vad_mode, int sample_rate, int one_frame_ms, int min_speech_ms, int min_noise_ms);
-extern int vad_process_with_trigger(nb_esp_vad_handle_t handle, int16_t *data);
+extern int vad_process(nb_esp_vad_handle_t handle, int16_t *data,
+                       int sample_rate_hz, int one_frame_ms);
 extern void vad_reset_trigger(nb_esp_vad_handle_t handle);
 extern void vad_destroy(nb_esp_vad_handle_t handle);
 
@@ -103,10 +105,10 @@ extern void vad_destroy(nb_esp_vad_handle_t handle);
 #define LISTEN_END_SILENCE_MS            900U
 #define LISTEN_EARLY_END_SILENCE_MS     1300U
 #define LISTEN_EARLY_GRACE_MS           6000U
-/* Contrato conversacional v1: a fala útil é curta e previsível. O server usa
- * o mesmo teto (160000 samples @16kHz = 10s), evitando sessões longas que
- * degradam STT, TTS e watchdog. */
-#define LISTEN_MAX_SPEECH_MS           10000U
+/* Contrato conversacional v1: a fala útil é curta e previsível. Mantemos o
+ * teto do firmware abaixo do limite do server (160000 samples @16kHz = 10s)
+ * para o VOICE_END chegar antes do descarte por audio_longo. */
+#define LISTEN_MAX_SPEECH_MS            9200U
 #define BRIDGE_TX_FAIL_ABORT_COUNT     4U
 
 /* High-pass one-pole para tirar rumble/engine abaixo de ~180 Hz antes do VAD.
@@ -218,6 +220,7 @@ static struct {
     uint8_t              bridge_tx_fail_count;        /* falhas seguidas na fila TX */
     bool                 bridge_flush_before_end;     /* limpa fila antes do END    */
     listen_phase_t       listen_phase;                /* turn-taking interno       */
+    nb_listen_mode_t     listen_mode;                 /* auto/manual/realtime      */
     uint32_t             listen_wait_remaining_ms;    /* espera por 1a fala        */
     uint32_t             listen_speech_elapsed_ms;    /* teto desde fala iniciar   */
     bool                 listen_voice_detected;       /* VAD ativou na sessão    */
@@ -255,6 +258,7 @@ static int16_t  s_rec_chunk[NB_AUDIO_CHUNK_FRAMES];
 static int16_t  s_sa_buf   [NB_AUDIO_CHUNK_FRAMES]; /* buffer para sound_analysis_tick */
 static int16_t  s_wake_buf [NB_AUDIO_CHUNK_FRAMES]; /* mic cru 16-bit para WakeNet */
 static int16_t  s_bridge_buf[NB_AUDIO_CHUNK_FRAMES]; /* mic ganho/limit para bridge */
+static int16_t  s_bridge_proc_buf[NB_AUDIO_CHUNK_FRAMES]; /* saida AFE opcional */
 static uint32_t s_bridge_diag_chunk_counter = 0;
 static uint32_t s_spk_fail_count = 0;
 static uint32_t s_mic_fail_count = 0;
@@ -425,6 +429,16 @@ static const char *listen_phase_name(listen_phase_t phase)
     }
 }
 
+static const char *listen_mode_name(nb_listen_mode_t mode)
+{
+    switch (mode) {
+    case NB_LISTEN_MODE_AUTO:     return "auto";
+    case NB_LISTEN_MODE_MANUAL:   return "manual";
+    case NB_LISTEN_MODE_REALTIME: return "realtime";
+    default:                      return "unknown";
+    }
+}
+
 static const char *listen_end_reason_name(nb_listen_end_reason_t reason)
 {
     switch (reason) {
@@ -501,6 +515,7 @@ static const char *listen_source_name(nb_listen_source_t source)
     case NB_LISTEN_SOURCE_TOUCH:     return "touch";
     case NB_LISTEN_SOURCE_WAKE_WORD: return "wake_word";
     case NB_LISTEN_SOURCE_FOLLOWUP:  return "followup";
+    case NB_LISTEN_SOURCE_BARGE_IN:  return "barge_in";
     case NB_LISTEN_SOURCE_DEBUG:     return "debug";
     default:                         return "unknown";
     }
@@ -539,8 +554,8 @@ static int esp_vad_update(const int16_t *pcm, size_t n, bool muted)
         off += to_copy;
 
         if (s.esp_vad_pos >= ESP_SR_VAD_FRAME_SAMPLES) {
-            s.esp_vad_last_state = vad_process_with_trigger(s.esp_vad,
-                                                            s.esp_vad_frame);
+            s.esp_vad_last_state = vad_process(s.esp_vad, s.esp_vad_frame,
+                                                16000, ESP_SR_VAD_FRAME_MS);
             s.esp_vad_pos = 0;
         }
     }
@@ -571,6 +586,8 @@ static bool listen_start_bridge_capture(void)
                  esp_err_to_name(start_rc));
         return false;
     }
+
+    audio_processor_service_bridge_capture_begin();
 
     uint8_t pr_count = s_preroll_count;
     if (pr_count > 0U) {
@@ -608,12 +625,14 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
 
     s.listen_session_active    = false;
     s.listen_phase             = LISTEN_PHASE_IDLE;
+    s.listen_mode              = NB_LISTEN_MODE_AUTO;
     s.listen_wait_remaining_ms = 0;
     s.listen_speech_elapsed_ms = 0;
     s.bridge_tx_active         = false;
     s.vad_state                = VAD_SILENCE;
     s.vad_enter_count          = 0;
     s.vad_silence_start_us     = 0;
+    audio_processor_service_bridge_capture_end();
 
     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END,
                                NB_AUDIO_EVT_DATA_SESSION);
@@ -884,16 +903,20 @@ static void audio_task(void *arg)
         xSemaphoreGive(s.mutex);
 
         bool wrote_audio = false;
-
         /* ── Stop pedido ── */
         if (play_state == PLAY_STOP) {
             if (wav_file) {
                 fclose(wav_file);
                 wav_file = NULL;
             }
+            if (s.bridge_say_q) {
+                xQueueReset(s.bridge_say_q);
+            }
             if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
             xSemaphoreTake(s.mutex, portMAX_DELAY);
             s.play_state = PLAY_IDLE;
+            s.bridge_say_playing = false;
+            s.bridge_say_empty_ms = 0;
             xSemaphoreGive(s.mutex);
         }
 
@@ -1052,6 +1075,7 @@ static void audio_task(void *arg)
             s_sa_buf[i] = (int16_t)v;
         }
         sound_analysis_tick(s_sa_buf, mic_n);
+        audio_processor_service_feed_shadow(s_sa_buf, (uint16_t)mic_n);
 
         /* ── 4. VAD ─────────────────────────────────────────────────────── */
         vad_update(s_mic_proc, s_sa_buf, mic_n, wrote_audio);
@@ -1073,7 +1097,10 @@ static void audio_task(void *arg)
             uint16_t raw_peak = 0;
             uint16_t tx_peak = 0;
             uint16_t saturated = 0;
-            bridge_prepare_tx_audio(s_sa_buf, s_bridge_buf, mic_n,
+            bool used_processed = audio_processor_service_read_bridge_processed(
+                s_bridge_proc_buf, (uint16_t)mic_n);
+            const int16_t *bridge_src = used_processed ? s_bridge_proc_buf : s_sa_buf;
+            bridge_prepare_tx_audio(bridge_src, s_bridge_buf, mic_n,
                                     &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
             esp_err_t tx_rc = bridge_service_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n);
             if (tx_rc == ESP_OK) {
@@ -1081,7 +1108,8 @@ static void audio_task(void *arg)
                 s.bridge_tx_fail_count = 0;
                 if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
                     ESP_LOGI(TAG,
-                             "bridge tx diag: raw_rms=%ld raw_peak=%u tx_rms=%ld tx_peak=%u sat=%u/%u",
+                             "bridge tx diag: source=%s raw_rms=%ld raw_peak=%u tx_rms=%ld tx_peak=%u sat=%u/%u",
+                             used_processed ? "afe" : "raw",
                              (long)raw_rms,
                              (unsigned)raw_peak,
                              (long)tx_rms,
@@ -1240,6 +1268,7 @@ esp_err_t audio_service_init(void)
     s.bridge_tx_fail_count        = 0;
     s.bridge_flush_before_end     = false;
     s.listen_phase                = LISTEN_PHASE_IDLE;
+    s.listen_mode                 = NB_LISTEN_MODE_AUTO;
     s.listen_wait_remaining_ms    = 0;
     s.listen_speech_elapsed_ms    = 0;
     s.listen_voice_detected       = false;
@@ -1319,14 +1348,21 @@ esp_err_t audio_play_stop(void)
 {
     if (!s.initialized) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(s.mutex, portMAX_DELAY);
-    if (s.play_state == PLAY_ACTIVE) s.play_state = PLAY_STOP;
+    if (s.play_state == PLAY_ACTIVE ||
+        s.play_state == PLAY_BRIDGE_SAY ||
+        s.bridge_say_playing) {
+        s.play_state = PLAY_STOP;
+    }
     xSemaphoreGive(s.mutex);
     return ESP_OK;
 }
 
 bool audio_is_playing(void)
 {
-    return s.initialized && (s.play_state == PLAY_ACTIVE);
+    return s.initialized &&
+           (s.play_state == PLAY_ACTIVE ||
+            s.play_state == PLAY_BRIDGE_SAY ||
+            s.bridge_say_playing);
 }
 
 esp_err_t audio_set_volume(uint8_t level)
@@ -1380,14 +1416,25 @@ esp_err_t audio_record_bridge_tx_diagnostic(const char *path, uint32_t duration_
 
 esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
 {
+    return audio_service_begin_listen_session_with_mode(source, NB_LISTEN_MODE_AUTO);
+}
+
+esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source,
+                                                       nb_listen_mode_t mode)
+{
     if (!s.initialized)           return ESP_ERR_INVALID_STATE;
     if (s.listen_session_active)  return ESP_ERR_INVALID_STATE;
+    if (mode != NB_LISTEN_MODE_AUTO) {
+        ESP_LOGI(TAG, "listen mode=%s ainda nao suportado", listen_mode_name(mode));
+        return ESP_ERR_NOT_SUPPORTED;
+    }
     if (source == NB_LISTEN_SOURCE_TOUCH) {
         ESP_LOGI(TAG, "listen por touch desabilitado — touch reservado para interação");
         return ESP_ERR_NOT_SUPPORTED;
     }
 
     s.listen_session_active       = true;
+    s.listen_mode                 = mode;
     s.bridge_start_sent           = false;
     s.bridge_audio_sent           = false;
     s.bridge_tx_fail_count        = 0;
@@ -1402,16 +1449,23 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
 
     /* Wake/follow-up: áudio recente pode deixar o VAD em ACTIVE antes de a sessão abrir.
      * Resetar para SILENCE evita VOICE_END prematuro por silêncio pós-wake-word. */
-    if (source == NB_LISTEN_SOURCE_WAKE_WORD || source == NB_LISTEN_SOURCE_FOLLOWUP) {
+    if (source == NB_LISTEN_SOURCE_WAKE_WORD ||
+        source == NB_LISTEN_SOURCE_FOLLOWUP ||
+        source == NB_LISTEN_SOURCE_BARGE_IN) {
         s.vad_state            = VAD_SILENCE;
         s.vad_enter_count      = 0;
         s.vad_silence_start_us = 0;
     }
 
-    if (source == NB_LISTEN_SOURCE_WAKE_WORD) {
-        ESP_LOGI(TAG, "[ PODE FALAR ]");
+    if (source == NB_LISTEN_SOURCE_WAKE_WORD || source == NB_LISTEN_SOURCE_BARGE_IN) {
+        if (source == NB_LISTEN_SOURCE_BARGE_IN) {
+            ESP_LOGI(TAG, "[ TE OUVI — CONTINUE ]");
+        } else {
+            ESP_LOGI(TAG, "[ PODE FALAR ]");
+        }
         if (listen_start_bridge_capture()) {
-            ESP_LOGI(TAG, "bridge captura aberta imediatamente apos wake word");
+            ESP_LOGI(TAG, "bridge captura aberta imediatamente source=%s",
+                     listen_source_name(source));
         } else {
             listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
             return ESP_ERR_INVALID_STATE;
@@ -1419,8 +1473,9 @@ esp_err_t audio_service_begin_listen_session(nb_listen_source_t source)
     } else if (source == NB_LISTEN_SOURCE_FOLLOWUP) {
         ESP_LOGI(TAG, "[ PODE CONTINUAR ]");
     }
-    ESP_LOGI(TAG, "sessao listen aberta source=%s phase=%s wait=%ums preroll=%u bridge_conn=%d",
-             listen_source_name(source), listen_phase_name(s.listen_phase),
+    ESP_LOGI(TAG, "sessao listen aberta source=%s mode=%s phase=%s wait=%ums preroll=%u bridge_conn=%d",
+             listen_source_name(source), listen_mode_name(s.listen_mode),
+             listen_phase_name(s.listen_phase),
              (unsigned)s.listen_wait_remaining_ms, (unsigned)s_preroll_count,
              (int)bridge_service_is_connected());
     return ESP_OK;

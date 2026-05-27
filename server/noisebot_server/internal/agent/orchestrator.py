@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from typing import Any, Callable
 
 from .intents import LocalIntentProvider
@@ -65,6 +66,8 @@ from ..vision import VisionClient
 log = logging.getLogger(__name__)
 
 TURN_DEADLINE_S = 30.0  # watchdog antes de iniciar fala
+PLAYBACK_BARGE_IN_GRACE_S = 0.9
+ENABLE_SECONDARY_BARGE_IN_VAD = False
 SPEAKING_PROGRESS_DEADLINE_S = 20.0  # durante SAY: tempo maximo sem progresso
 EMPTY_WAKE_REPLY = "Oi! Em que posso ajudar?"
 MISUNDERSTOOD_REPLY = "Eu ouvi, mas não entendi direito. Pode repetir?"
@@ -183,6 +186,7 @@ class Orchestrator:
         self._empty_wake_prompted_at: float | None = None
         self._misunderstood_prompted_at: float | None = None
         self._misunderstood_prompt_pending = False
+        self._recent_llm_replies: deque[str] = deque(maxlen=6)
 
         # Queue de eventos: o Orchestrator assina todos
         self._events = bus.subscribe(maxsize=-1)  # ilimitado para o maestro
@@ -341,8 +345,19 @@ class Orchestrator:
                 self._stt.feed(event.pcm)
 
         # Fase 7: VAD secundário — detecta barge-in durante SPEAKING/THINKING
-        if self._fsm.can_interrupt and self._session is not None:
-            if self._vad.feed(event.pcm):
+        if ENABLE_SECONDARY_BARGE_IN_VAD and self._fsm.can_interrupt and self._session is not None:
+            first_audio = self._session.timeline.get("first_audio_out")
+            playback_age = (
+                time.monotonic() - first_audio
+                if first_audio is not None
+                else None
+            )
+            allow_barge = (
+                self._fsm.state == TurnState.THINKING
+                or playback_age is None
+                or playback_age >= PLAYBACK_BARGE_IN_GRACE_S
+            )
+            if self._vad.feed(event.pcm, allow_trigger=allow_barge):
                 log.info(
                     "VAD barge-in detectado no turno %d (energia sustentada)",
                     self._session.turn_id,
@@ -754,6 +769,7 @@ class Orchestrator:
             context: dict = {
                 "turn_id": turn_id,
                 "robot_state": session.intent_name or "",
+                "recent_replies": list(self._recent_llm_replies),
             }
 
             stream = self._llm.generate_stream(text, context)
@@ -774,7 +790,7 @@ class Orchestrator:
             session.mark("llm_complete")
 
             # ── Parseia JSON de resposta ───────────────────────────────────
-            from .llm import parse_llm_json, recover_llm_reply_text
+            from .llm import enforce_pt_br_reply, parse_llm_json, recover_llm_reply_text
             try:
                 parsed = parse_llm_json(raw_response)
             except (ValueError, Exception) as exc:
@@ -789,7 +805,14 @@ class Orchestrator:
                     "emot_event": None,
                 }
 
-            reply_text = parsed["reply"]
+            reply_text, language_replaced = enforce_pt_br_reply(parsed["reply"], text)
+            if language_replaced:
+                log.warning(
+                    "Turno %d: reply LLM substituida por guard de idioma pt-BR",
+                    turn_id,
+                )
+            if reply_text:
+                self._recent_llm_replies.append(reply_text)
 
             # ── Sentencizer → SentenceReady ────────────────────────────────
             sentences = _sentences_for_tts(reply_text)
@@ -999,6 +1022,7 @@ class Orchestrator:
                 self._metrics.record("tts_first_audio_ms", tts_first_ms)
                 self._metrics.record("first_audio_out_ms", turn_elapsed_ms)
                 session.mark("first_audio_out", t)
+                self._vad.reset()
                 log.info(
                     "Turno %d: primeiro SAY tts=%.0fms pos_fim_voz=%.0fms turno=%.0fms",
                     tid,

@@ -66,6 +66,16 @@ h3{font-size:13px;font-weight:600;margin-bottom:6px}
   padding:8px 10px}
 .turn-text{font-size:12px;color:var(--text);white-space:pre-wrap;word-break:break-word}
 .turn-reply{max-height:170px;overflow:auto}
+.voice-alert{border:1px solid var(--border);border-radius:var(--r);padding:9px 10px;
+  margin-bottom:10px;background:#f8fafc}
+.voice-alert.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.voice-alert.error{background:#fff5f5;border-color:#fecaca;color:#991b1b}
+.voice-kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px}
+.voice-history{margin-top:10px;display:flex;flex-direction:column;gap:5px}
+.voice-row{display:grid;grid-template-columns:48px 1fr 82px 82px;gap:6px;align-items:center;
+  border-bottom:1px solid #f1f5f9;padding:4px 0;font-size:11px}
+.voice-row:last-child{border-bottom:none}
+.voice-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* Metrics table */
 table{width:100%;border-collapse:collapse;font-size:12px}
@@ -247,6 +257,13 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
       </table>
       <div class="tc" id="turn-counters"></div>
       <div id="token-usage" style="margin-top:8px;font-size:11px;color:var(--muted)"></div>
+    </div>
+
+    <div class="card">
+      <h2>Diagnóstico de Voz</h2>
+      <div id="voice-diagnosis">
+        <p class="empty-state">Nenhuma sessão de voz registrada.</p>
+      </div>
     </div>
 
     <div class="card">
@@ -465,6 +482,7 @@ function render() {
   renderHeader(health);
   if (status) renderStatus(status);
   if (metrics) renderMetrics(metrics);
+  if (metrics) renderVoiceDiagnostics(metrics);
   if (errors)  renderErrors(errors);
   if (config)  populateConfigForm(config);
   if (document.getElementById('raw-details').open) renderRaw();
@@ -574,6 +592,54 @@ function renderMetrics(m) {
   if (m.tokens && (m.tokens.input || m.tokens.output)) {
     tok.textContent = 'Tokens — entrada: ' + (m.tokens.input||0) + ' · saída: ' + (m.tokens.output||0);
   }
+}
+
+function renderVoiceDiagnostics(m) {
+  const root = document.getElementById('voice-diagnosis');
+  const session = m.last_voice_session || {};
+  if (!session.turn_id) {
+    root.innerHTML = '<p class="empty-state">Nenhuma sessão de voz registrada.</p>';
+    return;
+  }
+
+  const alert = m.voice_alert || null;
+  const diagnosis = m.voice_diagnosis || {};
+  const level = alert ? (alert.level === 'error' ? 'error' : 'warn') : '';
+  const title = diagnosis.title || (alert ? alert.title : 'Turno de voz concluído');
+  const detail = diagnosis.detail || (alert ? alert.detail : 'sem alerta');
+  const next = diagnosis.next_check || 'Comparar métricas do turno com o áudio real.';
+  const history = (m.recent_voice_sessions || []).slice(0, 5);
+
+  root.innerHTML =
+    '<div class="voice-alert ' + level + '">' +
+      '<h3>' + safeStr(title) + '</h3>' +
+      '<div>' + safeStr(detail) + '</div>' +
+      '<div class="err-meta">' + safeStr(next) + '</div>' +
+    '</div>' +
+    '<div class="voice-kv">' +
+      cell('Turno', '#' + safeStr(session.turn_id)) +
+      cell('Resultado', outcomePill(session.outcome || '—')) +
+      cell('Fim', safeStr(session.voice_end_reason || session.discard_reason || '—')) +
+      cell('Duração', fmtValueMs(session.duration_ms)) +
+      cell('Chunks', safeStr(session.chunk_count ?? '—')) +
+      cell('Amostras', safeStr(session.total_samples ?? '—')) +
+      cell('Qualidade STT', safeStr(session.transcript_quality || '—')) +
+      cell('Voz → STT', fmtValueMs(session.voice_end_to_stt_start_ms)) +
+      cell('STT', fmtValueMs(session.stt_ms)) +
+      cell('1º áudio', fmtValueMs(session.first_audio_out_ms)) +
+      cell('1º após voz', fmtValueMs(session.first_audio_after_voice_end_ms)) +
+      cell('Fala total', fmtValueMs(session.speech_total_ms)) +
+    '</div>' +
+    '<div class="turn-detail" style="display:flex">' +
+      '<div class="turn-box"><div class="sg-label">Transcrição</div><div class="turn-text">' +
+        safeStr(session.transcript || '—') + '</div></div>' +
+      '<div class="turn-box"><div class="sg-label">Resposta</div><div class="turn-text turn-reply">' +
+        safeStr(session.reply || '—') + '</div></div>' +
+    '</div>' +
+    '<div class="voice-history">' +
+      '<div class="sg-label">Histórico recente</div>' +
+      (history.length ? history.map(voiceHistoryRow).join('') : '<p class="empty-state">Sem histórico.</p>') +
+    '</div>';
 }
 
 function renderErrors(data) {
@@ -752,6 +818,21 @@ function providerPill(label, st) {
 function fmtMs(v) {
   if (v == null) return '<span class="num-na">—</span>';
   return Math.round(v) + ' ms';
+}
+
+function fmtValueMs(v) {
+  if (v == null || v === '') return '—';
+  return Math.round(Number(v)) + ' ms';
+}
+
+function voiceHistoryRow(s) {
+  return '<div class="voice-row">' +
+    '<span>#' + safeStr(s.turn_id || '?') + '</span>' +
+    '<span title="' + safeStr(s.discard_reason || s.intent_name || s.outcome || '') + '">' +
+      safeStr(s.discard_reason || s.intent_name || s.outcome || '—') + '</span>' +
+    '<span>' + safeStr(s.transcript_quality || '—') + '</span>' +
+    '<span>' + fmtValueMs(s.duration_ms) + '</span>' +
+  '</div>';
 }
 
 const LAT_THRESHOLDS = {

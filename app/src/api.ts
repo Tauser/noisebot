@@ -175,12 +175,19 @@ export type FirmwareDiagnostics = {
   version?: Record<string, unknown> | null;
   wifi?: Record<string, unknown> | null;
   audio?: Record<string, unknown> | null;
+  audio_processor?: Record<string, unknown> | null;
   camera?: Record<string, unknown> | null;
   vision?: Record<string, unknown> | null;
   touch?: Record<string, unknown> | null;
   agenda?: Record<string, unknown> | unknown[] | null;
   config?: Record<string, unknown> | null;
   ltm?: Record<string, unknown> | null;
+};
+
+export type AudioSampleFile = {
+  name: string;
+  size: number;
+  path?: string;
 };
 
 export type DevData = {
@@ -494,6 +501,31 @@ export function visionSnapshotUrl(): string {
 export function visionStreamUrl(): string {
   const separator = SERVER_URL.includes("?") ? "&" : "?";
   return `${SERVER_URL}/api/vision/stream.mjpg${separator}ts=${Date.now()}`;
+}
+
+export async function loadAudioSampleFiles(): Promise<AudioSampleFile[]> {
+  const body = await getJson<{ files?: AudioSampleFile[] }>("/api/device/audio/files");
+  return Array.isArray(body.files) ? body.files : [];
+}
+
+export function audioSampleDownloadUrl(name: string): string {
+  return `${SERVER_URL}/api/device/audio/files/${encodeURIComponent(name)}`;
+}
+
+export async function startAudioProcessorShadow(token: string): Promise<void> {
+  await authedJson<{ ok: boolean }>("/api/device/audio/processor/shadow/start", token, { method: "POST" });
+}
+
+export async function stopAudioProcessorShadow(token: string): Promise<void> {
+  await authedJson<{ ok: boolean }>("/api/device/audio/processor/shadow/stop", token, { method: "POST" });
+}
+
+export async function startAudioProcessorBridge(token: string): Promise<void> {
+  await authedJson<{ ok: boolean }>("/api/device/audio/processor/bridge/start", token, { method: "POST" });
+}
+
+export async function stopAudioProcessorBridge(token: string): Promise<void> {
+  await authedJson<{ ok: boolean }>("/api/device/audio/processor/bridge/stop", token, { method: "POST" });
 }
 
 async function getJson<T>(path: string): Promise<T> {

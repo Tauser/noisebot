@@ -38,6 +38,7 @@ def _make_server_config(
             provider=config_module.LlmProvider.NONE,
             model="none",
             timeout_s=10.0,
+            temperature=0.7,
             max_output_tokens=256,
             max_reply_chars=180,
             ollama_base_url="http://127.0.0.1:11434",
@@ -100,6 +101,33 @@ def test_stt_repetition_loop_guard_detects_whisper_hallucination() -> None:
         "o que e que e que e que e que e que e que e que e que e que e"
     )
     assert not stt._looks_like_repetition_loop("acenda a luz da mesa por favor")
+
+
+def test_llm_prompt_includes_recent_replies_to_avoid_repetition() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    messages = llm.build_messages(
+        "Me conte uma piada.",
+        {"recent_replies": ["Por que o livro foi ao médico? Porque tinha muitos problemas de capa."]},
+    )
+
+    system = messages[0]["content"]
+    assert "Respostas recentes a evitar repetir" in system
+    assert "livro foi ao médico" in system
+    assert "nunca repita" in system
+
+
+def test_llm_language_guard_replaces_foreign_script_reply() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    reply, replaced = llm.enforce_pt_br_reply(
+        "绿是程序员的最爱，因为蓝（绿）！",
+        "Me conte uma piada.",
+    )
+
+    assert replaced
+    assert "Por que" in reply
+    assert "绿" not in reply
 
 
 def test_server_entrypoint_exposes_server_cli() -> None:
@@ -200,6 +228,46 @@ def test_server_cli_runs_debug_transcript_without_bridge_entrypoint(monkeypatch)
         raise AssertionError("debug command must exit with helper return code")
 
     assert calls == {"text": "oi noise", "turn_id": 42}
+
+
+def test_server_cli_parses_audio_report_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "debug",
+        "audio-report",
+        "voice_samples",
+        "--output",
+        "report.md",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "audio-report"
+    assert args.path == "voice_samples"
+    assert args.output == "report.md"
+
+
+def test_server_cli_parses_afe_ab_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "debug",
+        "afe-ab",
+        "me conte uma piada",
+        "--firmware-url",
+        "http://192.168.1.30",
+        "--repeat",
+        "2",
+        "--output",
+        "afe.md",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "afe-ab"
+    assert args.phrase == "me conte uma piada"
+    assert args.firmware_url == "http://192.168.1.30"
+    assert args.repeat == 2
+    assert args.output == "afe.md"
 
 
 def test_server_cli_runs_service_status_without_bridge_entrypoint(
@@ -456,6 +524,7 @@ def test_server_transport_factory_creates_tcp_transport() -> None:
             provider=config_module.LlmProvider.NONE,
             model="none",
             timeout_s=10.0,
+            temperature=0.7,
             max_output_tokens=256,
             max_reply_chars=180,
             ollama_base_url="http://127.0.0.1:11434",
@@ -699,6 +768,23 @@ def test_server_metrics_exposes_last_voice_session() -> None:
         "title": "Turno de voz descartado",
         "detail": "stt_empty",
     }
+    assert payload["voice_diagnosis"] == {
+        "title": "Turno de voz descartado",
+        "detail": "STT rejeitou ou degradou a transcrição",
+        "next_check": "Comparar RMS, peak, clipping e amostra enviada ao STT.",
+    }
+
+
+def test_server_dashboard_renders_voice_diagnostics_panel() -> None:
+    dashboard = importlib.import_module("noisebot_server.internal.ops.dashboard")
+
+    html = dashboard.get_dashboard_html()
+
+    assert "Diagnóstico de Voz" in html
+    assert "voice-diagnosis" in html
+    assert "renderVoiceDiagnostics" in html
+    assert "Histórico recente" in html
+    assert "voice_end_to_stt_start_ms" in html
 
 
 def test_server_metrics_replaces_duplicate_voice_session_turn() -> None:

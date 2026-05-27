@@ -31,7 +31,22 @@ _SYSTEM_PROMPT = (
     "action: 0=greet 1=nod 2=shake 3=look_up 4=look_down\n"
     "emot_event: 2=voice_start 3=audio_started\n"
     "\n"
-    '"reply" deve ser natural, conciso, maximo 2-3 frases curtas.'
+    '"reply" deve ser natural, conciso, maximo 2-3 frases curtas.\n'
+    '"reply" deve ser SEMPRE em portugues do Brasil. Nao use chines, japones, '
+    "coreano, ingles, espanhol ou mistura de idiomas.\n"
+    "Se o usuario pedir piada, varie tema, estrutura e punchline; nunca repita "
+    "uma piada ou resposta recente."
+)
+
+_FOREIGN_SCRIPT_RE = re.compile(
+    r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]"
+)
+_PT_LANGUAGE_FALLBACK = (
+    "Desculpa, minha resposta saiu no idioma errado. Vou responder em portugues."
+)
+_PT_JOKE_FALLBACK = (
+    "Claro. Por que o robo nao gosta de elevador? "
+    "Porque ele prefere subir de versao."
 )
 
 
@@ -61,6 +76,13 @@ def build_messages(
         extra.append(f"Estado do robo: {ctx['robot_state']}")
     if ctx.get("emotion_state"):
         extra.append(f"Estado emocional: {ctx['emotion_state']}")
+    recent_replies = ctx.get("recent_replies") or []
+    if recent_replies:
+        joined = "\n".join(f"- {str(reply)[:180]}" for reply in recent_replies[-5:])
+        extra.append(
+            "Respostas recentes a evitar repetir literalmente ou em variação próxima:\n"
+            f"{joined}"
+        )
 
     if extra:
         system_content = system_content.rstrip() + "\n\n" + "\n".join(extra)
@@ -106,6 +128,18 @@ def recover_llm_reply_text(raw: str) -> str:
     if cleaned.startswith("{") or cleaned.startswith("["):
         return "Nao consegui completar minha resposta."
     return cleaned
+
+
+def enforce_pt_br_reply(reply: str, user_text: str = "") -> tuple[str, bool]:
+    """Return a safe pt-BR reply when the model leaks unsupported scripts."""
+    cleaned = " ".join(reply.split()).strip()
+    if not cleaned:
+        return cleaned, False
+    if not _FOREIGN_SCRIPT_RE.search(cleaned):
+        return cleaned, False
+    user_lower = user_text.casefold()
+    fallback = _PT_JOKE_FALLBACK if "piada" in user_lower else _PT_LANGUAGE_FALLBACK
+    return fallback, True
 
 
 def _int_or_none(value: Any) -> int | None:
@@ -388,6 +422,7 @@ __all__ = [
     "OpenAIStreamingProvider",
     "StreamingLLMProvider",
     "build_messages",
+    "enforce_pt_br_reply",
     "parse_llm_json",
     "recover_llm_reply_text",
 ]

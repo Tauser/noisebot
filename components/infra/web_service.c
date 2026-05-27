@@ -40,6 +40,7 @@
 #include "nb_config_keys.h"
 #include "bridge_service.h"
 #include "wake_service.h"
+#include "audio_processor_service.h"
 #include "audio_service.h"
 #include "touch_service.h"
 #include "time_service.h"
@@ -49,10 +50,12 @@
 #include "synth_service.h"
 #include "sd_hal.h"
 #include "nb_hw_config.h"
+#include <dirent.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #define TAG              "nb_web"
@@ -1290,6 +1293,378 @@ static esp_err_t handle_api_audio(httpd_req_t *req)
     return httpd_resp_sendstr(req, buf);
 }
 
+static esp_err_t send_audio_processor_status(httpd_req_t *req, esp_err_t probe_err)
+{
+    nb_audio_processor_status_t st;
+    audio_processor_service_get_status(&st);
+
+    char buf[1152];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"initialized\":%s,\"enabled\":%s,"
+             "\"probe_ran\":%s,\"probe_ok\":%s,"
+             "\"shadow_active\":%s,\"shadow_stop_requested\":%s,"
+             "\"processed_bridge_enabled\":%s,"
+             "\"processed_capture_active\":%s,"
+             "\"psram_before_kb\":%lu,"
+             "\"psram_after_create_kb\":%lu,"
+             "\"psram_after_destroy_kb\":%lu,"
+             "\"shadow_psram_start_kb\":%lu,"
+             "\"shadow_psram_current_kb\":%lu,"
+             "\"shadow_feed_chunks\":%lu,"
+             "\"shadow_fetch_chunks\":%lu,"
+             "\"shadow_fetch_nulls\":%lu,"
+             "\"shadow_feed_drops\":%lu,"
+             "\"shadow_output_rms\":%lu,"
+             "\"shadow_output_peak\":%u,"
+             "\"processed_bridge_chunks\":%lu,"
+             "\"processed_bridge_fallbacks\":%lu,"
+             "\"processed_output_overruns\":%lu,"
+             "\"processed_buffer_level\":%u,"
+             "\"feed_chunksize\":%d,\"fetch_chunksize\":%d,"
+             "\"feed_channels\":%d,\"fetch_channels\":%d,"
+             "\"sample_rate_hz\":%d,"
+             "\"last_error\":\"%s\",\"probe_error\":\"%s\"}",
+             (probe_err == ESP_OK) ? "true" : "false",
+             st.initialized ? "true" : "false",
+             st.enabled ? "true" : "false",
+             st.probe_ran ? "true" : "false",
+             st.probe_ok ? "true" : "false",
+             st.shadow_active ? "true" : "false",
+             st.shadow_stop_requested ? "true" : "false",
+             st.processed_bridge_enabled ? "true" : "false",
+             st.processed_capture_active ? "true" : "false",
+             (unsigned long)st.psram_before_kb,
+             (unsigned long)st.psram_after_create_kb,
+             (unsigned long)st.psram_after_destroy_kb,
+             (unsigned long)st.shadow_psram_start_kb,
+             (unsigned long)st.shadow_psram_current_kb,
+             (unsigned long)st.shadow_feed_chunks,
+             (unsigned long)st.shadow_fetch_chunks,
+             (unsigned long)st.shadow_fetch_nulls,
+             (unsigned long)st.shadow_feed_drops,
+             (unsigned long)st.shadow_output_rms,
+             (unsigned)st.shadow_output_peak,
+             (unsigned long)st.processed_bridge_chunks,
+             (unsigned long)st.processed_bridge_fallbacks,
+             (unsigned long)st.processed_output_overruns,
+             (unsigned)st.processed_buffer_level,
+             st.feed_chunksize,
+             st.fetch_chunksize,
+             st.feed_channels,
+             st.fetch_channels,
+             st.sample_rate_hz,
+             esp_err_to_name(st.last_error),
+             esp_err_to_name(probe_err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_audio_processor_status(httpd_req_t *req)
+{
+    return send_audio_processor_status(req, ESP_OK);
+}
+
+static esp_err_t handle_api_audio_processor_probe(httpd_req_t *req)
+{
+    if (audio_service_is_busy()) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "409 Conflict");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
+    }
+
+    esp_err_t err = audio_processor_service_probe_once();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+    return send_audio_processor_status(req, err);
+}
+
+static esp_err_t handle_api_audio_processor_shadow_start(httpd_req_t *req)
+{
+    if (audio_service_is_busy()) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "409 Conflict");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
+    }
+
+    esp_err_t err = audio_processor_service_shadow_start();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_STATE
+                                   ? "409 Conflict"
+                                   : "500 Internal Server Error");
+    }
+    return send_audio_processor_status(req, err);
+}
+
+static esp_err_t handle_api_audio_processor_shadow_stop(httpd_req_t *req)
+{
+    esp_err_t err = audio_processor_service_shadow_stop();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_STATE
+                                   ? "409 Conflict"
+                                   : "500 Internal Server Error");
+    }
+    return send_audio_processor_status(req, err);
+}
+
+static esp_err_t handle_api_audio_processor_bridge_start(httpd_req_t *req)
+{
+    if (audio_service_is_busy()) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "409 Conflict");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
+    }
+
+    esp_err_t err = audio_processor_service_bridge_start();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_STATE
+                                   ? "409 Conflict"
+                                   : "500 Internal Server Error");
+    }
+    return send_audio_processor_status(req, err);
+}
+
+static esp_err_t handle_api_audio_processor_bridge_stop(httpd_req_t *req)
+{
+    esp_err_t err = audio_processor_service_bridge_stop();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_STATE
+                                   ? "409 Conflict"
+                                   : "500 Internal Server Error");
+    }
+    return send_audio_processor_status(req, err);
+}
+
+static void sanitize_audio_scenario(const char *src, char *dst, size_t dst_len)
+{
+    size_t j = 0U;
+    if (dst_len == 0U) return;
+
+    if (!src || src[0] == '\0') {
+        snprintf(dst, dst_len, "sample");
+        return;
+    }
+
+    for (size_t i = 0U; src[i] != '\0' && j + 1U < dst_len; i++) {
+        char c = src[i];
+        bool ok = (c >= 'a' && c <= 'z') ||
+                  (c >= 'A' && c <= 'Z') ||
+                  (c >= '0' && c <= '9');
+        if (ok) {
+            dst[j++] = c;
+        } else if (c == '_' || c == '-' || c == ' ') {
+            dst[j++] = '_';
+        }
+    }
+
+    if (j == 0U) {
+        snprintf(dst, dst_len, "sample");
+    } else {
+        dst[j] = '\0';
+    }
+}
+
+static esp_err_t handle_api_audio_record(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    if (!recv_body(req, body, sizeof(body), NULL)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+
+    cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+    if (!root) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "400 Bad Request");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid_json\"}");
+    }
+
+    const cJSON *source_j = cJSON_GetObjectItemCaseSensitive(root, "source");
+    const cJSON *scenario_j = cJSON_GetObjectItemCaseSensitive(root, "scenario");
+    const cJSON *duration_j = cJSON_GetObjectItemCaseSensitive(root, "duration_s");
+
+    const char *source_req = cJSON_IsString(source_j) ? source_j->valuestring : "raw";
+    const char *scenario = cJSON_IsString(scenario_j) ? scenario_j->valuestring : "sample";
+    uint32_t duration_s = 5U;
+    if (cJSON_IsNumber(duration_j)) {
+        int requested = duration_j->valueint;
+        if (requested > 0 && requested <= 10) {
+            duration_s = (uint32_t)requested;
+        }
+    }
+
+    bool use_bridge_tx = strcmp(source_req, "bridge_tx") == 0;
+    bool use_raw = strcmp(source_req, "raw") == 0;
+    if (!use_raw && !use_bridge_tx) {
+        cJSON_Delete(root);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "400 Bad Request");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid_source\"}");
+    }
+    const char *source = use_bridge_tx ? "bridge_tx" : "raw";
+
+    if (!sd_hal_is_mounted() && sd_hal_try_remount() != ESP_OK) {
+        cJSON_Delete(root);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"sd_unmounted\"}");
+    }
+
+    if (audio_service_is_busy()) {
+        cJSON_Delete(root);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "409 Conflict");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
+    }
+
+    char scenario_clean[32];
+    sanitize_audio_scenario(scenario, scenario_clean, sizeof(scenario_clean));
+    (void)mkdir(NB_SD_MOUNT_POINT "/logs/audio", 0775);
+
+    char path[96];
+    uint32_t uptime_s = diagnostics_get_uptime_s();
+    snprintf(path, sizeof(path), NB_SD_MOUNT_POINT "/logs/audio/%s_%s_%lus.wav",
+             source, scenario_clean, (unsigned long)uptime_s);
+
+    esp_err_t err = use_bridge_tx
+                  ? audio_record_bridge_tx_diagnostic(path, duration_s)
+                  : audio_record_diagnostic(path, duration_s);
+    cJSON_Delete(root);
+
+    if (err != ESP_OK) {
+        char resp[96];
+        snprintf(resp, sizeof(resp), "{\"ok\":false,\"error\":\"%s\"}", esp_err_to_name(err));
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_STATE ? "409 Conflict" : "400 Bad Request");
+        return httpd_resp_sendstr(req, resp);
+    }
+
+    char resp[192];
+    snprintf(resp, sizeof(resp),
+             "{\"ok\":true,\"source\":\"%s\",\"duration_s\":%lu,\"path\":\"%s\"}",
+             source, (unsigned long)duration_s, path);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, resp);
+}
+
+static bool audio_sample_filename_valid(const char *name)
+{
+    size_t len = name ? strlen(name) : 0U;
+    if (len < 5U || len > 80U) return false;
+    if (strcmp(name + len - 4U, ".wav") != 0) return false;
+
+    for (size_t i = 0U; i < len; i++) {
+        char c = name[i];
+        bool ok = (c >= 'a' && c <= 'z') ||
+                  (c >= 'A' && c <= 'Z') ||
+                  (c >= '0' && c <= '9') ||
+                  c == '_' || c == '-' || c == '.';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+static esp_err_t ensure_audio_sample_dir(void)
+{
+    if (!sd_hal_is_mounted() && sd_hal_try_remount() != ESP_OK) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    (void)mkdir(NB_SD_MOUNT_POINT "/logs/audio", 0775);
+    return ESP_OK;
+}
+
+static esp_err_t handle_api_audio_files(httpd_req_t *req)
+{
+    if (ensure_audio_sample_dir() != ESP_OK) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"sd_unmounted\"}");
+    }
+
+    DIR *dir = opendir(NB_SD_MOUNT_POINT "/logs/audio");
+    if (!dir) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"open_dir_failed\"}");
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr_chunk(req, "{\"ok\":true,\"files\":[");
+
+    bool first = true;
+    struct dirent *entry = NULL;
+    while ((entry = readdir(dir)) != NULL) {
+        char name[96];
+        if (strlcpy(name, entry->d_name, sizeof(name)) >= sizeof(name)) continue;
+        if (!audio_sample_filename_valid(name)) continue;
+
+        char path[160];
+        snprintf(path, sizeof(path), NB_SD_MOUNT_POINT "/logs/audio/%s", name);
+
+        struct stat st;
+        long size = 0L;
+        if (stat(path, &st) == 0) {
+            size = (long)st.st_size;
+        }
+
+        char item[320];
+        snprintf(item, sizeof(item),
+                 "%s{\"name\":\"%s\",\"size\":%ld,\"path\":\"%s\"}",
+                 first ? "" : ",", name, size, path);
+        httpd_resp_sendstr_chunk(req, item);
+        first = false;
+    }
+
+    closedir(dir);
+    httpd_resp_sendstr_chunk(req, "]}");
+    return httpd_resp_sendstr_chunk(req, NULL);
+}
+
+static esp_err_t handle_api_audio_file(httpd_req_t *req)
+{
+    char query[128];
+    char name[96];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+        httpd_query_key_value(query, "name", name, sizeof(name)) != ESP_OK ||
+        !audio_sample_filename_valid(name)) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "400 Bad Request");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid_name\"}");
+    }
+
+    if (ensure_audio_sample_dir() != ESP_OK) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"sd_unmounted\"}");
+    }
+
+    char path[160];
+    snprintf(path, sizeof(path), NB_SD_MOUNT_POINT "/logs/audio/%s", name);
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "404 Not Found");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"not_found\"}");
+    }
+
+    char disposition[128];
+    snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s\"", name);
+    httpd_resp_set_type(req, "audio/wav");
+    httpd_resp_set_hdr(req, "Content-Disposition", disposition);
+
+    char chunk[1024];
+    size_t n = 0U;
+    while ((n = fread(chunk, 1U, sizeof(chunk), f)) > 0U) {
+        esp_err_t err = httpd_resp_send_chunk(req, chunk, n);
+        if (err != ESP_OK) {
+            fclose(f);
+            return err;
+        }
+    }
+    fclose(f);
+    return httpd_resp_send_chunk(req, NULL, 0U);
+}
+
 static esp_err_t handle_api_idle_post(httpd_req_t *req)
 {
     char body[MAX_BODY_LEN];
@@ -2127,6 +2502,15 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/gaze",           .method = HTTP_POST,   .handler = handle_api_gaze_post },
     { .uri = "/api/circadian",      .method = HTTP_GET,    .handler = handle_api_circadian },
     { .uri = "/api/audio",          .method = HTTP_GET,    .handler = handle_api_audio },
+    { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
+    { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },
+    { .uri = "/api/audio/processor/shadow/start", .method = HTTP_POST, .handler = handle_api_audio_processor_shadow_start },
+    { .uri = "/api/audio/processor/shadow/stop", .method = HTTP_POST, .handler = handle_api_audio_processor_shadow_stop },
+    { .uri = "/api/audio/processor/bridge/start", .method = HTTP_POST, .handler = handle_api_audio_processor_bridge_start },
+    { .uri = "/api/audio/processor/bridge/stop", .method = HTTP_POST, .handler = handle_api_audio_processor_bridge_stop },
+    { .uri = "/api/audio/record",   .method = HTTP_POST,   .handler = handle_api_audio_record },
+    { .uri = "/api/audio/files",    .method = HTTP_GET,    .handler = handle_api_audio_files },
+    { .uri = "/api/audio/file",     .method = HTTP_GET,    .handler = handle_api_audio_file },
     { .uri = "/api/idle",           .method = HTTP_POST,   .handler = handle_api_idle_post },
     /* 15.5 — WiFi */
     { .uri = "/api/wifi",           .method = HTTP_GET,    .handler = handle_api_wifi_get },
@@ -2169,7 +2553,7 @@ static void web_service_start(void)
 
     httpd_config_t cfg    = HTTPD_DEFAULT_CONFIG();
     cfg.max_open_sockets  = 3;
-    cfg.max_uri_handlers  = 60;   /* 54 APIs registradas + margem */
+    cfg.max_uri_handlers  = 64;   /* APIs registradas + margem */
     cfg.server_port       = 80;
     cfg.stack_size        = HTTPD_TASK_STACK_SIZE;
     cfg.recv_wait_timeout = 5;

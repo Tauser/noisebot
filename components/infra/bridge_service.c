@@ -54,10 +54,11 @@ static const char BRIDGE_HELLO_V2[] =
     "\"chunk_samples\":256},\"listen\":{\"mode\":\"auto\",\"max_speech_ms\":10000,"
     "\"min_utterance_samples\":8000,\"max_utterance_samples\":160000,"
     "\"end_silence_ms\":900},\"rx\":[\"say\",\"expr\",\"action\","
-    "\"emot_event\",\"gaze\",\"text_scroll\",\"volume\",\"hello\",\"session\"],"
+    "\"emot_event\",\"gaze\",\"text_scroll\",\"volume\",\"hello\",\"session\","
+    "\"speech_cancel\"],"
     "\"tx\":[\"audio_chunk\",\"event\",\"status\",\"hello\",\"session\"],"
     "\"features\":[\"voice_events\",\"status\",\"device_commands_v1\",\"volume_control\","
-    "\"session_events_v2\"]}";
+    "\"session_events_v2\",\"barge_in\"]}";
 
 /* ── TX queue ─────────────────────────────────────────────────────────────── */
 
@@ -361,6 +362,18 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
         if (data_len < 1u) break;
         evt.type     = NB_EVT_BRIDGE_VOLUME;
         evt.data.u32 = (data[0] > 100u) ? 100u : data[0];
+        nb_event_publish(&evt);
+        break;
+
+    case NB_BRIDGE_MSG_SPEECH_CANCEL:
+        if (data_len < 4u) break;
+        evt.type = NB_EVT_BRIDGE_SPEECH_CANCEL;
+        evt.data.u32 = (uint32_t)data[0]
+                     | ((uint32_t)data[1] << 8u)
+                     | ((uint32_t)data[2] << 16u)
+                     | ((uint32_t)data[3] << 24u);
+        NB_LOGI(TAG, "SPEECH_CANCEL recebido turn_id=%lu",
+                (unsigned long)evt.data.u32);
         nb_event_publish(&evt);
         break;
 

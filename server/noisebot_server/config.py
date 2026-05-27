@@ -58,6 +58,7 @@ class LlmConfig:
     provider: LlmProvider
     model: str
     timeout_s: float
+    temperature: float
     max_output_tokens: int
     max_reply_chars: int
     ollama_base_url: str
@@ -139,6 +140,7 @@ class NoiseBotServerConfig:
                 "provider": self.llm.provider.value,
                 "model": self.llm.model,
                 "timeout_s": self.llm.timeout_s,
+                "temperature": self.llm.temperature,
                 "max_output_tokens": self.llm.max_output_tokens,
                 "ollama_base_url": self.llm.ollama_base_url,
                 "ollama_think": self.llm.ollama_think,
@@ -278,6 +280,7 @@ def load_config(env_path: str | os.PathLike[str] | None = None) -> NoiseBotServe
             provider=llm_provider,
             model=_env("NOISEBOT_LLM_MODEL", DEFAULT_LLM_MODELS[llm_provider.value]),
             timeout_s=_env_float("NOISEBOT_LLM_TIMEOUT_S", 10.0),
+            temperature=_env_float("NOISEBOT_LLM_TEMPERATURE", 0.85),
             max_output_tokens=_env_int("NOISEBOT_LLM_MAX_OUTPUT_TOKENS", 256),
             max_reply_chars=_env_int("NOISEBOT_LLM_MAX_REPLY_CHARS", 180),
             ollama_base_url=_env("NOISEBOT_OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
@@ -291,7 +294,7 @@ def load_config(env_path: str | os.PathLike[str] | None = None) -> NoiseBotServe
             backend=_env("NOISEBOT_WHISPER_BACKEND", "faster"),
             device=_env("NOISEBOT_WHISPER_DEVICE", "cpu"),
             compute_type=_env("NOISEBOT_WHISPER_COMPUTE_TYPE", "int8"),
-            beam_size=_env_int("NOISEBOT_WHISPER_BEAM_SIZE", 3),
+            beam_size=_env_int("NOISEBOT_WHISPER_BEAM_SIZE", 5),
         ),
         tts=TtsConfig(
             piper_executable=_env("NOISEBOT_PIPER_EXECUTABLE", "piper"),

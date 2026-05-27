@@ -552,6 +552,20 @@ static void bridge_on_event(const nb_event_t *evt)
         break;
     }
 
+    case NB_EVT_BRIDGE_SPEECH_CANCEL:
+        audio_play_stop();
+        s_bridge_say_started = false;
+        esp_timer_stop(s_bridge_resp_timer);
+        if (!audio_service_is_listening()) {
+            if (audio_service_begin_listen_session(NB_LISTEN_SOURCE_BARGE_IN) == ESP_OK) {
+                ui_overlay_listening_set(true);
+                ui_overlay_show_toast("Ouvindo...", NB_UI_OVERLAY_INFO, 2200U);
+            }
+        }
+        NB_LOGI(TAG, "SPEECH_CANCEL aplicado turn_id=%lu",
+                (unsigned long)evt->data.u32);
+        break;
+
     case NB_EVT_BRIDGE_TEXT_SCROLL: {
         const char *text = (const char *)evt->data.ptr;
         if (text) {
@@ -728,6 +742,7 @@ esp_err_t behavior_engine_init(void)
         NB_EVT_BRIDGE_TEXT_SCROLL,
         NB_EVT_BRIDGE_VOLUME,
         NB_EVT_BRIDGE_SESSION,
+        NB_EVT_BRIDGE_SPEECH_CANCEL,
         NB_EVT_BRIDGE_DISCONNECTED,
         NB_EVT_BRIDGE_RESPONSE_TIMEOUT,
         NB_EVT_STATE_CHANGED,

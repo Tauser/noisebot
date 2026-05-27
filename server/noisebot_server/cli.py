@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 from collections.abc import Sequence
@@ -38,6 +39,20 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     fake_fw.add_argument("--port", type=int, default=9001)
     fake_fw.add_argument("--features", default="")
     fake_fw.add_argument("--auto-silence-chunks", type=int, default=0)
+
+    audio_report = debug_sub.add_parser("audio-report")
+    audio_report.add_argument("path", help="Pasta ou WAV para analisar")
+    audio_report.add_argument("--output", help="Arquivo Markdown de saida")
+    audio_report.add_argument("--json", action="store_true", help="Emitir JSON")
+
+    afe_ab = debug_sub.add_parser("afe-ab")
+    afe_ab.add_argument("phrase", help="Frase a repetir em RAW e AFE")
+    afe_ab.add_argument("--server-url", default="http://127.0.0.1:8765")
+    afe_ab.add_argument("--firmware-url", default="")
+    afe_ab.add_argument("--repeat", type=int, default=1)
+    afe_ab.add_argument("--timeout-s", type=float, default=35.0)
+    afe_ab.add_argument("--output", help="Arquivo Markdown de saida")
+    afe_ab.add_argument("--json", action="store_true", help="Emitir JSON")
 
     parser.add_argument("--host", help="IP do ESP32")
     parser.add_argument("--port", type=int, help="Porta TCP")
@@ -110,6 +125,112 @@ def run_debug_command(args: argparse.Namespace) -> None:
                 )
             )
         )
+    if args.debug_command == "audio-report":
+        from .internal.ops.audio_analysis import (
+            analyze_audio_samples,
+            format_audio_samples_markdown,
+            summarize_audio_samples,
+        )
+
+        samples = analyze_audio_samples(args.path)
+        if args.json:
+            payload = {
+                "summary": summarize_audio_samples(samples),
+                "samples": [sample.to_dict() for sample in samples],
+            }
+            text = json.dumps(payload, ensure_ascii=False, indent=2)
+        else:
+            text = format_audio_samples_markdown(samples)
+
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        return
+    if args.debug_command == "afe-ab":
+        from .internal.ops.voice_ab import (
+            VoiceAbTrial,
+            collect_trial,
+            format_voice_ab_markdown,
+            reset_afe_counters,
+            set_afe_bridge,
+            stop_afe_shadow,
+            wait_for_new_turn,
+        )
+
+        firmware_url = args.firmware_url or os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "")
+        if not firmware_url:
+            host = args.host or os.environ.get("NOISEBOT_HOST", "")
+            if host:
+                firmware_url = f"http://{host}"
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+
+        server_url = args.server_url.rstrip("/")
+        firmware_url = firmware_url.rstrip("/")
+        modes = ["raw", "afe"] * max(1, args.repeat)
+        trials: list[VoiceAbTrial] = []
+        print(f"Frase alvo: {args.phrase}")
+        print("Use a mesma distancia e volume em todos os turnos.")
+        try:
+            for index, mode in enumerate(modes, start=1):
+                reset_afe_counters(firmware_url)
+                before = collect_trial(
+                    mode=mode,
+                    phrase=args.phrase,
+                    server_url=server_url,
+                    firmware_url=firmware_url,
+                )
+                if mode == "afe":
+                    set_afe_bridge(firmware_url, True)
+                else:
+                    set_afe_bridge(firmware_url, False)
+                    try:
+                        stop_afe_shadow(firmware_url)
+                    except Exception:
+                        pass
+                print(f"\n[{index}/{len(modes)}] Modo {mode.upper()}")
+                input("Fale a frase agora e pressione Enter quando o robô terminar: ")
+                metrics = wait_for_new_turn(
+                    server_url=server_url,
+                    previous_turn_id=before.turn_id,
+                    timeout_s=args.timeout_s,
+                )
+                processor = collect_trial(
+                    mode=mode,
+                    phrase=args.phrase,
+                    server_url=server_url,
+                    firmware_url=firmware_url,
+                )
+                trial = VoiceAbTrial.from_payload(
+                    mode=mode,
+                    phrase=args.phrase,
+                    metrics=metrics,
+                    processor=processor.to_dict(),
+                )
+                trials.append(trial)
+                print(
+                    f"turn={trial.turn_id} quality={trial.transcript_quality} "
+                    f"no_speech={trial.no_speech_prob} transcript={trial.transcript!r}"
+                )
+        finally:
+            try:
+                set_afe_bridge(firmware_url, False)
+                stop_afe_shadow(firmware_url)
+            except Exception:
+                pass
+
+        if args.json:
+            text = json.dumps([trial.to_dict() for trial in trials], ensure_ascii=False, indent=2)
+        else:
+            text = format_voice_ab_markdown(trials)
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        return
     raise SystemExit(2)
 
 

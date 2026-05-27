@@ -21,6 +21,7 @@ def _env_int(key: str, default: int) -> int:
 
 CHUNK_SAMPLES = 256
 SAMPLE_RATE = 16_000
+CHUNK_BYTES = CHUNK_SAMPLES * 2
 CHUNK_DURATION_S = CHUNK_SAMPLES / SAMPLE_RATE
 FIRMWARE_SAY_QUEUE = max(4, min(16, _env_int("NOISEBOT_TTS_QUEUE_TARGET", 12)))
 
@@ -44,40 +45,35 @@ class OutputScheduler:
         self._t_first = None
 
         try:
+            pending = bytearray()
             async for chunk in pcm_iter:
                 if not chunk:
                     continue
+                pending.extend(chunk)
 
-                if self._t_first is None:
-                    self._t_first = time.monotonic()
-                    await _maybe_call_adapter(adapter, "send_say_begin", turn_id)
-                    if on_first_audio is not None:
-                        result = on_first_audio(turn_id)
-                        if inspect.isawaitable(result):
-                            await result
+                while len(pending) >= CHUNK_BYTES:
+                    say_chunk = bytes(pending[:CHUNK_BYTES])
+                    del pending[:CHUNK_BYTES]
 
-                elapsed = time.monotonic() - self._t_first
-                chunks_played = int(elapsed / CHUNK_DURATION_S)
-                buffer_fill = self._chunks_sent - chunks_played
+                    await self._send_chunk(
+                        turn_id,
+                        say_chunk,
+                        adapter,
+                        on_first_audio,
+                        on_audio_progress,
+                    )
 
-                if buffer_fill >= FIRMWARE_SAY_QUEUE:
-                    sleep_s = (buffer_fill - FIRMWARE_SAY_QUEUE + 1) * CHUNK_DURATION_S
-                    await asyncio.sleep(sleep_s)
-
-                if adapter is not None:
-                    try:
-                        await adapter.send_say(chunk)
-                    except Exception as exc:
-                        log.exception(
-                            "OutputScheduler: erro ao enviar SAY turn_id=%d",
-                            turn_id,
-                        )
-                        raise ConnectionError("falha ao enviar audio ao firmware") from exc
-
-                self._chunks_sent += 1
-                if on_audio_progress is not None:
-                    on_audio_progress(turn_id)
                 await asyncio.sleep(0)
+
+            if pending:
+                pending.extend(b"\x00" * (CHUNK_BYTES - len(pending)))
+                await self._send_chunk(
+                    turn_id,
+                    bytes(pending),
+                    adapter,
+                    on_first_audio,
+                    on_audio_progress,
+                )
         finally:
             close_iter = getattr(pcm_iter, "aclose", None)
             if close_iter is not None:
@@ -93,6 +89,47 @@ class OutputScheduler:
                 self._chunks_sent,
                 self._chunks_sent * CHUNK_DURATION_S,
             )
+
+    async def _send_chunk(
+        self,
+        turn_id: int,
+        chunk: bytes,
+        adapter: Any,
+        on_first_audio: Callable[[int], Any] | None,
+        on_audio_progress: Callable[[int], None] | None,
+    ) -> None:
+        if len(chunk) != CHUNK_BYTES:
+            raise ValueError(f"SAY chunk invalido: {len(chunk)} bytes")
+
+        if self._t_first is None:
+            self._t_first = time.monotonic()
+            await _maybe_call_adapter(adapter, "send_say_begin", turn_id)
+            if on_first_audio is not None:
+                result = on_first_audio(turn_id)
+                if inspect.isawaitable(result):
+                    await result
+
+        elapsed = time.monotonic() - self._t_first
+        chunks_played = int(elapsed / CHUNK_DURATION_S)
+        buffer_fill = self._chunks_sent - chunks_played
+
+        if buffer_fill >= FIRMWARE_SAY_QUEUE:
+            sleep_s = (buffer_fill - FIRMWARE_SAY_QUEUE + 1) * CHUNK_DURATION_S
+            await asyncio.sleep(sleep_s)
+
+        if adapter is not None:
+            try:
+                await adapter.send_say(chunk)
+            except Exception as exc:
+                log.exception(
+                    "OutputScheduler: erro ao enviar SAY turn_id=%d",
+                    turn_id,
+                )
+                raise ConnectionError("falha ao enviar audio ao firmware") from exc
+
+        self._chunks_sent += 1
+        if on_audio_progress is not None:
+            on_audio_progress(turn_id)
 
 
 async def _maybe_call_adapter(adapter: Any, method_name: str, *args: Any) -> None:
@@ -111,6 +148,7 @@ async def _maybe_call_adapter(adapter: Any, method_name: str, *args: Any) -> Non
 
 __all__ = [
     "CHUNK_DURATION_S",
+    "CHUNK_BYTES",
     "CHUNK_SAMPLES",
     "FIRMWARE_SAY_QUEUE",
     "OutputScheduler",

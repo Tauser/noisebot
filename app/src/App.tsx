@@ -11,6 +11,7 @@ import {
   CloudSun,
   Cpu,
   Database,
+  Download,
   HardDrive,
   Home,
   MapPin,
@@ -39,12 +40,15 @@ import {
   DevData,
   VisionAnalysis,
   VoiceSessionSummary,
+  AudioSampleFile,
   RoutineItem,
+  audioSampleDownloadUrl,
   analyzeVision,
   createAgendaItem,
   defaultAppData,
   deleteAgendaItem,
   loadDevData,
+  loadAudioSampleFiles,
   loadAppData,
   loadSnapshot,
   observeVision,
@@ -52,6 +56,10 @@ import {
   restartServer,
   saveBasicSettings,
   sendDebugTranscript,
+  startAudioProcessorBridge,
+  startAudioProcessorShadow,
+  stopAudioProcessorBridge,
+  stopAudioProcessorShadow,
   updateAgendaItem,
   visionSnapshotUrl,
 } from "./api";
@@ -163,6 +171,7 @@ const defaultDevData: DevData = {
 const cardClass = "rounded-xl border border-slate-200 bg-white p-4 shadow-sm";
 const primaryButtonClass = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 font-semibold text-white transition hover:bg-slate-700";
 const secondaryButtonClass = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 font-semibold text-slate-700 transition hover:bg-slate-50";
+const iconButtonClass = "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100";
 const inputClass = "min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none";
 
 function editableContext(mode: AppMode, userSection: UserSection, devSection: DevSection) {
@@ -419,6 +428,33 @@ export function App() {
     }
   };
 
+  const handleAudioProcessorAction = async (action: "shadow_start" | "shadow_stop" | "bridge_start" | "bridge_stop") => {
+    const token = opsToken.trim();
+    if (!token) {
+      setDevStatus("token local obrigatório para executar esta ação");
+      setMode("dev");
+      setDevSection("console");
+      return;
+    }
+    const labels = {
+      shadow_start: "ligando shadow AFE",
+      shadow_stop: "desligando shadow AFE",
+      bridge_start: "ligando AFE no bridge",
+      bridge_stop: "desligando AFE no bridge",
+    };
+    setDevStatus(labels[action]);
+    try {
+      if (action === "shadow_start") await startAudioProcessorShadow(token);
+      if (action === "shadow_stop") await stopAudioProcessorShadow(token);
+      if (action === "bridge_start") await startAudioProcessorBridge(token);
+      if (action === "bridge_stop") await stopAudioProcessorBridge(token);
+      setDevData(await safeLoadDevData());
+      setDevStatus("AFE atualizado");
+    } catch (error) {
+      setDevStatus(errorMessage(error));
+    }
+  };
+
   const title = useMemo(() => {
     const list = mode === "user" ? userNav : devNav;
     const active = mode === "user" ? userSection : devSection;
@@ -529,6 +565,7 @@ export function App() {
             {mode === "dev" && devSection === "console" && (
               <DevConsoleView
                 devData={devData}
+                onAudioProcessorAction={handleAudioProcessorAction}
                 onOpsTokenChange={saveOpsToken}
                 onResetMetrics={handleResetMetrics}
                 onRestartServer={handleRestartServer}
@@ -789,6 +826,9 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
   const sttLatency = formatLatency(devData.metrics.latency_ms.stt);
   const llmLatency = formatLatency(devData.metrics.latency_ms.llm_total);
   const ttsLatency = formatLatency(devData.metrics.latency_ms.tts_first_audio);
+  const [audioFiles, setAudioFiles] = useState<AudioSampleFile[]>([]);
+  const [audioFilesStatus, setAudioFilesStatus] = useState("Não carregado");
+  const [audioFilesLoading, setAudioFilesLoading] = useState(false);
   const firmware = devData.diagnostics;
   const diag = asRecord(firmware.diag);
   const health = asRecord(firmware.health);
@@ -805,6 +845,19 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
   const voiceSummary = summarizeVoiceSession(voice);
   const latencyBottleneck = voiceLatencyBottleneck(voice);
   const diagErrors = Object.entries(firmware.errors ?? {});
+  const refreshAudioFiles = async () => {
+    setAudioFilesLoading(true);
+    setAudioFilesStatus("Carregando...");
+    try {
+      const files = await loadAudioSampleFiles();
+      setAudioFiles(files);
+      setAudioFilesStatus(files.length ? `${files.length} arquivo(s)` : "Nenhum WAV encontrado");
+    } catch (error) {
+      setAudioFilesStatus(error instanceof Error ? error.message : "Falha ao listar arquivos");
+    } finally {
+      setAudioFilesLoading(false);
+    }
+  };
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -871,6 +924,12 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
           <Metric label="Config" value={firmware.config ? "exposta" : "não exposta"} />
           <Metric label="LTM" value={firmware.ltm ? "exposta" : "não exposta"} />
         </div>
+        <AudioSamplesPanel
+          files={audioFiles}
+          loading={audioFilesLoading}
+          onRefresh={refreshAudioFiles}
+          status={audioFilesStatus}
+        />
       </DiagnosticCard>
 
       <DiagnosticCard defaultOpen icon={Wifi} title="Rede e bridge">
@@ -1119,6 +1178,7 @@ function CameraPanel({ snapshot }: { snapshot: DashboardSnapshot }) {
 
 function DevConsoleView({
   devData,
+  onAudioProcessorAction,
   onResetMetrics,
   onRestartServer,
   opsToken,
@@ -1127,6 +1187,7 @@ function DevConsoleView({
   status,
 }: {
   devData: DevData;
+  onAudioProcessorAction: (action: "shadow_start" | "shadow_stop" | "bridge_start" | "bridge_stop") => void;
   onResetMetrics: () => void;
   onRestartServer: () => void;
   opsToken: string;
@@ -1134,6 +1195,7 @@ function DevConsoleView({
   snapshot: DashboardSnapshot;
   status: string;
 }) {
+  const audioProcessor = asRecord(devData.diagnostics.audio_processor);
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <section className={cardClass}>
@@ -1179,6 +1241,24 @@ function DevConsoleView({
             Ops token
             <input className={inputClass} onChange={(event) => onOpsTokenChange(event.target.value)} placeholder="cole o token local" type="password" value={opsToken} />
           </label>
+        </section>
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">AFE de voz</h2>
+          <div className="grid gap-2">
+            <Metric label="Shadow" value={boolValue(audioProcessor.shadow_active)} />
+            <Metric label="Bridge AFE" value={boolValue(audioProcessor.processed_bridge_enabled)} />
+            <Metric label="Captura AFE" value={boolValue(audioProcessor.processed_capture_active)} />
+            <Metric label="Chunks AFE" value={numberValue(audioProcessor.processed_bridge_chunks, "")} />
+            <Metric label="Fallbacks" value={numberValue(audioProcessor.processed_bridge_fallbacks, "")} />
+            <Metric label="Buffer" value={numberValue(audioProcessor.processed_buffer_level, " samples")} />
+            <Metric label="Overruns" value={numberValue(audioProcessor.processed_output_overruns, "")} />
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button className={secondaryButtonClass} onClick={() => onAudioProcessorAction("shadow_start")} type="button">Shadow on</button>
+            <button className={secondaryButtonClass} onClick={() => onAudioProcessorAction("shadow_stop")} type="button">Shadow off</button>
+            <button className={primaryButtonClass} onClick={() => onAudioProcessorAction("bridge_start")} type="button">Bridge AFE</button>
+            <button className={secondaryButtonClass} onClick={() => onAudioProcessorAction("bridge_stop")} type="button">Bridge raw</button>
+          </div>
         </section>
         <section className={cardClass}>
           <h2 className="mb-3 text-lg font-semibold">Manutenção</h2>
@@ -1267,6 +1347,56 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
       <span className="block text-sm text-slate-500">{label}</span>
       <strong className="mt-1 block break-words text-base text-slate-950">{value}</strong>
     </article>
+  );
+}
+
+function AudioSamplesPanel({
+  files,
+  loading,
+  onRefresh,
+  status,
+}: {
+  files: AudioSampleFile[];
+  loading: boolean;
+  onRefresh: () => void;
+  status: string;
+}) {
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900">Amostras de áudio</h3>
+          <p className="text-sm text-slate-500">{status}</p>
+        </div>
+        <button className={secondaryButtonClass} disabled={loading} onClick={onRefresh} type="button">
+          <RefreshCw size={16} />
+          {loading ? "Listando" : "Atualizar"}
+        </button>
+      </div>
+
+      {files.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-slate-300 p-3 text-sm text-slate-500">
+          Nenhuma amostra carregada.
+        </p>
+      ) : (
+        <div className="grid gap-2">
+          {files.map((file) => (
+            <div
+              className="flex min-h-12 flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+              key={file.name}
+            >
+              <div className="min-w-0">
+                <strong className="block break-all text-sm text-slate-900">{file.name}</strong>
+                <span className="text-xs font-semibold text-slate-500">{bytesValue(file.size)}</span>
+              </div>
+              <a className={iconButtonClass} href={audioSampleDownloadUrl(file.name)} title={`Baixar ${file.name}`}>
+                <Download size={16} />
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
