@@ -214,8 +214,10 @@ esp_err_t wake_service_init(void)
         return ESP_FAIL;
     }
 
-    /* Config AFE: microfone mono ("M"), tipo SR, modo low-cost */
-    afe_config_t *cfg = afe_config_init("M", models, AFE_TYPE_SR, AFE_MODE_LOW_COST);
+    /* Perfil alinhado ao Xiaozhi/StackChan: WakeNet AFE em HIGH_PERF no S3.
+     * Durante TTS, a interrupção confiável vem da wake word, então o detector
+     * precisa de mais margem do que o modo low-cost oferece. */
+    afe_config_t *cfg = afe_config_init("M", models, AFE_TYPE_SR, AFE_MODE_HIGH_PERF);
     if (!cfg) {
         ESP_LOGE(TAG, "afe_config_init falhou");
         esp_srmodel_deinit(models);
@@ -235,6 +237,8 @@ esp_err_t wake_service_init(void)
      * o modelo Hi ESP só voltou a cruzar detecção com esse perfil. */
     cfg->afe_linear_gain = 1.0f;
     cfg->wakenet_mode = DET_MODE_95;
+    cfg->afe_perferred_core = 1;
+    cfg->afe_perferred_priority = 1;
 
     /* Alocar memória preferencialmente em PSRAM */
     cfg->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
