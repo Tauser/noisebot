@@ -265,6 +265,15 @@ Guard de idioma em 2026-05-27:
   longo ainda encerrou por `timeout`, então a instabilidade remanescente é de
   turn-taking/entrada, não de idioma.
 
+Correção de timeout pós-barge-in em 2026-05-27:
+
+- Quando o usuário interrompe TTS, o server abre novo turno em `LISTENING`.
+- Se nenhuma nova fala útil chegar até o watchdog, o turno agora encerra como
+  `listen_timeout`, envia `FOLLOWUP_CANCEL` e retorna ao baseline sem
+  `SESSION_ERROR`.
+- Esse ajuste cobre o caso observado em que a fala era interrompida, mas a
+  conversa parecia falhar depois por ausência de áudio no turno seguinte.
+
 Objetivo: absorver a parte mais valiosa do Xiaozhi: processamento de voz no ESP,
 mas sem sacrificar câmera, TTS e estabilidade.
 

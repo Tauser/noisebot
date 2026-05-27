@@ -1159,6 +1159,57 @@ async def test_server_barge_in_starts_clean_listening_turn_even_if_cancel_fails(
         await orchestrator.shutdown()
 
 
+async def test_server_listening_watchdog_timeout_finishes_without_session_error() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    class CapturingAdapter:
+        def __init__(self) -> None:
+            self.sessions = []
+
+        async def send_session(self, payload: dict) -> None:
+            self.sessions.append(payload)
+
+        async def send_gaze(self, x: float, y: float) -> None:
+            pass
+
+        async def send_expr(self, expression_id: int, duration_ms: int = 2000) -> None:
+            pass
+
+        async def send_led(self, mode: int, r: int, g: int, b: int) -> None:
+            pass
+
+    bus = runtime.EventBus(default_maxsize=512)
+    adapter = CapturingAdapter()
+    store = status_module.StatusStore()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: adapter,
+        status_store=store,
+    )
+    session = runtime.SessionContext(turn_id=321)
+    session.set_deadline(-0.1)
+    orchestrator._session = session
+    orchestrator._fsm.transition(runtime.TurnState.LISTENING, turn_id=session.turn_id)
+
+    await orchestrator._run_watchdog(session)
+
+    assert orchestrator._session is None
+    assert orchestrator._fsm.state == runtime.TurnState.IDLE
+    assert store.last_voice_session["turn_id"] == 321
+    assert store.last_voice_session["outcome"] == "listen_timeout"
+    assert store.last_voice_session["discard_reason"] == "listen_timeout"
+    assert adapter.sessions[-1] == {
+        "event": "FOLLOWUP_CANCEL",
+        "turn_id": 321,
+        "reason": "listen_timeout",
+    }
+
+
 async def test_server_speech_done_arms_followup_only_for_real_question() -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     orchestrator_module = importlib.import_module(

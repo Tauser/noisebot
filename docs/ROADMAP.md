@@ -2023,6 +2023,9 @@ Implementação:
   `voice_end_reason=silence`, sem `audio_longo`.
 - [x] O server passou a proteger a resposta da LLM contra saída em scripts
   chinês/japonês/coreano antes do TTS, mantendo resposta em português.
+- [x] Timeout de `LISTENING` após barge-in deixou de virar `SESSION_ERROR`:
+  ausência de nova fala agora encerra o turno como `listen_timeout` e cancela
+  follow-up de forma limpa.
 - [ ] Ainda há `timeout` ocasional em fala/resposta longa; tratar como item de
   turn-taking antes de liberar modo narrativo ou realtime.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é

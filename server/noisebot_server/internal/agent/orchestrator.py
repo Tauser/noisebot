@@ -1280,6 +1280,9 @@ class Orchestrator:
                     return   # turno terminou normalmente
                 if session.is_past_deadline():
                     overdue_s = max(0.0, time.monotonic() - (session.deadline or 0.0))
+                    if self._fsm.state == TurnState.LISTENING:
+                        await self._expire_listening_turn(session, overdue_s)
+                        return
                     log.warning(
                         "Watchdog: turno %d excedeu deadline (atraso %.1f s, estado=%s) — cancelando",
                         session.turn_id, overdue_s, self._fsm.state.name,
@@ -1298,6 +1301,33 @@ class Orchestrator:
                     return
         except asyncio.CancelledError:
             pass
+
+    async def _expire_listening_turn(
+        self, session: SessionContext, overdue_s: float
+    ) -> None:
+        """Encerra timeout de escuta sem transformar ausência de fala em erro."""
+        if self._session is not session:
+            return
+        reason = "listen_timeout"
+        log.info(
+            "Watchdog: turno %d expirou em LISTENING (atraso %.1f s, samples=%d)",
+            session.turn_id,
+            overdue_s,
+            session.total_samples,
+        )
+        session.discard_reason = reason
+        session.meta["outcome"] = reason
+        if self._store:
+            self._store.record_turn(
+                session.turn_id,
+                reason,
+                transcript=session.final_text,
+                reply=session.reply_text,
+                route="watchdog",
+            )
+        await self._robot.reset_baseline(self.adapter, session.turn_id)
+        self._fsm.try_transition(TurnState.IDLE)
+        await self._finish_turn()
 
     async def _cancel_current_turn(self, reason: str = "") -> None:
         """Cancela a Task de turno atual se existir."""
