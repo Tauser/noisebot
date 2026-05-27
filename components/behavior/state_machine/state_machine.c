@@ -220,6 +220,9 @@ void state_machine_on_wake_word(void)
         case NB_STATE_SLEEPING:
             do_transition(NB_STATE_ATTENTIVE, "wake word em SLEEPING");
             break;
+        case NB_STATE_RESPONDING:
+            do_transition(NB_STATE_ATTENTIVE, "wake word durante resposta");
+            break;
         default:
             break;
     }

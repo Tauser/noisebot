@@ -1159,6 +1159,34 @@ async def test_server_barge_in_starts_clean_listening_turn_even_if_cancel_fails(
         await orchestrator.shutdown()
 
 
+async def test_server_wake_during_speaking_is_barge_in_signal() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    bus = runtime.EventBus(default_maxsize=512)
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: None,
+    )
+    barge_events = bus.subscribe(runtime.BargeInDetected)
+    session = runtime.SessionContext(turn_id=321)
+    orchestrator._session = session
+    orchestrator._fsm.transition(runtime.TurnState.LISTENING, turn_id=session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.COMMITTING_TURN, turn_id=session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.THINKING, turn_id=session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.SPEAKING, turn_id=session.turn_id)
+
+    try:
+        await orchestrator._on_wake(runtime.WakeDetected())
+        event = await asyncio.wait_for(barge_events.get(), timeout=1.0)
+        assert event.turn_id == session.turn_id
+    finally:
+        await orchestrator.shutdown()
+
+
 async def test_server_listening_watchdog_timeout_finishes_without_session_error() -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     orchestrator_module = importlib.import_module(

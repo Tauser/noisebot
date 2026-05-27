@@ -121,6 +121,9 @@ class OutputScheduler:
             try:
                 await adapter.send_say(chunk)
             except Exception as exc:
+                if isinstance(exc, ConnectionError) and str(exc) == "SPEECH_CANCEL":
+                    log.info("OutputScheduler: SAY cancelado por SPEECH_CANCEL turn_id=%d", turn_id)
+                    raise asyncio.CancelledError("speech_cancel") from exc
                 log.exception(
                     "OutputScheduler: erro ao enviar SAY turn_id=%d",
                     turn_id,

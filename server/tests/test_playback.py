@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 
 import pytest
@@ -21,6 +22,11 @@ class AdapterProbe:
 
     async def send_say_end(self, turn_id: int) -> None:
         self.end.append(turn_id)
+
+
+class SpeechCancelAdapter(AdapterProbe):
+    async def send_say(self, pcm: bytes) -> None:
+        raise ConnectionError("SPEECH_CANCEL")
 
 
 async def _iter_chunks(*chunks: bytes) -> AsyncIterator[bytes]:
@@ -54,3 +60,16 @@ async def test_output_scheduler_sends_exact_chunk_without_padding() -> None:
 
     assert [len(chunk) for chunk in adapter.chunks] == [CHUNK_BYTES]
     assert adapter.chunks[0] == source
+
+
+@pytest.mark.asyncio
+async def test_output_scheduler_treats_speech_cancel_as_cancellation() -> None:
+    adapter = SpeechCancelAdapter()
+    scheduler = OutputScheduler()
+    source = b"\x33\x44" * (CHUNK_BYTES // 2)
+
+    with pytest.raises(asyncio.CancelledError):
+        await scheduler.run(9, _iter_chunks(source), adapter)
+
+    assert adapter.begin == [9]
+    assert adapter.end == []

@@ -857,10 +857,15 @@ static void on_wake_word_detected(const nb_event_t *evt, void *ctx)
     nb_robot_state_t st = state_machine_get_state();
     if (st != NB_STATE_IDLE &&
         st != NB_STATE_SLEEPING &&
-        st != NB_STATE_TOUCH_REACTING) {
+        st != NB_STATE_TOUCH_REACTING &&
+        st != NB_STATE_RESPONDING) {
         NB_LOGI(TAG, "wake word ignorada em estado %s",
                 state_machine_state_name(st));
         return;
+    }
+    if (st == NB_STATE_RESPONDING) {
+        NB_LOGI(TAG, "wake word durante RESPONDING: interrompendo fala");
+        audio_play_stop();
     }
     s_wake_word_triggered = true;
     state_machine_on_wake_word();

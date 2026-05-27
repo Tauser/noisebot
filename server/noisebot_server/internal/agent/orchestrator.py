@@ -314,10 +314,15 @@ class Orchestrator:
             self._store.firmware_connected = False
 
     async def _on_wake(self, event: WakeDetected) -> None:
+        if self._fsm.is_idle:
+            await self._begin_turn()
+            return
+        if self._fsm.can_interrupt:
+            await self._bus.publish(BargeInDetected(turn_id=self._fsm.current_turn_id))
+            return
         if not self._fsm.is_idle:
             log.debug("Wake detectado fora de IDLE (estado=%s) -- ignorado", self._fsm.state.name)
             return
-        await self._begin_turn()
 
     async def _on_voice_start(self, event: VoiceActivityStart) -> None:
         if self._fsm.is_idle:
