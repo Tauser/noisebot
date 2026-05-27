@@ -685,7 +685,7 @@ async def test_server_firmware_adapter_drops_pending_speech_before_cancel() -> N
     bus = runtime.EventBus()
     adapter = adapter_module.FirmwareAdapter(DummyTransport(), bus)
     adapter._connected = True
-    adapter._peer_capabilities = {"features": ["barge_in"]}
+    adapter._peer_capabilities = {"features": []}
     loop = asyncio.get_running_loop()
     pending_say = adapter_module._TxItem(
         protocol.encode_frame(protocol.MSG_SAY, b"\0" * 512),
