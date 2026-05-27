@@ -68,7 +68,8 @@ TURN_DEADLINE_S = 30.0  # watchdog antes de iniciar fala
 SPEAKING_PROGRESS_DEADLINE_S = 20.0  # durante SAY: tempo maximo sem progresso
 EMPTY_WAKE_REPLY = "Oi! Em que posso ajudar?"
 MISUNDERSTOOD_REPLY = "Eu ouvi, mas não entendi direito. Pode repetir?"
-MISUNDERSTOOD_PROMPT_COOLDOWN_S = 4.0
+MISUNDERSTOOD_PROMPT_COOLDOWN_S = 45.0
+MISUNDERSTOOD_MAX_NO_SPEECH_PROB = 0.50
 LLM_CONFIG_FALLBACK_REPLY = (
     "Estou sem acesso à IA agora, mas continuo ouvindo os comandos locais."
 )
@@ -144,6 +145,7 @@ class Orchestrator:
         self._metrics = MetricsRegistry(window=100)
         self._empty_wake_prompted_at: float | None = None
         self._misunderstood_prompted_at: float | None = None
+        self._misunderstood_prompt_pending = False
 
         # Queue de eventos: o Orchestrator assina todos
         self._events = bus.subscribe(maxsize=-1)  # ilimitado para o maestro
@@ -442,6 +444,7 @@ class Orchestrator:
 
         self._empty_wake_prompted_at = None
         self._misunderstood_prompted_at = None
+        self._misunderstood_prompt_pending = False
 
         # COMMITTING_TURN → THINKING
         if self._fsm.state != TurnState.COMMITTING_TURN:
@@ -613,6 +616,20 @@ class Orchestrator:
             return False
         if session.total_samples < 8000:
             return False
+        if event.no_speech_prob > MISUNDERSTOOD_MAX_NO_SPEECH_PROB:
+            log.info(
+                "Turno %d: transcript incerto tratado como ruido/silencio (%s no_speech=%.2f)",
+                event.turn_id,
+                event.quality.name,
+                event.no_speech_prob,
+            )
+            return False
+        if self._misunderstood_prompt_pending:
+            log.info(
+                "Turno %d: prompt de nao entendimento ja enviado; aguardando fala utilizavel",
+                event.turn_id,
+            )
+            return False
         now = time.monotonic()
         if (
             self._misunderstood_prompted_at is not None
@@ -639,6 +656,7 @@ class Orchestrator:
             event.quality.name,
         )
         self._misunderstood_prompted_at = time.monotonic()
+        self._misunderstood_prompt_pending = True
 
         if self._fsm.state != TurnState.COMMITTING_TURN:
             self._fsm.try_transition(TurnState.COMMITTING_TURN, turn_id=event.turn_id)

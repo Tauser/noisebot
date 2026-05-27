@@ -956,6 +956,76 @@ async def test_server_unclear_transcript_asks_user_to_repeat() -> None:
         await asyncio.gather(task, return_exceptions=True)
 
 
+async def test_server_unclear_transcript_does_not_loop_on_noise() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class MockSequenceStt:
+        def __init__(self) -> None:
+            self.finalize_calls = 0
+
+        async def initialize(self) -> None:
+            pass
+
+        def feed(self, pcm: bytes) -> None:
+            pass
+
+        async def reset(self) -> None:
+            pass
+
+        async def finalize(self, full_pcm: bytes, turn_id: int):
+            self.finalize_calls += 1
+            if self.finalize_calls == 1:
+                return runtime.FinalTranscript(
+                    turn_id=turn_id,
+                    text="eslopo diaforo",
+                    quality=runtime.TranscriptQuality.LOW_LOGPROB,
+                    no_speech_prob=0.20,
+                    avg_logprob=-1.8,
+                )
+            return runtime.FinalTranscript(
+                turn_id=turn_id,
+                text="E ai",
+                quality=runtime.TranscriptQuality.LOW_LOGPROB,
+                no_speech_prob=0.72,
+                avg_logprob=-1.4,
+            )
+
+        async def close(self) -> None:
+            pass
+
+    bus = runtime.EventBus(default_maxsize=512)
+    stt = MockSequenceStt()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: None,
+        stt_provider=stt,
+    )
+    intents = bus.subscribe(runtime.IntentResolved)
+    speech_done = bus.subscribe(runtime.SpeechDone)
+    task = asyncio.create_task(orchestrator.run())
+
+    try:
+        await _simulate_server_voice_session(bus, runtime)
+        intent = await asyncio.wait_for(intents.get(), timeout=1.0)
+        await asyncio.wait_for(speech_done.get(), timeout=1.0)
+        await _wait_until(lambda: orchestrator._session is None)
+        assert intent.intent_name == "local_unclear_transcript_prompt"
+
+        await _simulate_server_voice_session(bus, runtime)
+        await _wait_until(
+            lambda: stt.finalize_calls >= 2 and orchestrator._session is None
+        )
+        assert await _drain_queue(intents) == []
+    finally:
+        await orchestrator.shutdown()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 async def test_server_barge_in_starts_clean_listening_turn_even_if_cancel_fails() -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     orchestrator_module = importlib.import_module(
