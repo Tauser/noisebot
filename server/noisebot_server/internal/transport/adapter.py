@@ -355,10 +355,11 @@ class FirmwareAdapter:
             await self._enqueue(encode_frame(MSG_SAY_END, encode_say_end(turn_id)))
 
     async def send_speech_cancel(self, turn_id: int) -> None:
-        self._drop_pending_speech_frames("SPEECH_CANCEL")
-        await self._enqueue(
-            encode_frame(MSG_SPEECH_CANCEL, encode_speech_cancel(turn_id))
-        )
+        if self.peer_supports("barge_in"):
+            self._drop_pending_speech_frames("SPEECH_CANCEL")
+            await self._enqueue(
+                encode_frame(MSG_SPEECH_CANCEL, encode_speech_cancel(turn_id))
+            )
 
     async def _enqueue(self, frame: bytes) -> None:
         if not self._connected:
