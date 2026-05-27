@@ -73,6 +73,43 @@ MISUNDERSTOOD_MAX_NO_SPEECH_PROB = 0.50
 LLM_CONFIG_FALLBACK_REPLY = (
     "Estou sem acesso à IA agora, mas continuo ouvindo os comandos locais."
 )
+TTS_FAST_FRAGMENT_MAX_CHARS = 96
+TTS_FAST_FRAGMENT_MIN_CHARS = 24
+
+
+def _sentences_for_tts(text: str) -> list[str]:
+    """Prepara frases curtas o bastante para o Piper iniciar o áudio cedo."""
+    sz = Sentencizer()
+    sentences = list(sz.feed(text)) + list(sz.flush())
+    prepared: list[str] = []
+    for sentence in sentences:
+        prepared.extend(_split_tts_sentence(sentence))
+    return prepared
+
+
+def _split_tts_sentence(sentence: str) -> list[str]:
+    clean = " ".join(sentence.split())
+    if len(clean) <= TTS_FAST_FRAGMENT_MAX_CHARS:
+        return [clean] if clean else []
+
+    parts: list[str] = []
+    current = ""
+    for token in clean.replace("; ", ";|").replace(", ", ",|").split("|"):
+        token = token.strip()
+        if not token:
+            continue
+        candidate = f"{current} {token}".strip() if current else token
+        if current and len(candidate) > TTS_FAST_FRAGMENT_MAX_CHARS:
+            if len(current) >= TTS_FAST_FRAGMENT_MIN_CHARS:
+                parts.append(current)
+                current = token
+            else:
+                current = candidate
+        else:
+            current = candidate
+    if current:
+        parts.append(current)
+    return parts or ([clean] if clean else [])
 
 
 class Orchestrator:
@@ -755,8 +792,7 @@ class Orchestrator:
             reply_text = parsed["reply"]
 
             # ── Sentencizer → SentenceReady ────────────────────────────────
-            sz = Sentencizer()
-            sentences: list[str] = list(sz.feed(reply_text)) + list(sz.flush())
+            sentences = _sentences_for_tts(reply_text)
 
             for idx, sentence in enumerate(sentences):
                 await self._bus.publish(
@@ -861,8 +897,7 @@ class Orchestrator:
         reply_text: str,
         reason: str,
     ) -> None:
-        sz = Sentencizer()
-        sentences: list[str] = list(sz.feed(reply_text)) + list(sz.flush())
+        sentences = _sentences_for_tts(reply_text)
 
         for idx, sentence in enumerate(sentences):
             await self._bus.publish(
@@ -916,8 +951,7 @@ class Orchestrator:
     ) -> None:
         """Task de TTS para o caminho de intent local. Cancelável por barge-in."""
         try:
-            sz = Sentencizer()
-            sentences = list(sz.feed(reply_text)) + list(sz.flush())
+            sentences = _sentences_for_tts(reply_text)
             log.info(
                 "TTS reply turn_id=%d preparado frases=%d chars=%d",
                 turn_id,
@@ -943,20 +977,35 @@ class Orchestrator:
     ) -> None:
         """Sintetiza sentences via TTS e envia SAY ao firmware com pacing.
 
-        Registra tts_first_audio_ms e first_audio_out_ms ao enviar o 1º chunk.
+        Registra a latência real do TTS e o tempo de resposta do turno.
         """
         first_audio_recorded = False
+        session.mark("tts_start")
 
         async def _on_first(tid: int) -> None:
             nonlocal first_audio_recorded
             if not first_audio_recorded:
                 first_audio_recorded = True
                 t = time.monotonic()
-                elapsed_ms = (t - session.t_start) * 1000.0
-                self._metrics.record("tts_first_audio_ms", elapsed_ms)
-                self._metrics.record("first_audio_out_ms", elapsed_ms)
+                turn_elapsed_ms = (t - session.t_start) * 1000.0
+                tts_start = session.timeline.get("tts_start", t)
+                tts_first_ms = (t - tts_start) * 1000.0
+                voice_end = session.timeline.get("voice_end")
+                voice_end_elapsed_ms = (
+                    (t - voice_end) * 1000.0
+                    if voice_end is not None
+                    else turn_elapsed_ms
+                )
+                self._metrics.record("tts_first_audio_ms", tts_first_ms)
+                self._metrics.record("first_audio_out_ms", turn_elapsed_ms)
                 session.mark("first_audio_out", t)
-                log.info("Turno %d: primeiro SAY %.0f ms de VOICE_END", tid, elapsed_ms)
+                log.info(
+                    "Turno %d: primeiro SAY tts=%.0fms pos_fim_voz=%.0fms turno=%.0fms",
+                    tid,
+                    tts_first_ms,
+                    voice_end_elapsed_ms,
+                    turn_elapsed_ms,
+                )
                 if self.adapter is not None and session.reply_text:
                     asyncio.create_task(
                         self._send_reply_text_scroll(session.reply_text[:128]),
@@ -1316,6 +1365,7 @@ class Orchestrator:
             "voice_end_to_stt_start_ms": delta_ms("voice_end", "stt_start"),
             "stt_ms": delta_ms("stt_start", "stt_end"),
             "end_of_turn_ms": since_start_ms("stt_end"),
+            "tts_first_audio_ms": delta_ms("tts_start", "first_audio_out"),
             "first_audio_out_ms": since_start_ms("first_audio_out"),
             "first_audio_after_voice_end_ms": delta_ms("voice_end", "first_audio_out"),
             "speech_total_ms": since_start_ms("speech_done"),

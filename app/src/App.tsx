@@ -943,6 +943,7 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
           <Metric label="VOICE_END → STT" value={numberValue(voice.voice_end_to_stt_start_ms, " ms")} />
           <Metric label="STT" value={numberValue(voice.stt_ms, " ms")} />
           <Metric label="Fim de turno" value={numberValue(voice.end_of_turn_ms, " ms")} />
+          <Metric label="TTS até 1º áudio" value={numberValue(voice.tts_first_audio_ms, " ms")} />
           <Metric label="1º áudio" value={numberValue(voice.first_audio_out_ms, " ms")} />
           <Metric label="1º áudio pós-fim" value={numberValue(voice.first_audio_after_voice_end_ms, " ms")} />
           <Metric label="Fala total" value={numberValue(voice.speech_total_ms, " ms")} />
@@ -1537,19 +1538,29 @@ function voiceStateLabel(state: "ok" | "warn" | "error" | "idle") {
 }
 
 function voiceLatencyBottleneck(session: VoiceSessionSummary) {
+  const firstAudio = readNumber(session.first_audio_after_voice_end_ms);
+  const stt = readNumber(session.stt_ms);
+  const voiceEndToStt = readNumber(session.voice_end_to_stt_start_ms) ?? 0;
+  const ttsAudio = readNumber(session.tts_first_audio_ms);
+  const postSttToAudio = firstAudio !== null && stt !== null
+    ? Math.max(0, firstAudio - voiceEndToStt - stt)
+    : null;
   const candidates = [
-    { key: "STT", value: readNumber(session.stt_ms) },
-    { key: "1º áudio", value: readNumber(session.first_audio_after_voice_end_ms) },
-    { key: "fala completa", value: readNumber(session.speech_total_ms) },
+    { key: "STT", value: stt },
+    { key: "decisão e TTS", value: postSttToAudio },
+    { key: "TTS", value: ttsAudio },
   ].filter((item): item is { key: string; value: number } => item.value !== null);
   if (candidates.length === 0) {
     return { label: "sem dados suficientes", detail: "faça um teste de voz para medir o ciclo." };
   }
   const highest = candidates.reduce((best, item) => (item.value > best.value ? item : best));
   if (highest.value < 1500) {
-    return { label: "ciclo saudável", detail: `${highest.key} foi o maior trecho: ${highest.value} ms.` };
+    return { label: "ciclo saudável", detail: `${highest.key} foi o maior trecho medido: ${highest.value} ms.` };
   }
-  return { label: highest.key, detail: `maior tempo medido no último turno: ${highest.value} ms.` };
+  const speechTotal = readNumber(session.speech_total_ms);
+  const firstAudioNote = firstAudio !== null ? ` Tempo total até 1º áudio: ${firstAudio} ms.` : "";
+  const speechNote = speechTotal !== null ? ` Fala total: ${speechTotal} ms, apenas informativo.` : "";
+  return { label: highest.key, detail: `maior atraso medido no último turno: ${highest.value} ms.${firstAudioNote}${speechNote}` };
 }
 
 function voiceOutcomeClass(outcome: string | undefined) {

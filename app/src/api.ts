@@ -83,6 +83,7 @@ export type VoiceSessionSummary = {
   voice_end_to_stt_start_ms?: number | null;
   stt_ms?: number | null;
   end_of_turn_ms?: number | null;
+  tts_first_audio_ms?: number | null;
   first_audio_out_ms?: number | null;
   first_audio_after_voice_end_ms?: number | null;
   speech_total_ms?: number | null;

@@ -193,6 +193,7 @@ def _sanitize_session(value: dict) -> dict:
         "voice_end_to_stt_start_ms",
         "stt_ms",
         "end_of_turn_ms",
+        "tts_first_audio_ms",
         "first_audio_out_ms",
         "first_audio_after_voice_end_ms",
         "speech_total_ms",
