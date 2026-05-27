@@ -26,9 +26,12 @@ para estabilidade local.
 - Supressão de ruído em Python fica desligada por padrão. Nos testes práticos
 ela piorou a transcrição e aumentou risco de watchdog.
 - Backpressure persistente no bridge encerra a sessão. Áudio atrasado ou
-picotado não deve chegar ao STT como se fosse fala válida.
+  picotado não deve chegar ao STT como se fosse fala válida.
 - O teto de 10 s é compartilhado entre firmware e server. Sessões longas são
-descartadas sem chamar STT.
+  descartadas sem chamar STT.
+- O server rechunkeia a saída TTS para frames exatos de 512 bytes antes de
+  enviar `SAY`; chunks maiores vindos do gerador de áudio nunca cruzam o
+  contrato TCP com o firmware.
 
 ## Referência Xiaozhi/StackChan
 
@@ -65,9 +68,9 @@ Critérios de aceite:
 
 ### Fase 2 — Métricas e Observabilidade de Voz
 
-Status: em andamento. O resumo da última sessão, o histórico recente e os alertas
-de descarte/falha já são registrados no server, expostos em `/ai/metrics` e
-exibidos no dashboard dev.
+Status: concluída no server/dashboard. O resumo da última sessão, o histórico
+recente, os alertas de descarte/falha e o diagnóstico acionável já são
+registrados no server, expostos em `/ai/metrics` e exibidos no dashboard dev.
 
 Objetivo: saber exatamente onde está a latência ou falha.
 
@@ -95,15 +98,26 @@ Critérios de aceite:
 
 ### Fase 3 — Turn-Taking Robusto
 
-Status: iniciada. O barge-in agora registra o turno antigo como interrompido,
-remove frames de fala pendentes da fila TCP antes do `SPEECH_CANCEL`, tolera
-falha de cancelamento do firmware e abre o próximo turno com watchdog ativo. O
-follow-up deixou de depender de `?` no texto exibido: o server manda
-`FOLLOWUP_ARM` por `SESSION` quando a resposta real pede continuação, e o prompt
-de wake vazio não arma nova escuta. Os demais encerramentos agora usam contrato
-terminal explícito (`SESSION_DONE`, `SESSION_ERROR` ou `FOLLOWUP_CANCEL`) para
-não deixar estado pendente no firmware. O prompt de wake vazio permanece limitado
-a uma vez por sequência até existir fala útil.
+Status: concluída para turn-taking half-duplex; barge-in full-duplex fica
+experimental até AEC. O barge-in agora registra o turno antigo como
+interrompido, remove frames de fala pendentes da fila TCP antes do
+`SPEECH_CANCEL`, tolera falha de cancelamento do firmware e abre o próximo turno
+com watchdog ativo. O follow-up deixou de depender de `?` no texto exibido: o
+server manda `FOLLOWUP_ARM` por `SESSION` quando a resposta real pede
+continuação, e o prompt de wake vazio não arma nova escuta. Os demais
+encerramentos agora usam contrato terminal explícito (`SESSION_DONE`,
+`SESSION_ERROR` ou `FOLLOWUP_CANCEL`) para não deixar estado pendente no
+firmware. O prompt de wake vazio permanece limitado a uma vez por sequência até
+existir fala útil. O firmware também formaliza os modos `auto`, `manual` e
+`realtime` na API de áudio; nesta fase apenas `auto` é suportado, enquanto
+`manual` e `realtime` retornam `ESP_ERR_NOT_SUPPORTED`.
+Validação em bancada mostrou que a interrupção durante TTS estava caindo no
+follow-up pós-fala: o firmware não anunciava `barge_in`, não tratava
+`SPEECH_CANCEL` e `audio_play_stop()` não encerrava `PLAY_BRIDGE_SAY`. O caminho
+foi corrigido no protocolo: o firmware aceita `SPEECH_CANCEL` e drena a fila
+SAY. A tentativa de disparar barge-in automaticamente por VAD secundário durante
+TTS gerou falso positivo com o próprio áudio do robô; por isso o disparo
+automático fica desativado até existir AEC/AFE validado.
 
 Objetivo: o robô deve saber quando ouvir, quando parar e quando não responder.
 
@@ -121,10 +135,33 @@ Critérios de aceite:
 
 - Wake sem fala: no máximo uma ajuda, depois volta ao `IDLE`.
 - Wake + fala curta: uma resposta, sem repetir turno.
-- Interromper TTS com fala cancela o áudio antigo e inicia novo turno limpo.
+- Interromper TTS por fala fica reservado para a fase com AEC/AFE validado.
 - Follow-up funciona sem reacordar o robô artificialmente.
 
 ### Fase 4 — Qualidade de Entrada Sem Denoise Arriscado
+
+Status: concluída como baseline inicial de diagnóstico. O firmware expõe
+`POST /api/audio/record` para gravar WAVs diagnósticos no SD em `raw` ou
+`bridge_tx`, e o server inclui análise local de WAV com RMS, pico, clipping e
+duração. As primeiras amostras reais mostraram `bridge_tx` sem clipping e em
+nível suficiente; o ganho não é o gargalo principal. O ajuste inicial foi mover
+o Whisper para `beam_size=5` e usar `NOISEBOT_WHISPER_INITIAL_PROMPT` com
+vocabulário curto do Noisebot, porque isso corrigiu as transcrições dos
+comandos gravados sem aplicar denoise. Quando o Whisper marca `NO_SPEECH`, o
+server zera o texto retornado para evitar vazamento do prompt inicial em
+silêncio/follow-up vazio. O comando
+`noisebot_server debug audio-report <pasta>` gera o baseline Markdown/JSON da
+coleta; o relatório inicial está em `docs/VOICE_SAMPLES_PHASE4.md`.
+
+Resultado de bancada em 2026-05-27:
+
+- 17 WAVs analisados: `bridge_tx=9`, `raw=8`.
+- Cenários: fala normal, fala baixa, fala longe, comando curto, ruído ambiente,
+  mesa vibrando e probe curto.
+- Clipping máximo observado: `0.0000%`.
+- RMS médio: `bridge_tx=1842.28`, `raw=998.94`.
+- Decisão: não ativar denoise Python; manter ganho/AGC atual e usar os arquivos
+  gravados como baseline antes/depois para qualquer filtro futuro.
 
 Objetivo: melhorar entendimento sem filtros que pioram a fala.
 
@@ -139,21 +176,102 @@ Mudanças:
 - Detectar saturação/clipping e avisar no dashboard.
 - Avaliar microfone, distância e ruído com amostras salvas.
 
+Coleta inicial:
+
+- `POST /api/audio/record` com `{"source":"raw","scenario":"fala_baixa","duration_s":5}`
+  grava o microfone condicionado em `/sdcard/logs/audio/`.
+- `POST /api/audio/record` com `{"source":"bridge_tx","scenario":"fala_baixa","duration_s":5}`
+  grava o PCM que seria enviado ao STT.
+- Repetir cada cenário em par `raw`/`bridge_tx`: fala normal, fala baixa,
+  fala longe, ruído ambiente, mesa com vibração e comando curto.
+- Copiar os WAVs do SD para o PC e analisar com
+  `noisebot_server debug audio-report ..\voice_samples --output ..\docs\VOICE_SAMPLES_PHASE4.md`.
+
 Critérios de aceite:
 
-- 20 comandos reais gravados e comparados.
-- Taxa de comandos entendidos melhora sem aumentar watchdog.
+- Baseline inicial gravado e comparado sem clipping.
+- Taxa de comandos entendidos melhorou com `beam_size=5` e prompt inicial sem
+  ativar denoise.
 - Nenhum filtro novo entra sem gravação antes/depois.
+- O alvo original de 20 comandos continua recomendado para regressão, mas não
+  bloqueia a transição para AFE porque o gargalo medido não foi ganho/clipping.
 
 ### Fase 5 — Pipeline AFE no Firmware
+
+Status: experimento opt-in avançado para fonte processada do bridge; AFE é
+candidata, ainda não é padrão. O
+componente `audio_processor_service` continua desligado por padrão: sem endpoint
+ativo ele não cria AFE, não recebe áudio e não altera o caminho
+`audio_service -> bridge`. Quando acionado manualmente, ele cria uma instância
+`AFE_TYPE_VC` em `AFE_MODE_HIGH_PERF`, recebe o mesmo PCM condicionado do
+`audio_service`, mantém métricas de feed/fetch e pode expor a saída AFE como
+fonte preferencial do bridge com fallback imediato para o PCM original.
+
+Endpoints de bancada:
+
+- Firmware direto: `GET /api/audio/processor`.
+- Firmware direto: `POST /api/audio/processor/probe`.
+- Firmware direto: `POST /api/audio/processor/shadow/start`.
+- Firmware direto: `POST /api/audio/processor/shadow/stop`.
+- Firmware direto: `POST /api/audio/processor/bridge/start`.
+- Firmware direto: `POST /api/audio/processor/bridge/stop`.
+- Via server: `GET /api/device/audio/processor`.
+- Via server: `POST /api/device/audio/processor/probe` com token ops.
+- Via server: `POST /api/device/audio/processor/shadow/start` com token ops.
+- Via server: `POST /api/device/audio/processor/shadow/stop` com token ops.
+- Via server: `POST /api/device/audio/processor/bridge/start` com token ops.
+- Via server: `POST /api/device/audio/processor/bridge/stop` com token ops.
+
+Primeiro probe em hardware, após flash de 2026-05-27:
+
+- Boot normal confirmou `initialized=true`, `enabled=false`, `probe_ran=false`.
+- `POST /api/audio/processor/probe`: `probe_ok=true`.
+- PSRAM antes: 7337 KB.
+- PSRAM após criar AFE VC: 7234 KB.
+- PSRAM após destruir AFE VC: 7337 KB.
+- Custo observado do probe: ~103 KB de PSRAM, devolvidos após destroy.
+- IO do AFE VC: `feed_chunksize=160`, `fetch_chunksize=512`,
+  `feed_channels=1`, `fetch_channels=1`, `sample_rate_hz=16000`.
+- Health depois do probe: firmware seguiu responsivo, SD montado e sem queda de
+  heap PSRAM livre.
+
+Correção de RAW baseline em 2026-05-27:
+
+- O caminho RAW deixou de usar `vad_process_with_trigger()` como juiz contínuo
+  de fala/silêncio e passou a usar `vad_process()` para evitar sessões presas
+  até o teto de 10 s.
+- O teto local do firmware foi ajustado para encerrar antes do limite exato do
+  server, reduzindo descarte por `audio_longo`.
+- Teste manual pós-flash: turnos consecutivos encerraram por
+  `voice_end_reason=silence` sem `audio_longo`.
+
+A/B curto RAW vs AFE em 2026-05-27 (`docs/VOICE_AB_PHASE5_8192.md`):
+
+- RAW bom: `1/2`.
+- AFE bom: `2/2`.
+- `no_speech` médio RAW: `0.358`.
+- `no_speech` médio AFE: `0.049`.
+- Fallbacks AFE: `35`.
+- Overruns AFE: `0`.
+- Decisão: AFE candidata; coletar mais repetições com frases variadas antes de
+  promover como padrão.
+
+Guard de idioma em 2026-05-27:
+
+- O prompt da LLM exige resposta em português do Brasil.
+- O server aplica guard pós-LLM para substituir respostas com scripts
+  chinês/japonês/coreano por fallback em português antes de TTS/robô.
+- Teste prático com piadas/história confirmou respostas em português; um turno
+  longo ainda encerrou por `timeout`, então a instabilidade remanescente é de
+  turn-taking/entrada, não de idioma.
 
 Objetivo: absorver a parte mais valiosa do Xiaozhi: processamento de voz no ESP,
 mas sem sacrificar câmera, TTS e estabilidade.
 
 Mudanças:
 
-- Criar componente experimental `audio_processor_service`.
-- Avaliar AFE `AFE_TYPE_VC` em modo high performance.
+- Criar componente experimental `audio_processor_service` desligado por padrão.
+- Avaliar AFE `AFE_TYPE_VC` em modo high performance por probe NVS.
 - Testar VADN/NSNET se modelos estiverem disponíveis.
 - Medir RAM com:
   - câmera ativa;
@@ -163,12 +281,58 @@ Mudanças:
   - SD logging ativo.
 - Manter fallback para o VAD atual.
 
+Sequência de ativação:
+
+1. Build com o componente presente e `voice_afe_probe` desligado.
+2. Boot normal: confirmar que logs mostram probe desabilitado e voz atual segue
+   intacta.
+3. Ligar `nb_svc/voice_afe_probe=1` em bancada.
+4. Boot com WakeNet ativo: coletar PSRAM pré/pós `AFE_TYPE_VC`.
+5. Só se a memória ficar confortável, criar etapa seguinte de feed/fetch
+   espelhado sem enviar saída ao STT.
+6. Só depois comparar WAV `bridge_tx` atual vs saída AFE em amostras pareadas.
+
+Shadow mode atual:
+
+- `audio_service` chama `audio_processor_service_feed_shadow()` com o mesmo PCM
+  condicionado que alimenta sound analysis e bridge.
+- O AFE VC recebe feed em paralelo, uma task própria faz fetch e guarda a saída
+  em um ring buffer pequeno alocado em PSRAM.
+- Métricas expostas: `shadow_feed_chunks`, `shadow_fetch_chunks`,
+  `shadow_fetch_nulls`, `shadow_output_rms`, `shadow_output_peak`,
+  `processed_buffer_level`, `processed_output_overruns` e PSRAM atual.
+- A saída AFE ainda não altera `VOICE_START` nem `VOICE_END`.
+
+Fonte processada do bridge:
+
+- `POST /api/audio/processor/bridge/start` inicia o shadow se necessário e
+  habilita `processed_bridge_enabled`.
+- Durante uma sessão de escuta, `audio_service` tenta ler um chunk AFE de mesmo
+  tamanho do chunk do microfone. Se houver dados suficientes, esse chunk vira a
+  fonte enviada ao bridge/STT; se não houver, o chunk bruto condicionado segue
+  imediatamente pelo caminho antigo.
+- O ring buffer processado só aceita saída AFE entre `VOICE_START` e fim da
+  sessão. Isso evita áudio antigo de idle/silêncio e mantém os primeiros chunks
+  com fallback limpo quando a AFE ainda está atrasada.
+- O AGC/limitador atual do `bridge_tx` continua aplicado depois da seleção da
+  fonte, mantendo o contrato de amplitude do servidor.
+- Métricas de segurança: `processed_bridge_chunks`,
+  `processed_bridge_fallbacks`, `processed_output_overruns` e
+  `processed_buffer_level`.
+
 Critérios de aceite:
 
 - Sem regressão de câmera 640x480.
 - Sem queda do TTS.
 - Sem watchdog em 30 minutos de uso misto.
 - Ganho real de STT comprovado por amostras comparáveis.
+
+Pendências para promover AFE:
+
+- Rodar bateria A/B maior com 3 a 5 frases diferentes.
+- Exigir zero overrun e fallback baixo/estável.
+- Confirmar que respostas longas não aumentam `timeout` ou `audio_longo`.
+- Só então ligar fonte AFE como padrão do bridge, mantendo fallback RAW.
 
 ### Fase 6 — Opus/Frames de 60 ms
 
@@ -232,12 +396,10 @@ Critérios de aceite:
 
 ## Ordem Recomendada
 
-1. Fechar Fase 2 no dashboard dev.
-2. Fechar Fase 3 no firmware/server.
-3. Coletar amostras reais da Fase 4.
-4. Só então iniciar AFE experimental.
-5. Só depois de AFE estável avaliar Opus.
-6. Só depois de AFE/Opus maduros avaliar AEC/realtime.
+1. Coletar amostras reais da Fase 4.
+2. Só então iniciar AFE experimental.
+3. Só depois de AFE estável avaliar Opus.
+4. Só depois de AFE/Opus maduros avaliar AEC/realtime.
 
 Essa ordem evita a armadilha de trocar codec, VAD, AEC e STT ao mesmo tempo. O
 fim desejado é ambicioso, mas cada fase precisa ter medição própria para o robô

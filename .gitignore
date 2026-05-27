@@ -40,6 +40,8 @@ desktop.ini
 *.core
 bridge_v2/*.wav
 bridge_v2/pytest-cache-files-*/
+voice_samples/
+voice_samples-v1/
 server/.env
 server/.venv/
 server/__pycache__/

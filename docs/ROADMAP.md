@@ -2014,6 +2014,20 @@ Implementação:
 - [x] Wake word + ruído sem voz: bridge descarta ou sessão encerra sem Gemini/Piper.
 - [x] PSRAM livre após AFE listening: > 300 KB, ou decisão explícita de trade-off se câmera continuar adiada.
 
+**Validação complementar de voz (2026-05-27):**
+
+- [x] O pipeline RAW deixou de usar `vad_process_with_trigger()` como decisão
+  contínua de silêncio e passou a usar `vad_process()`, alinhando o
+  comportamento ao uso esperado do ESP-SR VAD.
+- [x] Testes pós-flash confirmaram turnos curtos encerrando por
+  `voice_end_reason=silence`, sem `audio_longo`.
+- [x] O server passou a proteger a resposta da LLM contra saída em scripts
+  chinês/japonês/coreano antes do TTS, mantendo resposta em português.
+- [ ] Ainda há `timeout` ocasional em fala/resposta longa; tratar como item de
+  turn-taking antes de liberar modo narrativo ou realtime.
+- [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
+  padrão. Ver `docs/VOICE_PIPELINE.md` e `docs/VOICE_AB_PHASE5_8192.md`.
+
 ---
 
 ### Etapa 12.11 — Rebaixar VAD Heurístico para Diagnóstico ✓
