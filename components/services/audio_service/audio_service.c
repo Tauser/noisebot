@@ -103,7 +103,10 @@ extern void vad_destroy(nb_esp_vad_handle_t handle);
 #define LISTEN_END_SILENCE_MS            900U
 #define LISTEN_EARLY_END_SILENCE_MS     1300U
 #define LISTEN_EARLY_GRACE_MS           6000U
-#define LISTEN_MAX_SPEECH_MS           30000U
+/* Contrato conversacional v1: a fala útil é curta e previsível. O server usa
+ * o mesmo teto (160000 samples @16kHz = 10s), evitando sessões longas que
+ * degradam STT, TTS e watchdog. */
+#define LISTEN_MAX_SPEECH_MS           10000U
 #define BRIDGE_TX_FAIL_ABORT_COUNT     4U
 
 /* High-pass one-pole para tirar rumble/engine abaixo de ~180 Hz antes do VAD.
@@ -1092,8 +1095,19 @@ static void audio_task(void *arg)
                     s.bridge_flush_before_end = false;
                     listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
                 } else if (tx_rc == ESP_ERR_NO_MEM) {
-                    /* Fila cheia é backpressure: o bridge_service já loga/dropa áudio.
-                     * Mantém a sessão aberta para permitir que os próximos chunks entrem. */
+                    /* Backpressure persistente não é fala saudável: a fila já ficou
+                     * atrás do tempo real. Encerra limpo após poucas falhas para não
+                     * alimentar STT com áudio picotado ou atrasado. */
+                    if (s.bridge_tx_fail_count < UINT8_MAX) {
+                        s.bridge_tx_fail_count++;
+                    }
+                    if (s.bridge_tx_fail_count >= BRIDGE_TX_FAIL_ABORT_COUNT) {
+                        ESP_LOGW(TAG,
+                                 "bridge TX congestionado (%u chunks dropados seguidos) — encerrando sessao",
+                                 (unsigned)s.bridge_tx_fail_count);
+                        s.bridge_flush_before_end = true;
+                        listen_session_finish(NB_LISTEN_END_TIMEOUT);
+                    }
                 } else {
                     if (s.bridge_tx_fail_count < UINT8_MAX) {
                         s.bridge_tx_fail_count++;

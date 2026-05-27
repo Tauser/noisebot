@@ -1,0 +1,97 @@
+"""HTTP client for firmware diagnostics endpoints."""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+from dataclasses import dataclass
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urljoin
+from urllib.request import Request, urlopen
+
+
+class FirmwareDiagError(RuntimeError):
+    """Firmware diagnostics query failed."""
+
+
+@dataclass(frozen=True)
+class FirmwareDiagClient:
+    """Small HTTP client for diagnostic endpoints on the robot firmware."""
+
+    base_url: str
+    timeout_s: float = 1.5
+
+    @classmethod
+    def from_config(cls, config) -> "FirmwareDiagClient | None":
+        explicit = os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "").strip()
+        if explicit:
+            return cls(explicit.rstrip("/") + "/", _env_float("NOISEBOT_DIAG_TIMEOUT_S", 1.5))
+
+        host = getattr(getattr(config, "transport", None), "host", None)
+        if not host:
+            return None
+        return cls(f"http://{host}/", _env_float("NOISEBOT_DIAG_TIMEOUT_S", 1.5))
+
+    def collect(self) -> dict[str, Any]:
+        started = time.perf_counter()
+        endpoints = {
+            "diag": "api/diag",
+            "health": "api/health",
+            "version": "api/version",
+            "wifi": "api/wifi",
+            "audio": "api/audio",
+            "camera": "api/camera/status",
+            "vision": "api/vision/status",
+            "touch": "api/touch",
+            "agenda": "api/agenda",
+            "config": "api/config/all",
+            "ltm": "api/ltm",
+        }
+        payload: dict[str, Any] = {
+            "available": True,
+            "base_url": self.base_url.rstrip("/"),
+            "latency_ms": None,
+            "errors": {},
+        }
+        errors: dict[str, str] = {}
+        for key, path in endpoints.items():
+            try:
+                payload[key] = self._get_json(path)
+            except FirmwareDiagError as exc:
+                payload[key] = None
+                errors[key] = str(exc)
+        payload["latency_ms"] = round((time.perf_counter() - started) * 1000.0)
+        payload["errors"] = errors
+        payload["available"] = len(errors) < len(endpoints)
+        return payload
+
+    def _get_json(self, path: str) -> dict[str, Any] | list[Any]:
+        data = self._get_bytes(path).decode("utf-8")
+        try:
+            payload = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise FirmwareDiagError(f"{path}: resposta nao e JSON") from exc
+        if not isinstance(payload, (dict, list)):
+            raise FirmwareDiagError(f"{path}: resposta invalida")
+        return payload
+
+    def _get_bytes(self, path: str) -> bytes:
+        url = urljoin(self.base_url, path.lstrip("/"))
+        request = Request(url, headers={"User-Agent": "NoiseBot-Server/0.1"})
+        try:
+            with urlopen(request, timeout=self.timeout_s) as response:
+                return response.read()
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            raise FirmwareDiagError(f"{path}: {exc}") from exc
+
+
+def _env_float(key: str, default: float) -> float:
+    try:
+        return float(os.environ.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
+
+__all__ = ["FirmwareDiagClient", "FirmwareDiagError"]

@@ -18,6 +18,7 @@ idf_component_register(
         persona_service
         expression_service
         gaze_service
+        render_service
         ui_overlay_service
         led_service
         audio_service

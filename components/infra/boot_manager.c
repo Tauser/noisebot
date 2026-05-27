@@ -1323,7 +1323,7 @@ static esp_err_t phase_services(void)
         NB_LOGW(TAG, "wifi_service_init falhou: %s — sem WiFi", esp_err_to_name(err));
     }
 
-    /* web_service (Etapa 15.1): HTTP+WS dashboard, inicia após IP adquirido */
+    /* web_service (Etapa 15.1): Companion API HTTP, inicia após IP adquirido */
     web_service_init();
 
     /* bridge_service (Etapa 12.1): bridge LLM via TCP/UART, offline-first */

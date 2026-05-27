@@ -37,6 +37,7 @@ from .schemas import (
 )
 from .dashboard import get_dashboard_html
 from .firmware_agenda import FirmwareAgendaClient, FirmwareAgendaError
+from .firmware_diag import FirmwareDiagClient, FirmwareDiagError
 from .security import check_token, load_or_create_token
 from .status import StatusStore
 from ..vision import VisionClient, VisionError
@@ -81,6 +82,7 @@ class OpsHttpServer:
         self._metrics_api = MetricsApi(app._orchestrator.metrics, store)
         self._app_state = AppStateStore()
         self._agenda_client = FirmwareAgendaClient.from_config(app._config)
+        self._firmware_diag_client = FirmwareDiagClient.from_config(app._config)
         self._vision_client = VisionClient.from_config(app._config)
         self._app_dist = _find_app_dist()
         self._t_start = time.monotonic()
@@ -110,10 +112,18 @@ class OpsHttpServer:
         wa.router.add_delete("/api/agenda/items/{item_id}", self._delete_agenda_item)
         wa.router.add_get("/api/settings/basic", self._get_basic_settings)
         wa.router.add_put("/api/settings/basic", self._put_basic_settings)
+        wa.router.add_get("/api/settings/advanced", self._get_advanced_settings)
+        wa.router.add_put("/api/settings/advanced", self._put_advanced_settings)
+        wa.router.add_get("/api/profile", self._get_profile)
+        wa.router.add_put("/api/profile", self._put_profile)
+        wa.router.add_post("/api/profile/test-voice", self._post_profile_test_voice)
+        wa.router.add_get("/api/device/status", self._get_device_status)
+        wa.router.add_get("/api/device/diagnostics", self._get_device_diagnostics)
         wa.router.add_get("/api/vision/status", self._get_vision_status)
         wa.router.add_get("/api/vision/observe", self._get_vision_observe)
         wa.router.add_get("/api/vision/analyze", self._get_vision_analyze)
         wa.router.add_get("/api/vision/snapshot", self._get_vision_snapshot)
+        wa.router.add_get("/api/vision/stream.mjpg", self._get_vision_stream)
         if self._app_dist is not None and (self._app_dist / "assets").exists():
             wa.router.add_static("/assets", self._app_dist / "assets")
         wa.router.add_get("/{tail:.*}", self._get_spa_fallback)
@@ -238,6 +248,48 @@ class OpsHttpServer:
     async def _get_basic_settings(self, request: web.Request) -> web.Response:
         return _json({"settings": self._app_state.get_basic_settings()})
 
+    async def _get_advanced_settings(self, request: web.Request) -> web.Response:
+        return _json({"advanced": self._app_state.get_advanced_settings()})
+
+    async def _get_profile(self, request: web.Request) -> web.Response:
+        return _json({"profile": self._app_state.get_profile()})
+
+    async def _get_device_status(self, request: web.Request) -> web.Response:
+        config = self._app._config
+        supervisor = getattr(self._app, "_supervisor", None)
+        adapter = self._get_adapter()
+        return _json({
+            "server_online": True,
+            "firmware_online": bool(adapter is not None and getattr(adapter, "is_connected", False)),
+            "transport_host": getattr(config.transport, "host", ""),
+            "transport_port": getattr(config.transport, "port", 0),
+            "ops_port": config.ops.port,
+            "dry_run": bool(config.dry_run),
+            "features": [] if adapter is None else getattr(adapter, "peer_features", []),
+            "supervisor": "active" if supervisor is not None else "disabled",
+            "diagnostics_available": self._firmware_diag_client is not None,
+        })
+
+    async def _get_device_diagnostics(self, request: web.Request) -> web.Response:
+        if self._firmware_diag_client is None:
+            return _json({
+                "available": False,
+                "source": "unconfigured",
+                "errors": {
+                    "config": "NOISEBOT_ROBOT_HTTP_URL ou NOISEBOT_HOST nao configurado",
+                },
+            })
+        try:
+            payload = await asyncio.to_thread(self._firmware_diag_client.collect)
+        except FirmwareDiagError as exc:
+            return _json({
+                "available": False,
+                "source": "firmware_http",
+                "base_url": self._firmware_diag_client.base_url.rstrip("/"),
+                "errors": {"request": str(exc)},
+            })
+        return _json({"source": "firmware_http", **payload})
+
     async def _get_vision_status(self, request: web.Request) -> web.Response:
         return _json({
             "available": self._vision_client is not None,
@@ -274,6 +326,43 @@ class OpsHttpServer:
             content_type="image/jpeg",
             headers={"Cache-Control": "no-store"},
         )
+
+    async def _get_vision_stream(self, request: web.Request) -> web.StreamResponse:
+        if self._vision_client is None:
+            return _json(error_response("visão não configurada"), status=503)
+
+        boundary = "noisebot-frame"
+        response = web.StreamResponse(
+            status=200,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "Connection": "close",
+                "Content-Type": f"multipart/x-mixed-replace; boundary={boundary}",
+                "Pragma": "no-cache",
+            },
+        )
+        await response.prepare(request)
+
+        frame_delay_s = _env_float("NOISEBOT_VISION_STREAM_DELAY_S", 0.05)
+        while True:
+            try:
+                jpeg = await asyncio.to_thread(self._vision_client.snapshot)
+                await response.write(
+                    (
+                        f"--{boundary}\r\n"
+                        "Content-Type: image/jpeg\r\n"
+                        f"Content-Length: {len(jpeg)}\r\n\r\n"
+                    ).encode("ascii")
+                )
+                await response.write(jpeg)
+                await response.write(b"\r\n")
+                await asyncio.sleep(frame_delay_s)
+            except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError):
+                break
+            except VisionError as exc:
+                log.debug("Ops API: stream de visao interrompido: %s", exc)
+                await asyncio.sleep(0.5)
+        return response
 
     # -- POST handlers ---------------------------------------------------------
 
@@ -460,6 +549,33 @@ class OpsHttpServer:
         applied = await self._apply_available_basic_settings(data, settings)
         return _json(ok_response("ajustes salvos", settings=settings, applied=applied))
 
+    async def _put_advanced_settings(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        data = await _read_json_object(request)
+        if data is None:
+            return _json(error_response("body JSON inválido"), status=400)
+        advanced = self._app_state.update_advanced_settings(data)
+        applied = await self._apply_advanced_settings(data, advanced)
+        return _json(ok_response("configurações salvas", advanced=advanced, applied=applied))
+
+    async def _put_profile(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        data = await _read_json_object(request)
+        if data is None:
+            return _json(error_response("body JSON inválido"), status=400)
+        profile = self._app_state.update_profile(data)
+        applied = await self._apply_profile(profile)
+        return _json(ok_response("perfil salvo", profile=profile, applied=applied))
+
+    async def _post_profile_test_voice(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        profile = self._app_state.get_profile()
+        name = profile.get("assistant_name", "NoiseBot")
+        text = f"Olá, eu sou {name}. Minha voz está funcionando."
+        spoken = await self._speak_text(text)
+        status = "firmware" if spoken else "unavailable"
+        return _json(ok_response("teste de voz solicitado", spoken=spoken, applied=status))
+
     # -- Internos --------------------------------------------------------------
 
     async def _apply_available_basic_settings(
@@ -522,6 +638,50 @@ class OpsHttpServer:
                 applied[key] = "saved_only"
         return applied
 
+    async def _apply_advanced_settings(
+        self,
+        request_data: dict[str, Any],
+        advanced: dict[str, bool | int | str],
+    ) -> dict[str, str]:
+        applied: dict[str, str] = {}
+        adapter = self._get_adapter()
+        if adapter is None or not getattr(adapter, "is_connected", False):
+            return {key: "saved_only" for key in request_data}
+        payload_keys = {
+            "wifi_enabled",
+            "logs_enabled",
+            "log_level",
+            "servos_enabled",
+            "timezone",
+            "location",
+            "device_name",
+        }
+        payload = {
+            "event": "APP_ADVANCED_SETTINGS",
+            **{key: advanced[key] for key in payload_keys if key in request_data and key in advanced},
+        }
+        if len(payload) <= 1:
+            return {key: "saved_only" for key in request_data}
+        try:
+            await adapter.send_session(payload)
+        except Exception as exc:
+            log.warning("Ops API: configurações salvas, envio ao firmware falhou: %s", exc)
+            return {key: "saved_only" for key in request_data}
+        for key in request_data:
+            applied[key] = "firmware" if key in payload_keys else "saved_only"
+        return applied
+
+    async def _apply_profile(self, profile: dict[str, str]) -> str:
+        adapter = self._get_adapter()
+        if adapter is None or not getattr(adapter, "is_connected", False):
+            return "saved_only"
+        try:
+            await adapter.send_session({"event": "APP_PROFILE", **profile})
+        except Exception as exc:
+            log.warning("Ops API: perfil salvo, envio ao firmware falhou: %s", exc)
+            return "saved_only"
+        return "firmware"
+
     async def _apply_agenda_item(self, item: dict[str, Any], action: str) -> str:
         payload = _agenda_session_payload(item, action)
         if payload is None:
@@ -540,6 +700,32 @@ class OpsHttpServer:
             log.warning("Ops API: agenda salva, envio ao firmware falhou: %s", exc)
             return "saved_only"
         return "firmware"
+
+    def _get_adapter(self) -> Any | None:
+        get_adapter = getattr(self._app, "_get_adapter", None)
+        return get_adapter() if callable(get_adapter) else None
+
+    async def _speak_text(self, text: str) -> bool:
+        adapter = self._get_adapter()
+        tts = getattr(self._app, "_tts_provider", None)
+        if adapter is None or not getattr(adapter, "is_connected", False) or tts is None:
+            return False
+
+        async def _sentences():
+            yield text
+
+        turn_id = int(time.time() * 1000) & 0x7FFFFFFF
+        sent = False
+        try:
+            await adapter.send_say_begin(turn_id)
+            async for pcm in tts.synthesize_stream(_sentences()):
+                await adapter.send_say(pcm)
+                sent = True
+            await adapter.send_say_end(turn_id)
+        except Exception as exc:
+            log.warning("Ops API: teste de voz falhou: %s", exc)
+            return False
+        return sent
 
     async def _sync_firmware_agenda(self) -> None:
         if self._agenda_client is None:
@@ -667,6 +853,13 @@ def _parse_hhmm(value: str) -> tuple[int, int]:
 def _percent_to_u8(percent: int) -> int:
     clamped = max(0, min(100, percent))
     return round((clamped * 255) / 100)
+
+
+def _env_float(key: str, default: float) -> float:
+    try:
+        return float(os.environ.get(key, default))
+    except (TypeError, ValueError):
+        return default
 
 
 def _vision_observation_dict(observation) -> dict[str, Any]:

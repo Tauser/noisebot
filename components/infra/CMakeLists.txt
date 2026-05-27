@@ -63,6 +63,4 @@ idf_component_register(
         agenda_service
         camera_service
         vision_service
-    EMBED_TXTFILES
-        "dashboard.html"
 )

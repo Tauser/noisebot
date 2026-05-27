@@ -35,6 +35,8 @@ class StatusStore:
         self.last_transcript: str = ""
         self.last_reply: str = ""
         self.last_route: str = ""
+        self.last_voice_session: dict = {}
+        self._voice_sessions: deque[dict] = deque(maxlen=12)
         self._errors: deque[ErrorEntry] = deque(maxlen=max_errors)
         self.turn_counters: dict[str, int] = {
             "total": 0,
@@ -112,6 +114,20 @@ class StatusStore:
         elif "tts" in kind:
             self.tts_status = "degraded"
 
+    def record_voice_session(self, session: dict) -> None:
+        safe = _sanitize_session(session)
+        if not safe:
+            return
+        self.last_voice_session = safe
+        if self._voice_sessions and self._voice_sessions[-1].get("turn_id") == safe.get("turn_id"):
+            self._voice_sessions[-1] = safe
+        else:
+            self._voice_sessions.append(safe)
+
+    def clear_voice_sessions(self) -> None:
+        self.last_voice_session = {}
+        self._voice_sessions.clear()
+
     def set_provider_status(self, component: str, status: str) -> None:
         if component == "stt":
             self.stt_status = status
@@ -137,6 +153,10 @@ class StatusStore:
         ]
 
     @property
+    def recent_voice_sessions(self) -> list[dict]:
+        return [session.copy() for session in reversed(self._voice_sessions)]
+
+    @property
     def last_error(self) -> dict | None:
         if not self._errors:
             return None
@@ -149,3 +169,40 @@ def _safe_runtime_text(value: str, *, limit: int) -> str:
     for pattern in _SECRET_PATTERNS:
         text = pattern.sub("<redacted>", text)
     return text
+
+
+def _sanitize_session(value: dict) -> dict:
+    safe: dict = {}
+    allowed = {
+        "turn_id",
+        "outcome",
+        "state",
+        "discard_reason",
+        "voice_end_reason",
+        "total_samples",
+        "duration_ms",
+        "chunk_count",
+        "transcript_quality",
+        "no_speech_prob",
+        "avg_logprob",
+        "compression_ratio",
+        "intent_name",
+        "reply_chars",
+        "voice_end_to_stt_start_ms",
+        "stt_ms",
+        "end_of_turn_ms",
+        "first_audio_out_ms",
+        "first_audio_after_voice_end_ms",
+        "speech_total_ms",
+        "error_stage",
+        "error_reason",
+    }
+    for key in allowed:
+        if key not in value:
+            continue
+        item = value[key]
+        if isinstance(item, str):
+            safe[key] = _safe_runtime_text(item, limit=120)
+        elif isinstance(item, (int, float, bool)) or item is None:
+            safe[key] = item
+    return safe

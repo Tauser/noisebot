@@ -137,6 +137,17 @@ void render_service_mark_dirty(int x, int y, int w, int h);
  */
 void render_service_force_full_refresh(void);
 
+/**
+ * @brief Ajusta o brilho visual da tela (0-255).
+ *
+ * Primeiro tenta aplicar no backlight físico via display HAL. Em painéis sem
+ * pino BL, o render_service aplica dimming por software no frame antes do push.
+ * Thread-safe: pode ser chamado de qualquer task.
+ *
+ * @param level 0 = escuro, 255 = brilho máximo.
+ */
+void render_service_set_brightness(uint8_t level);
+
 /* ── Métricas ────────────────────────────────────────────────────────────── */
 
 /**

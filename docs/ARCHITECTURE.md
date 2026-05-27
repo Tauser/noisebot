@@ -58,7 +58,7 @@ components/
 │   ├── watchdog_service.c / .h  # TWDT e HW WDT
 │   ├── error_policy.h           # Macros de assert e política de erro
 │   ├── wifi_service.c / .h      # WiFi STA + mDNS noisebot.local (Etapa 9.6)
-│   ├── web_service.c / .h       # HTTP+WS dashboard e REST API (Etapa 15.1)
+│   ├── web_service.c / .h       # HTTP REST Companion API (Etapa 15.1)
 │   └── nb_persist_types.h       # Tipos das estruturas persistidas
 │
 ├── nb_hal/

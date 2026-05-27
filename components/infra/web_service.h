@@ -1,8 +1,7 @@
 /*
- * web_service.h — Web Dashboard e Companion API (Layer 2, Etapa 15.1)
+ * web_service.h — Companion API minima (Layer 2, Etapa 15.1)
  *
  * Expõe um servidor HTTP local após NB_EVT_WIFI_IP_ACQUIRED:
- *   GET  /           — Dashboard HTML (SD ou fallback embutido)
  *   GET  /api/status — JSON: state, expression, attention, health, uptime, fps
  *   GET  /api/persona — JSON: warmth, energy, curiosity, trust
  *   GET  /api/camera/status — JSON: camera, bloqueio de bridge e heap
@@ -10,11 +9,10 @@
  *   GET  /api/config  — JSON com todas as chaves NVS relevantes
  *   POST /api/config  — Atualiza chave NVS (body: {"key":"vol","value":50})
  *   POST /api/command — Injeta ação (body: {"type":"ACTION","value":"GREET"})
- *   WS   /ws          — Push de status a cada mudança; aceita comandos
  *
  * Sem autenticação — LAN local, sem exposição externa.
- * WebSocket: 1 cliente simultâneo; novo cliente desconecta o anterior.
- * Máximo 4 conexões HTTP simultâneas.
+ * Dashboard rico roda no bridge; firmware mantém apenas APIs REST leves.
+ * Máximo 3 conexões HTTP simultâneas.
  *
  * Inicia somente após NB_EVT_WIFI_IP_ACQUIRED — nunca bloqueia o boot.
  */

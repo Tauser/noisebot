@@ -29,6 +29,74 @@ function Resolve-Tool([string[]]$Candidates) {
     return $null
 }
 
+function Get-LanAddress() {
+    try {
+        $gatewayCandidate = Get-NetIPConfiguration -ErrorAction Stop |
+            Where-Object {
+                $_.IPv4DefaultGateway -and
+                $_.IPv4Address -and
+                $_.IPv4Address.IPAddress -notlike "127.*" -and
+                $_.IPv4Address.IPAddress -notlike "169.254.*"
+            } |
+            Sort-Object InterfaceMetric |
+            Select-Object -First 1
+
+        if ($gatewayCandidate) {
+            return $gatewayCandidate.IPv4Address.IPAddress
+        }
+    } catch {
+        # Ambientes restritos podem negar CIM/NetTCPIP; o fallback por ipconfig cobre Windows comum.
+    }
+
+    try {
+        $candidates = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object {
+                $_.IPAddress -notlike "127.*" -and
+                $_.IPAddress -notlike "169.254.*" -and
+                $_.PrefixOrigin -ne "WellKnown"
+            } |
+            Sort-Object @{
+                Expression = { if ($_.IPAddress -like "192.168.1.*") { 0 } elseif ($_.IPAddress -like "192.168.*") { 1 } else { 2 } }
+            }, InterfaceMetric
+
+        $first = $candidates | Select-Object -First 1
+        if ($first) {
+            return $first.IPAddress
+        }
+    } catch {
+    }
+
+    $ipconfig = ipconfig
+    foreach ($line in $ipconfig) {
+        if ($line -match "IPv4.*:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)") {
+            $ip = $Matches[1]
+            if ($ip -like "192.168.1.*") {
+                return $ip
+            }
+        }
+    }
+    foreach ($line in $ipconfig) {
+        if ($line -match "IPv4.*:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)") {
+            $ip = $Matches[1]
+            if ($ip -notlike "127.*" -and $ip -notlike "169.254.*") {
+                return $ip
+            }
+        }
+    }
+    return ""
+}
+
+function Get-ListeningPids([int]$Port) {
+    $pids = @()
+    $lines = netstat -ano | Select-String -Pattern "^\s*TCP\s+\S+:$Port\s+\S+\s+LISTENING\s+(\d+)\s*$"
+    foreach ($line in $lines) {
+        if ($line.Line -match "^\s*TCP\s+\S+:$Port\s+\S+\s+LISTENING\s+(\d+)\s*$") {
+            $pids += [int]$Matches[1]
+        }
+    }
+    return @($pids | Sort-Object -Unique)
+}
+
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ServerDir = Join-Path $RootDir "server"
 $AppDir = Join-Path $RootDir "app"
@@ -62,6 +130,11 @@ if (-not $ShellExe) {
     throw "PowerShell nao encontrado."
 }
 
+$LanAddress = Get-LanAddress
+$HostName = hostname
+$ServerPids = @(Get-ListeningPids -Port 8765)
+$AppPids = @(Get-ListeningPids -Port 5173)
+
 $ServerCommand = @"
 Set-Location -LiteralPath $(Quote-Ps $ServerDir)
 `$env:NOISEBOT_HOST = $(Quote-Ps $RobotHost)
@@ -82,13 +155,39 @@ if (Get-Command pnpm -ErrorAction SilentlyContinue) {
 "@
 
 Write-Host "Subindo NoiseBot server e dashboard..." -ForegroundColor Cyan
-Write-Host "Server:    http://127.0.0.1:8765"
-Write-Host "Dashboard: http://127.0.0.1:5173"
+if ($ServerPids.Count -gt 0) {
+    Write-Host "Server:    http://127.0.0.1:8765 ja esta em uso (PID: $($ServerPids -join ', '))" -ForegroundColor Yellow
+} else {
+    Write-Host "Server:    http://127.0.0.1:8765"
+}
+if ($AppPids.Count -gt 0) {
+    Write-Host "Dashboard: http://127.0.0.1:5173 ja esta em uso (PID: $($AppPids -join ', '))" -ForegroundColor Yellow
+} else {
+    Write-Host "Dashboard: http://127.0.0.1:5173"
+}
+if ($ServerPids.Count -gt 1 -or $AppPids.Count -gt 1) {
+    Write-Host "Aviso: ha processos duplicados em portas de desenvolvimento. Feche as janelas antigas antes de reiniciar tudo." -ForegroundColor Yellow
+}
+if (-not [string]::IsNullOrWhiteSpace($LanAddress)) {
+    Write-Host "Celular:   http://$LanAddress`:5173"
+}
+if (-not [string]::IsNullOrWhiteSpace($HostName)) {
+    Write-Host "Alias:     http://$HostName.local`:5173"
+    Write-Host "Alias dev: http://jarvis.local`:5173"
+}
 Write-Host "Robo TCP:  $RobotHost`:$RobotPort"
 Write-Host "Robo HTTP: $RobotHttpUrl"
 
-Start-Process -FilePath $ShellExe -ArgumentList @("-NoExit", "-Command", $ServerCommand) -WorkingDirectory $ServerDir
-Start-Process -FilePath $ShellExe -ArgumentList @("-NoExit", "-Command", $AppCommand) -WorkingDirectory $AppDir
+if ($ServerPids.Count -eq 0) {
+    Start-Process -FilePath $ShellExe -ArgumentList @("-NoExit", "-Command", $ServerCommand) -WorkingDirectory $ServerDir
+} else {
+    Write-Host "Server nao iniciado: porta 8765 ja ocupada." -ForegroundColor Yellow
+}
+if ($AppPids.Count -eq 0) {
+    Start-Process -FilePath $ShellExe -ArgumentList @("-NoExit", "-Command", $AppCommand) -WorkingDirectory $AppDir
+} else {
+    Write-Host "Dashboard nao iniciado: porta 5173 ja ocupada." -ForegroundColor Yellow
+}
 
 if (-not $NoBrowser) {
     Start-Sleep -Seconds 2

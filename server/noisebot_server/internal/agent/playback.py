@@ -5,16 +5,24 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import os
 import time
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 log = logging.getLogger(__name__)
 
+
+def _env_int(key: str, default: int) -> int:
+    try:
+        return int(os.environ.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
 CHUNK_SAMPLES = 256
 SAMPLE_RATE = 16_000
 CHUNK_DURATION_S = CHUNK_SAMPLES / SAMPLE_RATE
-FIRMWARE_SAY_QUEUE = 16
+FIRMWARE_SAY_QUEUE = max(4, min(16, _env_int("NOISEBOT_TTS_QUEUE_TARGET", 12)))
 
 
 class OutputScheduler:

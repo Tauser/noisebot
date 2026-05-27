@@ -22,6 +22,7 @@ def _make_server_config(
     uart: str | None = None,
     dry_run: bool = True,
     piper_model: str = "",
+    max_utterance_samples: int = 160000,
 ):
     config_module = importlib.import_module("noisebot_server.config")
 
@@ -63,6 +64,7 @@ def _make_server_config(
             min_transcribe_rms=140.0,
             min_transcribe_peak=1600,
             min_utterance_samples=8000,
+            max_utterance_samples=max_utterance_samples,
             max_no_speech_prob=0.75,
             min_avg_logprob=-1.10,
             max_compression_ratio=2.60,
@@ -88,6 +90,15 @@ def test_bridgev2_reference_path_allows_application_import() -> None:
     app_module = importlib.import_module("noisebot_server.app")
 
     assert hasattr(app_module, "NoiseBotServer")
+
+
+def test_stt_repetition_loop_guard_detects_whisper_hallucination() -> None:
+    stt = importlib.import_module("noisebot_server.internal.agent.stt")
+
+    assert stt._looks_like_repetition_loop(
+        "o que e que e que e que e que e que e que e que e que e que e"
+    )
+    assert not stt._looks_like_repetition_loop("acenda a luz da mesa por favor")
 
 
 def test_server_entrypoint_exposes_server_cli() -> None:
@@ -471,6 +482,7 @@ def test_server_transport_factory_creates_tcp_transport() -> None:
             min_transcribe_rms=140.0,
             min_transcribe_peak=1600,
             min_utterance_samples=8000,
+            max_utterance_samples=160000,
             max_no_speech_prob=0.75,
             min_avg_logprob=-1.10,
             max_compression_ratio=2.60,
@@ -545,6 +557,171 @@ async def test_server_firmware_adapter_dispatches_voice_end_event() -> None:
     assert event.reason == runtime.VoiceEndReason.TIMEOUT
 
 
+async def test_server_firmware_adapter_rejects_audio_chunk_outside_contract() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    adapter_module = importlib.import_module("noisebot_server.internal.transport.adapter")
+    protocol = importlib.import_module("noisebot_server.internal.transport.protocol")
+
+    class DummyTransport:
+        is_connected = True
+        description = "dummy"
+
+        async def connect(self) -> None:
+            pass
+
+        async def disconnect(self) -> None:
+            pass
+
+        async def send(self, data: bytes) -> None:
+            pass
+
+        async def recv(self, n: int = 4096) -> bytes:
+            return b""
+
+    bus = runtime.EventBus()
+    queue = bus.subscribe(runtime.AudioChunkIn)
+    adapter = adapter_module.FirmwareAdapter(DummyTransport(), bus)
+
+    await adapter._dispatch_rx(protocol.MSG_AUDIO_CHUNK, _server_loud_pcm(samples=255))
+    assert await _drain_queue(queue) == []
+
+    valid_pcm = _server_loud_pcm(samples=256)
+    await adapter._dispatch_rx(protocol.MSG_AUDIO_CHUNK, valid_pcm)
+    event = await asyncio.wait_for(queue.get(), timeout=0.1)
+    assert event.pcm == valid_pcm
+
+
+async def test_server_firmware_adapter_drops_pending_speech_before_cancel() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    adapter_module = importlib.import_module("noisebot_server.internal.transport.adapter")
+    protocol = importlib.import_module("noisebot_server.internal.transport.protocol")
+
+    class DummyTransport:
+        is_connected = True
+        description = "dummy"
+
+        async def connect(self) -> None:
+            pass
+
+        async def disconnect(self) -> None:
+            pass
+
+        async def send(self, data: bytes) -> None:
+            pass
+
+        async def recv(self, n: int = 4096) -> bytes:
+            return b""
+
+    bus = runtime.EventBus()
+    adapter = adapter_module.FirmwareAdapter(DummyTransport(), bus)
+    adapter._connected = True
+    adapter._peer_capabilities = {"features": ["barge_in"]}
+    loop = asyncio.get_running_loop()
+    pending_say = adapter_module._TxItem(
+        protocol.encode_frame(protocol.MSG_SAY, b"\0" * 512),
+        loop.create_future(),
+    )
+    pending_expr = adapter_module._TxItem(
+        protocol.encode_frame(protocol.MSG_EXPR, protocol.encode_expr(1)),
+        loop.create_future(),
+    )
+    pending_say_end = adapter_module._TxItem(
+        protocol.encode_frame(protocol.MSG_SAY_END, protocol.encode_say_end(7)),
+        loop.create_future(),
+    )
+    adapter._tx_queue.put_nowait(pending_say)
+    adapter._tx_queue.put_nowait(pending_expr)
+    adapter._tx_queue.put_nowait(pending_say_end)
+
+    cancel_task = asyncio.create_task(adapter.send_speech_cancel(7))
+    await asyncio.sleep(0)
+
+    assert isinstance(pending_say.ack.exception(), ConnectionError)
+    assert isinstance(pending_say_end.ack.exception(), ConnectionError)
+    assert not pending_expr.ack.done()
+
+    kept_expr = adapter._tx_queue.get_nowait()
+    cancel_item = adapter._tx_queue.get_nowait()
+    assert adapter_module._frame_type(kept_expr.frame) == protocol.MSG_EXPR
+    assert adapter_module._frame_type(cancel_item.frame) == protocol.MSG_SPEECH_CANCEL
+
+    kept_expr.ack.set_result(None)
+    cancel_item.ack.set_result(None)
+    adapter._tx_queue.task_done()
+    adapter._tx_queue.task_done()
+    await asyncio.wait_for(cancel_task, timeout=0.1)
+
+
+def test_server_hello_declares_voice_contract() -> None:
+    protocol = importlib.import_module("noisebot_server.internal.transport.protocol")
+
+    hello = protocol.decode_hello(protocol.encode_hello())
+
+    assert hello["audio"] == {
+        "format": "pcm16",
+        "sample_rate": 16000,
+        "channels": 1,
+        "chunk_samples": 256,
+    }
+    assert hello["listen"]["mode"] == "auto"
+    assert hello["listen"]["max_speech_ms"] == 10000
+    assert hello["listen"]["max_utterance_samples"] == 160000
+
+
+def test_server_metrics_exposes_last_voice_session() -> None:
+    metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
+    api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    store = status_module.StatusStore()
+    store.record_voice_session({
+        "turn_id": 42,
+        "outcome": "stt_rejected",
+        "discard_reason": "stt_empty",
+        "duration_ms": 736.2,
+        "transcript_quality": "empty",
+        "secret": "nao deve aparecer",
+    })
+
+    payload = api_module.MetricsApi(metrics_module.MetricsRegistry(), store).get_metrics()
+
+    assert payload["last_voice_session"] == {
+        "turn_id": 42,
+        "outcome": "stt_rejected",
+        "discard_reason": "stt_empty",
+        "duration_ms": 736.2,
+        "transcript_quality": "empty",
+    }
+    assert payload["recent_voice_sessions"] == [payload["last_voice_session"]]
+    assert payload["voice_alert"] == {
+        "level": "warn",
+        "title": "Turno de voz descartado",
+        "detail": "stt_empty",
+    }
+
+
+def test_server_metrics_replaces_duplicate_voice_session_turn() -> None:
+    metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
+    api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    store = status_module.StatusStore()
+    store.record_voice_session({"turn_id": 7, "outcome": "cancelled", "discard_reason": "barge_in"})
+    store.record_voice_session({"turn_id": 7, "outcome": "ok", "duration_ms": 1800})
+
+    api = api_module.MetricsApi(metrics_module.MetricsRegistry(), store)
+    payload = api.get_metrics()
+
+    assert payload["last_voice_session"] == {"turn_id": 7, "outcome": "ok", "duration_ms": 1800}
+    assert payload["recent_voice_sessions"] == [payload["last_voice_session"]]
+    assert payload["voice_alert"] is None
+
+    api.reset()
+    reset_payload = api.get_metrics()
+    assert reset_payload["last_voice_session"] == {}
+    assert reset_payload["recent_voice_sessions"] == []
+
+
 def _server_loud_pcm(samples: int = 256, amplitude: int = 3200) -> bytes:
     return b"".join(struct.pack("<h", amplitude if i % 2 == 0 else -amplitude) for i in range(samples))
 
@@ -578,6 +755,62 @@ async def _drain_queue(queue: asyncio.Queue, duration_s: float = 0.05) -> list:
             items.append(await asyncio.wait_for(queue.get(), timeout=remaining))
         except asyncio.TimeoutError:
             return items
+
+
+async def test_server_discards_overlong_voice_before_stt() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class MockStt:
+        def __init__(self) -> None:
+            self.finalize_calls = 0
+
+        async def initialize(self) -> None:
+            pass
+
+        def feed(self, pcm: bytes) -> None:
+            pass
+
+        async def finalize(self, full_pcm: bytes, turn_id: int):
+            self.finalize_calls += 1
+            return runtime.FinalTranscript(
+                turn_id=turn_id,
+                text="nao deveria transcrever",
+                quality=runtime.TranscriptQuality.GOOD,
+            )
+
+        async def close(self) -> None:
+            pass
+
+        async def reset(self) -> None:
+            pass
+
+    bus = runtime.EventBus(default_maxsize=512)
+    stt = MockStt()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(max_utterance_samples=512),
+        get_adapter=lambda: None,
+        stt_provider=stt,
+    )
+    intents = bus.subscribe(runtime.IntentResolved)
+    task = asyncio.create_task(orchestrator.run())
+
+    try:
+        await bus.publish(runtime.WakeDetected())
+        await asyncio.sleep(0)
+        await bus.publish(runtime.AudioChunkIn(pcm=_server_loud_pcm(samples=768), seq=0))
+        await _wait_until(lambda: orchestrator._session is None)
+        await bus.publish(runtime.VoiceActivityEnd())
+        await asyncio.sleep(0.05)
+
+        assert stt.finalize_calls == 0
+        assert await _drain_queue(intents) == []
+    finally:
+        await orchestrator.shutdown()
+        await asyncio.wait_for(task, timeout=1.0)
 
 
 async def test_server_empty_wake_prompt_is_one_shot_until_real_speech() -> None:
@@ -650,6 +883,162 @@ async def test_server_empty_wake_prompt_is_one_shot_until_real_speech() -> None:
         await orchestrator.shutdown()
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_server_barge_in_starts_clean_listening_turn_even_if_cancel_fails() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    class FailingCancelAdapter:
+        async def send_speech_cancel(self, turn_id: int) -> None:
+            raise ConnectionError(f"cancel failed {turn_id}")
+
+    bus = runtime.EventBus(default_maxsize=512)
+    store = status_module.StatusStore()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: FailingCancelAdapter(),
+        status_store=store,
+    )
+    old_session = runtime.SessionContext(turn_id=123)
+    old_session.final_text = "fala antiga"
+    old_session.reply_text = "resposta antiga"
+    old_session.intent_name = "llm_reply"
+    old_session.set_deadline(30)
+    orchestrator._session = old_session
+    orchestrator._fsm.transition(runtime.TurnState.LISTENING, turn_id=old_session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.COMMITTING_TURN, turn_id=old_session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.THINKING, turn_id=old_session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.SPEAKING, turn_id=old_session.turn_id)
+    orchestrator._turn_task = asyncio.create_task(asyncio.sleep(10))
+    orchestrator._watchdog = asyncio.create_task(orchestrator._run_watchdog(old_session))
+
+    try:
+        await orchestrator._on_barge_in(runtime.BargeInDetected(turn_id=old_session.turn_id))
+
+        assert orchestrator._fsm.is_listening
+        assert orchestrator._session is not None
+        assert orchestrator._session.turn_id != old_session.turn_id
+        assert orchestrator._watchdog is not None
+        assert not orchestrator._watchdog.done()
+        assert store.last_voice_session["turn_id"] == old_session.turn_id
+        assert store.last_voice_session["outcome"] == "interrupted"
+        assert store.last_voice_session["discard_reason"] == "barge_in"
+    finally:
+        await orchestrator.shutdown()
+
+
+async def test_server_speech_done_arms_followup_only_for_real_question() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class CapturingAdapter:
+        def __init__(self) -> None:
+            self.sessions = []
+
+        async def send_session(self, payload: dict) -> None:
+            self.sessions.append(payload)
+
+        async def send_expr(self, expression_id: int, duration_ms: int = 2000) -> None:
+            pass
+
+        async def send_action(self, action_id: int) -> None:
+            pass
+
+        async def send_emot_event(self, event_id: int) -> None:
+            pass
+
+        async def send_gaze(self, x: float, y: float) -> None:
+            pass
+
+    bus = runtime.EventBus(default_maxsize=512)
+    adapter = CapturingAdapter()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: adapter,
+    )
+
+    question = runtime.SessionContext(turn_id=301)
+    question.intent_name = "llm_reply"
+    question.reply_text = "Quer que eu continue?"
+    question.meta["outcome"] = "llm"
+    orchestrator._session = question
+    orchestrator._fsm.transition(runtime.TurnState.LISTENING, turn_id=question.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.COMMITTING_TURN, turn_id=question.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.THINKING, turn_id=question.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.SPEAKING, turn_id=question.turn_id)
+
+    await orchestrator._on_speech_done(runtime.SpeechDone(turn_id=question.turn_id))
+
+    assert adapter.sessions == [{
+        "event": "FOLLOWUP_ARM",
+        "turn_id": 301,
+        "window_ms": 8000,
+        "source": "llm_reply",
+    }]
+
+    prompt = runtime.SessionContext(turn_id=302)
+    prompt.intent_name = "local_empty_wake_prompt"
+    prompt.reply_text = "Oi! Em que posso ajudar?"
+    prompt.meta["outcome"] = "local_intent"
+    orchestrator._session = prompt
+    orchestrator._fsm.transition(runtime.TurnState.LISTENING, turn_id=prompt.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.COMMITTING_TURN, turn_id=prompt.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.THINKING, turn_id=prompt.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.SPEAKING, turn_id=prompt.turn_id)
+
+    await orchestrator._on_speech_done(runtime.SpeechDone(turn_id=prompt.turn_id))
+
+    assert adapter.sessions[-1] == {
+        "event": "SESSION_DONE",
+        "turn_id": 302,
+        "outcome": "local_intent",
+    }
+
+
+async def test_server_turn_error_sends_session_error_contract() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class CapturingAdapter:
+        def __init__(self) -> None:
+            self.sessions = []
+
+        async def send_session(self, payload: dict) -> None:
+            self.sessions.append(payload)
+
+    bus = runtime.EventBus(default_maxsize=512)
+    adapter = CapturingAdapter()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: adapter,
+    )
+    session = runtime.SessionContext(turn_id=401)
+    orchestrator._session = session
+    orchestrator._fsm.transition(runtime.TurnState.LISTENING, turn_id=session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.COMMITTING_TURN, turn_id=session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.THINKING, turn_id=session.turn_id)
+
+    await orchestrator._on_turn_error(
+        runtime.TurnError(turn_id=session.turn_id, stage="llm", reason="timeout")
+    )
+
+    assert adapter.sessions[-1] == {
+        "event": "SESSION_ERROR",
+        "turn_id": 401,
+        "stage": "llm",
+        "reason": "timeout",
+    }
 
 
 def test_server_transport_factory_creates_uart_transport() -> None:
@@ -757,6 +1146,38 @@ def test_server_app_state_persists_routine_and_basic_settings(tmp_path) -> None:
     assert snapshot["routine"]["summary"]["timers"] == 1
     assert snapshot["routine"]["items"][0]["title"] == "Cafe"
     assert snapshot["settings"]["volume"] == 88
+
+
+def test_server_app_state_persists_profile_and_advanced_settings(tmp_path) -> None:
+    app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
+    state_path = tmp_path / "app_state.json"
+
+    store = app_state.AppStateStore(state_path)
+    profile = store.update_profile({
+        "assistant_name": "Nina",
+        "language": "pt-BR",
+        "response_tone": "expressivo",
+    })
+    advanced = store.update_advanced_settings({
+        "wifi_ssid": "NoiseNet",
+        "bridge_host": "192.168.1.30",
+        "bridge_port": 9000,
+        "ota_channel": "manual",
+        "log_level": "DEBUG",
+        "servos_enabled": True,
+    })
+
+    assert profile["assistant_name"] == "Nina"
+    assert profile["response_tone"] == "expressivo"
+    assert advanced["bridge_port"] == 9000
+    assert advanced["servos_enabled"] is True
+
+    reloaded = app_state.AppStateStore(state_path)
+    snapshot = reloaded.snapshot()
+
+    assert snapshot["profile"]["assistant_name"] == "Nina"
+    assert snapshot["advanced"]["wifi_ssid"] == "NoiseNet"
+    assert snapshot["advanced"]["ota_channel"] == "manual"
 
 
 def test_server_app_state_updates_and_deletes_agenda_items(tmp_path) -> None:

@@ -51,7 +51,9 @@
 static const char BRIDGE_HELLO_V2[] =
     "{\"protocol\":\"noisebot-bridge\",\"version\":2,\"role\":\"firmware\","
     "\"audio\":{\"format\":\"pcm16\",\"sample_rate\":16000,\"channels\":1,"
-    "\"chunk_samples\":256},\"rx\":[\"say\",\"expr\",\"action\","
+    "\"chunk_samples\":256},\"listen\":{\"mode\":\"auto\",\"max_speech_ms\":10000,"
+    "\"min_utterance_samples\":8000,\"max_utterance_samples\":160000,"
+    "\"end_silence_ms\":900},\"rx\":[\"say\",\"expr\",\"action\","
     "\"emot_event\",\"gaze\",\"text_scroll\",\"volume\",\"hello\",\"session\"],"
     "\"tx\":[\"audio_chunk\",\"event\",\"status\",\"hello\",\"session\"],"
     "\"features\":[\"voice_events\",\"status\",\"device_commands_v1\",\"volume_control\","
@@ -278,6 +280,17 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
             NB_LOGI(TAG, "SESSION v2 recebido len=%u payload=%s%s",
                     data_len, s_session_buf,
                     (data_len > copy_len) ? "..." : "");
+            if (strstr(s_session_buf, "\"event\":\"FOLLOWUP_ARM\"")) {
+                xSemaphoreTake(s.mutex, portMAX_DELAY);
+                s_followup_requested = true;
+                xSemaphoreGive(s.mutex);
+            } else if (strstr(s_session_buf, "\"event\":\"FOLLOWUP_CANCEL\"") ||
+                       strstr(s_session_buf, "\"event\":\"SESSION_DONE\"") ||
+                       strstr(s_session_buf, "\"event\":\"SESSION_ERROR\"")) {
+                xSemaphoreTake(s.mutex, portMAX_DELAY);
+                s_followup_requested = false;
+                xSemaphoreGive(s.mutex);
+            }
             evt.type     = NB_EVT_BRIDGE_SESSION;
             evt.data.ptr = s_session_buf;
             nb_event_publish(&evt);
@@ -338,9 +351,6 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
                                 ? data_len : NB_BRIDGE_TEXT_MAX_LEN;
             memcpy(s_text_buf, data, copy_len);
             s_text_buf[copy_len] = '\0';
-            xSemaphoreTake(s.mutex, portMAX_DELAY);
-            s_followup_requested = (strchr(s_text_buf, '?') != NULL);
-            xSemaphoreGive(s.mutex);
             evt.type     = NB_EVT_BRIDGE_TEXT_SCROLL;
             evt.data.ptr = s_text_buf;
             nb_event_publish(&evt);

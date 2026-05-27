@@ -281,6 +281,20 @@ class Orchestrator:
     async def _on_audio_chunk(self, event: AudioChunkIn) -> None:
         if self._session and self._fsm.is_listening:
             self._session.append_audio(event.pcm)
+            max_samples = self._max_utterance_samples()
+            if max_samples > 0 and self._session.total_samples > max_samples:
+                log.warning(
+                    "Turno %d descartado: audio_longo samples=%d limite=%d",
+                    self._session.turn_id,
+                    self._session.total_samples,
+                    max_samples,
+                )
+                self._session.discard_reason = "audio_longo"
+                self._session.meta["outcome"] = "audio_rejected"
+                self._session.meta["error_reason"] = "max_utterance_samples"
+                self._fsm.try_transition(TurnState.IDLE)
+                await self._finish_turn()
+                return
             if self._stt is not None:
                 self._stt.feed(event.pcm)
 
@@ -305,12 +319,15 @@ class Orchestrator:
         # Valida se há áudio suficiente
         if session.total_samples < 8000:  # < 500 ms
             session.discard_reason = "audio_curto"
+            session.meta["outcome"] = "audio_rejected"
+            session.meta["voice_end_reason"] = event.reason.name.lower()
             log.debug("Turno %d descartado: %s", session.turn_id, session.discard_reason)
             self._fsm.try_transition(TurnState.IDLE)
             await self._finish_turn()
             return
 
         session.mark("voice_end")
+        session.meta["voice_end_reason"] = event.reason.name.lower()
         t_voice_end = session.timeline["voice_end"]
         self._fsm.transition(TurnState.COMMITTING_TURN, turn_id=session.turn_id)
 
@@ -399,6 +416,10 @@ class Orchestrator:
         session = self._session
         session.final_text = event.text
         session.mark("final_transcript")
+        session.meta["transcript_quality"] = event.quality.name.lower()
+        session.meta["no_speech_prob"] = round(event.no_speech_prob, 3)
+        session.meta["avg_logprob"] = round(event.avg_logprob, 3)
+        session.meta["compression_ratio"] = round(event.compression_ratio, 3)
         if self._store:
             self._store.record_turn_detail(event.turn_id, transcript=event.text)
 
@@ -407,6 +428,8 @@ class Orchestrator:
                 await self._prompt_after_empty_wake(session, event)
                 return
             log.debug("Turno %d: transcript não utilizável (%s)", event.turn_id, event.quality.name)
+            session.discard_reason = f"stt_{event.quality.name.lower()}"
+            session.meta["outcome"] = "stt_rejected"
             self._fsm.try_transition(TurnState.IDLE)
             await self._finish_turn()
             return
@@ -864,6 +887,70 @@ class Orchestrator:
         except Exception as exc:
             log.warning("Text scroll de resposta falhou sem bloquear TTS: %s", exc)
 
+    async def _arm_followup_if_needed(self, session: SessionContext) -> None:
+        adapter = self.adapter
+        if adapter is None:
+            return
+        if not self._should_arm_followup(session):
+            return
+        payload = {
+            "event": "FOLLOWUP_ARM",
+            "turn_id": session.turn_id,
+            "window_ms": 8000,
+            "source": session.intent_name or "reply",
+        }
+        if await self._send_session_event(payload, "FOLLOWUP_ARM"):
+            session.meta["followup_armed"] = True
+
+    def _should_arm_followup(self, session: SessionContext) -> bool:
+        if session.meta.get("outcome") not in ("local_intent", "llm"):
+            return False
+        if session.intent_name == "local_empty_wake_prompt":
+            return False
+        reply = (session.reply_text or "").strip()
+        return reply.endswith("?") or "?" in reply[-80:]
+
+    async def _send_session_event(self, payload: dict[str, Any], label: str) -> bool:
+        adapter = self.adapter
+        if adapter is None:
+            return False
+        send_session = getattr(adapter, "send_session", None)
+        if send_session is None:
+            return False
+        try:
+            await send_session(payload)
+            return True
+        except Exception as exc:
+            log.warning("%s falhou sem bloquear turno: %s", label, exc)
+            return False
+
+    async def _send_terminal_session_event(self, session: SessionContext) -> None:
+        if session.meta.get("followup_armed"):
+            return
+        outcome = str(session.meta.get("outcome") or "")
+        if outcome == "failed":
+            payload = {
+                "event": "SESSION_ERROR",
+                "turn_id": session.turn_id,
+                "stage": session.meta.get("error_stage") or "",
+                "reason": session.meta.get("error_reason") or session.discard_reason or "",
+            }
+            await self._send_session_event(payload, "SESSION_ERROR")
+        elif outcome in ("cancelled", "interrupted") or session.discard_reason:
+            payload = {
+                "event": "FOLLOWUP_CANCEL",
+                "turn_id": session.turn_id,
+                "reason": session.discard_reason or outcome or "cancelled",
+            }
+            await self._send_session_event(payload, "FOLLOWUP_CANCEL")
+        else:
+            payload = {
+                "event": "SESSION_DONE",
+                "turn_id": session.turn_id,
+                "outcome": outcome or "ok",
+            }
+            await self._send_session_event(payload, "SESSION_DONE")
+
     async def _on_speech_done(self, event: SpeechDone) -> None:
         """Turno de fala encerrado → volta a IDLE com baseline."""
         if self._session and self._session.turn_id != event.turn_id:
@@ -879,9 +966,11 @@ class Orchestrator:
         await self._robot.reset_baseline(self.adapter, event.turn_id)
         self._fsm.try_transition(TurnState.IDLE)
         # Telemetria: registra outcome do turno
-        if self._store and session:
+        outcome = "ok"
+        if session:
             intent = session.intent_name or ""
             outcome = "llm" if intent == "llm_reply" else ("local_intent" if intent else "ok")
+        if self._store and session:
             self._store.record_turn(
                 event.turn_id,
                 outcome,
@@ -889,6 +978,9 @@ class Orchestrator:
                 reply=session.reply_text,
                 route=outcome,
             )
+        if session:
+            session.meta["outcome"] = outcome
+            await self._arm_followup_if_needed(session)
         await self._finish_turn()
 
     async def _on_barge_in(self, event: BargeInDetected) -> None:
@@ -910,7 +1002,16 @@ class Orchestrator:
         # Barge-in cristalino: SPEECH_CANCEL se firmware suportar.
         # Barge-in suave: parar de enviar SAY (OutputScheduler cancelado junto com a Task).
         if adapter is not None:
-            await adapter.send_speech_cancel(event.turn_id)
+            try:
+                await adapter.send_speech_cancel(event.turn_id)
+            except Exception as exc:
+                log.warning(
+                    "Barge-in: SPEECH_CANCEL falhou sem bloquear novo turno: %s",
+                    exc,
+                )
+
+        self._session.discard_reason = "barge_in"
+        self._session.meta["outcome"] = "interrupted"
 
         # Cancela Task de turno (LLM stream + TTS + OutputScheduler)
         await self._cancel_current_turn(reason="barge_in")
@@ -933,15 +1034,11 @@ class Orchestrator:
         # VAD reset — limpa contadores para o próximo turno
         self._vad.reset()
 
-        # INTERRUPTED → LISTENING: inicia novo turno para capturar a nova fala
+        # INTERRUPTED → LISTENING: inicia novo turno completo para capturar a nova fala.
+        # Usa _begin_turn para armar watchdog, limpar VAD/STT e manter o ciclo simétrico.
         self._fsm.try_transition(TurnState.INTERRUPTED)
-
-        # Nova sessão (novo turn_id monotônico)
-        self._session = SessionContext(turn_id=new_turn_id())
-        self._session.set_deadline(TURN_DEADLINE_S)
-        self._fsm.try_transition(TurnState.LISTENING, turn_id=self._session.turn_id)
-        if self._stt is not None:
-            await self._stt.reset()
+        self._empty_wake_prompted_at = None
+        await self._begin_turn()
 
     async def _on_turn_error(self, event: TurnError) -> None:
         log.error("Erro no turno %d estágio=%s: %s", event.turn_id, event.stage, event.reason)
@@ -958,6 +1055,10 @@ class Orchestrator:
                 turn_id=event.turn_id,
                 message=event.reason[:200],
             )
+        if self._session:
+            self._session.meta["outcome"] = "failed"
+            self._session.meta["error_stage"] = event.stage
+            self._session.meta["error_reason"] = event.reason
         await self._cancel_current_turn(reason=f"error:{event.stage}")
         self._fsm.try_transition(TurnState.ERROR_RECOVERY)
         self._fsm.try_transition(TurnState.IDLE)
@@ -979,6 +1080,14 @@ class Orchestrator:
             name=f"nb_watchdog_{self._session.turn_id}",
         )
         log.info("Turno %d iniciado (LISTENING)", self._session.turn_id)
+
+    def _max_utterance_samples(self) -> int:
+        audio = getattr(self._config, "audio", None)
+        value = getattr(audio, "max_utterance_samples", 160000)
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return 160000
 
     async def _run_watchdog(self, session: SessionContext) -> None:
         """Cancela o turno se o deadline for excedido — Invariante I-4."""
@@ -1018,10 +1127,15 @@ class Orchestrator:
                 pass
         if self._session:
             self._session.discard_reason = reason or "cancelled"
+            self._session.meta.setdefault("outcome", "cancelled")
+            await self._send_terminal_session_event(self._session)
+            self._record_voice_session(self._session)
 
     async def _finish_turn(self) -> None:
         """Limpa estado de sessão após o turno terminar."""
         if self._session:
+            await self._send_terminal_session_event(self._session)
+            self._record_voice_session(self._session)
             log.debug("Turno %d finalizado: %s", self._session.turn_id, self._session.to_log_dict())
             snap = self._metrics.snapshot_flat()
             if snap:
@@ -1044,3 +1158,56 @@ class Orchestrator:
             await watchdog
         except asyncio.CancelledError:
             pass
+
+    def _record_voice_session(self, session: SessionContext) -> None:
+        if not self._store:
+            return
+
+        timeline = session.timeline
+
+        def delta_ms(start: str, end: str) -> float | None:
+            a = timeline.get(start)
+            b = timeline.get(end)
+            if a is None or b is None:
+                return None
+            return round((b - a) * 1000.0, 1)
+
+        def since_start_ms(name: str) -> float | None:
+            value = timeline.get(name)
+            if value is None:
+                return None
+            return round((value - session.t_start) * 1000.0, 1)
+
+        outcome = session.meta.get("outcome")
+        if not outcome:
+            if session.discard_reason:
+                outcome = "discarded"
+            elif session.reply_text:
+                outcome = "ok"
+            else:
+                outcome = "idle"
+
+        self._store.record_voice_session({
+            "turn_id": session.turn_id,
+            "outcome": outcome,
+            "state": self._fsm.state.name.lower(),
+            "discard_reason": session.discard_reason,
+            "voice_end_reason": session.meta.get("voice_end_reason"),
+            "total_samples": session.total_samples,
+            "duration_ms": round(session.duration_s() * 1000.0, 1),
+            "chunk_count": len(session.audio_chunks),
+            "transcript_quality": session.meta.get("transcript_quality"),
+            "no_speech_prob": session.meta.get("no_speech_prob"),
+            "avg_logprob": session.meta.get("avg_logprob"),
+            "compression_ratio": session.meta.get("compression_ratio"),
+            "intent_name": session.intent_name,
+            "reply_chars": len(session.reply_text or ""),
+            "voice_end_to_stt_start_ms": delta_ms("voice_end", "stt_start"),
+            "stt_ms": delta_ms("stt_start", "stt_end"),
+            "end_of_turn_ms": since_start_ms("stt_end"),
+            "first_audio_out_ms": since_start_ms("first_audio_out"),
+            "first_audio_after_voice_end_ms": delta_ms("voice_end", "first_audio_out"),
+            "speech_total_ms": since_start_ms("speech_done"),
+            "error_stage": session.meta.get("error_stage"),
+            "error_reason": session.meta.get("error_reason"),
+        })

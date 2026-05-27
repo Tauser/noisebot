@@ -65,6 +65,7 @@ TX_ENQUEUE_TIMEOUT_S = 2.0
 TX_SEND_TIMEOUT_S = 5.0
 HEARTBEAT_INTERVAL_S = 30.0
 HEARTBEAT_TIMEOUT_S = 90.0
+SPEECH_FRAME_TYPES = frozenset({MSG_SAY, MSG_SAY_BEGIN, MSG_SAY_END})
 
 
 @dataclass
@@ -217,6 +218,23 @@ class FirmwareAdapter:
     async def _dispatch_rx(self, msg_type: int, payload: bytes) -> None:
         try:
             if msg_type == MSG_AUDIO_CHUNK:
+                audio_caps = self._peer_capabilities.get("audio", {})
+                if not isinstance(audio_caps, dict):
+                    audio_caps = SERVER_HELLO_CAPABILITIES["audio"]
+                chunk_samples = int(
+                    audio_caps.get(
+                        "chunk_samples",
+                        SERVER_HELLO_CAPABILITIES["audio"]["chunk_samples"],
+                    )
+                )
+                expected_len = chunk_samples * 2
+                if len(payload) != expected_len:
+                    log.warning(
+                        "RX: AUDIO_CHUNK invalido len=%d esperado=%d -- descartado",
+                        len(payload),
+                        expected_len,
+                    )
+                    return
                 await self._bus.publish(AudioChunkIn(pcm=payload))
             elif msg_type == MSG_EVENT:
                 evt_type, data = decode_event(payload)
@@ -338,6 +356,7 @@ class FirmwareAdapter:
 
     async def send_speech_cancel(self, turn_id: int) -> None:
         if self.peer_supports("barge_in"):
+            self._drop_pending_speech_frames("SPEECH_CANCEL")
             await self._enqueue(
                 encode_frame(MSG_SPEECH_CANCEL, encode_speech_cancel(turn_id))
             )
@@ -368,6 +387,32 @@ class FirmwareAdapter:
             if not item.ack.done():
                 item.ack.set_exception(ConnectionError(reason))
             self._tx_queue.task_done()
+
+    def _drop_pending_speech_frames(self, reason: str) -> None:
+        kept: list[_TxItem] = []
+        dropped = 0
+        while True:
+            try:
+                item = self._tx_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if _frame_type(item.frame) in SPEECH_FRAME_TYPES:
+                dropped += 1
+                if not item.ack.done():
+                    item.ack.set_exception(ConnectionError(reason))
+            else:
+                kept.append(item)
+            self._tx_queue.task_done()
+        for item in kept:
+            self._tx_queue.put_nowait(item)
+        if dropped:
+            log.info("TX: %s removeu %d frame(s) de fala pendente(s)", reason, dropped)
+
+
+def _frame_type(frame: bytes) -> int | None:
+    if len(frame) < 4 or frame[0] != 0xAB:
+        return None
+    return frame[3]
 
 
 __all__ = ["FirmwareAdapter"]

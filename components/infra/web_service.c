@@ -1,5 +1,5 @@
 /*
- * web_service.c — Web Dashboard e Companion API (Layer 2, Etapas 15.1–15.6)
+ * web_service.c — Companion API minima (Layer 2, Etapas 15.1–15.6)
  */
 
 #include "web_service.h"
@@ -54,20 +54,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <errno.h>
 
 #define TAG              "nb_web"
-#define SD_WWW_INDEX     "/sdcard/www/index.html"
-#define SD_WWW_JS        "/sdcard/www/app.js"
-#define SD_WWW_CSS       "/sdcard/www/style.css"
 #define MAX_BODY_LEN     512
-#define FILE_PATH_MAX    192
-#define FILE_UPLOAD_MAX  (256u * 1024u)
-#define FILE_READ_MAX    (8u * 1024u)
-#define HTTPD_TASK_STACK_SIZE 8192
+#define HTTPD_TASK_STACK_SIZE 6144
 
 /* ── Log ring buffer ─────────────────────────────────────────────────────── */
 
@@ -100,9 +90,7 @@ static int log_hook_vprintf(const char *fmt, va_list args)
 /* ── Estado ──────────────────────────────────────────────────────────────── */
 
 static httpd_handle_t     s_server     = NULL;
-static int                s_ws_fd      = -1;
 static portMUX_TYPE       s_mux        = portMUX_INITIALIZER_UNLOCKED;
-static esp_timer_handle_t s_audio_tmr       = NULL;
 static esp_timer_handle_t s_http_health_tmr = NULL;
 static esp_timer_handle_t s_servo_calib_tmr = NULL;  /* auto-resume conductor após calibração */
 static nb_event_type_t    s_last_touch_event = NB_EVT_NONE;
@@ -120,9 +108,9 @@ typedef struct {
     uint32_t llm_ms;
     uint32_t tts_ms;
     int64_t  updated_us;
-} nb_ai_dashboard_state_t;
+} nb_ai_status_state_t;
 
-static nb_ai_dashboard_state_t s_ai_state = {
+static nb_ai_status_state_t s_ai_state = {
     .provider = "none",
     .model    = "none",
     .route    = "none",
@@ -244,165 +232,15 @@ static void build_status_json(char *buf, size_t size)
         (unsigned)hlt, (unsigned long)upt, (double)fps);
 }
 
-/* ── Push WebSocket ──────────────────────────────────────────────────────── */
-
-static void ws_push_json(const char *json)
+static void ota_progress_note(int pct, const char *status, const char *msg)
 {
-    int fd;
-    taskENTER_CRITICAL(&s_mux);
-    fd = s_ws_fd;
-    taskEXIT_CRITICAL(&s_mux);
-
-    if (!s_server || fd < 0) return;
-
-    httpd_ws_frame_t frame = {
-        .type    = HTTPD_WS_TYPE_TEXT,
-        .payload = (uint8_t *)json,
-        .len     = strlen(json),
-        .final   = true,
-    };
-    esp_err_t err = httpd_ws_send_frame_async(s_server, fd, &frame);
-    if (err != ESP_OK) {
-        taskENTER_CRITICAL(&s_mux);
-        if (s_ws_fd == fd) s_ws_fd = -1;
-        taskEXIT_CRITICAL(&s_mux);
-    }
+    (void)pct;
+    (void)status;
+    (void)msg;
+    /* UI/WS removidos do firmware: progresso de OTA fica apenas no log. */
 }
-
-static void ws_push_status(void)
-{
-    char json[256];
-    build_status_json(json, sizeof(json));
-    ws_push_json(json);
-}
-
-static void ws_push_ota(int pct, const char *status, const char *msg)
-{
-    char json[192];
-    if (msg)
-        snprintf(json, sizeof(json),
-            "{\"type\":\"ota\",\"progress\":%d,\"status\":\"%s\",\"message\":\"%s\"}",
-            pct, status, msg);
-    else
-        snprintf(json, sizeof(json),
-            "{\"type\":\"ota\",\"progress\":%d,\"status\":\"%s\"}",
-            pct, status);
-    ws_push_json(json);
-}
-
-static void ws_push_persona(void)
-{
-    char json[128];
-    snprintf(json, sizeof(json),
-        "{\"type\":\"persona_update\","
-        "\"warmth\":%.3f,\"energy\":%.3f,\"curiosity\":%.3f,\"trust\":%.3f}",
-        (double)persona_get_warmth(), (double)persona_get_energy(),
-        (double)persona_get_curiosity(), (double)persona_get_trust());
-    ws_push_json(json);
-}
-
-static void on_persona_refreshed(const nb_event_t *evt, void *ctx)
-{
-    (void)evt; (void)ctx;
-    ws_push_persona();
-}
-
-static void audio_push_timer_cb(void *arg)
-{
-    (void)arg;
-    int fd;
-    taskENTER_CRITICAL(&s_mux);
-    fd = s_ws_fd;
-    taskEXIT_CRITICAL(&s_mux);
-    if (!s_server || fd < 0) return;
-
-    nb_emotion_vec_t vec   = emotion_model_get_vec();
-    nb_circadian_phase_t ph = circadian_get_phase();
-    float bpm              = rhythm_service_get_bpm();
-    float bpm_conf         = rhythm_service_get_confidence();
-    float rms              = sound_analysis_get_rms();
-
-    char json[256];
-    snprintf(json, sizeof(json),
-        "{\"type\":\"telemetry\","
-        "\"valence\":%.3f,\"activation\":%.3f,"
-        "\"circadian\":\"%s\","
-        "\"bpm\":%.1f,\"bpm_conf\":%.2f,\"rms\":%.3f}",
-        (double)vec.valence, (double)vec.activation,
-        k_circadian_names[(int)ph < 3 ? (int)ph : 1],
-        (double)bpm, (double)bpm_conf, (double)rms);
-    ws_push_json(json);
-}
-
-/* ── Dashboard embutido (EMBED_TXTFILES) ─────────────────────────────────── */
-
-extern const uint8_t dashboard_html_start[] asm("_binary_dashboard_html_start");
-extern const uint8_t dashboard_html_end[]   asm("_binary_dashboard_html_end");
 
 /* ── Handlers HTTP ───────────────────────────────────────────────────────── */
-
-static esp_err_t serve_file_or_fallback(httpd_req_t *req,
-                                         const char *path,
-                                         const char *mime,
-                                         const char *fallback,
-                                         size_t      fallback_len)
-{
-    FILE *f = fopen(path, "r");
-    httpd_resp_set_type(req, mime);
-    if (f) {
-        char chunk[512];
-        size_t n;
-        while ((n = fread(chunk, 1, sizeof(chunk), f)) > 0) {
-            if (httpd_resp_send_chunk(req, chunk, (ssize_t)n) != ESP_OK) break;
-        }
-        fclose(f);
-        httpd_resp_send_chunk(req, NULL, 0);
-    } else {
-        httpd_resp_send(req, fallback, (ssize_t)fallback_len);
-    }
-    return ESP_OK;
-}
-
-static esp_err_t handle_root(httpd_req_t *req)
-{
-    size_t embedded_len = (size_t)(dashboard_html_end - dashboard_html_start);
-    return serve_file_or_fallback(req, SD_WWW_INDEX, "text/html",
-                                  (const char *)dashboard_html_start, embedded_len);
-}
-
-static esp_err_t handle_app_js(httpd_req_t *req)
-{
-    FILE *f = fopen(SD_WWW_JS, "r");
-    if (!f) {
-        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "app.js not found");
-        return ESP_OK;
-    }
-    httpd_resp_set_type(req, "application/javascript");
-    char chunk[512];
-    size_t n;
-    while ((n = fread(chunk, 1, sizeof(chunk), f)) > 0)
-        if (httpd_resp_send_chunk(req, chunk, (ssize_t)n) != ESP_OK) break;
-    fclose(f);
-    httpd_resp_send_chunk(req, NULL, 0);
-    return ESP_OK;
-}
-
-static esp_err_t handle_style_css(httpd_req_t *req)
-{
-    FILE *f = fopen(SD_WWW_CSS, "r");
-    if (!f) {
-        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "style.css not found");
-        return ESP_OK;
-    }
-    httpd_resp_set_type(req, "text/css");
-    char chunk[512];
-    size_t n;
-    while ((n = fread(chunk, 1, sizeof(chunk), f)) > 0)
-        if (httpd_resp_send_chunk(req, chunk, (ssize_t)n) != ESP_OK) break;
-    fclose(f);
-    httpd_resp_send_chunk(req, NULL, 0);
-    return ESP_OK;
-}
 
 static esp_err_t handle_api_status(httpd_req_t *req)
 {
@@ -754,307 +592,6 @@ static bool recv_body(httpd_req_t *req, char *buf, size_t size, int *out_len)
     return true;
 }
 
-/* ── File manager SD ─────────────────────────────────────────────────────── */
-
-static bool get_query_value(httpd_req_t *req, const char *key, char *out, size_t out_len)
-{
-    char query[180];
-    if (!out || out_len == 0u) return false;
-    out[0] = '\0';
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) return false;
-    return httpd_query_key_value(query, key, out, out_len) == ESP_OK;
-}
-
-static bool fs_path_is_safe(const char *path)
-{
-    if (!path || path[0] != '/') return false;
-    if (strstr(path, "..") || strchr(path, '\\')) return false;
-    for (const char *p = path; *p; p++) {
-        unsigned char c = (unsigned char)*p;
-        if (c < 0x20u || c == 0x7Fu) return false;
-    }
-    return true;
-}
-
-static int url_hex_val(char c)
-{
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
-static void url_decode_in_place(char *s)
-{
-    if (!s) return;
-    char *r = s;
-    char *w = s;
-    while (*r) {
-        if (*r == '%' && r[1] && r[2]) {
-            int hi = url_hex_val(r[1]);
-            int lo = url_hex_val(r[2]);
-            if (hi >= 0 && lo >= 0) {
-                *w++ = (char)((hi << 4) | lo);
-                r += 3;
-                continue;
-            }
-        }
-        *w++ = (*r == '+') ? ' ' : *r;
-        r++;
-    }
-    *w = '\0';
-}
-
-static bool fs_path_is_write_allowed(const char *path)
-{
-    return strncmp(path, "/assets/", 8) == 0 ||
-           strncmp(path, "/config/", 8) == 0 ||
-           strncmp(path, "/memory/", 8) == 0 ||
-           strncmp(path, "/www/", 5) == 0;
-}
-
-static bool fs_full_path(httpd_req_t *req, char *rel, size_t rel_len,
-                         char *full, size_t full_len, bool require_write)
-{
-    char path[FILE_PATH_MAX];
-    if (!sd_hal_is_mounted() && sd_hal_try_remount() != ESP_OK) {
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":false,\"error\":\"sd_not_mounted\"}");
-        return false;
-    }
-    if (!get_query_value(req, "path", path, sizeof(path))) {
-        strlcpy(path, "/", sizeof(path));
-    }
-    url_decode_in_place(path);
-    if (!fs_path_is_safe(path) || (require_write && !fs_path_is_write_allowed(path))) {
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"invalid_path\"}");
-        return false;
-    }
-    if (strlen(NB_SD_MOUNT_POINT) + strlen(path) + 1u > full_len) {
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"path_too_long\"}");
-        return false;
-    }
-    strlcpy(full, NB_SD_MOUNT_POINT, full_len);
-    strlcat(full, path, full_len);
-    if (rel && rel_len > 0u) {
-        strlcpy(rel, path, rel_len);
-    }
-    return true;
-}
-
-static esp_err_t handle_api_files_list(httpd_req_t *req)
-{
-    char rel[FILE_PATH_MAX];
-    char full[FILE_PATH_MAX + 16];
-    if (!fs_full_path(req, rel, sizeof(rel), full, sizeof(full), false)) return ESP_OK;
-
-    struct stat st;
-    if (stat(full, &st) != 0 || !S_ISDIR(st.st_mode)) {
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"directory_not_found\"}");
-        return ESP_OK;
-    }
-
-    DIR *dir = opendir(full);
-    if (!dir) {
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"opendir_failed\"}");
-        return ESP_OK;
-    }
-
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr_chunk(req, "{\"ok\":true,\"mounted\":true,\"path\":\"");
-    char esc_path[FILE_PATH_MAX * 2];
-    json_escape(rel, esc_path, sizeof(esc_path));
-    httpd_resp_sendstr_chunk(req, esc_path);
-    httpd_resp_sendstr_chunk(req, "\",\"items\":[");
-
-    bool first = true;
-    struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
-        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
-
-        char child[FILE_PATH_MAX + 80];
-        if (strlen(full) + 1u + strlen(ent->d_name) + 1u > sizeof(child)) {
-            continue;
-        }
-        strlcpy(child, full, sizeof(child));
-        strlcat(child, "/", sizeof(child));
-        strlcat(child, ent->d_name, sizeof(child));
-        if (stat(child, &st) != 0) continue;
-
-        char name[160];
-        json_escape(ent->d_name, name, sizeof(name));
-        char item[260];
-        snprintf(item, sizeof(item),
-                 "%s{\"name\":\"%s\",\"dir\":%s,\"size\":%llu}",
-                 first ? "" : ",",
-                 name,
-                 S_ISDIR(st.st_mode) ? "true" : "false",
-                 (unsigned long long)st.st_size);
-        httpd_resp_sendstr_chunk(req, item);
-        first = false;
-    }
-    closedir(dir);
-
-    httpd_resp_sendstr_chunk(req, "]}");
-    return httpd_resp_sendstr_chunk(req, NULL);
-}
-
-static esp_err_t handle_api_file_read(httpd_req_t *req)
-{
-    char full[FILE_PATH_MAX + 16];
-    if (!fs_full_path(req, NULL, 0u, full, sizeof(full), false)) return ESP_OK;
-
-    struct stat st;
-    if (stat(full, &st) != 0 || S_ISDIR(st.st_mode)) {
-        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "file not found");
-        return ESP_OK;
-    }
-    if ((uint64_t)st.st_size > FILE_READ_MAX) {
-        httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE, "file too large");
-        return ESP_OK;
-    }
-
-    FILE *f = fopen(full, "rb");
-    if (!f) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "open failed");
-        return ESP_OK;
-    }
-
-    httpd_resp_set_type(req, "text/plain; charset=utf-8");
-    char chunk[256];
-    size_t n;
-    while ((n = fread(chunk, 1u, sizeof(chunk), f)) > 0u) {
-        if (httpd_resp_send_chunk(req, chunk, n) != ESP_OK) {
-            fclose(f);
-            return ESP_OK;
-        }
-    }
-    fclose(f);
-    return httpd_resp_send_chunk(req, NULL, 0u);
-}
-
-static esp_err_t handle_api_file_write(httpd_req_t *req)
-{
-    char full[FILE_PATH_MAX + 16];
-    if (!fs_full_path(req, NULL, 0u, full, sizeof(full), true)) return ESP_OK;
-
-    if (req->content_len > FILE_UPLOAD_MAX) {
-        httpd_resp_send_err(req, HTTPD_413_CONTENT_TOO_LARGE, "file too large");
-        return ESP_OK;
-    }
-
-    FILE *f = fopen(full, "wb");
-    if (!f) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "open failed");
-        return ESP_OK;
-    }
-
-    char chunk[512];
-    size_t remaining = req->content_len;
-    while (remaining > 0u) {
-        size_t want = remaining < sizeof(chunk) ? remaining : sizeof(chunk);
-        int got = httpd_req_recv(req, chunk, want);
-        if (got <= 0) {
-            fclose(f);
-            unlink(full);
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "upload failed");
-            return ESP_OK;
-        }
-        if (fwrite(chunk, 1u, (size_t)got, f) != (size_t)got) {
-            fclose(f);
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "write failed");
-            return ESP_OK;
-        }
-        remaining -= (size_t)got;
-    }
-    fclose(f);
-    httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, "{\"ok\":true}");
-}
-
-static esp_err_t handle_api_file_delete(httpd_req_t *req)
-{
-    char full[FILE_PATH_MAX + 16];
-    if (!fs_full_path(req, NULL, 0u, full, sizeof(full), true)) return ESP_OK;
-
-    struct stat st;
-    if (stat(full, &st) != 0 || S_ISDIR(st.st_mode)) {
-        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "file not found");
-        return ESP_OK;
-    }
-    if (unlink(full) != 0) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "delete failed");
-        return ESP_OK;
-    }
-    httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, "{\"ok\":true}");
-}
-
-static esp_err_t handle_api_dir_create(httpd_req_t *req)
-{
-    char full[FILE_PATH_MAX + 16];
-    if (!fs_full_path(req, NULL, 0u, full, sizeof(full), true)) return ESP_OK;
-    if (mkdir(full, 0775) != 0 && errno != EEXIST) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "mkdir failed");
-        return ESP_OK;
-    }
-    httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, "{\"ok\":true}");
-}
-
-static esp_err_t handle_api_file_rename(httpd_req_t *req)
-{
-    char query[FILE_PATH_MAX * 3];
-    char from_rel[FILE_PATH_MAX];
-    char to_rel[FILE_PATH_MAX];
-    char from_full[FILE_PATH_MAX + 16];
-    char to_full[FILE_PATH_MAX + 16];
-
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
-        httpd_query_key_value(query, "from", from_rel, sizeof(from_rel)) != ESP_OK ||
-        httpd_query_key_value(query, "to", to_rel, sizeof(to_rel)) != ESP_OK) {
-        httpd_resp_set_type(req, "application/json");
-        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing_path\"}");
-    }
-
-    url_decode_in_place(from_rel);
-    url_decode_in_place(to_rel);
-
-    if (!sd_hal_is_mounted() && sd_hal_try_remount() != ESP_OK) {
-        httpd_resp_set_type(req, "application/json");
-        return httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":false,\"error\":\"sd_not_mounted\"}");
-    }
-
-    if (!fs_path_is_safe(from_rel) || !fs_path_is_safe(to_rel) ||
-        !fs_path_is_write_allowed(from_rel) || !fs_path_is_write_allowed(to_rel)) {
-        httpd_resp_set_type(req, "application/json");
-        return httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"invalid_path\"}");
-    }
-
-    if (strlen(NB_SD_MOUNT_POINT) + strlen(from_rel) + 1u > sizeof(from_full) ||
-        strlen(NB_SD_MOUNT_POINT) + strlen(to_rel) + 1u > sizeof(to_full)) {
-        httpd_resp_set_type(req, "application/json");
-        return httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"path_too_long\"}");
-    }
-
-    strlcpy(from_full, NB_SD_MOUNT_POINT, sizeof(from_full));
-    strlcat(from_full, from_rel, sizeof(from_full));
-    strlcpy(to_full, NB_SD_MOUNT_POINT, sizeof(to_full));
-    strlcat(to_full, to_rel, sizeof(to_full));
-
-    if (rename(from_full, to_full) != 0) {
-        httpd_resp_set_type(req, "application/json");
-        return httpd_resp_sendstr(req, "{\"ok\":false,\"mounted\":true,\"error\":\"rename_failed\"}");
-    }
-
-    httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, "{\"ok\":true}");
-}
-
 static esp_err_t handle_api_config_post(httpd_req_t *req)
 {
     char body[MAX_BODY_LEN];
@@ -1258,108 +795,6 @@ static esp_err_t handle_api_command(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* ── Handler WebSocket /ws ───────────────────────────────────────────────── */
-
-static void ws_handle_text_frame(const uint8_t *data, size_t len)
-{
-    cJSON *root = cJSON_ParseWithLength((const char *)data, len);
-    if (!root) return;
-
-    const cJSON *type_j = cJSON_GetObjectItemCaseSensitive(root, "type");
-    if (!cJSON_IsString(type_j)) { cJSON_Delete(root); return; }
-
-    const char *type = type_j->valuestring;
-
-    if (strcmp(type, "command") == 0) {
-        const cJSON *act_j = cJSON_GetObjectItemCaseSensitive(root, "action");
-        if (cJSON_IsString(act_j)) {
-            nb_action_t action = action_from_str(act_j->valuestring);
-            if (action != NB_ACTION_NONE) {
-                conductor_play(action);
-                NB_LOGI(TAG, "WS command %s", act_j->valuestring);
-            }
-        }
-    } else if (strcmp(type, "emot_event") == 0) {
-        const cJSON *ev_j = cJSON_GetObjectItemCaseSensitive(root, "event");
-        if (cJSON_IsString(ev_j)) {
-            /* Map string → nb_event_type_t and publish */
-            nb_event_type_t et = NB_EVT_NONE;
-            const char *ev = ev_j->valuestring;
-            if      (strcmp(ev, "TOUCH_TAP")        == 0) et = NB_EVT_TOUCH_TAP;
-            else if (strcmp(ev, "TOUCH_LONG_PRESS")  == 0) et = NB_EVT_TOUCH_LONG_PRESS;
-            else if (strcmp(ev, "VOICE_START")       == 0) et = NB_EVT_VOICE_ACTIVITY_START;
-            else if (strcmp(ev, "VOICE_END")         == 0) et = NB_EVT_VOICE_ACTIVITY_END;
-            if (et != NB_EVT_NONE) {
-                nb_event_t e = { .type = et };
-                nb_event_publish_async(&e);
-                NB_LOGI(TAG, "WS emot_event %s", ev);
-            }
-        }
-    }
-
-    cJSON_Delete(root);
-}
-
-static esp_err_t handle_ws(httpd_req_t *req)
-{
-    if (req->method == HTTP_GET) {
-        int new_fd = httpd_req_to_sockfd(req);
-
-        int old_fd;
-        taskENTER_CRITICAL(&s_mux);
-        old_fd   = s_ws_fd;
-        s_ws_fd  = new_fd;
-        taskEXIT_CRITICAL(&s_mux);
-
-        if (old_fd >= 0 && old_fd != new_fd) {
-            NB_LOGI(TAG, "WS: novo cliente fd=%d — desconectando fd=%d", new_fd, old_fd);
-            httpd_sess_trigger_close(s_server, old_fd);
-        } else {
-            NB_LOGI(TAG, "WS: cliente conectado fd=%d", new_fd);
-        }
-
-        /* Enviar status inicial ao novo cliente. */
-        ws_push_status();
-        return ESP_OK;
-    }
-
-    /* Receber frame do cliente. */
-    httpd_ws_frame_t frame = {
-        .type    = HTTPD_WS_TYPE_TEXT,
-        .payload = NULL,
-        .len     = 0,
-    };
-
-    /* Primeiro recv para descobrir o tamanho. */
-    esp_err_t ret = httpd_ws_recv_frame(req, &frame, 0);
-    if (ret != ESP_OK) return ret;
-
-    if (frame.len == 0) return ESP_OK;
-
-    if (frame.len > MAX_BODY_LEN) {
-        NB_LOGW(TAG, "WS frame muito grande (%zu bytes) — ignorado", frame.len);
-        return ESP_OK;
-    }
-
-    uint8_t *buf = (uint8_t *)heap_caps_malloc(frame.len + 1,
-                                               MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!buf) {
-        buf = (uint8_t *)heap_caps_malloc(frame.len + 1,
-                                          MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    }
-    if (!buf) return ESP_ERR_NO_MEM;
-
-    frame.payload = buf;
-    ret = httpd_ws_recv_frame(req, &frame, frame.len);
-    if (ret == ESP_OK && frame.type == HTTPD_WS_TYPE_TEXT) {
-        buf[frame.len] = '\0';
-        ws_handle_text_frame(buf, frame.len);
-    }
-
-    heap_caps_free(buf);
-    return ret;
-}
-
 /* ── OTA (Etapa 15.2) ────────────────────────────────────────────────────── */
 
 typedef struct { char url[256]; } ota_task_arg_t;
@@ -1373,12 +808,12 @@ static void ota_task(void *arg)
 
     NB_LOGI(TAG, "OTA: iniciando de %s", url);
     led_base_set(NB_LED_BASE_SAFE_MODE, true);
-    ws_push_ota(0, "started", NULL);
+    ota_progress_note(0, "started", NULL);
 
     const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
     if (!part) {
         NB_LOGE(TAG, "OTA: nenhuma partição OTA disponível");
-        ws_push_ota(0, "error", "no OTA partition");
+        ota_progress_note(0, "error", "no OTA partition");
         vTaskDelete(NULL);
         return;
     }
@@ -1390,7 +825,7 @@ static void ota_task(void *arg)
     esp_http_client_handle_t client = esp_http_client_init(&hcfg);
     if (!client || esp_http_client_open(client, 0) != ESP_OK) {
         NB_LOGE(TAG, "OTA: http open falhou");
-        ws_push_ota(0, "error", "http open failed");
+        ota_progress_note(0, "error", "http open failed");
         if (client) esp_http_client_cleanup(client);
         vTaskDelete(NULL);
         return;
@@ -1401,7 +836,7 @@ static void ota_task(void *arg)
     esp_ota_handle_t ota_handle;
     if (esp_ota_begin(part, OTA_WITH_SEQUENTIAL_WRITES, &ota_handle) != ESP_OK) {
         NB_LOGE(TAG, "OTA: ota_begin falhou");
-        ws_push_ota(0, "error", "ota begin failed");
+        ota_progress_note(0, "error", "ota begin failed");
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
         vTaskDelete(NULL);
@@ -1413,7 +848,7 @@ static void ota_task(void *arg)
         esp_ota_abort(ota_handle);
         esp_http_client_close(client);
         esp_http_client_cleanup(client);
-        ws_push_ota(0, "error", "no memory");
+        ota_progress_note(0, "error", "no memory");
         vTaskDelete(NULL);
         return;
     }
@@ -1430,7 +865,7 @@ static void ota_task(void *arg)
         total += n;
         int pct = (content_len > 0) ? (total * 100 / content_len) : 50;
         if (pct > 99) pct = 99;
-        if (pct != last_pct) { ws_push_ota(pct, "downloading", NULL); last_pct = pct; }
+        if (pct != last_pct) { ota_progress_note(pct, "downloading", NULL); last_pct = pct; }
     }
 
     heap_caps_free(buf);
@@ -1439,7 +874,7 @@ static void ota_task(void *arg)
 
     if (write_err != ESP_OK || total == 0) {
         esp_ota_abort(ota_handle);
-        ws_push_ota(0, "error", "download failed");
+        ota_progress_note(0, "error", "download failed");
         vTaskDelete(NULL);
         return;
     }
@@ -1447,13 +882,13 @@ static void ota_task(void *arg)
     if (esp_ota_end(ota_handle) != ESP_OK ||
         esp_ota_set_boot_partition(part) != ESP_OK) {
         NB_LOGE(TAG, "OTA: finalização falhou");
-        ws_push_ota(0, "error", "finalization failed");
+        ota_progress_note(0, "error", "finalization failed");
         vTaskDelete(NULL);
         return;
     }
 
     NB_LOGI(TAG, "OTA: OK (%d bytes) — reiniciando em 3s", total);
-    ws_push_ota(100, "complete", NULL);
+    ota_progress_note(100, "complete", NULL);
     vTaskDelay(pdMS_TO_TICKS(3000));
     esp_restart();
 }
@@ -1582,7 +1017,19 @@ static esp_err_t handle_api_version(httpd_req_t *req)
 
 static void send_health_object(httpd_req_t *req, bool wrap)
 {
-    char buf[512];
+    bool sd_mounted = sd_hal_is_mounted();
+    uint64_t sd_free_bytes = 0;
+    bool sd_free_ok = sd_mounted
+        && sd_hal_get_free_bytes(&sd_free_bytes) == ESP_OK;
+    char sd_free_buf[24];
+    if (sd_free_ok) {
+        snprintf(sd_free_buf, sizeof(sd_free_buf), "%llu",
+                 (unsigned long long)sd_free_bytes);
+    } else {
+        snprintf(sd_free_buf, sizeof(sd_free_buf), "null");
+    }
+
+    char buf[768];
     snprintf(buf, sizeof(buf),
         "%s\"heap_dram_free\":%lu,\"heap_dram_min\":%lu,"
         "\"heap_internal_free\":%lu,\"heap_internal_min\":%lu,"
@@ -1590,6 +1037,7 @@ static void send_health_object(httpd_req_t *req, bool wrap)
         "\"heap_dma_free\":%lu,\"heap_dma_min\":%lu,\"heap_dma_largest\":%lu,"
         "\"heap_psram_free\":%lu,\"heap_psram_min\":%lu,"
         "\"heap_psram_largest\":%lu,"
+        "\"storage\":{\"sd_mounted\":%s,\"sd_free_bytes\":%s},"
         "\"task_count\":%lu,\"uptime_s\":%lu,\"health\":%u%s",
         wrap ? "{" : "",
         (unsigned long)esp_get_free_heap_size(),
@@ -1603,6 +1051,8 @@ static void send_health_object(httpd_req_t *req, bool wrap)
         (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
         (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
         (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
+        sd_mounted ? "true" : "false",
+        sd_free_buf,
         (unsigned long)uxTaskGetNumberOfTasks(),
         (unsigned long)diagnostics_get_uptime_s(),
         (unsigned)diagnostics_get_health_score(),
@@ -2572,7 +2022,7 @@ static esp_err_t handle_api_diag_bridge(httpd_req_t *req)
 
 static void send_ai_object(httpd_req_t *req, bool wrap)
 {
-    nb_ai_dashboard_state_t ai;
+    nb_ai_status_state_t ai;
     taskENTER_CRITICAL(&s_mux);
     ai = s_ai_state;
     taskEXIT_CRITICAL(&s_mux);
@@ -2647,49 +2097,7 @@ static esp_err_t handle_api_ai_get(httpd_req_t *req)
     return ESP_OK;
 }
 
-static esp_err_t handle_api_dashboard_get(httpd_req_t *req)
-{
-    char query[32] = "";
-    char view[16] = "op";
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
-        httpd_query_key_value(query, "view", view, sizeof(view));
-    }
-    if (strcmp(view, "agenda") != 0 &&
-        strcmp(view, "ai") != 0 &&
-        strcmp(view, "system") != 0)
-    {
-        strlcpy(view, "op", sizeof(view));
-    }
-
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr_chunk(req, "{\"view\":\"");
-    httpd_resp_sendstr_chunk(req, view);
-    httpd_resp_sendstr_chunk(req, "\"");
-
-    if (strcmp(view, "agenda") == 0) {
-        httpd_resp_sendstr_chunk(req, ",\"agenda\":{");
-        send_agenda_object(req, false);
-        httpd_resp_sendstr_chunk(req, "}");
-    } else if (strcmp(view, "ai") == 0) {
-        httpd_resp_sendstr_chunk(req, ",\"ai\":{");
-        send_ai_object(req, false);
-        httpd_resp_sendstr_chunk(req, "}");
-    } else if (strcmp(view, "system") == 0) {
-        httpd_resp_sendstr_chunk(req, ",\"health\":{");
-        send_health_object(req, false);
-        httpd_resp_sendstr_chunk(req, "},\"wifi\":{");
-        send_wifi_object(req, false);
-        httpd_resp_sendstr_chunk(req, "}");
-    }
-
-    httpd_resp_sendstr_chunk(req, "}");
-    return httpd_resp_sendstr_chunk(req, NULL);
-}
-
 static const httpd_uri_t k_uris[] = {
-    { .uri = "/",            .method = HTTP_GET,  .handler = handle_root },
-    { .uri = "/app.js",      .method = HTTP_GET,  .handler = handle_app_js },
-    { .uri = "/style.css",   .method = HTTP_GET,  .handler = handle_style_css },
     { .uri = "/api/status",  .method = HTTP_GET,  .handler = handle_api_status },
     { .uri = "/api/persona", .method = HTTP_GET,  .handler = handle_api_persona },
     { .uri = "/api/camera/status", .method = HTTP_GET, .handler = handle_api_camera_status },
@@ -2707,16 +2115,9 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/persona/import", .method = HTTP_POST,   .handler = handle_api_persona_import },
     /* 15.3 — Sistema */
     { .uri = "/api/version",        .method = HTTP_GET,    .handler = handle_api_version },
-    { .uri = "/api/dashboard",      .method = HTTP_GET,    .handler = handle_api_dashboard_get },
     { .uri = "/api/health",         .method = HTTP_GET,    .handler = handle_api_health },
     { .uri = "/api/restart",        .method = HTTP_POST,   .handler = handle_api_restart },
     { .uri = "/api/logs",           .method = HTTP_GET,    .handler = handle_api_logs },
-    { .uri = "/api/files",          .method = HTTP_GET,    .handler = handle_api_files_list },
-    { .uri = "/api/file",           .method = HTTP_GET,    .handler = handle_api_file_read },
-    { .uri = "/api/file",           .method = HTTP_PUT,    .handler = handle_api_file_write },
-    { .uri = "/api/file",           .method = HTTP_DELETE, .handler = handle_api_file_delete },
-    { .uri = "/api/file/rename",    .method = HTTP_POST,   .handler = handle_api_file_rename },
-    { .uri = "/api/dir",            .method = HTTP_POST,   .handler = handle_api_dir_create },
     /* 15.4 — Controle expandido */
     { .uri = "/api/expression",     .method = HTTP_POST,   .handler = handle_api_expression },
     { .uri = "/api/emot_event",     .method = HTTP_POST,   .handler = handle_api_emot_event },
@@ -2758,12 +2159,6 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/diag/test/wake",     .method = HTTP_GET,  .handler = handle_api_diag_wake },
     { .uri = "/api/diag/test/bridge",   .method = HTTP_GET,  .handler = handle_api_diag_bridge },
     { .uri = "/api/ai",                 .method = HTTP_GET,  .handler = handle_api_ai_get },
-    {
-        .uri          = "/ws",
-        .method       = HTTP_GET,
-        .handler      = handle_ws,
-        .is_websocket = true,
-    },
 };
 
 /* ── Início do servidor ──────────────────────────────────────────────────── */
@@ -2774,7 +2169,7 @@ static void web_service_start(void)
 
     httpd_config_t cfg    = HTTPD_DEFAULT_CONFIG();
     cfg.max_open_sockets  = 3;
-    cfg.max_uri_handlers  = 72;   /* handlers registrados + margem */
+    cfg.max_uri_handlers  = 60;   /* 54 APIs registradas + margem */
     cfg.server_port       = 80;
     cfg.stack_size        = HTTPD_TASK_STACK_SIZE;
     cfg.recv_wait_timeout = 5;
@@ -2793,17 +2188,7 @@ static void web_service_start(void)
         httpd_register_uri_handler(s_server, &k_uris[i]);
     }
 
-    /* Timer de telemetria a cada 2s — push audio/emotion/circadian via WS. */
-    if (!s_audio_tmr) {
-        const esp_timer_create_args_t ta = {
-            .callback = audio_push_timer_cb,
-            .name     = "web_telemetry",
-        };
-        esp_timer_create(&ta, &s_audio_tmr);
-        esp_timer_start_periodic(s_audio_tmr, 2000000LL); /* 2s */
-    }
-
-    NB_LOGI(TAG, "HTTP server iniciado na porta 80 — http://noisebot.local");
+    NB_LOGI(TAG, "HTTP API iniciado na porta 80");
 }
 
 static void web_service_stop(const char *reason)
@@ -2811,7 +2196,6 @@ static void web_service_stop(const char *reason)
     httpd_handle_t server = s_server;
     if (!server) return;
 
-    s_ws_fd = -1;
     s_server = NULL;
     esp_err_t err = httpd_stop(server);
     if (err != ESP_OK) {
@@ -2869,12 +2253,6 @@ static void on_wifi_disconnected(const nb_event_t *ev, void *ctx)
     web_service_stop("WiFi desconectado");
 }
 
-static void on_state_changed(const nb_event_t *ev, void *ctx)
-{
-    (void)ev; (void)ctx;
-    ws_push_status();
-}
-
 static void on_touch_debug_event(const nb_event_t *ev, void *ctx)
 {
     (void)ctx;
@@ -2893,7 +2271,7 @@ static void on_bridge_session_event(const nb_event_t *ev, void *ctx)
     cJSON *root = cJSON_Parse(payload);
     if (!root) return;
 
-    nb_ai_dashboard_state_t next;
+    nb_ai_status_state_t next;
     taskENTER_CRITICAL(&s_mux);
     next = s_ai_state;
     taskEXIT_CRITICAL(&s_mux);
@@ -2941,10 +2319,8 @@ esp_err_t web_service_init(void)
     /* Intercepta logs do ESP-IDF para ring buffer em RAM. */
     s_orig_vprintf = esp_log_set_vprintf(log_hook_vprintf);
 
-    nb_event_subscribe(NB_EVT_PERSONA_REFRESHED, on_persona_refreshed, NULL, NULL);
     nb_event_subscribe(NB_EVT_WIFI_IP_ACQUIRED, on_ip_acquired,  NULL, NULL);
     nb_event_subscribe(NB_EVT_WIFI_DISCONNECTED, on_wifi_disconnected, NULL, NULL);
-    nb_event_subscribe(NB_EVT_STATE_CHANGED,    on_state_changed, NULL, NULL);
     nb_event_subscribe(NB_EVT_TOUCH_TAP,         on_touch_debug_event, NULL, NULL);
     nb_event_subscribe(NB_EVT_TOUCH_LONG_PRESS,  on_touch_debug_event, NULL, NULL);
     nb_event_subscribe(NB_EVT_TOUCH_SUSTAINED,   on_touch_debug_event, NULL, NULL);

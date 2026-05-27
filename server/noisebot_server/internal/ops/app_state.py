@@ -28,6 +28,27 @@ DEFAULT_BASIC_SETTINGS: dict[str, bool | int] = {
     "subtle_leds": False,
 }
 
+DEFAULT_PROFILE: dict[str, str] = {
+    "assistant_name": "NoiseBot",
+    "language": "pt-BR",
+    "response_tone": "natural",
+    "voice": "Piper Faber",
+}
+
+DEFAULT_ADVANCED_SETTINGS: dict[str, bool | int | str] = {
+    "wifi_ssid": "",
+    "wifi_enabled": True,
+    "bridge_host": "127.0.0.1",
+    "bridge_port": 8765,
+    "ota_channel": "stable",
+    "logs_enabled": True,
+    "log_level": "INFO",
+    "servos_enabled": False,
+    "timezone": "America/Sao_Paulo",
+    "location": "Brasil",
+    "device_name": "NoiseBot",
+}
+
 AGENDA_KINDS = {"timer", "alarm", "reminder"}
 
 
@@ -49,6 +70,8 @@ class AppStateStore:
                 "summary": _routine_summary(items),
             },
             "settings": settings,
+            "profile": dict(self._state["profile"]),
+            "advanced": dict(self._state["settings"]["advanced"]),
         }
 
     def list_agenda(self) -> dict[str, Any]:
@@ -172,6 +195,60 @@ class AppStateStore:
             self._save_locked()
             return dict(settings)
 
+    def get_profile(self) -> dict[str, str]:
+        with self._lock:
+            return dict(self._state["profile"])
+
+    def update_profile(self, payload: dict[str, Any]) -> dict[str, str]:
+        with self._lock:
+            profile = dict(self._state["profile"])
+            if "assistant_name" in payload:
+                profile["assistant_name"] = _clean_text(payload["assistant_name"], 40) or "NoiseBot"
+            if "language" in payload:
+                profile["language"] = _choice(payload["language"], {"pt-BR", "en-US"}, "pt-BR")
+            if "response_tone" in payload:
+                profile["response_tone"] = _choice(
+                    payload["response_tone"],
+                    {"natural", "curto", "expressivo"},
+                    "natural",
+                )
+            if "voice" in payload:
+                profile["voice"] = _clean_text(payload["voice"], 60) or "Piper Faber"
+            self._state["profile"] = profile
+            self._save_locked()
+            return dict(profile)
+
+    def get_advanced_settings(self) -> dict[str, bool | int | str]:
+        with self._lock:
+            return dict(self._state["settings"]["advanced"])
+
+    def update_advanced_settings(self, payload: dict[str, Any]) -> dict[str, bool | int | str]:
+        with self._lock:
+            advanced = dict(self._state["settings"]["advanced"])
+            for key in ("wifi_ssid", "bridge_host", "timezone", "location", "device_name"):
+                if key in payload:
+                    advanced[key] = _clean_text(payload[key], 80)
+            if "bridge_port" in payload:
+                advanced["bridge_port"] = _clamp_int(payload["bridge_port"], 1, 65535)
+            if "ota_channel" in payload:
+                advanced["ota_channel"] = _choice(
+                    payload["ota_channel"],
+                    {"stable", "beta", "manual"},
+                    "stable",
+                )
+            if "log_level" in payload:
+                advanced["log_level"] = _choice(
+                    payload["log_level"],
+                    {"DEBUG", "INFO", "WARNING", "ERROR"},
+                    "INFO",
+                )
+            for key in ("wifi_enabled", "logs_enabled", "servos_enabled"):
+                if key in payload:
+                    advanced[key] = bool(payload[key])
+            self._state["settings"]["advanced"] = advanced
+            self._save_locked()
+            return dict(advanced)
+
     def _load(self) -> dict[str, Any]:
         try:
             with self._path.open("r", encoding="utf-8") as handle:
@@ -184,14 +261,20 @@ class AppStateStore:
         agenda = raw.get("agenda") if isinstance(raw, dict) else None
         settings = raw.get("settings") if isinstance(raw, dict) else None
         basic = settings.get("basic") if isinstance(settings, dict) else None
+        advanced = settings.get("advanced") if isinstance(settings, dict) else None
+        profile = raw.get("profile") if isinstance(raw, dict) else None
 
         return {
             "version": 1,
             "agenda": {
                 "items": _normalize_items(agenda.get("items") if isinstance(agenda, dict) else []),
             },
+            "profile": _normalize_profile(profile if isinstance(profile, dict) else {}),
             "settings": {
                 "basic": _normalize_settings(basic if isinstance(basic, dict) else {}),
+                "advanced": _normalize_advanced_settings(
+                    advanced if isinstance(advanced, dict) else {}
+                ),
             },
         }
 
@@ -448,6 +531,40 @@ def _normalize_settings(raw: dict[str, Any]) -> dict[str, bool | int]:
     return settings
 
 
+def _normalize_profile(raw: dict[str, Any]) -> dict[str, str]:
+    profile = dict(DEFAULT_PROFILE)
+    if "assistant_name" in raw:
+        profile["assistant_name"] = _clean_text(raw["assistant_name"], 40) or "NoiseBot"
+    if "language" in raw:
+        profile["language"] = _choice(raw["language"], {"pt-BR", "en-US"}, "pt-BR")
+    if "response_tone" in raw:
+        profile["response_tone"] = _choice(
+            raw["response_tone"],
+            {"natural", "curto", "expressivo"},
+            "natural",
+        )
+    if "voice" in raw:
+        profile["voice"] = _clean_text(raw["voice"], 60) or "Piper Faber"
+    return profile
+
+
+def _normalize_advanced_settings(raw: dict[str, Any]) -> dict[str, bool | int | str]:
+    advanced = dict(DEFAULT_ADVANCED_SETTINGS)
+    for key in ("wifi_ssid", "bridge_host", "timezone", "location", "device_name"):
+        if key in raw:
+            advanced[key] = _clean_text(raw[key], 80)
+    if "bridge_port" in raw:
+        advanced["bridge_port"] = _clamp_int(raw["bridge_port"], 1, 65535)
+    if "ota_channel" in raw:
+        advanced["ota_channel"] = _choice(raw["ota_channel"], {"stable", "beta", "manual"}, "stable")
+    if "log_level" in raw:
+        advanced["log_level"] = _choice(raw["log_level"], {"DEBUG", "INFO", "WARNING", "ERROR"}, "INFO")
+    for key in ("wifi_enabled", "logs_enabled", "servos_enabled"):
+        if key in raw:
+            advanced[key] = bool(raw[key])
+    return advanced
+
+
 def _routine_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
     enabled = [item for item in items if item.get("enabled", True)]
     next_item = enabled[0] if enabled else None
@@ -474,6 +591,11 @@ def _clean_text(value: Any, max_len: int) -> str:
     if value is None:
         return ""
     return str(value).strip()[:max_len]
+
+
+def _choice(value: Any, valid: set[str], default: str) -> str:
+    text = _clean_text(value, 80)
+    return text if text in valid else default
 
 
 def _clamp_int(value: Any, minimum: int, maximum: int) -> int:

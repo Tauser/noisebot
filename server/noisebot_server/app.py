@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from pathlib import Path
 from typing import Any
 
 from .config import LlmProvider, NoiseBotServerConfig, PipelineMode
@@ -78,11 +80,17 @@ class NoiseBotServer:
             model=stt.model,
             device=stt.device,
             compute_type=stt.compute_type,
+            language=os.environ.get("NOISEBOT_WHISPER_LANGUAGE", "pt") or None,
             max_no_speech_prob=audio.max_no_speech_prob,
             min_avg_logprob=audio.min_avg_logprob,
             max_compression_ratio=audio.max_compression_ratio,
             min_rms=audio.min_transcribe_rms,
+            min_peak=audio.min_transcribe_peak,
             beam_size=stt.beam_size,
+            denoise_enabled=_env_bool("NOISEBOT_STT_DENOISE", False),
+            vad_filter_enabled=_env_bool("NOISEBOT_WHISPER_VAD_FILTER", False),
+            noise_gate_mult=_env_float("NOISEBOT_STT_NOISE_GATE_MULT", 1.8),
+            noise_gate_floor=_env_float("NOISEBOT_STT_NOISE_GATE_FLOOR", 0.003),
         )
 
     def _build_llm_provider(self) -> Any | None:
@@ -117,10 +125,12 @@ class NoiseBotServer:
             log.warning("TTS: NOISEBOT_PIPER_MODEL nao configurado - TTS desabilitado.")
             return None
         log.info("TTS: Piper configurado modelo=%s", tts.piper_model)
+        cache_dir = _tts_cache_dir()
         return PiperServerTTS(
             executable=tts.piper_executable,
             model=tts.piper_model,
             cache_size=tts.cache_size,
+            disk_cache_dir=cache_dir,
             sample_rate=tts.sample_rate,
             target_peak=tts.target_peak,
         )
@@ -203,3 +213,26 @@ class NoiseBotServer:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
         log.info("NoiseBotServer: encerrado.")
+
+
+def _tts_cache_dir() -> Path | None:
+    configured = os.environ.get("NOISEBOT_TTS_CACHE_DIR", "").strip()
+    if configured.lower() in {"0", "false", "off", "none"}:
+        return None
+    if configured:
+        return Path(configured)
+    return Path.home() / ".noisebot-server" / "tts-cache"
+
+
+def _env_bool(key: str, default: bool) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "off", "no", "nao", "não"}
+
+
+def _env_float(key: str, default: float) -> float:
+    try:
+        return float(os.environ.get(key, default))
+    except (TypeError, ValueError):
+        return default

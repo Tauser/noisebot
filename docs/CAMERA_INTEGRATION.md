@@ -19,16 +19,16 @@ frame, return it, and keep or close the session deliberately.
 - Snapshot capture is lazy and rejected while audio is busy: active listening,
   local playback or bridge SAY playback.
 - Once opened, the camera stays in a short "hot session" instead of being
-  initialized/deinitialized for every dashboard click. This is intentionally
+  initialized/deinitialized for every external dashboard/API click. This is intentionally
   closer to StackChan's persistent video-device model and avoids repeated DMA
   heap fragmentation.
-- The dashboard explicitly closes the hot session when leaving the system view;
+- The external dashboard explicitly closes the hot session when leaving the system view;
   otherwise the service closes it after a timeout.
 - A connected but idle bridge does not block camera diagnostics.
 - The HAL leaves camera buffer allocation to the driver instead of rejecting
   capture based on precomputed DMA thresholds. After the driver opens, the
   service reports the measured internal, DMA and PSRAM headroom.
-- The dashboard reports `supported=false` when the diagnostic camera build is
+- `/api/camera/status` reports `supported=false` when the diagnostic camera build is
   not enabled.
 - `/api/health` and `/api/camera/status` expose internal, DMA and PSRAM heap
   figures so camera bring-up can be correlated with WiFi, SD and bridge health.
@@ -37,7 +37,7 @@ frame, return it, and keep or close the session deliberately.
 
 - WiFi uses a reduced local-control profile instead of default throughput
   buffers.
-- LwIP is sized for local dashboard, WebSocket and bridge TCP, not many parallel
+- LwIP is sized for the local REST API and bridge TCP, not many parallel
   internet sockets.
 - Large non-DMA queues are allocated in PSRAM when available.
 - Non-critical service tasks use PSRAM stacks when
@@ -115,7 +115,7 @@ deliberately, and isolate camera work from conversational/audio paths.
 ## Production acceptance criteria
 
 - Bridge stays connected for at least 30 minutes with camera support compiled in.
-- No `wifi:mem fail` during idle, listening or dashboard polling.
+- No `wifi:mem fail` during idle, listening or external dashboard polling.
 - No SD degraded-mode flapping while camera is idle.
 - Snapshot capture is serialized and cannot run during active conversation.
 - PSRAM free remains above 300 KB after capture and release.
@@ -133,7 +133,7 @@ deliberately, and isolate camera work from conversational/audio paths.
 - The stable product-diagnostic path now captures 640x480 frames through the
   StackChan-style session model: the first open pays the allocation cost, then
   repeated captures reuse the same video session until timeout or explicit close.
-- `/api/camera/status` exposes session/memory/error counters for the dashboard.
+- `/api/camera/status` exposes session/memory/error counters for the external dashboard.
 - `/api/vision/observe` exposes the first behavior-facing observation:
   resolution, JPEG size, capture time, luma average/min/max, contrast and a
   simple motion score.

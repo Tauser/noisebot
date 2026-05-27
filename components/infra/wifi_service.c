@@ -159,7 +159,7 @@ static void on_ip_event(void *arg, esp_event_base_t base,
 
         s_backoff_us = BACKOFF_MIN_US;   /* reset ao obter IP */
 
-        NB_LOGI(TAG, "IP: %s — http://noisebot.local", ip_str);
+        NB_LOGI(TAG, "IP: %s — API HTTP local ativa", ip_str);
 
         nb_event_t e = { .type = NB_EVT_WIFI_IP_ACQUIRED };
         nb_event_publish_async(&e);

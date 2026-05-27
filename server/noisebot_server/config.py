@@ -91,6 +91,7 @@ class AudioConfig:
     min_transcribe_rms: float
     min_transcribe_peak: int
     min_utterance_samples: int
+    max_utterance_samples: int
     max_no_speech_prob: float
     min_avg_logprob: float
     max_compression_ratio: float
@@ -305,6 +306,7 @@ def load_config(env_path: str | os.PathLike[str] | None = None) -> NoiseBotServe
             min_transcribe_rms=_env_float("NOISEBOT_MIN_TRANSCRIBE_RMS", 140.0),
             min_transcribe_peak=_env_int("NOISEBOT_MIN_TRANSCRIBE_PEAK", 1600),
             min_utterance_samples=8000,
+            max_utterance_samples=_env_int("NOISEBOT_MAX_UTTERANCE_SAMPLES", 160000),
             max_no_speech_prob=0.75,
             min_avg_logprob=-1.10,
             max_compression_ratio=2.60,

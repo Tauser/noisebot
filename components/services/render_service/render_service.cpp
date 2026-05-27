@@ -100,6 +100,7 @@ static volatile int32_t   s_last_push_us100 = 0;
 static volatile int32_t   s_last_dirty_w    = 0;
 static volatile int32_t   s_last_dirty_h    = 0;
 static volatile float     s_last_fps        = 0.0f;
+static volatile uint8_t   s_brightness      = 255U;
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -136,6 +137,24 @@ static void push_dirty_region(LGFX_Sprite *canvas,
         s_lgfx_ptr->pushImage(x0, row, w, 1, src + row * stride + x0);
     }
     s_lgfx_ptr->endWrite();
+}
+
+static void apply_software_brightness(LGFX_Sprite *canvas)
+{
+    uint8_t level = s_brightness;
+    if (level >= 250U) return;
+
+    uint16_t *pixels = static_cast<uint16_t *>(canvas->getBuffer());
+    if (!pixels) return;
+
+    size_t count = (size_t)canvas->width() * (size_t)canvas->height();
+    for (size_t i = 0; i < count; i++) {
+        uint16_t px = pixels[i];
+        uint16_t r = (uint16_t)((((px >> 11) & 0x1FU) * level) / 255U);
+        uint16_t g = (uint16_t)((((px >> 5) & 0x3FU) * level) / 255U);
+        uint16_t b = (uint16_t)(((px & 0x1FU) * level) / 255U);
+        pixels[i] = (uint16_t)((r << 11) | (g << 5) | b);
+    }
 }
 
 /* ── Push task (Core 1) ──────────────────────────────────────────────────── */
@@ -236,6 +255,7 @@ static void render_task(void *arg)
             local[i].fn(static_cast<nb_display_sprite_t>(canvas), local[i].ctx);
         }
         total_layer_us += esp_timer_get_time() - layer_t0;
+        apply_software_brightness(canvas);
 
         /*
          * Se nenhuma layer chamou mark_dirty: assume full push (fallback).
@@ -487,6 +507,13 @@ void render_service_mark_dirty(int x, int y, int w, int h)
 void render_service_force_full_refresh(void)
 {
     s_force_full = true;
+}
+
+void render_service_set_brightness(uint8_t level)
+{
+    s_brightness = level;
+    display_hal_set_brightness(level);
+    render_service_force_full_refresh();
 }
 
 float render_service_get_fps(void)

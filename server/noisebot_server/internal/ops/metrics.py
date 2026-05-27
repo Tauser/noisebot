@@ -57,6 +57,9 @@ class MetricsApi:
                 "input": input_total,
                 "output": output_total,
             },
+            "last_voice_session": self._store.last_voice_session.copy(),
+            "recent_voice_sessions": self._store.recent_voice_sessions,
+            "voice_alert": _voice_alert(self._store.last_voice_session),
             "estimated_cost": None,  # preenchido quando providers fornecerem uso
         }
 
@@ -65,6 +68,7 @@ class MetricsApi:
         self._registry.clear()
         for k in self._store.turn_counters:
             self._store.turn_counters[k] = 0
+        self._store.clear_voice_sessions()
 
 
 def _round(v: float | None) -> float | None:
@@ -81,3 +85,32 @@ def _total_from_snapshot(series: dict | None) -> int | None:
     if mean is None or not count:
         return None
     return int(mean * count)
+
+
+def _voice_alert(session: dict) -> dict | None:
+    if not session:
+        return None
+    outcome = str(session.get("outcome") or "")
+    discard = session.get("discard_reason")
+    stage = session.get("error_stage")
+    reason = session.get("error_reason") or discard or stage
+    if outcome == "failed" or stage:
+        return {
+            "level": "error",
+            "title": "Turno de voz falhou",
+            "detail": str(reason or "erro não detalhado"),
+        }
+    if outcome in {"audio_rejected", "stt_rejected", "cancelled"} or discard:
+        return {
+            "level": "warn",
+            "title": "Turno de voz descartado",
+            "detail": str(reason or outcome or "sem motivo detalhado"),
+        }
+    quality = session.get("transcript_quality")
+    if quality and quality != "ok":
+        return {
+            "level": "warn",
+            "title": "Transcrição com baixa confiança",
+            "detail": str(quality),
+        }
+    return None

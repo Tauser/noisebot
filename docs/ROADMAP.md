@@ -793,7 +793,7 @@ Critérios adicionais de integração do Bloco 0:
 - Buffers pertencem ao driver de vídeo via sessão V4L2; o serviço não pré-aloca framebuffer de display.
 - API: `camera_hal_capture()`, `camera_hal_get_frame()`, `camera_hal_release_frame()`.
 - Task de captura separada: Core 1, prio 4 (abaixo de safety e render).
-- Modos iniciais expostos pelo dashboard/API:
+- Modos iniciais expostos pela Companion API:
   - `safe`: captura conservadora para diagnóstico.
   - `better`: captura 640×480 usada pela visão/observação.
 
@@ -801,14 +801,14 @@ Critérios adicionais de integração do Bloco 0:
 
 - Câmera OV2640 detectada via SCCB (`PID=0x26`).
 - Backend migrado para `esp_video`/V4L2, inspirado no modelo de sessão do StackChan, sem copiar C++ para fora do display.
-- Capturas 640×480 funcionando pelo dashboard e por endpoint HTTP.
+- Capturas 640×480 funcionando pelo dashboard externo e por endpoint HTTP.
 - `/api/vision/observe` retorna observação estruturada com resolução, tamanho JPEG, tempo de captura, brilho, contraste e movimento.
 - Sessão de câmera abre sob demanda e fecha por timeout para evitar pressão permanente de DMA/internal heap.
 - Bridge conectado e TTS funcionando junto ao suporte de câmera.
 
 **Critérios de aceitação:**
 
-- [x] Frame capturado sem artefatos visuais graves: verificado via dashboard/endpoint
+- [x] Frame capturado sem artefatos visuais graves: verificado via dashboard externo/endpoint
 - [x] PSRAM após captura: ≥ 300KB livre
 - [x] Bridge e TTS permanecem funcionais com câmera compilada e testada
 - [ ] FPS de render mantido ≥ 30fps com câmera ativa por teste longo
@@ -2672,11 +2672,11 @@ Metas de produto:
 **Dependências:** 15.1 desejável; 12.18 desejável
 **Hardware necessário:** Robô completo
 
-**Contexto:** StackChan tem fluxo de setup e app de produto. Para o NoiseBot, o primeiro passo adequado é um dashboard local profissional para diagnóstico, calibração e testes repetíveis, sem depender de app mobile ou cloud.
+**Contexto:** StackChan tem fluxo de setup e app de produto. Para o NoiseBot, o primeiro passo adequado é um dashboard local profissional no bridge/app externo para diagnóstico, calibração e testes repetíveis, sem depender de app mobile ou cloud e sem consumir SRAM do firmware.
 
 **O que entra:**
 
-- Dashboard de diagnóstico:
+- Dashboard externo de diagnóstico:
   - estado atual;
   - bridge conectado/desconectado;
   - wake threshold/modelo;
@@ -2711,7 +2711,7 @@ Metas de produto:
 - [x] Snapshot de diagnóstico inclui versão, config e últimos erros.
 - [x] Teste de wake word mostra modelo, threshold e resultado.
 - [x] Teste de bridge mostra latência e versão de protocolo.
-- [x] Nenhum teste de dashboard bloqueia boot ou tasks críticas.
+- [x] Nenhum teste de dashboard externo bloqueia boot ou tasks críticas.
 
 ---
 
@@ -2725,7 +2725,7 @@ Metas de produto:
 
 ### Etapa 13.0 — Observação Visual Básica ✓ parcial
 
-**Dependências:** 8.1 funcional, 15.1 dashboard/API local
+**Dependências:** 8.1 funcional, 15.1 Companion API local
 **Hardware necessário:** Câmera OV2640
 
 **Objetivo:** transformar a captura bruta da câmera em telemetria visual simples
@@ -2854,27 +2854,29 @@ e confiável antes de acionar comportamento autônomo.
 
 ## BLOCO 15 — Conectividade
 
-> Objetivo: O robot expõe uma interface web local para configuração, monitoramento
-> e controle remoto. WiFi já está ativo desde a Etapa 9.6 — este bloco constrói
-> os serviços de aplicação sobre essa infraestrutura.
+> Objetivo: O robot expõe uma API HTTP local para configuração, monitoramento
+> e controle remoto. A interface visual roda fora do firmware, no bridge/app de
+> desenvolvimento, para preservar SRAM, sockets e stack do ESP32-S3. WiFi já
+> está ativo desde a Etapa 9.6 — este bloco constrói os serviços de aplicação
+> sobre essa infraestrutura.
 
 **Restrições de hardware para este bloco (ESP32-S3):**
 
 - TLS/HTTPS: mbedTLS consome ~250 KB SRAM adicionais — inviável. HTTP na LAN apenas.
-- Máximo 1 cliente WebSocket simultâneo.
+- Sem WebSocket no firmware. Atualização em tempo real fica no bridge/app externo.
 - Sem streaming de áudio ou vídeo via WiFi (jitter e banda insuficientes).
 
 **Orçamento de SRAM incremental (além do wifi_service da 9.6):**
 
-| Componente             | SRAM estimada |
-| ---------------------- | ------------- |
-| esp_http_server (4 cx) | ~20 KB        |
-| WebSocket (1 cliente)  | ~10 KB        |
-| **Total incremental**  | **~30 KB**    |
+| Componente              | SRAM estimada |
+| ----------------------- | ------------- |
+| esp_http_server (3 cx)  | ~12-16 KB     |
+| JSON/handlers REST      | ~4 KB         |
+| **Total incremental**   | **~16-20 KB** |
 
 ---
 
-### Etapa 15.1 — Web Dashboard e Companion API (Layer 2)
+### Etapa 15.1 — Companion API HTTP (Layer 2)
 
 **Dependências:** 9.6 concluída (IP adquirido)
 
@@ -2882,57 +2884,31 @@ e confiável antes de acionar comportamento autônomo.
 
 **O que entra:**
 
-- `web_service` em `components/infra/web_service/`:
-  - `esp_http_server` com máximo 4 conexões HTTP simultâneas.
-  - Arquivos estáticos servidos do SD (`/sdcard/www/`): `index.html`, `app.js`, `style.css`.
-    - Se `/sdcard/www/` ausente: endpoint `/` retorna página mínima embutida no firmware.
-  - WebSocket em `/ws`: 1 cliente simultâneo; novo cliente desconecta o anterior.
+- `web_service` em `components/infra/`:
+  - `esp_http_server` com máximo 3 conexões HTTP simultâneas.
+  - Sem HTML, CSS, JS ou WebSocket embutidos no firmware.
+  - Dashboard visual roda no bridge/app externo e consome apenas endpoints REST.
   - Iniciado somente após `NB_EVT_WIFI_IP_ACQUIRED` — nunca bloqueia o boot.
 
 **REST API:**
 
 | Endpoint            | Método | Descrição                                               |
 | ------------------- | ------ | ------------------------------------------------------- |
-| `GET /`             | HTTP   | Dashboard (HTML do SD ou fallback embutido)             |
 | `GET /api/status`   | HTTP   | JSON: state, expression, attention, health, uptime, fps |
 | `GET /api/persona`  | HTTP   | JSON: warmth, energy, curiosity, trust                  |
 | `GET /api/config`   | HTTP   | JSON com todas as chaves NVS relevantes                 |
 | `POST /api/config`  | HTTP   | Atualiza chave NVS (body: `{"key":"val","value":x}`)    |
 | `POST /api/command` | HTTP   | Injeta ação (body: `{"type":"ACTION","value":"GREET"}`) |
-| `WS /ws`            | WS     | Push de status a cada mudança; aceita comandos          |
-
-**WebSocket (push do robot):**
-
-```json
-{
-  "type": "status",
-  "state": "IDLE",
-  "expression": "NEUTRAL",
-  "attention": 0.3,
-  "health": 87,
-  "uptime_s": 3612,
-  "fps": 45
-}
-```
-
-**WebSocket (comando do cliente):**
-
-```json
-{ "type": "command", "action": "GREET" }
-{ "type": "emot_event", "event": "TOUCH_TAP" }
-```
 
 **Sem autenticação no protótipo** (LAN local, sem exposição externa).
 
 **Critérios de aceitação:**
 
-- [x] Browser em `http://noisebot.local`: dashboard carrega em < 3s
 - [x] `GET /api/status`: JSON válido retornado em < 100ms
-- [x] WebSocket: status push recebido em < 200ms após mudança de estado no robot
 - [x] `POST /api/command` GREET: `conductor_play(GREET)` executado em < 300ms
 - [x] `POST /api/config` volume: `config_set_volume()` persistido e efetivo sem reiniciar
-- [x] FPS de render ≥ 25fps com cliente WS conectado e recebendo updates
-- [x] Cliente WS desconecta abruptamente: sem crash, nova conexão aceita normalmente
+- [x] FPS de render ≥ 25fps com cliente REST consultando periodicamente
+- [x] Dashboard externo reiniciado/desconectado: sem crash, nova consulta REST aceita normalmente
 
 ---
 
@@ -2946,7 +2922,7 @@ e confiável antes de acionar comportamento autônomo.
 - **OTA via HTTP** usando WiFi já ativo da Etapa 9.6:
   - Endpoint `POST /api/ota` recebe URL de firmware `.bin` (servidor local ou S3).
   - `esp_ota` com validação de magic bytes antes de aplicar.
-  - Robot entra em `NB_STATE_OTA` durante update: motion off, LEDs laranja pulsante, WS push de progresso.
+  - Robot entra em `NB_STATE_OTA` durante update: motion off, LEDs laranja pulsante, progresso registrado em log/API.
   - Rollback automático se firmware não confirmar boot em 30s (`esp_ota_mark_app_valid_cancel_rollback()`).
   - Sem TLS: URL deve ser HTTP (limitação de RAM — ver nota no cabeçalho do bloco).
 
@@ -2985,7 +2961,7 @@ e confiável antes de acionar comportamento autônomo.
   - Processo: gravar amostras, treinar com ESP-SR tool, exportar modelo `.bin`, incluir no firmware.
 - `wake_service` atualizado para carregar modelo customizado de `/sdcard/models/wake.bin` se presente, senão fallback para "Hi ESP" embutido.
 - NVS: `nb_svc/ww_model` — path do modelo customizado.
-- Web dashboard: seção wake word — modelo ativo, threshold, botão de teste, enable/disable.
+- Dashboard externo: seção wake word — modelo ativo, threshold, botão de teste, enable/disable.
 
 **Critérios de aceitação:**
 
@@ -2994,7 +2970,7 @@ e confiável antes de acionar comportamento autônomo.
 - [ ] Ruído ambiente e TV sem keyword: zero false positives em 10 minutos
 - [ ] Modelo ausente no SD: fallback para "Hi ESP" sem crash, log informativo
 - [ ] `ww_enabled=0` em NVS: keyword desabilitada, toque continua funcionando
-- [ ] Threshold ajustável pelo dashboard sem reflash
+- [ ] Threshold ajustável pelo dashboard externo sem reflash
 
 ---
 
@@ -3014,7 +2990,7 @@ e confiável antes de acionar comportamento autônomo.
   - Prioridade 0 = interruptível, prioridade 1 = completa antes de aceitar novo pedido.
   - Publica `NB_EVT_AUDIO_STARTED` / `NB_EVT_AUDIO_ENDED` compatíveis com pipeline existente.
 - NVS: `nb_tts/host`, `nb_tts/port`, `nb_tts/speaker_id`, `nb_tts/enabled`.
-- Web dashboard: seção TTS — host/porta/speaker, botão de teste com campo de texto.
+- Dashboard externo: seção TTS — host/porta/speaker, botão de teste com campo de texto.
 - Conductor: novo action `NB_ACTION_SPEAK_GREETING` usa TTS se disponível, senão synth_service.
 
 **Critérios de aceitação:**
@@ -3075,14 +3051,14 @@ e confiável antes de acionar comportamento autônomo.
   - `NB_CHOREO_DANCE`: sequência de 8 ações com timing rítmico.
   - `NB_CHOREO_WAKE_UP_RITUAL`: STRETCH → YAWN → HAPPY → blush leve (integra 16.3).
   - `NB_CHOREO_GREETING_ELABORATE`: GREET → CURIOUS → AGREE → heart (>5s de interação).
-- Web dashboard: seção "Choreography" com 3 botões de play + campo de sequência custom em JSON.
+- Dashboard externo: seção "Choreography" com 3 botões de play + campo de sequência custom em JSON.
 - API `/api/choreo` (POST): `{"steps":[{"action":"GREET","delay_ms":500},...]}`
 
 **Critérios de aceitação:**
 
 - [ ] `NB_CHOREO_DANCE` executada: 8 ações na ordem correta, timing dentro de ±50ms
 - [ ] Choreo interrompível: `conductor_stop_choreo()` para no step atual sem travar conductor
-- [ ] Choreo via web dashboard: POST JSON → sequência executa no robot
+- [ ] Choreo via dashboard externo: POST JSON → sequência executa no robot
 - [ ] `NB_CHOREO_FLAG_PARALLEL`: dois steps sem delay visível entre eles
 - [ ] Choreo com TTS pendente + `WAIT_AUDIO`: step seguinte aguarda fim da fala
 
@@ -3144,41 +3120,38 @@ e confiável antes de acionar comportamento autônomo.
   - Retorna automaticamente para IDLE após toque ou voz detectada.
 - Ativação: toque longo (>3s) em modo SLEEPING → entra em PHOTO_FRAME.
 - `NB_ACTION_PHOTO_FRAME` adicionado ao conductor.
-- Web dashboard: botão "Photo Frame" + upload de JPEG via `POST /api/photos`.
+- Dashboard externo: botão "Photo Frame" + upload de JPEG via `POST /api/photos`.
 
 **Critérios de aceitação:**
 
 - [ ] 10 fotos no SD → exibidas em loop, intervalo correto
 - [ ] Toque durante slideshow → retorna para IDLE em <500ms
 - [ ] JPEG inválido ou corrompido → skipped, próxima foto sem panic
-- [ ] `photo_interval_s` alterado via dashboard sem reflash
+- [ ] `photo_interval_s` alterado via dashboard externo sem reflash
 - [ ] Upload de foto via `/api/photos` → aparece no próximo ciclo do slideshow
 
 ---
 
-### Etapa 18.2 — Camera MJPEG Stream (Layer 2/4)
+### Etapa 18.2 — Camera Stream Externo (Layer 2/4)
 
 **Dependências:** 8.1 (câmera OV2640), 15.1 (web_service) concluídas
 **Hardware necessário:** câmera OV2640 conectada no DVP
 
 **O que entra:**
 
-- Endpoint `GET /stream` no `web_service`: MJPEG multipart stream (Content-Type: `multipart/x-mixed-replace`).
-  - Frame rate: até 15fps QVGA (320×240), limitado por WiFi throughput.
-  - Resolução configurável: QVGA (default) ou QQVGA via query param `?res=qqvga`.
-  - 1 cliente simultâneo (igual ao WS); novo cliente desconecta o anterior.
+- Streaming contínuo não roda dentro do firmware. O firmware fornece snapshot/observação,
+  e o bridge/app externo monta preview por polling controlado ou por stream próprio.
 - `GET /api/camera/snapshot`: JPEG único, útil para polling de baixa frequência.
 - `POST /api/camera/config`: `{"resolution":"QVGA","quality":10}` — ajusta encoder JPEG.
-- Integração com `face_tracking_service` (Etapa 13.2): quando ativo, stream inclui overlay de bounding box da face detectada (via header HTTP custom `X-Face-Detected: 1`).
-- Web dashboard: seção "Camera" com tag `<img src="/stream">` e botão snapshot.
+- Integração com `face_tracking_service` (Etapa 13.2): o endpoint de observação retorna bounding box/estado de face quando disponível.
+- Dashboard externo: seção "Camera" com preview por snapshot e botão de captura.
 
 **Critérios de aceitação:**
 
-- [ ] `http://noisebot.local/stream` exibe vídeo ao vivo no browser sem plugin
-- [ ] 15fps sustentado por 60s sem OOM ou watchdog
+- [ ] Preview externo por snapshot/polling funciona sem OOM ou watchdog
 - [ ] Snapshot: JPEG válido retornado em <500ms
-- [ ] Stream ativo não degrada FPS do display (render_service isolado)
-- [ ] Segundo cliente: primeiro é desconectado em <1s
+- [ ] Preview ativo não degrada FPS do display (render_service isolado)
+- [ ] Segundo cliente externo não força estado persistente extra no firmware
 
 ---
 
@@ -3200,7 +3173,7 @@ e confiável antes de acionar comportamento autônomo.
 | ROBOT CONVERSADOR    | Etapa 12.2     | Conversa completa com LLM: fala → entende → responde → expressa |
 | ROBOT OBSERVADOR     | Etapa 13.0     | Responde sobre cena, luz e movimento sem LLM                    |
 | ROBOT VIDENTE        | Etapa 13.3     | Olha para quem está na frente, reage a gestos                   |
-| ROBOT CONECTADO      | Etapa 15.2     | Dashboard web ativo, OTA funcional, personalidade portável      |
+| ROBOT CONECTADO      | Etapa 15.2     | Companion API ativa, OTA funcional, personalidade portável      |
 | ROBOT EXPRESSIVO+    | Etapa 16.4     | Fala, ruboriza, dança — expressividade completa                 |
 | ROBOT AGENTE         | Etapa 17.1     | LLM aciona hardware durante resposta — age enquanto pensa       |
 | ROBOT VISUAL         | Etapa 18.2     | Câmera ao vivo no browser, fotos no display                     |

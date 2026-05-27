@@ -1,75 +1,83 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
+  BatteryCharging,
   Bell,
-  Bot,
+  Brain,
   CalendarDays,
   Camera,
   CheckCircle2,
-  ChevronRight,
   Clock3,
+  CloudSun,
   Cpu,
-  Eye,
-  Gauge,
+  Database,
   HardDrive,
   Home,
-  Languages,
-  ListChecks,
-  Mic2,
-  Monitor,
-  Network,
+  MapPin,
+  MessageSquare,
+  Mic,
+  MicOff,
   Pause,
-  Play,
-  Power,
+  PlugZap,
   RefreshCw,
-  Settings,
   SendHorizontal,
+  Settings,
+  Shield,
   SlidersHorizontal,
-  Sparkles,
-  ShieldCheck,
-  SunMedium,
+  Terminal,
+  Thermometer,
   Timer,
-  UserRound,
+  Trash2,
   Volume2,
   Wifi,
+  Wrench,
 } from "lucide-react";
 import {
   AppData,
   BasicSettings,
   DashboardSnapshot,
-  RoutineItem,
+  DevData,
   VisionAnalysis,
-  VisionObservation,
+  VoiceSessionSummary,
+  RoutineItem,
   analyzeVision,
   createAgendaItem,
   defaultAppData,
   deleteAgendaItem,
+  loadDevData,
   loadAppData,
   loadSnapshot,
   observeVision,
-  RobotState,
+  resetMetrics,
+  restartServer,
   saveBasicSettings,
   sendDebugTranscript,
   updateAgendaItem,
   visionSnapshotUrl,
 } from "./api";
 
-type SectionId = "home" | "routine" | "vision" | "basics" | "profile" | "settings";
+type AppMode = "user" | "dev";
+type UserSection = "home" | "interaction" | "routine" | "basics";
+type DevSection = "telemetry" | "integrations" | "sensors" | "console";
 
-type NavItem = {
-  id: SectionId;
+type NavItem<T extends string> = {
+  id: T;
   label: string;
-  description: string;
   icon: typeof Home;
 };
 
-const navItems: NavItem[] = [
-  { id: "home", label: "Início", description: "Resumo vivo do robô", icon: Home },
-  { id: "routine", label: "Rotina", description: "Timers, alarmes e agenda", icon: CalendarDays },
-  { id: "vision", label: "Visão", description: "Câmera e monitoramento", icon: Camera },
-  { id: "basics", label: "Ajustes", description: "Volume, LEDs e modos", icon: SlidersHorizontal },
-  { id: "profile", label: "Perfil", description: "Nome, idioma e jeito", icon: UserRound },
-  { id: "settings", label: "Configurações", description: "Rede, OTA e device", icon: Settings },
+const userNav: NavItem<UserSection>[] = [
+  { id: "home", label: "Início", icon: Home },
+  { id: "interaction", label: "Interação", icon: MessageSquare },
+  { id: "routine", label: "Rotinas", icon: CalendarDays },
+  { id: "basics", label: "Ajustes", icon: SlidersHorizontal },
+];
+
+const devNav: NavItem<DevSection>[] = [
+  { id: "telemetry", label: "Telemetria", icon: Activity },
+  { id: "integrations", label: "Integrações", icon: PlugZap },
+  { id: "sensors", label: "Sensores", icon: Camera },
+  { id: "console", label: "Sistema", icon: Terminal },
 ];
 
 const initialSnapshot: DashboardSnapshot = {
@@ -101,543 +109,538 @@ const initialSnapshot: DashboardSnapshot = {
   },
   vision: {
     mode: "idle",
-    lastObservation: "Aguardando primeira captura",
+    lastObservation: "Aguardando captura",
     light: "normal",
     motion: "sem leitura",
     frameUrl: null,
   },
 };
 
-const stateLabels: Record<RobotState, string> = {
-  online: "online",
-  offline: "offline",
-  listening: "ouvindo",
-  thinking: "pensando",
-  speaking: "falando",
-  resting: "descansando",
+const defaultDevData: DevData = {
+  metrics: {
+    latency_ms: {},
+    turns: {
+      total: 0,
+      local_intent: 0,
+      llm: 0,
+      fallback: 0,
+      failed: 0,
+      interrupted: 0,
+    },
+    tokens: {
+      input: null,
+      output: null,
+    },
+    last_voice_session: {},
+    recent_voice_sessions: [],
+    voice_alert: null,
+    estimated_cost: null,
+  },
+  errors: [],
+  config: {},
+  device: {
+    server_online: false,
+    firmware_online: false,
+    transport_host: "",
+    transport_port: 0,
+    ops_port: 0,
+    dry_run: false,
+    features: [],
+    supervisor: "unknown",
+  },
+  vision: {
+    available: false,
+    source: "unconfigured",
+  },
+  diagnostics: {
+    available: false,
+    source: "unavailable",
+    errors: {},
+  },
 };
 
+const cardClass = "rounded-xl border border-slate-200 bg-white p-4 shadow-sm";
+const primaryButtonClass = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 font-semibold text-white transition hover:bg-slate-700";
+const secondaryButtonClass = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 font-semibold text-slate-700 transition hover:bg-slate-50";
+const inputClass = "min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none";
+
+function editableContext(mode: AppMode, userSection: UserSection, devSection: DevSection) {
+  if (mode === "user") return userSection === "routine" || userSection === "basics";
+  return devSection === "console";
+}
+
+async function safeLoadDevData() {
+  try {
+    return await loadDevData();
+  } catch {
+    return defaultDevData;
+  }
+}
+
 export function App() {
-  const [active, setActive] = useState<SectionId>("home");
+  const [mode, setMode] = useState<AppMode>("user");
+  const [userSection, setUserSection] = useState<UserSection>("home");
+  const [devSection, setDevSection] = useState<DevSection>("telemetry");
+  const contextRef = useRef({ mode: "user" as AppMode, userSection: "home" as UserSection, devSection: "telemetry" as DevSection });
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(initialSnapshot);
   const [appData, setAppData] = useState<AppData>(defaultAppData);
-  const [monitoring, setMonitoring] = useState(false);
-  const [volume, setVolume] = useState(62);
-  const [leds, setLeds] = useState(48);
-  const [silentMode, setSilentMode] = useState(false);
-  const [doNotDisturb, setDoNotDisturb] = useState(false);
-  const [nightMode, setNightMode] = useState(false);
-  const [reduceBrightnessAtNight, setReduceBrightnessAtNight] = useState(true);
-  const [confirmLoudSounds, setConfirmLoudSounds] = useState(true);
-  const [subtleLeds, setSubtleLeds] = useState(false);
+  const [devData, setDevData] = useState<DevData>(defaultDevData);
+  const [volume, setVolume] = useState(defaultAppData.settings.volume);
+  const [leds, setLeds] = useState(defaultAppData.settings.led_brightness);
+  const [opsToken, setOpsToken] = useState(() => localStorage.getItem("noisebot_ops_token") ?? "");
   const [commandText, setCommandText] = useState("");
   const [commandStatus, setCommandStatus] = useState("pronto");
   const [routineStatus, setRoutineStatus] = useState("pronto");
   const [settingsStatus, setSettingsStatus] = useState("pronto");
-  const [opsToken, setOpsToken] = useState(() => localStorage.getItem("noisebot_ops_token") ?? "");
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [devStatus, setDevStatus] = useState("pronto");
+  const [refreshing, setRefreshing] = useState(false);
+  const [now, setNow] = useState(() => new Date());
 
-  const applyAppData = (data: AppData) => {
+  useEffect(() => {
+    contextRef.current = { mode, userSection, devSection };
+  }, [mode, userSection, devSection]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const applyAppData = (data: AppData, syncControls = true) => {
     setAppData(data);
-    setVolume(data.settings.volume);
-    setLeds(data.settings.led_brightness);
-    setSilentMode(data.settings.silent_mode);
-    setDoNotDisturb(data.settings.do_not_disturb);
-    setNightMode(data.settings.night_mode);
-    setReduceBrightnessAtNight(data.settings.reduce_brightness_at_night);
-    setConfirmLoudSounds(data.settings.confirm_loud_sounds);
-    setSubtleLeds(data.settings.subtle_leds);
+    if (syncControls) {
+      setVolume(data.settings.volume);
+      setLeds(data.settings.led_brightness);
+    }
   };
 
   const refreshAll = async () => {
-    setIsRefreshing(true);
+    setRefreshing(true);
     try {
-      const [snapshotData, stateData] = await Promise.all([loadSnapshot(), loadAppData()]);
-      setSnapshot(snapshotWithRoutine(snapshotData, stateData));
-      applyAppData(stateData);
-      return snapshotData;
+      const [nextSnapshot, nextData, nextDevData] = await Promise.all([loadSnapshot(), loadAppData(), safeLoadDevData()]);
+      setSnapshot(withRoutine(nextSnapshot, nextData));
+      setDevData(nextDevData);
+      const ctx = contextRef.current;
+      applyAppData(nextData, !editableContext(ctx.mode, ctx.userSection, ctx.devSection));
     } finally {
-      setIsRefreshing(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
-      const [snapshotData, stateData] = await Promise.all([loadSnapshot(), loadAppData()]);
+      const [nextSnapshot, nextData, nextDevData] = await Promise.all([loadSnapshot(), loadAppData(), safeLoadDevData()]);
       if (!cancelled) {
-        setSnapshot(snapshotWithRoutine(snapshotData, stateData));
-        applyAppData(stateData);
+        setSnapshot(withRoutine(nextSnapshot, nextData));
+        setDevData(nextDevData);
+        const ctx = contextRef.current;
+        applyAppData(nextData, !editableContext(ctx.mode, ctx.userSection, ctx.devSection));
       }
     };
     void refresh();
-    const interval = window.setInterval(() => {
-      void refresh();
-    }, 4000);
+    const interval = window.setInterval(() => void refresh(), 5000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
   }, []);
 
-  const activeItem = useMemo(
-    () => navItems.find((item) => item.id === active) ?? navItems[0],
-    [active],
-  );
+  const setAppMode = (nextMode: AppMode) => {
+    setMode(nextMode);
+    if (nextMode === "user") {
+      setUserSection("home");
+    } else {
+      setDevSection("telemetry");
+    }
+  };
 
   const saveOpsToken = (value: string) => {
     setOpsToken(value);
-    localStorage.setItem("noisebot_ops_token", value);
-  };
-
-  const requireOpsToken = (target: "routine" | "settings") => {
-    if (opsToken.trim()) {
-      return opsToken.trim();
-    }
-    setActive("settings");
-    if (target === "routine") {
-      setRoutineStatus("configure o token primeiro");
+    if (value.trim()) {
+      localStorage.setItem("noisebot_ops_token", value.trim());
     } else {
-      setSettingsStatus("configure o token primeiro");
+      localStorage.removeItem("noisebot_ops_token");
     }
-    return "";
   };
 
-  const createTimer = async (minutes: number, title?: string) => {
-    const token = requireOpsToken("routine");
+  const requireToken = (target: "command" | "routine" | "settings") => {
+    const token = opsToken.trim();
     if (!token) {
-      return;
+      setMode("dev");
+      setDevSection("console");
+      const message = "token local obrigatório para executar esta ação";
+      if (target === "command") {
+        setCommandStatus(message);
+      } else if (target === "routine") {
+        setRoutineStatus(message);
+      } else {
+        setSettingsStatus(message);
+      }
+      return "";
     }
+    return token;
+  };
+
+  const createTimer = async (title: string, durationMin: number) => {
+    const token = requireToken("routine");
+    if (!token) return;
     setRoutineStatus("criando timer");
     try {
-      const routine = await createAgendaItem(
-        "timer",
-        { title: title?.trim() || `Timer de ${minutes} min`, duration_min: minutes },
-        token,
-      );
-      const nextData = { ...appData, routine };
-      setAppData(nextData);
-      setSnapshot(snapshotWithRoutine(snapshot, nextData));
+      const routine = await createAgendaItem("timer", { title, duration_min: durationMin }, token);
+      updateRoutine(routine);
       setRoutineStatus("timer criado");
     } catch (error) {
-      setRoutineStatus(error instanceof Error ? error.message : "falha ao criar");
+      setRoutineStatus(errorMessage(error));
     }
   };
 
-  const createAlarm = async (time = "07:30", title = "Alarme diário", repeat = "diário") => {
-    const token = requireOpsToken("routine");
-    if (!token) {
-      return;
-    }
+  const createAlarm = async (title: string, time: string, repeat: string) => {
+    const token = requireToken("routine");
+    if (!token) return;
     setRoutineStatus("criando alarme");
     try {
-      const routine = await createAgendaItem(
-        "alarm",
-        { title: title.trim() || "Alarme", time, repeat: repeat.trim() || "diário" },
-        token,
-      );
-      const nextData = { ...appData, routine };
-      setAppData(nextData);
-      setSnapshot(snapshotWithRoutine(snapshot, nextData));
+      const routine = await createAgendaItem("alarm", { title, time, repeat }, token);
+      updateRoutine(routine);
       setRoutineStatus("alarme criado");
     } catch (error) {
-      setRoutineStatus(error instanceof Error ? error.message : "falha ao criar");
+      setRoutineStatus(errorMessage(error));
     }
   };
 
-  const createReminder = async (minutes = 15, title = "Novo lembrete") => {
-    const token = requireOpsToken("routine");
-    if (!token) {
-      return;
-    }
+  const createReminder = async (title: string, durationMin: number) => {
+    const token = requireToken("routine");
+    if (!token) return;
     setRoutineStatus("criando lembrete");
     try {
-      const routine = await createAgendaItem(
-        "reminder",
-        { title: title.trim() || "Lembrete", duration_min: minutes },
-        token,
-      );
-      const nextData = { ...appData, routine };
-      setAppData(nextData);
-      setSnapshot(snapshotWithRoutine(snapshot, nextData));
+      const routine = await createAgendaItem("reminder", { title, duration_min: durationMin }, token);
+      updateRoutine(routine);
       setRoutineStatus("lembrete criado");
     } catch (error) {
-      setRoutineStatus(error instanceof Error ? error.message : "falha ao criar");
+      setRoutineStatus(errorMessage(error));
     }
   };
 
-  const toggleRoutineItem = async (item: RoutineItem) => {
-    const token = requireOpsToken("routine");
-    if (!token) {
-      return;
-    }
-    setRoutineStatus("atualizando");
+  const toggleRoutine = async (item: RoutineItem) => {
+    const token = requireToken("routine");
+    if (!token) return;
     try {
       const routine = await updateAgendaItem(item.id, { enabled: !item.enabled }, token);
-      const nextData = { ...appData, routine };
-      setAppData(nextData);
-      setSnapshot(snapshotWithRoutine(snapshot, nextData));
+      updateRoutine(routine);
       setRoutineStatus("rotina atualizada");
     } catch (error) {
-      setRoutineStatus(error instanceof Error ? error.message : "falha ao atualizar");
+      setRoutineStatus(errorMessage(error));
     }
   };
 
-  const editRoutineItem = async (item: RoutineItem, payload: Record<string, unknown>) => {
-    const token = requireOpsToken("routine");
-    if (!token) {
-      return;
-    }
-    setRoutineStatus("salvando item");
-    try {
-      const routine = await updateAgendaItem(item.id, payload, token);
-      const nextData = { ...appData, routine };
-      setAppData(nextData);
-      setSnapshot(snapshotWithRoutine(snapshot, nextData));
-      setRoutineStatus("item atualizado");
-    } catch (error) {
-      setRoutineStatus(error instanceof Error ? error.message : "falha ao salvar");
-    }
-  };
-
-  const removeRoutineItem = async (item: RoutineItem) => {
-    const token = requireOpsToken("routine");
-    if (!token) {
-      return;
-    }
-    setRoutineStatus("removendo");
+  const removeRoutine = async (item: RoutineItem) => {
+    const token = requireToken("routine");
+    if (!token) return;
     try {
       const routine = await deleteAgendaItem(item.id, token);
-      const nextData = { ...appData, routine };
-      setAppData(nextData);
-      setSnapshot(snapshotWithRoutine(snapshot, nextData));
+      updateRoutine(routine);
       setRoutineStatus("item removido");
     } catch (error) {
-      setRoutineStatus(error instanceof Error ? error.message : "falha ao remover");
+      setRoutineStatus(errorMessage(error));
     }
   };
 
-  const currentSettings = (): BasicSettings => ({
-    volume,
-    display_brightness: appData.settings.display_brightness,
-    led_brightness: leds,
-    silent_mode: silentMode,
-    do_not_disturb: doNotDisturb,
-    night_mode: nightMode,
-    reduce_brightness_at_night: reduceBrightnessAtNight,
-    confirm_loud_sounds: confirmLoudSounds,
-    subtle_leds: subtleLeds,
-  });
+  const updateRoutine = (routine: AppData["routine"]) => {
+    const nextData = { ...appData, routine };
+    setAppData(nextData);
+    setSnapshot(withRoutine(snapshot, nextData));
+  };
 
   const saveSettings = async () => {
-    const token = requireOpsToken("settings");
-    if (!token) {
-      return;
-    }
+    const token = requireToken("settings");
+    if (!token) return;
+    const settings: BasicSettings = {
+      ...appData.settings,
+      volume,
+      led_brightness: leds,
+    };
     setSettingsStatus("salvando");
     try {
-      const settings = await saveBasicSettings(currentSettings(), token);
-      applyAppData({ ...appData, settings });
+      const saved = await saveBasicSettings(settings, token);
+      applyAppData({ ...appData, settings: saved }, true);
       setSettingsStatus("ajustes salvos");
     } catch (error) {
-      setSettingsStatus(error instanceof Error ? error.message : "falha ao salvar");
+      setSettingsStatus(errorMessage(error));
     }
   };
 
   const submitCommand = async () => {
     const text = commandText.trim();
-    if (!text) {
-      return;
-    }
-    if (!opsToken.trim()) {
-      setActive("settings");
-      setCommandStatus("configure o token primeiro");
-      return;
-    }
+    const token = requireToken("command");
+    if (!text || !token) return;
     setCommandStatus("enviando");
     try {
-      await sendDebugTranscript(text, opsToken.trim());
+      await sendDebugTranscript(text, token);
       setCommandText("");
-      setCommandStatus("processando");
-      window.setTimeout(() => {
-      void refreshAll().then(() => setCommandStatus("atualizado"));
-      }, 800);
+      setCommandStatus("enviado");
+      window.setTimeout(() => void refreshAll(), 800);
     } catch (error) {
-      setCommandStatus(error instanceof Error ? error.message : "falha ao enviar");
+      setCommandStatus(errorMessage(error));
     }
   };
 
+  const handleResetMetrics = async () => {
+    const token = opsToken.trim();
+    if (!token) {
+      setDevStatus("token local obrigatório para executar esta ação");
+      setMode("dev");
+      setDevSection("console");
+      return;
+    }
+    setDevStatus("zerando métricas");
+    try {
+      await resetMetrics(token);
+      setDevData(await safeLoadDevData());
+      setDevStatus("métricas zeradas");
+    } catch (error) {
+      setDevStatus(errorMessage(error));
+    }
+  };
+
+  const handleRestartServer = async () => {
+    const token = opsToken.trim();
+    if (!token) {
+      setDevStatus("token local obrigatório para executar esta ação");
+      setMode("dev");
+      setDevSection("console");
+      return;
+    }
+    setDevStatus("reinício solicitado");
+    try {
+      await restartServer(token);
+      setDevStatus("server reiniciando");
+    } catch (error) {
+      setDevStatus(errorMessage(error));
+    }
+  };
+
+  const title = useMemo(() => {
+    const list = mode === "user" ? userNav : devNav;
+    const active = mode === "user" ? userSection : devSection;
+    return list.find((item) => item.id === active)?.label ?? "NoiseBot";
+  }, [mode, userSection, devSection]);
+
+  const currentTime = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
   return (
-    <main className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">
-            <Bot size={22} />
-          </span>
-          <div>
-            <strong>NoiseBot</strong>
-            <span>Companion local</span>
-          </div>
+    <main className="grid min-h-screen grid-cols-[240px_minmax(0,1fr)] bg-slate-100 max-lg:grid-cols-1">
+      <aside className="border-r border-slate-200 bg-slate-950 px-4 py-5 text-white max-lg:border-r-0 max-lg:border-b">
+        <div className="mb-5 grid gap-1 px-2">
+          <strong className="text-lg">NoiseBot</strong>
+          <span className="text-sm text-slate-400">{mode === "user" ? "Companheiro de mesa" : "Centro de comando"}</span>
         </div>
 
-        <nav className="nav-list" aria-label="Navegacao principal">
-          {navItems.map((item) => {
+        <div className="mb-5 grid grid-cols-2 rounded-xl bg-slate-900 p-1 text-sm font-semibold">
+          <button className={mode === "user" ? "rounded-lg bg-white px-3 py-2 text-slate-950" : "rounded-lg px-3 py-2 text-slate-400"} onClick={() => setAppMode("user")} type="button">
+            User
+          </button>
+          <button className={mode === "dev" ? "rounded-lg bg-white px-3 py-2 text-slate-950" : "rounded-lg px-3 py-2 text-slate-400"} onClick={() => setAppMode("dev")} type="button">
+            Dev
+          </button>
+        </div>
+
+        <nav className="grid gap-1" aria-label="Navegação principal">
+          {(mode === "user" ? userNav : devNav).map((item) => {
             const Icon = item.icon;
+            const active = mode === "user" ? userSection === item.id : devSection === item.id;
             return (
               <button
-                className={`nav-button ${active === item.id ? "active" : ""}`}
+                className={active ? "flex min-h-11 items-center gap-3 rounded-lg bg-slate-800 px-3 text-white" : "flex min-h-11 items-center gap-3 rounded-lg px-3 text-slate-300 hover:bg-slate-900 hover:text-white"}
                 key={item.id}
-                onClick={() => setActive(item.id)}
+                onClick={() => {
+                  if (mode === "user") setUserSection(item.id as UserSection);
+                  else setDevSection(item.id as DevSection);
+                }}
                 type="button"
               >
                 <Icon size={18} />
-                <span>
-                  <strong>{item.label}</strong>
-                  <em>{item.description}</em>
-                </span>
+                {item.label}
               </button>
             );
           })}
         </nav>
-
-        <div className="sidebar-status">
-          <StatusDot ok={snapshot.robot.serverOnline} />
-          <span>{snapshot.robot.serverOnline ? "server conectado" : "server offline"}</span>
-        </div>
       </aside>
 
-      <section className="workspace">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">NoiseBot App</p>
-            <h1>{activeItem.label}</h1>
-            <span className="section-hint">{activeItem.description}</span>
-          </div>
-          <div className="topbar-actions">
-            <form
-              className="command-box"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submitCommand();
-              }}
-            >
-              <input
-                aria-label="Comando rápido"
-                onChange={(event) => setCommandText(event.target.value)}
-                placeholder="Digite um comando rápido"
-                value={commandText}
-              />
-              <button title="Enviar comando" type="submit">
-                <SendHorizontal size={17} />
+      <section className="grid min-w-0 grid-rows-[auto_1fr]">
+        <header className="border-b border-slate-200 bg-white px-6 py-4">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h1>
+              <p className="text-sm text-slate-500">{snapshot.robot.mood}</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Vital icon={BatteryCharging} label={snapshot.robot.batteryLabel || "energia"} />
+              <Vital icon={Wifi} label={snapshot.robot.firmwareOnline ? "online" : "offline"} good={snapshot.robot.firmwareOnline} />
+              <Vital icon={snapshot.robot.state === "listening" ? Mic : MicOff} label={snapshot.robot.state === "listening" ? "ouvindo" : "mic"} />
+              <Vital icon={CloudSun} label={`${currentTime} · ${appData.advanced.location || "local"}`} />
+              <button className={refreshing ? "inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 [&_svg]:animate-spin" : "inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600"} onClick={() => void refreshAll()} type="button">
+                <RefreshCw size={18} />
               </button>
-            </form>
-            <span className="command-status">{commandStatus}</span>
-            <button
-              className={`icon-button ${isRefreshing ? "spinning" : ""}`}
-              onClick={() => void refreshAll()}
-              title="Atualizar"
-              type="button"
-            >
-              <RefreshCw size={18} />
-            </button>
-            <ConnectionPill
-              firmwareOnline={snapshot.robot.firmwareOnline}
-              serverOnline={snapshot.robot.serverOnline}
-            />
+            </div>
           </div>
         </header>
 
-        {active === "home" && <HomeView snapshot={snapshot} onNavigate={setActive} />}
-        {active === "routine" && (
-          <RoutineView
-            items={appData.routine.items}
-            onCreateAlarm={createAlarm}
-            onCreateReminder={createReminder}
-            onCreateTimer={createTimer}
-            onRemoveItem={removeRoutineItem}
-            onToggleItem={toggleRoutineItem}
-            onUpdateItem={editRoutineItem}
-            status={routineStatus}
-            summary={appData.routine.summary}
-          />
-        )}
-        {active === "vision" && (
-          <VisionView
-            monitoring={monitoring}
-            setMonitoring={setMonitoring}
-            snapshot={snapshot}
-          />
-        )}
-        {active === "basics" && (
-          <BasicsView
-            leds={leds}
-            setLeds={setLeds}
-            setVolume={setVolume}
-            settings={{
-              confirmLoudSounds,
-              doNotDisturb,
-              nightMode,
-              reduceBrightnessAtNight,
-              silentMode,
-              subtleLeds,
-            }}
-            settingsStatus={settingsStatus}
-            onSave={saveSettings}
-            setters={{
-              setConfirmLoudSounds,
-              setDoNotDisturb,
-              setNightMode,
-              setReduceBrightnessAtNight,
-              setSilentMode,
-              setSubtleLeds,
-            }}
-            volume={volume}
-          />
-        )}
-        {active === "profile" && <ProfileView />}
-        {active === "settings" && (
-          <SettingsView
-            opsToken={opsToken}
-            setOpsToken={saveOpsToken}
-            snapshot={snapshot}
-          />
-        )}
+        <div className="min-w-0 px-6 py-5">
+          <div className="mx-auto max-w-7xl">
+            {mode === "user" && userSection === "home" && (
+              <UserHomeView appData={appData} onNavigate={setUserSection} snapshot={snapshot} />
+            )}
+            {mode === "user" && userSection === "interaction" && (
+              <InteractionView
+                commandStatus={commandStatus}
+                commandText={commandText}
+                onCommandChange={setCommandText}
+                onCommandSubmit={submitCommand}
+                snapshot={snapshot}
+              />
+            )}
+            {mode === "user" && userSection === "routine" && (
+              <RoutineView
+                items={appData.routine.items}
+                onCreateAlarm={createAlarm}
+                onCreateReminder={createReminder}
+                onCreateTimer={createTimer}
+                onRemove={removeRoutine}
+                onToggle={toggleRoutine}
+                status={routineStatus}
+                summary={appData.routine.summary}
+              />
+            )}
+            {mode === "user" && userSection === "basics" && (
+              <BasicSettingsView
+                appData={appData}
+                leds={leds}
+                onLedsChange={setLeds}
+                onSave={saveSettings}
+                onVolumeChange={setVolume}
+                status={settingsStatus}
+                volume={volume}
+              />
+            )}
+            {mode === "dev" && devSection === "telemetry" && <DevTelemetryView devData={devData} snapshot={snapshot} />}
+            {mode === "dev" && devSection === "integrations" && <DevIntegrationsView devData={devData} snapshot={snapshot} />}
+            {mode === "dev" && devSection === "sensors" && <DevSensorsView devData={devData} snapshot={snapshot} />}
+            {mode === "dev" && devSection === "console" && (
+              <DevConsoleView
+                devData={devData}
+                onOpsTokenChange={saveOpsToken}
+                onResetMetrics={handleResetMetrics}
+                onRestartServer={handleRestartServer}
+                opsToken={opsToken}
+                snapshot={snapshot}
+                status={devStatus}
+              />
+            )}
+          </div>
+        </div>
       </section>
     </main>
   );
 }
 
-function snapshotWithRoutine(snapshot: DashboardSnapshot, appData: AppData): DashboardSnapshot {
-  return {
-    ...snapshot,
-    routine: {
-      next: appData.routine.summary.next,
-      timers: appData.routine.summary.timers,
-      alarms: appData.routine.summary.alarms,
-      reminders: appData.routine.summary.reminders,
-    },
-  };
-}
-
-function HomeView({
-  snapshot,
+function UserHomeView({
+  appData,
   onNavigate,
+  snapshot,
 }: {
+  appData: AppData;
+  onNavigate: (section: UserSection) => void;
   snapshot: DashboardSnapshot;
-  onNavigate: (section: SectionId) => void;
 }) {
   return (
-    <div className="content-grid home-grid">
-      <section className="hero-panel">
-        <div className="hero-copy">
-          <span className={`state-badge ${snapshot.robot.state}`}>
-            {stateLabels[snapshot.robot.state]}
-          </span>
-          <h2>{snapshot.robot.name} está {snapshot.robot.mood}</h2>
-          <p>
-            Tudo que importa hoje fica aqui: rotina, câmera, voz e ajustes rápidos,
-            sem cara de painel técnico.
-          </p>
-          <div className="status-lane">
-            <span>
-              <StatusDot ok={snapshot.robot.serverOnline} />
-              Server
-            </span>
-            <span>
-              <StatusDot ok={snapshot.robot.firmwareOnline} />
-              Firmware
-            </span>
-            <span>
-              <Power size={15} />
-              {snapshot.robot.batteryLabel}
-            </span>
-          </div>
-          <div className="quick-actions">
-            <button onClick={() => onNavigate("routine")} type="button">
-              <Timer size={18} />
-              Novo timer
-            </button>
-            <button onClick={() => onNavigate("vision")} type="button">
-              <Eye size={18} />
-              Ver câmera
-            </button>
-            <button onClick={() => onNavigate("basics")} type="button">
-              <Volume2 size={18} />
-              Ajustes rápidos
-            </button>
-          </div>
-        </div>
-
-        <div className="robot-dock">
-          <div className="robot-avatar">
-            <div className="face-screen">
-              <div className="eye left" />
-              <div className="eye right" />
-              <div className="mouth" />
-            </div>
-          </div>
-          <div className="next-card">
-            <span>Próximo</span>
-            <strong>{snapshot.routine.next}</strong>
-            <button onClick={() => onNavigate("routine")} type="button">
-              Abrir rotina
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <StatPanel icon={Timer} label="Timers ativos" value={snapshot.routine.timers.toString()} tone="teal" />
-      <StatPanel icon={Bell} label="Alarmes ligados" value={snapshot.routine.alarms.toString()} tone="amber" />
-      <StatPanel icon={CalendarDays} label="Lembretes hoje" value={snapshot.routine.reminders.toString()} tone="coral" />
-
-      <section className="panel span-2">
-        <PanelTitle icon={Mic2} title="Último turno" action={`#${snapshot.robot.lastTurnId}`} />
-        <div className="turn-card">
+    <div className="grid gap-4">
+      <section className={cardClass}>
+        <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <span>Você</span>
-            <strong>{snapshot.robot.lastTranscript || "Nenhuma fala recente"}</strong>
+            <h2 className="text-lg font-semibold">Resumo do dia</h2>
+            <p className="text-sm text-slate-500">{appData.routine.summary.next}</p>
           </div>
-          <div>
-            <span>NoiseBot</span>
-            <strong>{snapshot.robot.lastReply || "Aguardando interação"}</strong>
-          </div>
-          <em>{snapshot.robot.lastRoute || "sem rota"}</em>
+          <StatusPill ok={snapshot.robot.firmwareOnline} label={snapshot.robot.firmwareOnline ? "robô online" : "robô offline"} />
+        </div>
+        <div className="grid gap-3 md:grid-cols-4">
+          <Metric label="Próximo" value={snapshot.routine.next} />
+          <Metric label="Timers" value={String(snapshot.routine.timers)} />
+          <Metric label="Alarmes" value={String(snapshot.routine.alarms)} />
+          <Metric label="Lembretes" value={String(snapshot.routine.reminders)} />
         </div>
       </section>
 
-      <section className="panel">
-        <PanelTitle icon={Bot} title="Runtime" />
-        <InfoRow label="Modo" value={snapshot.robot.mode} />
-        <InfoRow label="LLM" value={snapshot.robot.provider} />
-        <InfoRow label="STT" value={snapshot.robot.sttStatus} />
-        <InfoRow label="TTS" value={snapshot.robot.ttsStatus} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Widgets de mesa</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            <PlannedFeature icon={Timer} title="Pomodoro visual" description="Timer com estado visual no robô." />
+            <PlannedFeature icon={Clock3} title="Acompanhamento do dia" description="Relógio, clima e foco no display." />
+          </div>
+        </section>
+
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Modos de foco</h2>
+          <div className="grid gap-2">
+            <DisabledButton label="Modo silencioso" />
+            <DisabledButton label="Não perturbe" />
+            <button className={secondaryButtonClass} onClick={() => onNavigate("routine")} type="button">
+              Abrir rotinas
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function InteractionView({
+  commandStatus,
+  commandText,
+  onCommandChange,
+  onCommandSubmit,
+  snapshot,
+}: {
+  commandStatus: string;
+  commandText: string;
+  onCommandChange: (value: string) => void;
+  onCommandSubmit: () => void;
+  snapshot: DashboardSnapshot;
+}) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <section className={cardClass}>
+        <h2 className="mb-3 text-lg font-semibold">Chat e comandos</h2>
+        <div className="mb-4 grid gap-3">
+          <TurnBubble label="Última fala" text={snapshot.robot.lastTranscript || "Sem transcrição recente."} />
+          <TurnBubble label="Última resposta" text={snapshot.robot.lastReply || "Sem resposta recente."} />
+        </div>
+        <form
+          className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onCommandSubmit();
+          }}
+        >
+          <input className={inputClass} onChange={(event) => onCommandChange(event.target.value)} placeholder="Digite algo para o NoiseBot falar" value={commandText} />
+          <button className={primaryButtonClass} type="submit">
+            <SendHorizontal size={17} />
+            Enviar
+          </button>
+        </form>
+        <p className="mt-3 text-sm text-slate-500">{commandStatus}</p>
       </section>
 
-      <section className="panel span-2">
-        <PanelTitle icon={Camera} title="Visão rápida" action="ver" />
-        <div className="vision-strip">
-          <div className="camera-placeholder">
-            <Camera size={30} />
-            <span>câmera em espera</span>
-          </div>
-          <div className="compact-list">
-            <InfoRow label="Cena" value={snapshot.vision.lastObservation} />
-            <InfoRow label="Luz" value={snapshot.vision.light} />
-            <InfoRow label="Movimento" value={snapshot.vision.motion} />
-          </div>
-        </div>
-      </section>
-
-      <section className="panel">
-        <PanelTitle icon={Gauge} title="Saúde" />
-        <div className="health-list">
-          <HealthItem label="Server" ok={snapshot.robot.serverOnline} />
-          <HealthItem label="Firmware" ok={snapshot.robot.firmwareOnline} />
-          <HealthItem label="Audio" ok />
-          <HealthItem label="Camera" ok />
-        </div>
-      </section>
+      <aside className="grid content-start gap-4">
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Expressão visual</h2>
+          <PlannedFeature icon={Shield} title="Galeria de olhos" description="Pixel art, reações e estilos visuais." />
+        </section>
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Personalidade</h2>
+          <PlannedFeature icon={Brain} title="Perfis de LLM" description="Assistente sério, companheiro irônico e outros estilos." />
+        </section>
+      </aside>
     </div>
   );
 }
@@ -647,862 +650,832 @@ function RoutineView({
   onCreateAlarm,
   onCreateReminder,
   onCreateTimer,
-  onRemoveItem,
-  onToggleItem,
-  onUpdateItem,
+  onRemove,
+  onToggle,
   status,
   summary,
 }: {
   items: RoutineItem[];
-  onCreateAlarm: (time?: string, title?: string, repeat?: string) => void;
-  onCreateReminder: (minutes?: number, title?: string) => void;
-  onCreateTimer: (minutes: number, title?: string) => void;
-  onRemoveItem: (item: RoutineItem) => void;
-  onToggleItem: (item: RoutineItem) => void;
-  onUpdateItem: (item: RoutineItem, payload: Record<string, unknown>) => void;
+  onCreateAlarm: (title: string, time: string, repeat: string) => void;
+  onCreateReminder: (title: string, durationMin: number) => void;
+  onCreateTimer: (title: string, durationMin: number) => void;
+  onRemove: (item: RoutineItem) => void;
+  onToggle: (item: RoutineItem) => void;
   status: string;
   summary: AppData["routine"]["summary"];
 }) {
-  const activeItem = items.find((item) => item.enabled) ?? null;
   const [timerTitle, setTimerTitle] = useState("Timer");
-  const [timerMinutes, setTimerMinutes] = useState(10);
+  const [timerMin, setTimerMin] = useState(10);
   const [alarmTitle, setAlarmTitle] = useState("Alarme");
   const [alarmTime, setAlarmTime] = useState("07:30");
   const [alarmRepeat, setAlarmRepeat] = useState("diário");
   const [reminderTitle, setReminderTitle] = useState("Lembrete");
-  const [reminderMinutes, setReminderMinutes] = useState(15);
-  const [editingId, setEditingId] = useState("");
-  const [editTitle, setEditTitle] = useState("");
-  const [editTime, setEditTime] = useState("07:30");
-  const [editRepeat, setEditRepeat] = useState("diário");
-  const [editDuration, setEditDuration] = useState(10);
-
-  const startEdit = (item: RoutineItem) => {
-    setEditingId(item.id);
-    setEditTitle(item.title);
-    setEditTime(item.time || "07:30");
-    setEditRepeat(item.repeat || "diário");
-    setEditDuration(item.duration_min || 10);
-  };
-
-  const saveEdit = (item: RoutineItem) => {
-    const base = { title: editTitle.trim() || item.title };
-    if (item.kind === "alarm") {
-      onUpdateItem(item, { ...base, time: editTime, repeat: editRepeat });
-    } else {
-      onUpdateItem(item, { ...base, duration_min: editDuration });
-    }
-    setEditingId("");
-  };
+  const [reminderMin, setReminderMin] = useState(15);
 
   return (
-    <div className="content-grid routine-grid">
-      <section className="section-hero routine-hero span-2">
-        <div>
-          <p className="eyebrow">Rotina</p>
-          <h2>O dia do NoiseBot, sem complicação</h2>
-          <span>Timers, alarmes e lembretes aparecem aqui como uma linha do tempo simples.</span>
+    <div className="grid gap-4">
+      <section className={cardClass}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">Rotinas e produtividade</h2>
+            <p className="text-sm text-slate-500">{summary.next}</p>
+          </div>
+          <span className="text-sm font-medium text-slate-500">{status}</span>
         </div>
-        <button className="hero-action" onClick={() => onCreateTimer(10)} type="button">
-          <Timer size={18} />
-          Criar timer
-        </button>
       </section>
 
-      <section className="panel routine-now">
-        <PanelTitle icon={Clock3} title="Agora" />
-        <strong>{summary.next}</strong>
-        <span>{activeItem?.detail || "Nada pendente agora"}</span>
-        <div className="routine-progress">
-          <span />
-        </div>
-        <small className="panel-status">{status}</small>
-      </section>
-
-      <section className="panel span-2">
-        <PanelTitle icon={CalendarDays} title="Rotina de hoje" action="novo" />
-        <div className="timeline">
-          {items.length === 0 && (
-            <article className="timeline-item empty">
-              <span className="timeline-icon">
-                <CalendarDays size={18} />
-              </span>
-              <div>
-                <strong>Nenhum item criado</strong>
-                <span>Use os atalhos para adicionar timers e alarmes.</span>
-              </div>
-              <em>vazio</em>
-            </article>
-          )}
-          {items.map((item) => {
-            const Icon = routineIcon(item.kind);
-            return (
-              <article className={`timeline-item ${item.enabled ? "" : "muted"}`} key={item.id}>
-                <span className="timeline-icon">
-                  <Icon size={18} />
-                </span>
-                <div>
-                  <strong>{item.title}</strong>
-                  <span>{item.detail}</span>
-                </div>
-                <em>{item.status}</em>
-                <div className="timeline-actions">
-                  <button onClick={() => startEdit(item)} title="Editar" type="button">
-                    <SlidersHorizontal size={15} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Itens</h2>
+          <div className="grid gap-2">
+            {items.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">Nenhum item criado.</p>
+            ) : (
+              items.map((item) => (
+                <article className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-slate-200 p-3" key={item.id}>
+                  <button className={item.enabled ? "inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700" : "inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500"} onClick={() => onToggle(item)} type="button">
+                    {item.enabled ? <CheckCircle2 size={16} /> : <Pause size={16} />}
                   </button>
-                  <button onClick={() => onToggleItem(item)} title="Ligar ou desligar" type="button">
-                    {item.enabled ? <Pause size={15} /> : <Play size={15} />}
+                  <div className="min-w-0">
+                    <strong className="block truncate">{item.title}</strong>
+                    <span className="text-sm text-slate-500">{kindLabel(item.kind)} · {item.detail || item.status}</span>
+                  </div>
+                  <button className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50" onClick={() => onRemove(item)} type="button">
+                    <Trash2 size={17} />
                   </button>
-                  <button onClick={() => onRemoveItem(item)} title="Remover" type="button">
-                    ×
-                  </button>
-                </div>
-                <small className="timeline-source">
-                  {item.source === "firmware" ? "salvo no robô" : "salvo no server"}
-                </small>
-                {editingId === item.id && (
-                  <form
-                    className="timeline-edit"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      saveEdit(item);
-                    }}
-                  >
-                    <label>
-                      Nome
-                      <input
-                        maxLength={80}
-                        onChange={(event) => setEditTitle(event.target.value)}
-                        value={editTitle}
-                      />
-                    </label>
-                    {item.kind === "alarm" ? (
-                      <>
-                        <label>
-                          Hora
-                          <input
-                            onChange={(event) => setEditTime(event.target.value)}
-                            type="time"
-                            value={editTime}
-                          />
-                        </label>
-                        <label>
-                          Repetição
-                          <select onChange={(event) => setEditRepeat(event.target.value)} value={editRepeat}>
-                            <option value="diário">Diário</option>
-                            <option value="dias úteis">Dias úteis</option>
-                            <option value="fim de semana">Fim de semana</option>
-                            <option value="uma vez">Uma vez</option>
-                          </select>
-                        </label>
-                      </>
-                    ) : (
-                      <label>
-                        Minutos
-                        <input
-                          min="1"
-                          max="1440"
-                          onChange={(event) => setEditDuration(clampNumber(event.target.value, 1, 1440))}
-                          type="number"
-                          value={editDuration}
-                        />
-                      </label>
-                    )}
-                    <button type="submit">Salvar</button>
-                    <button onClick={() => setEditingId("")} type="button">Cancelar</button>
-                  </form>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </section>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
 
-      <section className="panel">
-        <PanelTitle icon={Clock3} title="Novo timer" />
-        <p className="panel-copy">Crie com o nome e duração que quiser.</p>
-        <form
-          className="routine-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onCreateTimer(timerMinutes, timerTitle);
-          }}
-        >
-          <label>
-            Nome
-            <input
-              maxLength={80}
-              onChange={(event) => setTimerTitle(event.target.value)}
-              value={timerTitle}
-            />
-          </label>
-          <label>
-            Minutos
-            <input
-              min="1"
-              max="1440"
-              onChange={(event) => setTimerMinutes(clampNumber(event.target.value, 1, 1440))}
-              type="number"
-              value={timerMinutes}
-            />
-          </label>
-          <button type="submit"><Timer size={16} />Criar timer</button>
-        </form>
-        <div className="timer-composer">
-          <button onClick={() => onCreateTimer(5)} type="button"><Timer size={16} />5 min</button>
-          <button onClick={() => onCreateTimer(10)} type="button"><Timer size={16} />10 min</button>
-          <button onClick={() => onCreateTimer(25)} type="button"><Timer size={16} />25 min</button>
-          <button onClick={() => onCreateTimer(45)} type="button"><SlidersHorizontal size={16} />45 min</button>
-        </div>
-      </section>
-
-      <section className="panel">
-        <PanelTitle icon={Bell} title="Alarmes" />
-        <InfoRow label="Ligados" value={summary.alarms.toString()} />
-        <InfoRow label="Timers" value={summary.timers.toString()} />
-        <InfoRow label="Lembretes" value={summary.reminders.toString()} />
-        <form
-          className="routine-form compact-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onCreateAlarm(alarmTime, alarmTitle, alarmRepeat);
-          }}
-        >
-          <label>
-            Nome
-            <input
-              maxLength={80}
-              onChange={(event) => setAlarmTitle(event.target.value)}
-              value={alarmTitle}
-            />
-          </label>
-          <label>
-            Hora
-            <input
-              onChange={(event) => setAlarmTime(event.target.value)}
-              type="time"
-              value={alarmTime}
-            />
-          </label>
-          <label>
-            Repetição
-            <select onChange={(event) => setAlarmRepeat(event.target.value)} value={alarmRepeat}>
+        <aside className="grid content-start gap-4">
+          <RoutineForm icon={Timer} title="Novo timer" onSubmit={() => onCreateTimer(timerTitle, timerMin)}>
+            <input className={inputClass} onChange={(event) => setTimerTitle(event.target.value)} value={timerTitle} />
+            <NumberInput onChange={setTimerMin} value={timerMin} />
+          </RoutineForm>
+          <RoutineForm icon={Bell} title="Novo alarme" onSubmit={() => onCreateAlarm(alarmTitle, alarmTime, alarmRepeat)}>
+            <input className={inputClass} onChange={(event) => setAlarmTitle(event.target.value)} value={alarmTitle} />
+            <input className={inputClass} onChange={(event) => setAlarmTime(event.target.value)} type="time" value={alarmTime} />
+            <select className={inputClass} onChange={(event) => setAlarmRepeat(event.target.value)} value={alarmRepeat}>
               <option value="diário">Diário</option>
               <option value="dias úteis">Dias úteis</option>
               <option value="fim de semana">Fim de semana</option>
               <option value="uma vez">Uma vez</option>
             </select>
-          </label>
-          <button type="submit"><Bell size={16} />Criar alarme</button>
-        </form>
-        <div className="timer-composer compact-actions">
-          <button onClick={() => onCreateAlarm()} type="button"><Bell size={16} />07:30</button>
+          </RoutineForm>
+          <RoutineForm icon={Clock3} title="Novo lembrete" onSubmit={() => onCreateReminder(reminderTitle, reminderMin)}>
+            <input className={inputClass} onChange={(event) => setReminderTitle(event.target.value)} value={reminderTitle} />
+            <NumberInput onChange={setReminderMin} value={reminderMin} />
+          </RoutineForm>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function BasicSettingsView({
+  appData,
+  leds,
+  onLedsChange,
+  onSave,
+  onVolumeChange,
+  status,
+  volume,
+}: {
+  appData: AppData;
+  leds: number;
+  onLedsChange: (value: number) => void;
+  onSave: () => void;
+  onVolumeChange: (value: number) => void;
+  status: string;
+  volume: number;
+}) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <section className={cardClass}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Hardware</h2>
+            <p className="text-sm text-slate-500">Controles aplicados pelo server.</p>
+          </div>
+          <button className={primaryButtonClass} onClick={onSave} type="button">Salvar</button>
         </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <ControlPanel icon={Volume2} label="Volume" onChange={onVolumeChange} value={volume} />
+          <ControlPanel icon={SlidersHorizontal} label="LEDs" onChange={onLedsChange} value={leds} />
+        </div>
+        <p className="mt-3 text-sm text-slate-500">{status}</p>
       </section>
 
-      <section className="panel span-2">
-        <PanelTitle icon={ListChecks} title="Novo lembrete" />
-        <form
-          className="routine-form reminder-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onCreateReminder(reminderMinutes, reminderTitle);
-          }}
-        >
-          <label>
-            O que lembrar
-            <input
-              maxLength={80}
-              onChange={(event) => setReminderTitle(event.target.value)}
-              value={reminderTitle}
-            />
-          </label>
-          <label>
-            Avisar em
-            <input
-              min="1"
-              max="1440"
-              onChange={(event) => setReminderMinutes(clampNumber(event.target.value, 1, 1440))}
-              type="number"
-              value={reminderMinutes}
-            />
-          </label>
-          <button type="submit"><CalendarDays size={16} />Criar lembrete</button>
-        </form>
+      <aside className="grid content-start gap-4">
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Localização</h2>
+          <InfoRow label="Cidade" value={appData.advanced.location || "Não definida"} />
+          <InfoRow label="Fuso" value={appData.advanced.timezone || "Não definido"} />
+        </section>
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Permissões</h2>
+          <PlannedFeature icon={Camera} title="Captura por contexto" description="Controle fino de quando a câmera pode ser usada." />
+        </section>
+      </aside>
+    </div>
+  );
+}
+
+function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: DashboardSnapshot }) {
+  const totalTurns = devData.metrics.turns.total ?? 0;
+  const sttLatency = formatLatency(devData.metrics.latency_ms.stt);
+  const llmLatency = formatLatency(devData.metrics.latency_ms.llm_total);
+  const ttsLatency = formatLatency(devData.metrics.latency_ms.tts_first_audio);
+  const firmware = devData.diagnostics;
+  const diag = asRecord(firmware.diag);
+  const health = asRecord(firmware.health);
+  const version = asRecord(firmware.version);
+  const wifi = asRecord(firmware.wifi);
+  const audio = asRecord(firmware.audio);
+  const camera = asRecord(firmware.camera);
+  const touch = asRecord(firmware.touch);
+  const storage = asRecord(health.storage);
+  const ltm = asRecord(firmware.ltm);
+  const voice = devData.metrics.last_voice_session ?? {};
+  const recentVoice = devData.metrics.recent_voice_sessions ?? [];
+  const voiceAlert = devData.metrics.voice_alert;
+  const diagErrors = Object.entries(firmware.errors ?? {});
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      <DiagnosticCard defaultOpen icon={Cpu} title="Hardware e build">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Metric label="Firmware" value={snapshot.robot.firmwareOnline ? "online" : "offline"} />
+          <Metric label="Estado" value={snapshot.robot.state} />
+          <Metric label="Projeto" value={textValue(version.project)} />
+          <Metric label="Versão" value={textValue(version.version)} />
+          <Metric label="ESP-IDF" value={textValue(version.idf_ver)} />
+          <Metric label="Build" value={`${textValue(version.build_date)} ${textValue(version.build_time)}`.trim()} />
+          <Metric label="Health score" value={numberValue(health.health, "")} />
+          <Metric label="Uptime" value={formatSeconds(readNumber(health.uptime_s) ?? readNumber(diag.uptime_s))} />
+          <Metric label="Tasks" value={numberValue(health.task_count, "")} />
+          <Metric label="FPS render" value={numberValue(diag.fps, " fps")} />
+        </div>
+      </DiagnosticCard>
+
+      <DiagnosticCard defaultOpen icon={Database} title="Memória">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Metric label="PSRAM livre" value={bytesValue(health.heap_psram_free)} />
+          <Metric label="PSRAM mínimo" value={bytesValue(health.heap_psram_min)} />
+          <Metric label="Maior bloco PSRAM" value={bytesValue(health.heap_psram_largest)} />
+          <Metric label="Interna livre" value={bytesValue(health.heap_internal_free)} />
+          <Metric label="Interna mínima" value={bytesValue(health.heap_internal_min)} />
+          <Metric label="Maior bloco interno" value={bytesValue(health.heap_internal_largest)} />
+          <Metric label="DMA livre" value={bytesValue(health.heap_dma_free)} />
+          <Metric label="Maior bloco DMA" value={bytesValue(health.heap_dma_largest)} />
+          <Metric label="DRAM livre" value={bytesValue(health.heap_dram_free)} />
+          <Metric label="DRAM mínima" value={bytesValue(health.heap_dram_min)} />
+        </div>
+      </DiagnosticCard>
+
+      <DiagnosticCard icon={HardDrive} title="Armazenamento">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Metric label="SD montado" value={boolValue(storage.sd_mounted)} />
+          <Metric label="SD livre" value={bytesValue(storage.sd_free_bytes)} />
+          <Metric label="Config" value={firmware.config ? "exposta" : "não exposta"} />
+          <Metric label="LTM" value={firmware.ltm ? "exposta" : "não exposta"} />
+        </div>
+      </DiagnosticCard>
+
+      <DiagnosticCard defaultOpen icon={Wifi} title="Rede e bridge">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Metric label="Server" value={snapshot.robot.serverOnline ? "online" : "offline"} />
+          <Metric label="Transporte" value={`${devData.device.transport_host || "--"}:${devData.device.transport_port || "--"}`} />
+          <Metric label="Ops port" value={String(devData.device.ops_port || "--")} />
+          <Metric label="Dry run" value={devData.device.dry_run ? "sim" : "não"} />
+          <Metric label="HTTP robô" value={firmware.base_url || "--"} />
+          <Metric label="Latência diag" value={numberValue(firmware.latency_ms, " ms")} />
+          <Metric label="WiFi" value={boolValue(wifi.connected)} />
+          <Metric label="SSID" value={textValue(wifi.ssid)} />
+          <Metric label="IP" value={textValue(wifi.ip)} />
+          <Metric label="RSSI" value={numberValue(wifi.rssi, " dBm")} />
+          <Metric label="Bridge conectado" value={boolValue(diag.bridge_connected)} />
+          <Metric label="Protocolo" value={numberValue(diag.bridge_protocol_v, "")} />
+          <Metric label="Último RX bridge" value={numberValue(diag.bridge_last_rx_ms, " ms")} />
+          <Metric label="Supervisor" value={devData.device.supervisor || "--"} />
+        </div>
+      </DiagnosticCard>
+
+      <DiagnosticCard icon={Camera} title="Câmera">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Metric label="Suportada" value={boolValue(camera.supported)} />
+          <Metric label="Ativa" value={boolValue(camera.active)} />
+          <Metric label="Modo" value={textValue(camera.mode)} />
+          <Metric label="Resolução" value={`${numberValue(camera.mode_width, "")} x ${numberValue(camera.mode_height, "")}`} />
+          <Metric label="Último JPEG" value={bytesValue(camera.last_jpeg_bytes)} />
+          <Metric label="Última captura" value={numberValue(camera.last_capture_ms, " ms")} />
+          <Metric label="Capturas" value={numberValue(camera.capture_count, "")} />
+          <Metric label="Falhas" value={numberValue(camera.fail_count, "")} />
+          <Metric label="Erro câmera" value={textValue(camera.last_error_name)} />
+          <Metric label="DMA câmera" value={bytesValue(camera.heap_dma_free)} />
+          <Metric label="Bloco DMA câmera" value={bytesValue(camera.heap_dma_largest)} />
+          <Metric label="Interna câmera" value={bytesValue(camera.heap_internal_free)} />
+        </div>
+      </DiagnosticCard>
+
+      <DiagnosticCard icon={Mic} title="Áudio e wake">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Metric label="Listening" value={boolValue(diag.audio_listening)} />
+          <Metric label="RMS" value={numberValue(diag.audio_rms, "")} />
+          <Metric label="Volume" value={numberValue(audio.volume, "%")} />
+          <Metric label="BPM" value={numberValue(audio.bpm, "")} />
+          <Metric label="BPM confiança" value={numberValue(audio.bpm_conf, "%")} />
+          <Metric label="Freq. dominante" value={numberValue(audio.dominant_freq, " Hz")} />
+          <Metric label="Wake ativo" value={boolValue(diag.wake_active)} />
+          <Metric label="Wake threshold" value={numberValue(diag.wake_threshold, "")} />
+          <Metric label="Detecções wake" value={numberValue(diag.wake_detections, "")} />
+          <Metric label="Modelo wake" value={textValue(diag.wake_model)} />
+        </div>
+      </DiagnosticCard>
+
+      <DiagnosticCard defaultOpen icon={Mic} title="Última sessão de voz">
+        {voiceAlert && <VoiceAlertBanner alert={voiceAlert} />}
+        <div className="grid gap-3 md:grid-cols-2">
+          <Metric label="Turno" value={numberValue(voice.turn_id, "")} />
+          <Metric label="Resultado" value={textValue(voice.outcome)} />
+          <Metric label="Estado final" value={textValue(voice.state)} />
+          <Metric label="Fim da voz" value={textValue(voice.voice_end_reason)} />
+          <Metric label="Descarte" value={textValue(voice.discard_reason)} />
+          <Metric label="Duração fala" value={numberValue(voice.duration_ms, " ms")} />
+          <Metric label="Chunks" value={numberValue(voice.chunk_count, "")} />
+          <Metric label="Samples" value={numberValue(voice.total_samples, "")} />
+          <Metric label="STT qualidade" value={textValue(voice.transcript_quality)} />
+          <Metric label="No speech" value={numberValue(voice.no_speech_prob, "")} />
+          <Metric label="Logprob" value={numberValue(voice.avg_logprob, "")} />
+          <Metric label="Compressão" value={numberValue(voice.compression_ratio, "")} />
+          <Metric label="Intent" value={textValue(voice.intent_name)} />
+          <Metric label="Resposta chars" value={numberValue(voice.reply_chars, "")} />
+          <Metric label="VOICE_END → STT" value={numberValue(voice.voice_end_to_stt_start_ms, " ms")} />
+          <Metric label="STT" value={numberValue(voice.stt_ms, " ms")} />
+          <Metric label="Fim de turno" value={numberValue(voice.end_of_turn_ms, " ms")} />
+          <Metric label="1º áudio" value={numberValue(voice.first_audio_out_ms, " ms")} />
+          <Metric label="1º áudio pós-fim" value={numberValue(voice.first_audio_after_voice_end_ms, " ms")} />
+          <Metric label="Fala total" value={numberValue(voice.speech_total_ms, " ms")} />
+          <Metric label="Erro estágio" value={textValue(voice.error_stage)} />
+          <Metric label="Erro motivo" value={textValue(voice.error_reason)} />
+        </div>
+      </DiagnosticCard>
+
+      <DiagnosticCard icon={Clock3} title="Histórico de voz">
+        <VoiceSessionHistory sessions={recentVoice} />
+      </DiagnosticCard>
+
+      <DiagnosticCard icon={Activity} title="Touch, uso e sensores">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Metric label="Touch pressed" value={boolValue(touch.pressed)} />
+          <Metric label="Touch state" value={textValue(touch.state)} />
+          <Metric label="Touch raw" value={numberValue(touch.raw, "")} />
+          <Metric label="Touch filtered" value={numberValue(touch.filtered, "")} />
+          <Metric label="Touch baseline" value={numberValue(touch.baseline, "")} />
+          <Metric label="Último touch" value={textValue(touch.last_event)} />
+          <Metric label="Sessões" value={numberValue(ltm.sessions, "")} />
+          <Metric label="Horas vivo" value={numberValue(ltm.hours_alive, " h")} />
+          <Metric label="Toques" value={numberValue(ltm.touch_count ?? diag.touch_count, "")} />
+          <Metric label="Temperatura" value={<span className="inline-flex items-center gap-1"><Thermometer size={14} /> não exposta</span>} />
+        </div>
+      </DiagnosticCard>
+
+      <DiagnosticCard icon={Activity} title="Métricas de turnos">
+        <div className="grid gap-3 md:grid-cols-3">
+          <Metric label="Total" value={String(totalTurns)} />
+          <Metric label="Intent local" value={String(devData.metrics.turns.local_intent ?? 0)} />
+          <Metric label="LLM" value={String(devData.metrics.turns.llm ?? 0)} />
+          <Metric label="Falhas" value={String(devData.metrics.turns.failed ?? 0)} />
+          <Metric label="Interrompidos" value={String(devData.metrics.turns.interrupted ?? 0)} />
+          <Metric label="Fallback" value={String(devData.metrics.turns.fallback ?? 0)} />
+        </div>
+      </DiagnosticCard>
+
+      <DiagnosticCard icon={Clock3} title="Latência">
+        <div className="grid gap-3 md:grid-cols-3">
+          <Metric label="STT" value={sttLatency} />
+          <Metric label="LLM total" value={llmLatency} />
+          <Metric label="TTS áudio" value={ttsLatency} />
+        </div>
+      </DiagnosticCard>
+
+      {diagErrors.length > 0 && (
+        <DiagnosticCard icon={Terminal} title="Endpoints sem resposta" wide>
+          <div className="grid gap-2 md:grid-cols-2">
+            {diagErrors.map(([key, value]) => (
+              <InfoRow key={key} label={key} value={value} />
+            ))}
+          </div>
+        </DiagnosticCard>
+      )}
+    </div>
+  );
+}
+
+function DevIntegrationsView({ devData, snapshot }: { devData: DevData; snapshot: DashboardSnapshot }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <section className={cardClass}>
+        <h2 className="mb-3 text-lg font-semibold">Serviços</h2>
+        <div className="grid gap-3 md:grid-cols-3">
+          <ServiceTile label="STT" value={snapshot.robot.sttStatus} />
+          <ServiceTile label="TTS" value={snapshot.robot.ttsStatus} />
+          <ServiceTile label="LLM" value={snapshot.robot.llmStatus} />
+        </div>
+      </section>
+      <section className={cardClass}>
+        <h2 className="mb-3 text-lg font-semibold">Diagnóstico</h2>
+        <InfoRow label="Último erro" value={snapshot.robot.lastError || "--"} />
+        <InfoRow label="Rota" value={snapshot.robot.lastRoute || "--"} />
+        <InfoRow label="Turno" value={String(snapshot.robot.lastTurnId || 0)} />
+        <InfoRow label="Pipeline" value={devData.config.pipeline_mode || snapshot.robot.mode || "--"} />
+        <InfoRow label="Modelo" value={devData.config.llm?.model || snapshot.robot.model || "--"} />
+      </section>
+      <section className={`${cardClass} lg:col-span-2`}>
+        <h2 className="mb-3 text-lg font-semibold">Erros recentes</h2>
+        <ErrorLog errors={devData.errors} />
       </section>
     </div>
   );
 }
 
-function routineIcon(kind: RoutineItem["kind"]) {
-  if (kind === "timer") {
-    return Timer;
-  }
-  if (kind === "alarm") {
-    return Bell;
-  }
-  return CalendarDays;
+function DevSensorsView({ devData, snapshot }: { devData: DevData; snapshot: DashboardSnapshot }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <CameraPanel snapshot={snapshot} />
+      <aside className="grid content-start gap-4">
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Áudio raw</h2>
+          <Metric label="Status STT" value={snapshot.robot.sttStatus} />
+          <p className="mt-3 text-sm text-slate-500">Espectro em tempo real ainda depende de endpoint dedicado do firmware/server.</p>
+        </section>
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Visão futura</h2>
+          <InfoRow label="Disponível" value={devData.vision.available ? "sim" : "não"} />
+          <InfoRow label="Origem" value={devData.vision.source || "--"} />
+        </section>
+      </aside>
+    </div>
+  );
 }
 
-function clampNumber(value: string, min: number, max: number) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return min;
-  }
-  return Math.max(min, Math.min(max, Math.round(parsed)));
-}
-
-function VisionView({
-  monitoring,
-  setMonitoring,
-  snapshot,
-}: {
-  monitoring: boolean;
-  setMonitoring: (value: boolean) => void;
-  snapshot: DashboardSnapshot;
-}) {
+function CameraPanel({ snapshot }: { snapshot: DashboardSnapshot }) {
   const [frameUrl, setFrameUrl] = useState<string | null>(snapshot.vision.frameUrl);
-  const [observation, setObservation] = useState<VisionObservation | null>(null);
+  const [status, setStatus] = useState("pronto");
   const [analysis, setAnalysis] = useState<VisionAnalysis | null>(null);
-  const [visionStatus, setVisionStatus] = useState("pronto");
 
   useEffect(() => {
     setFrameUrl(snapshot.vision.frameUrl);
   }, [snapshot.vision.frameUrl]);
 
-  const captureFrame = async () => {
-    setVisionStatus("capturando");
+  const capture = async () => {
+    setStatus("capturando");
     try {
-      const nextObservation = await observeVision();
-      setObservation(nextObservation);
+      await observeVision();
       setFrameUrl(visionSnapshotUrl());
-      setVisionStatus("captura atualizada");
+      setStatus("captura atualizada");
     } catch (error) {
-      setVisionStatus(error instanceof Error ? error.message : "falha na câmera");
+      setStatus(errorMessage(error));
     }
   };
 
-  const describeScene = async () => {
-    setVisionStatus("analisando");
+  const runAnalysis = async () => {
+    setStatus("analisando");
     try {
-      const nextAnalysis = await analyzeVision();
-      setAnalysis(nextAnalysis);
-      setObservation(nextAnalysis.observation);
+      const result = await analyzeVision();
+      setAnalysis(result);
       setFrameUrl(visionSnapshotUrl());
-      setVisionStatus("análise atualizada");
+      setStatus("análise concluída");
     } catch (error) {
-      setVisionStatus(error instanceof Error ? error.message : "falha na análise");
+      setStatus(errorMessage(error));
     }
   };
 
-  useEffect(() => {
-    if (!monitoring) {
-      return undefined;
-    }
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const nextObservation = await observeVision();
-        if (!cancelled) {
-          setObservation(nextObservation);
-          setFrameUrl(visionSnapshotUrl());
-          setVisionStatus("monitorando");
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setVisionStatus(error instanceof Error ? error.message : "monitoramento falhou");
-        }
-      }
-    };
-    void tick();
-    const interval = window.setInterval(() => {
-      void tick();
-    }, 3000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [monitoring]);
-
-  const observedScene = observation?.scene ?? snapshot.vision.lastObservation;
-  const observedLight = observation ? `${Math.round(observation.luma_avg)} luma` : snapshot.vision.light;
-  const observedMotion = observation ? `${observation.motion_score}` : snapshot.vision.motion;
-  const captureLabel = observation
-    ? `${Math.round(observation.jpeg_bytes / 1024)}KB / ${observation.capture_ms}ms`
-    : "--";
-  const personLabel = analysis
-    ? analysis.face_detected
-      ? `${analysis.face_count} rosto(s)`
-      : "não detectada"
-    : "sem análise";
-
   return (
-    <div className="content-grid vision-grid">
-      <section className="section-hero vision-hero span-2">
+    <section className={cardClass}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="eyebrow">Visão</p>
-          <h2>Câmera para entender e monitorar</h2>
-          <span>Análise de cena para o robô e monitoramento seguro para o usuário.</span>
+          <h2 className="text-lg font-semibold">Câmera raw</h2>
+          <p className="text-sm text-slate-500">Captura manual estável por enquanto.</p>
         </div>
-        <button className="hero-action" onClick={() => void describeScene()} type="button">
-          <Eye size={18} />
-          Analisar agora
-        </button>
-      </section>
-
-      <section className="panel vision-main span-2">
-        <PanelTitle icon={Eye} title="Visão inteligente" action={visionStatus} />
-        <div className="camera-stage">
-          {frameUrl ? (
-            <img alt="Ultima captura do NoiseBot" src={frameUrl} />
-          ) : (
-            <div className="camera-empty">
-              <Camera size={42} />
-              <strong>Sem captura recente</strong>
-              <span>Use analisar ou monitoramento para buscar um frame.</span>
-            </div>
-          )}
+        <StatusPill ok={status === "captura atualizada"} label={status} />
+      </div>
+      <div className="flex aspect-4/3 items-center justify-center overflow-hidden rounded-lg bg-slate-950 text-slate-300">
+        {frameUrl ? <img alt="Câmera do NoiseBot" className="h-full w-full object-contain" src={frameUrl} /> : <span>Sem imagem</span>}
+      </div>
+      <button className={`${primaryButtonClass} mt-4`} onClick={() => void capture()} type="button">
+        <Camera size={17} />
+        Capturar foto
+      </button>
+      <button className={`${secondaryButtonClass} mt-2`} onClick={() => void runAnalysis()} type="button">
+        <Activity size={17} />
+        Analisar cena
+      </button>
+      {analysis && (
+        <div className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <InfoRow label="Cena" value={analysis.observation.scene} />
+          <InfoRow label="Resolução" value={`${analysis.observation.width}x${analysis.observation.height}`} />
+          <InfoRow label="JPEG" value={`${analysis.observation.jpeg_bytes} bytes`} />
+          <InfoRow label="Captura" value={`${analysis.observation.capture_ms} ms`} />
+          <InfoRow label="Luz média" value={String(analysis.observation.luma_avg)} />
+          <InfoRow label="Movimento" value={String(analysis.observation.motion_score)} />
+          <InfoRow label="Face" value={analysis.face_detected ? `${analysis.face_count}` : "não"} />
         </div>
-        <div className="compact-list compact-grid">
-          <InfoRow label="Observação" value={observedScene} />
-          <InfoRow label="Luminosidade" value={observedLight} />
-          <InfoRow label="Movimento" value={observedMotion} />
-          <InfoRow label="Captura" value={captureLabel} />
-        </div>
-        <div className="vision-signal-grid">
-          <VisionSignal icon={UserRound} label="Pessoa" value={personLabel} />
-          <VisionSignal icon={SunMedium} label="Luz" value={observedLight} />
-          <VisionSignal icon={Activity} label="Movimento" value={observedMotion} />
-          <VisionSignal icon={ShieldCheck} label="Privacidade" value="local" />
-        </div>
-        <div className="vision-actions">
-          <button onClick={() => void captureFrame()} type="button"><Camera size={17} />Capturar frame</button>
-          <button onClick={() => void describeScene()} type="button"><Eye size={17} />Descrever cena</button>
-          <button type="button"><ShieldCheck size={17} />Privacidade</button>
-        </div>
-      </section>
-
-      <section className="panel monitor-panel">
-        <PanelTitle icon={Monitor} title="Monitoramento" />
-        <div className={`monitor-orb ${monitoring ? "active" : ""}`}>
-          {monitoring ? <Pause size={28} /> : <Play size={28} />}
-        </div>
-        <h3>{monitoring ? "Camera ativa" : "Camera em espera"}</h3>
-        <p>Preview controlado pelo server com taxa segura para o firmware.</p>
-        <div className="monitor-meta">
-          <InfoRow label="FPS alvo" value="1-2" />
-          <InfoRow label="Timeout" value="5 min" />
-          <InfoRow label="Privacidade" value={monitoring ? "ativa" : "inativa"} />
-        </div>
-        <button
-          className={monitoring ? "danger-action" : "primary-action"}
-          onClick={() => setMonitoring(!monitoring)}
-          type="button"
-        >
-          {monitoring ? "Parar monitoramento" : "Iniciar monitoramento"}
-        </button>
-      </section>
-    </div>
+      )}
+    </section>
   );
 }
 
-function BasicsView({
-  volume,
-  setVolume,
-  leds,
-  setLeds,
-  onSave,
-  settings,
-  settingsStatus,
-  setters,
-}: {
-  volume: number;
-  setVolume: (value: number) => void;
-  leds: number;
-  setLeds: (value: number) => void;
-  onSave: () => void;
-  settings: {
-    confirmLoudSounds: boolean;
-    doNotDisturb: boolean;
-    nightMode: boolean;
-    reduceBrightnessAtNight: boolean;
-    silentMode: boolean;
-    subtleLeds: boolean;
-  };
-  settingsStatus: string;
-  setters: {
-    setConfirmLoudSounds: (value: boolean) => void;
-    setDoNotDisturb: (value: boolean) => void;
-    setNightMode: (value: boolean) => void;
-    setReduceBrightnessAtNight: (value: boolean) => void;
-    setSilentMode: (value: boolean) => void;
-    setSubtleLeds: (value: boolean) => void;
-  };
-}) {
-  return (
-    <div className="content-grid basics-grid">
-      <section className="section-hero basics-hero span-2">
-        <div>
-          <p className="eyebrow">Ajustes básicos</p>
-          <h2>Controles que você mexe todo dia</h2>
-          <span>Volume, LEDs e modos rápidos ficam sempre à mão.</span>
-        </div>
-        <button className="hero-action" onClick={onSave} type="button">
-          <SlidersHorizontal size={18} />
-          Salvar ajustes
-        </button>
-      </section>
-
-      <section className="panel basics-preview">
-        <PanelTitle icon={Sparkles} title="Ambiente" />
-        <div className="ambient-preview">
-          <span style={{ opacity: Math.max(0.18, leds / 100) }} />
-          <strong>Iluminação</strong>
-          <em>LEDs {leds}%</em>
-        </div>
-      </section>
-
-      <ControlPanel icon={Volume2} label="Volume" value={volume} onChange={setVolume} />
-      <ControlPanel icon={Sparkles} label="Brilho dos LEDs" value={leds} onChange={setLeds} />
-      <section className="panel span-2">
-        <PanelTitle icon={Mic2} title="Modos rápidos" />
-        <div className="mode-grid">
-          <button
-            className={!settings.silentMode && !settings.doNotDisturb && !settings.nightMode ? "active" : ""}
-            onClick={() => {
-              setters.setSilentMode(false);
-              setters.setDoNotDisturb(false);
-              setters.setNightMode(false);
-            }}
-            type="button"
-          >
-            Normal
-          </button>
-          <button
-            className={settings.silentMode ? "active" : ""}
-            onClick={() => setters.setSilentMode(!settings.silentMode)}
-            type="button"
-          >
-            Silencioso
-          </button>
-          <button
-            className={settings.doNotDisturb ? "active" : ""}
-            onClick={() => setters.setDoNotDisturb(!settings.doNotDisturb)}
-            type="button"
-          >
-            Não perturbe
-          </button>
-          <button
-            className={settings.nightMode ? "active" : ""}
-            onClick={() => setters.setNightMode(!settings.nightMode)}
-            type="button"
-          >
-            Noite
-          </button>
-        </div>
-        <small className="panel-status">{settingsStatus}</small>
-      </section>
-      <section className="panel">
-        <PanelTitle icon={SunMedium} title="Conforto" />
-        <ToggleRow
-          enabled={settings.reduceBrightnessAtNight}
-          label="Reduzir brilho à noite"
-          onToggle={() => setters.setReduceBrightnessAtNight(!settings.reduceBrightnessAtNight)}
-        />
-        <ToggleRow
-          enabled={settings.confirmLoudSounds}
-          label="Confirmar sons altos"
-          onToggle={() => setters.setConfirmLoudSounds(!settings.confirmLoudSounds)}
-        />
-        <ToggleRow
-          enabled={settings.subtleLeds}
-          label="LEDs discretos"
-          onToggle={() => setters.setSubtleLeds(!settings.subtleLeds)}
-        />
-      </section>
-    </div>
-  );
-}
-
-function ProfileView() {
-  return (
-    <div className="content-grid profile-grid">
-      <section className="section-hero profile-hero span-2">
-        <div>
-          <p className="eyebrow">Perfil</p>
-          <h2>A identidade do seu assistente</h2>
-          <span>Nome, idioma, voz e estilo de resposta sem abrir configuração técnica.</span>
-        </div>
-        <button className="hero-action" type="button">
-          <UserRound size={18} />
-          Aplicar perfil
-        </button>
-      </section>
-
-      <section className="panel profile-card">
-        <div className="profile-face">
-          <Bot size={42} />
-        </div>
-        <strong>NoiseBot</strong>
-        <span>Português do Brasil</span>
-        <em>calmo, curioso e direto</em>
-      </section>
-
-      <section className="panel span-2">
-        <PanelTitle icon={UserRound} title="Perfil do assistente" />
-        <div className="form-grid">
-          <label>
-            Nome do assistente
-            <input defaultValue="NoiseBot" />
-          </label>
-          <label>
-            Linguagem
-            <select defaultValue="pt-BR">
-              <option value="pt-BR">Português do Brasil</option>
-              <option value="en-US">English</option>
-            </select>
-          </label>
-          <label>
-            Tom de resposta
-            <select defaultValue="natural">
-              <option value="natural">Natural</option>
-              <option value="curto">Mais curto</option>
-              <option value="expressivo">Mais expressivo</option>
-            </select>
-          </label>
-        </div>
-      </section>
-
-      <section className="panel">
-        <PanelTitle icon={Languages} title="Voz" />
-        <InfoRow label="Modelo" value="Piper Faber" />
-        <InfoRow label="Idioma" value="pt-BR" />
-        <InfoRow label="Status" value="ativo" />
-        <button className="secondary-action" type="button">Testar voz</button>
-      </section>
-    </div>
-  );
-}
-
-function SettingsView({
+function DevConsoleView({
+  devData,
+  onResetMetrics,
+  onRestartServer,
   opsToken,
-  setOpsToken,
+  onOpsTokenChange,
   snapshot,
+  status,
 }: {
+  devData: DevData;
+  onResetMetrics: () => void;
+  onRestartServer: () => void;
   opsToken: string;
-  setOpsToken: (value: string) => void;
+  onOpsTokenChange: (value: string) => void;
   snapshot: DashboardSnapshot;
+  status: string;
 }) {
-  const settings = [
-    { icon: Wifi, title: "WiFi", detail: "rede local configurada", status: "ativo", group: "Conectividade" },
-    { icon: Network, title: "Bridge/Server", detail: "localhost:8765", status: "online", group: "Conectividade" },
-    { icon: RefreshCw, title: "OTA", detail: "atualização segura", status: "planejado", group: "Manutenção" },
-    { icon: HardDrive, title: "Logs", detail: "diagnóstico e exportação", status: "local", group: "Manutenção" },
-    { icon: Gauge, title: "Servos", detail: "motion safety obrigatório", status: "protegido", group: "Hardware" },
-    { icon: Clock3, title: "Hora e local", detail: "America/Sao_Paulo", status: "ok", group: "Sistema" },
-    { icon: Cpu, title: "Device", detail: "ESP32-S3 N16R8", status: "conectado", group: "Hardware" },
-  ];
-
   return (
-    <div className="content-grid settings-grid">
-      <section className="section-hero settings-hero">
-        <div>
-          <p className="eyebrow">Configurações</p>
-          <h2>Área avançada, organizada por risco</h2>
-          <span>Rede, atualização, logs, servos e device ficam separados dos ajustes diários.</span>
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <section className={cardClass}>
+        <h2 className="mb-3 text-lg font-semibold">Console</h2>
+        <div className="min-h-72 overflow-auto rounded-xl bg-slate-950 p-4 font-mono text-sm text-slate-300">
+          <p>{">"} eventos recentes do server</p>
+          <p>{">"} último erro: {snapshot.robot.lastError || "--"}</p>
+          <p>{">"} firmware: {snapshot.robot.firmwareOnline ? "online" : "offline"}</p>
+          <p>{">"} turnos: {devData.metrics.turns.total ?? 0}</p>
+          {devData.errors.map((error) => (
+            <p className="mt-2 text-amber-300" key={`${error.ts}-${error.turn_id}-${error.kind}`}>
+              {">"} [{formatTime(error.ts)}] {error.kind} turn={error.turn_id} {error.message}
+            </p>
+          ))}
         </div>
       </section>
-
-      <section className="settings-summary">
-        <StatPanel icon={Wifi} label="Conectividade" value="2" tone="teal" />
-        <StatPanel icon={HardDrive} label="Manutenção" value="2" tone="amber" />
-        <StatPanel icon={Cpu} label="Hardware" value="2" tone="coral" />
-      </section>
-
-      <section className="panel span-2">
-        <PanelTitle icon={ShieldCheck} title="Token local" />
-        <p className="panel-copy">
-          Necessário para ações que mudam o robô, como comando rápido e testes.
-        </p>
-        <label>
-          Ops token
-          <input
-            onChange={(event) => setOpsToken(event.target.value)}
-            placeholder="cole o token de ~/.noisebot-server/ops_token"
-            type="password"
-            value={opsToken}
-          />
-        </label>
-      </section>
-
-      <section className="panel">
-        <PanelTitle icon={Bot} title="Runtime" />
-        <InfoRow label="Modo" value={snapshot.robot.mode} />
-        <InfoRow label="LLM" value={snapshot.robot.provider} />
-        <InfoRow label="Modelo" value={snapshot.robot.model || "--"} />
-        <InfoRow label="STT" value={snapshot.robot.sttStatus} />
-        <InfoRow label="TTS" value={snapshot.robot.ttsStatus} />
-        <InfoRow label="Erro" value={snapshot.robot.lastError || "--"} />
-      </section>
-
-      {settings.map((item) => {
-        const Icon = item.icon;
-        return (
-          <article className="settings-row" key={item.title}>
-            <span className="settings-icon">
-              <Icon size={20} />
-            </span>
-            <div>
-              <strong>{item.title}</strong>
-              <span>{item.group} · {item.detail}</span>
-            </div>
-            <em>{item.status}</em>
-            <ChevronRight size={18} />
-          </article>
-        );
-      })}
+      <aside className="grid content-start gap-4">
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Token local</h2>
+          {!opsToken.trim() && (
+            <p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+              Este host ainda não tem token salvo. Cole o mesmo token usado no localhost.
+            </p>
+          )}
+          <label className="grid gap-2 text-sm font-semibold text-slate-600">
+            Ops token
+            <input className={inputClass} onChange={(event) => onOpsTokenChange(event.target.value)} placeholder="cole o token local" type="password" value={opsToken} />
+          </label>
+        </section>
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Manutenção</h2>
+          <div className="grid gap-2">
+            <button className={secondaryButtonClass} onClick={onResetMetrics} type="button">
+              Zerar métricas
+            </button>
+            <button className="inline-flex min-h-10 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-4 font-semibold text-slate-400" disabled onClick={onRestartServer} type="button">
+              Reiniciar server
+            </button>
+            <DisabledButton label="OTA firmware" />
+            <DisabledButton label="Reiniciar robô" />
+            <DisabledButton label="Exportar backup" />
+          </div>
+          <p className="mt-3 text-sm text-slate-500">{status}</p>
+        </section>
+      </aside>
     </div>
+  );
+}
+
+function RoutineForm({
+  children,
+  icon: Icon,
+  onSubmit,
+  title,
+}: {
+  children: ReactNode;
+  icon: typeof Timer;
+  onSubmit: () => void;
+  title: string;
+}) {
+  return (
+    <section className={cardClass}>
+      <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><Icon size={18} /> {title}</h2>
+      <form
+        className="grid gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        {children}
+        <button className={primaryButtonClass} type="submit">Criar</button>
+      </form>
+    </section>
   );
 }
 
 function ControlPanel({
   icon: Icon,
   label,
-  value,
   onChange,
+  value,
 }: {
   icon: typeof Volume2;
   label: string;
-  value: number;
   onChange: (value: number) => void;
+  value: number;
 }) {
   return (
-    <section className="panel control-panel">
-      <PanelTitle icon={Icon} title={label} />
-      <strong className="control-value">{value}%</strong>
-      <input
-        aria-label={label}
-        max="100"
-        min="0"
-        onChange={(event) => onChange(Number(event.target.value))}
-        type="range"
-        value={value}
-      />
+    <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <h3 className="mb-3 flex items-center gap-2 font-semibold"><Icon size={18} /> {label}</h3>
+      <strong className="mb-4 block text-4xl leading-none">{value}%</strong>
+      <input className="w-full accent-slate-900" max="100" min="0" onChange={(event) => onChange(Number(event.target.value))} type="range" value={value} />
     </section>
   );
 }
 
-function StatPanel({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: typeof Timer;
-  label: string;
-  value: string;
-  tone: "teal" | "amber" | "coral";
-}) {
+function NumberInput({ onChange, value }: { onChange: (value: number) => void; value: number }) {
   return (
-    <section className={`stat-panel ${tone}`}>
-      <Icon size={22} />
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </section>
+    <input
+      className={inputClass}
+      min="1"
+      max="1440"
+      onChange={(event) => onChange(clampNumber(event.target.value, 1, 1440))}
+      type="number"
+      value={value}
+    />
   );
 }
 
-function VisionSignal({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof Camera;
-  label: string;
-  value: string;
-}) {
+function Metric({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <article className="vision-signal">
-      <Icon size={18} />
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <article className="min-h-20 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <span className="block text-sm text-slate-500">{label}</span>
+      <strong className="mt-1 block break-words text-base text-slate-950">{value}</strong>
     </article>
   );
 }
 
-function PanelTitle({
+function DiagnosticCard({
+  children,
+  defaultOpen = false,
   icon: Icon,
   title,
-  action,
+  wide = false,
 }: {
-  icon: typeof Home;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  icon: typeof Cpu;
   title: string;
-  action?: string;
+  wide?: boolean;
 }) {
   return (
-    <div className="panel-title">
-      <span>
-        <Icon size={18} />
-        {title}
-      </span>
-      {action ? <button type="button">{action}</button> : null}
-    </div>
+    <details className={`${cardClass} group ${wide ? "xl:col-span-2" : ""}`} open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center gap-2 text-lg font-semibold">
+          <Icon size={18} />
+          {title}
+        </span>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500 group-open:hidden">
+          abrir
+        </span>
+        <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500 group-open:inline-flex">
+          fechar
+        </span>
+      </summary>
+      <div className="mt-4">{children}</div>
+    </details>
   );
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="info-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className="flex min-h-9 items-center justify-between gap-3 border-b border-slate-100 py-2 last:border-0">
+      <span className="text-sm text-slate-500">{label}</span>
+      <strong className="break-words text-right text-sm">{value}</strong>
     </div>
   );
 }
 
-function HealthItem({ label, ok }: { label: string; ok: boolean }) {
+function Vital({ good, icon: Icon, label }: { good?: boolean; icon: typeof BatteryCharging; label: string }) {
   return (
-    <div className="health-item">
-      {ok ? <CheckCircle2 size={18} /> : <Power size={18} />}
-      <span>{label}</span>
-      <strong>{ok ? "ok" : "offline"}</strong>
-    </div>
+    <span className={good ? "inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-50 px-3 text-sm font-semibold text-emerald-700" : "inline-flex min-h-10 items-center gap-2 rounded-lg bg-slate-100 px-3 text-sm font-semibold text-slate-600"}>
+      <Icon size={16} />
+      {label}
+    </span>
   );
 }
 
-function ToggleRow({
-  label,
-  enabled,
-  onToggle,
-}: {
-  label: string;
-  enabled: boolean;
-  onToggle?: () => void;
-}) {
+function StatusPill({ label, ok }: { label: string; ok: boolean }) {
   return (
-    <div className="toggle-row">
-      <span>{label}</span>
-      <button className={enabled ? "toggle enabled" : "toggle"} onClick={onToggle} type="button">
-        <span />
-      </button>
-    </div>
+    <span className={ok ? "inline-flex rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700" : "inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500"}>
+      {label}
+    </span>
   );
 }
 
-function StatusDot({ ok }: { ok: boolean }) {
-  return <span className={ok ? "status-dot ok" : "status-dot"} />;
-}
-
-function ConnectionPill({
-  serverOnline,
-  firmwareOnline,
-}: {
-  serverOnline: boolean;
-  firmwareOnline: boolean;
-}) {
+function TurnBubble({ label, text }: { label: string; text: string }) {
   return (
-    <div className="connection-pill">
-      <StatusDot ok={serverOnline && firmwareOnline} />
-      <span>{serverOnline && firmwareOnline ? "conectado" : "verificar conexao"}</span>
+    <article className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <span className="text-xs font-bold uppercase text-slate-500">{label}</span>
+      <p className="mt-1 text-sm text-slate-800">{text}</p>
+    </article>
+  );
+}
+
+function PlannedFeature({ description, icon: Icon, title }: { description: string; icon: typeof Timer; title: string }) {
+  return (
+    <article className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+      <div className="mb-2 flex items-center gap-2 font-semibold text-slate-700">
+        <Icon size={18} />
+        {title}
+      </div>
+      <p className="text-sm text-slate-500">{description}</p>
+      <span className="mt-3 inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">planejado</span>
+    </article>
+  );
+}
+
+function DisabledButton({ label }: { label: string }) {
+  return (
+    <button className="inline-flex min-h-10 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-4 font-semibold text-slate-400" disabled type="button">
+      {label}
+    </button>
+  );
+}
+
+function ServiceTile({ label, value }: { label: string; value: string }) {
+  const ok = value === "ok" || value === "ready" || value === "enabled";
+  return (
+    <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <span className={ok ? "mb-3 block h-2 w-2 rounded-full bg-emerald-500" : "mb-3 block h-2 w-2 rounded-full bg-amber-500"} />
+      <strong className="block">{label}</strong>
+      <span className="text-sm text-slate-500">{value || "--"}</span>
+    </article>
+  );
+}
+
+function VoiceAlertBanner({ alert }: { alert: NonNullable<DevData["metrics"]["voice_alert"]> }) {
+  const style = alert.level === "error"
+    ? "border-red-200 bg-red-50 text-red-800"
+    : "border-amber-200 bg-amber-50 text-amber-800";
+  return (
+    <div className={`mb-4 rounded-lg border p-3 ${style}`}>
+      <strong className="block text-sm">{alert.title}</strong>
+      <span className="text-sm">{alert.detail || "sem detalhe"}</span>
     </div>
   );
+}
+
+function VoiceSessionHistory({ sessions }: { sessions: VoiceSessionSummary[] }) {
+  if (sessions.length === 0) {
+    return <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">Nenhuma sessão de voz registrada ainda.</p>;
+  }
+  return (
+    <div className="grid gap-2">
+      {sessions.slice(0, 8).map((session, index) => (
+        <article className="rounded-lg border border-slate-200 bg-slate-50 p-3" key={`${session.turn_id ?? "turn"}-${index}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <strong className="text-sm text-slate-900">Turno {session.turn_id ?? "--"}</strong>
+            <span className={voiceOutcomeClass(session.outcome)}>{session.outcome || "--"}</span>
+          </div>
+          <div className="mt-2 grid gap-2 text-sm text-slate-600 md:grid-cols-2">
+            <InfoRow label="Duração" value={numberValue(session.duration_ms, " ms")} />
+            <InfoRow label="Chunks" value={numberValue(session.chunk_count, "")} />
+            <InfoRow label="Qualidade" value={textValue(session.transcript_quality)} />
+            <InfoRow label="Descarte" value={textValue(session.discard_reason)} />
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function voiceOutcomeClass(outcome: string | undefined) {
+  if (outcome === "failed") return "rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700";
+  if (outcome === "audio_rejected" || outcome === "stt_rejected" || outcome === "cancelled") {
+    return "rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-700";
+  }
+  return "rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700";
+}
+
+function ErrorLog({ errors }: { errors: DevData["errors"] }) {
+  if (errors.length === 0) {
+    return <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">Nenhum erro recente registrado.</p>;
+  }
+  return (
+    <div className="grid gap-2">
+      {errors.map((error) => (
+        <article className="rounded-lg border border-slate-200 bg-slate-50 p-3" key={`${error.ts}-${error.turn_id}-${error.kind}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <strong className="text-sm text-slate-900">{error.kind}</strong>
+            <span className="text-xs font-semibold text-slate-500">{formatTime(error.ts)}</span>
+          </div>
+          <p className="mt-1 text-sm text-slate-600">{error.message || "sem mensagem"}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            turn={error.turn_id || 0} provider={error.provider || "--"} model={error.model || "--"}
+          </p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function withRoutine(snapshot: DashboardSnapshot, data: AppData): DashboardSnapshot {
+  return {
+    ...snapshot,
+    routine: {
+      next: data.routine.summary.next,
+      timers: data.routine.summary.timers,
+      alarms: data.routine.summary.alarms,
+      reminders: data.routine.summary.reminders,
+    },
+  };
+}
+
+function formatLatency(value: { p50: number | null; p95: number | null; count: number } | undefined) {
+  if (!value || value.count <= 0) return "--";
+  const p50 = value.p50 === null ? "--" : `${value.p50} ms`;
+  const p95 = value.p95 === null ? "--" : `${value.p95} ms`;
+  return `p50 ${p50} / p95 ${p95}`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function readNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function textValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "--";
+  return String(value);
+}
+
+function numberValue(value: unknown, suffix: string) {
+  const number = readNumber(value);
+  if (number === null) return "--";
+  return `${number}${suffix}`;
+}
+
+function boolValue(value: unknown) {
+  if (typeof value !== "boolean") return "--";
+  return value ? "sim" : "não";
+}
+
+function bytesValue(value: unknown) {
+  const bytes = readNumber(value);
+  if (bytes === null) return "--";
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+function formatSeconds(value: number | null) {
+  if (value === null) return "--";
+  if (value >= 3600) return `${(value / 3600).toFixed(1)} h`;
+  if (value >= 60) return `${Math.round(value / 60)} min`;
+  return `${value} s`;
+}
+
+function formatTime(ts: number) {
+  if (!Number.isFinite(ts) || ts <= 0) return "--";
+  return new Date(ts * 1000).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function kindLabel(kind: RoutineItem["kind"]) {
+  if (kind === "timer") return "Timer";
+  if (kind === "alarm") return "Alarme";
+  return "Lembrete";
+}
+
+function clampNumber(value: string, min: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return min;
+  return Math.max(min, Math.min(max, Math.round(parsed)));
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "erro inesperado";
 }

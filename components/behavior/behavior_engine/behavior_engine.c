@@ -33,10 +33,12 @@
 #include "persona_service.h"
 #include "expression_service.h"
 #include "gaze_service.h"
+#include "render_service.h"
 #include "ui_overlay_service.h"
 #include "led_service.h"
 #include "audio_service.h"
 #include "synth_service.h"
+#include "config_manager.h"
 #include "attention_service.h"
 #include "diagnostics_service.h"
 #include "boredom_service.h"
@@ -48,6 +50,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define TAG "nb_beng"
 
@@ -422,6 +426,27 @@ static esp_timer_handle_t s_bridge_resp_timer;
 static bool               s_bridge_say_started;
 static bool               s_bridge_voice_pending;
 
+static bool session_json_u8(const char *payload, const char *key, uint8_t *out_value)
+{
+    if (!payload || !key || !out_value) return false;
+
+    char pattern[48];
+    int written = snprintf(pattern, sizeof(pattern), "\"%s\":", key);
+    if (written <= 0 || (size_t)written >= sizeof(pattern)) return false;
+
+    const char *value_start = strstr(payload, pattern);
+    if (!value_start) return false;
+    value_start += written;
+
+    char *end = NULL;
+    unsigned long value = strtoul(value_start, &end, 10);
+    if (end == value_start) return false;
+    if (value > 255UL) value = 255UL;
+
+    *out_value = (uint8_t)value;
+    return true;
+}
+
 static void bridge_resp_timeout_cb(void *arg)
 {
     (void)arg;
@@ -570,6 +595,19 @@ static void bridge_on_event(const nb_event_t *evt)
                 ui_overlay_show_toast("Nao ouvi", NB_UI_OVERLAY_WARNING, BRIDGE_ERROR_TOAST_MS);
             } else {
                 ui_overlay_show_toast("Erro na conversa", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
+            }
+        } else if (strstr(payload, "\"event\":\"SETTINGS_COMMAND\"")) {
+            uint8_t brightness = 0U;
+            if (session_json_u8(payload, "display_brightness", &brightness)) {
+                render_service_set_brightness(brightness);
+                ui_overlay_show_toast("Tela ajustada", NB_UI_OVERLAY_SUCCESS, 1500U);
+                NB_LOGI(TAG, "brilho tela via bridge: %u", (unsigned)brightness);
+            }
+            if (session_json_u8(payload, "led_brightness", &brightness)) {
+                led_set_brightness(brightness);
+                (void)config_set_brightness(brightness);
+                ui_overlay_show_toast("LEDs ajustados", NB_UI_OVERLAY_SUCCESS, 1500U);
+                NB_LOGI(TAG, "brilho LED via bridge: %u", (unsigned)brightness);
             }
         }
         break;

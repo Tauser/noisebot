@@ -85,15 +85,21 @@ def _phrase_key(text: str) -> str:
 class PhrasePcmCache:
     """LRU PCM cache for synthesized phrases."""
 
-    def __init__(self, maxsize: int = 64, disk_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        maxsize: int = 64,
+        disk_dir: Path | None = None,
+        namespace: str = "",
+    ) -> None:
         self._maxsize = maxsize
         self._ram: OrderedDict[str, bytes] = OrderedDict()
         self._disk = disk_dir
+        self._namespace = namespace
         if disk_dir:
             disk_dir.mkdir(parents=True, exist_ok=True)
 
     def get(self, text: str) -> bytes | None:
-        key = _phrase_key(text)
+        key = _phrase_key(f"{self._namespace}\n{text}")
         if key in self._ram:
             self._ram.move_to_end(key)
             return self._ram[key]
@@ -109,7 +115,7 @@ class PhrasePcmCache:
         return None
 
     def put(self, text: str, pcm: bytes) -> None:
-        key = _phrase_key(text)
+        key = _phrase_key(f"{self._namespace}\n{text}")
         self._put_ram(key, pcm)
         if self._disk:
             try:
@@ -148,7 +154,15 @@ class PiperServerTTS(TTSProvider):
         self._sample_rate = sample_rate
         self._source_sample_rate = _load_model_sample_rate(model) or sample_rate
         self._target_peak = max(0, min(32767, target_peak))
-        self._cache = PhrasePcmCache(maxsize=cache_size, disk_dir=disk_cache_dir)
+        cache_namespace = (
+            f"{Path(model).name}|{self._source_sample_rate}|"
+            f"{self._sample_rate}|{self._target_peak}"
+        )
+        self._cache = PhrasePcmCache(
+            maxsize=cache_size,
+            disk_dir=disk_cache_dir,
+            namespace=cache_namespace,
+        )
         self._proc: asyncio.subprocess.Process | None = None
         self._lock = asyncio.Lock()
 
@@ -209,7 +223,7 @@ class PiperServerTTS(TTSProvider):
         cached = self._cache.get(text)
         if cached is not None:
             log.debug("TTS cache hit: %r (%d bytes)", text[:40], len(cached))
-            return _normalize_pcm16_peak(cached, self._target_peak)
+            return cached
 
         if not self._model:
             return b""
