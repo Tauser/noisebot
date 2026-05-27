@@ -802,10 +802,38 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
   const voice = devData.metrics.last_voice_session ?? {};
   const recentVoice = devData.metrics.recent_voice_sessions ?? [];
   const voiceAlert = devData.metrics.voice_alert;
+  const voiceSummary = summarizeVoiceSession(voice);
+  const latencyBottleneck = voiceLatencyBottleneck(voice);
   const diagErrors = Object.entries(firmware.errors ?? {});
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
+      <section className={`${cardClass} xl:col-span-2`}>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Ciclo de voz</h2>
+            <p className="text-sm text-slate-500">Mostra o que aconteceu quando o robô ouviu, pensou e tentou responder.</p>
+          </div>
+          <span className={voiceSummary.className}>{voiceSummary.label}</span>
+        </div>
+        {voiceAlert && <VoiceAlertBanner alert={voiceAlert} />}
+        <div className="grid gap-3 lg:grid-cols-4">
+          <VoiceStage label="Áudio" state={voiceStageState(voice, "audio")} detail={voiceStageDetail(voice, "audio")} />
+          <VoiceStage label="STT" state={voiceStageState(voice, "stt")} detail={voiceStageDetail(voice, "stt")} />
+          <VoiceStage label="Decisão" state={voiceStageState(voice, "decision")} detail={voiceStageDetail(voice, "decision")} />
+          <VoiceStage label="Resposta" state={voiceStageState(voice, "reply")} detail={voiceStageDetail(voice, "reply")} />
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_260px]">
+          <TurnBubble label="Transcrição" text={voice.transcript || snapshot.robot.lastTranscript || "Sem transcrição recente."} />
+          <TurnBubble label="Resposta" text={voice.reply || lastReplyText(snapshot)} />
+          <article className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <span className="text-xs font-bold uppercase text-slate-500">Gargalo provável</span>
+            <strong className="mt-1 block text-sm text-slate-900">{latencyBottleneck.label}</strong>
+            <p className="mt-1 text-sm text-slate-600">{latencyBottleneck.detail}</p>
+          </article>
+        </div>
+      </section>
+
       <DiagnosticCard defaultOpen icon={Cpu} title="Hardware e build">
         <div className="grid gap-3 md:grid-cols-2">
           <Metric label="Firmware" value={snapshot.robot.firmwareOnline ? "online" : "offline"} />
@@ -897,7 +925,6 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
       </DiagnosticCard>
 
       <DiagnosticCard defaultOpen icon={Mic} title="Última sessão de voz">
-        {voiceAlert && <VoiceAlertBanner alert={voiceAlert} />}
         <div className="grid gap-3 md:grid-cols-2">
           <Metric label="Turno" value={numberValue(voice.turn_id, "")} />
           <Metric label="Resultado" value={textValue(voice.outcome)} />
@@ -1341,6 +1368,30 @@ function ServiceTile({ label, value }: { label: string; value: string }) {
   );
 }
 
+function VoiceStage({
+  detail,
+  label,
+  state,
+}: {
+  detail: string;
+  label: string;
+  state: "ok" | "warn" | "error" | "idle";
+}) {
+  const styles = {
+    ok: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    warn: "border-amber-200 bg-amber-50 text-amber-800",
+    error: "border-red-200 bg-red-50 text-red-800",
+    idle: "border-slate-200 bg-slate-50 text-slate-700",
+  };
+  return (
+    <article className={`rounded-xl border p-3 ${styles[state]}`}>
+      <span className="text-xs font-bold uppercase opacity-75">{label}</span>
+      <strong className="mt-1 block text-sm">{voiceStateLabel(state)}</strong>
+      <p className="mt-1 text-sm opacity-85">{detail}</p>
+    </article>
+  );
+}
+
 function VoiceAlertBanner({ alert }: { alert: NonNullable<DevData["metrics"]["voice_alert"]> }) {
   const style = alert.level === "error"
     ? "border-red-200 bg-red-50 text-red-800"
@@ -1365,6 +1416,12 @@ function VoiceSessionHistory({ sessions }: { sessions: VoiceSessionSummary[] }) 
             <strong className="text-sm text-slate-900">Turno {session.turn_id ?? "--"}</strong>
             <span className={voiceOutcomeClass(session.outcome)}>{session.outcome || "--"}</span>
           </div>
+          {(session.transcript || session.reply) && (
+            <div className="mt-2 grid gap-2 text-sm text-slate-600">
+              {session.transcript && <p><strong className="text-slate-800">Ouvi:</strong> {session.transcript}</p>}
+              {session.reply && <p><strong className="text-slate-800">Respondi:</strong> {session.reply}</p>}
+            </div>
+          )}
           <div className="mt-2 grid gap-2 text-sm text-slate-600 md:grid-cols-2">
             <InfoRow label="Duração" value={numberValue(session.duration_ms, " ms")} />
             <InfoRow label="Chunks" value={numberValue(session.chunk_count, "")} />
@@ -1375,6 +1432,124 @@ function VoiceSessionHistory({ sessions }: { sessions: VoiceSessionSummary[] }) 
       ))}
     </div>
   );
+}
+
+function summarizeVoiceSession(session: VoiceSessionSummary) {
+  const outcome = session.outcome || "";
+  const discard = session.discard_reason || "";
+  const quality = (session.transcript_quality || "").toLowerCase();
+  if (!session.turn_id) {
+    return {
+      label: "sem turno recente",
+      className: "rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500",
+    };
+  }
+  if (outcome === "failed" || session.error_stage) {
+    return {
+      label: `falhou: ${session.error_stage || session.error_reason || "erro"}`,
+      className: "rounded-full bg-red-100 px-3 py-1 text-sm font-bold text-red-700",
+    };
+  }
+  if (outcome === "audio_rejected" || discard === "audio_curto" || discard === "audio_longo") {
+    return {
+      label: `não ouvi direito: ${discard || outcome}`,
+      className: "rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-700",
+    };
+  }
+  if (outcome === "stt_rejected" || discard.startsWith("stt_") || (quality && quality !== "good" && quality !== "ok")) {
+    return {
+      label: "não entendeu e pediu repetição",
+      className: "rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-700",
+    };
+  }
+  if (outcome === "interrupted" || outcome === "cancelled") {
+    return {
+      label: "interrompido",
+      className: "rounded-full bg-sky-100 px-3 py-1 text-sm font-bold text-sky-700",
+    };
+  }
+  if (session.reply || session.reply_chars) {
+    return {
+      label: "respondeu",
+      className: "rounded-full bg-emerald-100 px-3 py-1 text-sm font-bold text-emerald-700",
+    };
+  }
+  return {
+    label: outcome || "sem resposta",
+    className: "rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500",
+  };
+}
+
+function voiceStageState(
+  session: VoiceSessionSummary,
+  stage: "audio" | "stt" | "decision" | "reply",
+): "ok" | "warn" | "error" | "idle" {
+  const outcome = session.outcome || "";
+  const discard = session.discard_reason || "";
+  const quality = (session.transcript_quality || "").toLowerCase();
+  if (!session.turn_id) return "idle";
+  if (session.error_stage) {
+    if (stage === "reply" || session.error_stage === stage) return "error";
+  }
+  if (stage === "audio") {
+    if (outcome === "audio_rejected" || discard === "audio_curto" || discard === "audio_longo") return "warn";
+    return session.total_samples ? "ok" : "idle";
+  }
+  if (stage === "stt") {
+    if (outcome === "stt_rejected" || discard.startsWith("stt_") || (quality && quality !== "good" && quality !== "ok")) return "warn";
+    return session.transcript_quality || session.transcript ? "ok" : "idle";
+  }
+  if (stage === "decision") {
+    if (outcome === "failed") return "error";
+    return session.intent_name || outcome ? "ok" : "idle";
+  }
+  if (outcome === "failed") return "error";
+  if (session.reply || session.reply_chars) return "ok";
+  if (outcome === "stt_rejected" || discard.startsWith("stt_")) return "warn";
+  return "idle";
+}
+
+function voiceStageDetail(
+  session: VoiceSessionSummary,
+  stage: "audio" | "stt" | "decision" | "reply",
+) {
+  if (!session.turn_id) return "aguardando uso";
+  if (stage === "audio") {
+    return `${numberValue(session.duration_ms, " ms")} · ${numberValue(session.chunk_count, " chunks")}`;
+  }
+  if (stage === "stt") {
+    return `${textValue(session.transcript_quality)} · ${numberValue(session.stt_ms, " ms")}`;
+  }
+  if (stage === "decision") {
+    return `${textValue(session.intent_name || session.outcome)} · ${numberValue(session.end_of_turn_ms, " ms")}`;
+  }
+  if (session.reply || session.reply_chars) {
+    return `${numberValue(session.first_audio_after_voice_end_ms, " ms")} até 1º áudio`;
+  }
+  return textValue(session.discard_reason || session.error_reason || "sem fala enviada");
+}
+
+function voiceStateLabel(state: "ok" | "warn" | "error" | "idle") {
+  if (state === "ok") return "ok";
+  if (state === "warn") return "atenção";
+  if (state === "error") return "erro";
+  return "sem dado";
+}
+
+function voiceLatencyBottleneck(session: VoiceSessionSummary) {
+  const candidates = [
+    { key: "STT", value: readNumber(session.stt_ms) },
+    { key: "1º áudio", value: readNumber(session.first_audio_after_voice_end_ms) },
+    { key: "fala completa", value: readNumber(session.speech_total_ms) },
+  ].filter((item): item is { key: string; value: number } => item.value !== null);
+  if (candidates.length === 0) {
+    return { label: "sem dados suficientes", detail: "faça um teste de voz para medir o ciclo." };
+  }
+  const highest = candidates.reduce((best, item) => (item.value > best.value ? item : best));
+  if (highest.value < 1500) {
+    return { label: "ciclo saudável", detail: `${highest.key} foi o maior trecho: ${highest.value} ms.` };
+  }
+  return { label: highest.key, detail: `maior tempo medido no último turno: ${highest.value} ms.` };
 }
 
 function voiceOutcomeClass(outcome: string | undefined) {

@@ -73,10 +73,12 @@ export type VoiceSessionSummary = {
   duration_ms?: number;
   chunk_count?: number;
   transcript_quality?: string | null;
+  transcript?: string | null;
   no_speech_prob?: number | null;
   avg_logprob?: number | null;
   compression_ratio?: number | null;
   intent_name?: string | null;
+  reply?: string | null;
   reply_chars?: number;
   voice_end_to_stt_start_ms?: number | null;
   stt_ms?: number | null;

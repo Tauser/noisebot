@@ -17,6 +17,10 @@ log = logging.getLogger(__name__)
 
 CHUNK_SAMPLES = 256
 CHUNK_BYTES = CHUNK_SAMPLES * 2
+PIPER_WARMUP_PHRASES = (
+    "Oi! Em que posso ajudar?",
+    "Eu ouvi, mas não entendi direito. Pode repetir?",
+)
 
 _ABBREV_RE = re.compile(
     r"\b(?:Dr|Dra|Sr|Sra|Prof|Profa|etc|vs|nr|Av|Fig|Ref|Obs|ex|p\.ex)\.$",
@@ -164,6 +168,7 @@ class PiperServerTTS(TTSProvider):
             namespace=cache_namespace,
         )
         self._proc: asyncio.subprocess.Process | None = None
+        self._warmup_task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
 
     async def initialize(self) -> None:
@@ -190,6 +195,10 @@ class PiperServerTTS(TTSProvider):
             self._source_sample_rate,
             self._sample_rate,
         )
+        self._warmup_task = asyncio.create_task(
+            self._warmup_common_phrases(),
+            name="nb_tts_warmup",
+        )
 
     async def synthesize_stream(self, sentences: AsyncIterator[str]) -> AsyncIterator[bytes]:
         async for sentence in sentences:
@@ -205,6 +214,14 @@ class PiperServerTTS(TTSProvider):
     async def shutdown(self) -> None:
         proc = self._proc
         self._proc = None
+        warmup_task = self._warmup_task
+        self._warmup_task = None
+        if warmup_task is not None and not warmup_task.done():
+            warmup_task.cancel()
+            try:
+                await warmup_task
+            except asyncio.CancelledError:
+                pass
         if proc is None:
             return
         try:
@@ -229,6 +246,10 @@ class PiperServerTTS(TTSProvider):
             return b""
 
         async with self._lock:
+            cached = self._cache.get(text)
+            if cached is not None:
+                log.debug("TTS cache hit apos lock: %r (%d bytes)", text[:40], len(cached))
+                return cached
             try:
                 pcm = await self._run_piper_raw(text)
                 if self._source_sample_rate != self._sample_rate:
@@ -247,6 +268,17 @@ class PiperServerTTS(TTSProvider):
         self._cache.put(text, pcm)
         log.debug("TTS sintetizado: %r -> %d bytes PCM", text[:40], len(pcm))
         return pcm
+
+    async def _warmup_common_phrases(self) -> None:
+        """Preenche cache das frases críticas sem bloquear o boot do server."""
+        try:
+            for phrase in PIPER_WARMUP_PHRASES:
+                await self._synthesize_sentence(phrase)
+            log.info("PiperServerTTS: warmup concluido frases=%d", len(PIPER_WARMUP_PHRASES))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning("PiperServerTTS: warmup falhou: %s", exc)
 
     async def _run_piper_raw(self, text: str) -> bytes:
         proc = await asyncio.create_subprocess_exec(
