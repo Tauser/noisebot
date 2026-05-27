@@ -57,7 +57,7 @@ SERVER_HELLO_CAPABILITIES: dict[str, Any] = {
         "mode": "auto",
         "max_speech_ms": 10000,
         "min_utterance_samples": 8000,
-        "max_utterance_samples": 160000,
+        "max_utterance_samples": 192000,
         "end_silence_ms": 900,
     },
     "rx": ["audio_chunk", "event", "status", "hello", "session"],

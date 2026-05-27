@@ -735,7 +735,7 @@ def test_server_hello_declares_voice_contract() -> None:
     }
     assert hello["listen"]["mode"] == "auto"
     assert hello["listen"]["max_speech_ms"] == 10000
-    assert hello["listen"]["max_utterance_samples"] == 160000
+    assert hello["listen"]["max_utterance_samples"] == 192000
 
 
 def test_server_metrics_exposes_last_voice_session() -> None:

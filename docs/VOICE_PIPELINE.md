@@ -11,13 +11,14 @@ qualquer otimização de STT/TTS.
 - Modo de escuta: `auto`.
 - Duração máxima de fala: 10 s.
 - Áudio mínimo para STT: 8000 samples, 500 ms.
-- Áudio máximo para STT: 160000 samples, 10 s.
+- Áudio máximo para STT no server: 192000 samples, 12 s.
 - Silêncio final: 900 ms.
 - Pre-roll no firmware: 320 ms.
 
-O firmware anuncia esse contrato no `HELLO` do bridge e o server valida o
-tamanho dos chunks recebidos. Frames fora do contrato são descartados antes de
-entrar no pipeline de STT.
+O firmware anuncia o contrato base no `HELLO` do bridge e o server valida o
+tamanho dos chunks recebidos. O server mantém folga de 12 s para absorver
+atraso de `VOICE_END` e alinhamento por chunks sem descartar fala válida como
+`audio_longo`.
 
 ## Decisões
 

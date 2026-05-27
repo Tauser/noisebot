@@ -2026,6 +2026,9 @@ Implementação:
 - [x] Timeout de `LISTENING` após barge-in deixou de virar `SESSION_ERROR`:
   ausência de nova fala agora encerra o turno como `listen_timeout` e cancela
   follow-up de forma limpa.
+- [x] Server abriu folga de captura para 192000 samples (12 s), evitando que
+  fala válida em torno de 10 s seja descartada por alinhamento de chunk
+  (`160256/160000`).
 - [ ] Ainda há `timeout` ocasional em fala/resposta longa; tratar como item de
   turn-taking antes de liberar modo narrativo ou realtime.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
