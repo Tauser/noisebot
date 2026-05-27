@@ -98,6 +98,17 @@ extern void vad_destroy(nb_esp_vad_handle_t handle);
 #define VAD_ENGINE_RMS_MIN       55000.0f
 #define VAD_PLAYBACK_MUTE_MS       600U
 
+/* Barge-in durante TTS do bridge: o VAD normal fica mutado enquanto o speaker
+ * toca para evitar auto-trigger. Este gate separado observa apenas aumentos
+ * sustentados acima do vazamento acústico já medido do próprio TTS. */
+#define BARGE_IN_GRACE_MS         900U
+#define BARGE_IN_COOLDOWN_MS     2500U
+#define BARGE_IN_SCORE_START        8U
+#define BARGE_IN_SCORE_INC          2U
+#define BARGE_IN_SCORE_DEC          1U
+#define BARGE_IN_MIN_RMS_ABS    52000.0f
+#define BARGE_IN_LEAK_MULT          1.65f
+
 /* Sessão de escuta: turn-taking explícito. A janela curta vale só antes da
  * primeira fala; depois que começou, encerra por silêncio pós-fala ou teto de
  * segurança para ruído contínuo. */
@@ -212,6 +223,10 @@ static struct {
     QueueHandle_t        bridge_say_q;       /* chunks SAY vindos do bridge      */
     bool                 bridge_say_playing; /* true = play_state == PLAY_BRIDGE_SAY */
     uint32_t             bridge_say_empty_ms;/* tolera jitter antes de encerrar  */
+    uint32_t             bridge_barge_elapsed_ms;  /* tempo desde inicio do SAY */
+    uint32_t             bridge_barge_cooldown_ms; /* evita repetição do trigger */
+    uint8_t              bridge_barge_score;       /* score de fala sobre TTS */
+    float                bridge_barge_leak_ema;    /* vazamento acustico do TTS */
 
     /* Sessão de escuta (Etapa 12.3) */
     bool                 listen_session_active;       /* sessão aberta          */
@@ -528,6 +543,14 @@ static uint32_t listen_current_end_silence_ms(void)
          : LISTEN_END_SILENCE_MS;
 }
 
+static void bridge_barge_reset(void)
+{
+    s.bridge_barge_elapsed_ms = 0;
+    s.bridge_barge_cooldown_ms = 0;
+    s.bridge_barge_score = 0;
+    s.bridge_barge_leak_ema = 0.0f;
+}
+
 static void esp_vad_reset(void)
 {
     s.esp_vad_pos = 0;
@@ -753,6 +776,62 @@ static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
     bool soft_energy_ok = (float)rms >= soft_thr;
     bool heuristic_speech_strong = energy_ok && zcr_ok && spectral_ok && !muted;
     bool heuristic_speech = soft_energy_ok && zcr_ok && spectral_ok && !muted;
+
+    if (s.bridge_say_playing && local_output_active && !s.listen_session_active) {
+        if (s.bridge_barge_cooldown_ms > 0U) {
+            s.bridge_barge_cooldown_ms =
+                (s.bridge_barge_cooldown_ms > CHUNK_DURATION_MS)
+                    ? s.bridge_barge_cooldown_ms - CHUNK_DURATION_MS : 0U;
+        } else if (s.bridge_barge_elapsed_ms < BARGE_IN_GRACE_MS) {
+            s.bridge_barge_elapsed_ms += CHUNK_DURATION_MS;
+            if (s.bridge_barge_leak_ema <= 1.0f) {
+                s.bridge_barge_leak_ema = (float)rms;
+            } else {
+                s.bridge_barge_leak_ema =
+                    s.bridge_barge_leak_ema * 0.92f + (float)rms * 0.08f;
+            }
+        } else {
+            float leak = (s.bridge_barge_leak_ema > 1.0f)
+                       ? s.bridge_barge_leak_ema : (float)rms;
+            float barge_thr = fmaxf(BARGE_IN_MIN_RMS_ABS,
+                                    leak * BARGE_IN_LEAK_MULT);
+            bool barge_candidate = ((float)rms >= barge_thr)
+                                && zcr_ok
+                                && spectral_ok
+                                && (voice_mid_ratio >= VAD_VOICE_MID_RATIO_MIN);
+            if (barge_candidate) {
+                uint16_t next_score = (uint16_t)s.bridge_barge_score +
+                                      BARGE_IN_SCORE_INC;
+                s.bridge_barge_score =
+                    (next_score > BARGE_IN_SCORE_START)
+                        ? BARGE_IN_SCORE_START : (uint8_t)next_score;
+            } else {
+                if (s.bridge_barge_score > BARGE_IN_SCORE_DEC) {
+                    s.bridge_barge_score -= BARGE_IN_SCORE_DEC;
+                } else {
+                    s.bridge_barge_score = 0;
+                }
+                s.bridge_barge_leak_ema =
+                    s.bridge_barge_leak_ema * 0.98f + (float)rms * 0.02f;
+            }
+
+            if (s.bridge_barge_score >= BARGE_IN_SCORE_START) {
+                ESP_LOGI(TAG,
+                         "barge-in candidato durante SAY rms=%ld thr=%ld leak=%ld",
+                         (long)rms, (long)barge_thr,
+                         (long)s.bridge_barge_leak_ema);
+                s.bridge_barge_score = 0;
+                s.bridge_barge_cooldown_ms = BARGE_IN_COOLDOWN_MS;
+                if (s.event_cb) {
+                    s.event_cb(NB_AUDIO_EVT_VOICE_START,
+                               NB_AUDIO_EVT_DATA_SESSION);
+                }
+            }
+        }
+    } else if (!s.bridge_say_playing) {
+        bridge_barge_reset();
+    }
+
     int esp_vad_state = esp_vad_update(pcm16, n, muted);
     bool esp_vad_speech = (esp_vad_state == ESP_SR_VAD_SPEECH);
     bool speech_strong = esp_vad_speech;
@@ -917,6 +996,7 @@ static void audio_task(void *arg)
             s.play_state = PLAY_IDLE;
             s.bridge_say_playing = false;
             s.bridge_say_empty_ms = 0;
+            bridge_barge_reset();
             xSemaphoreGive(s.mutex);
         }
 
@@ -1025,6 +1105,7 @@ static void audio_task(void *arg)
                     s.play_state      = PLAY_IDLE;
                     s.bridge_say_playing = false;
                     s.bridge_say_empty_ms = 0;
+                    bridge_barge_reset();
                     xSemaphoreGive(s.mutex);
                     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
                 } else {
@@ -1519,6 +1600,7 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         s.play_state      = PLAY_BRIDGE_SAY;
         s.bridge_say_playing = true;
         s.bridge_say_empty_ms = 0;
+        bridge_barge_reset();
         xSemaphoreGive(s.mutex);
         if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, 0);
         ESP_LOGI(TAG, "Bridge SAY iniciado");

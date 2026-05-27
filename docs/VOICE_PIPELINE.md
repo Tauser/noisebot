@@ -275,6 +275,19 @@ Correção de timeout pós-barge-in em 2026-05-27:
 - Esse ajuste cobre o caso observado em que a fala era interrompida, mas a
   conversa parecia falhar depois por ausência de áudio no turno seguinte.
 
+Correção de disparo de barge-in durante TTS em 2026-05-27:
+
+- O caminho estava circular: o server só enviava `SPEECH_CANCEL` após receber
+  `VOICE_START`, mas o firmware mantinha wake/VAD mutados enquanto tocava
+  `Bridge SAY`.
+- O firmware passou a ter um gate conservador de barge-in durante `Bridge SAY`,
+  baseado em aumento sustentado acima do vazamento acústico do próprio TTS.
+- O server passou a enviar `SPEECH_CANCEL` mesmo quando o handshake inicial vem
+  sem `features`, porque o firmware atual já entende esse frame.
+- O cancelamento ainda é intencionalmente conservador; se perder fala baixa,
+  calibrar `BARGE_IN_MIN_RMS_ABS`/`BARGE_IN_LEAK_MULT` com logs reais antes de
+  reduzir os limiares.
+
 Objetivo: absorver a parte mais valiosa do Xiaozhi: processamento de voz no ESP,
 mas sem sacrificar câmera, TTS e estabilidade.
 

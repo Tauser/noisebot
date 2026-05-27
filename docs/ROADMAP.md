@@ -2032,6 +2032,9 @@ Implementação:
 - [x] Contrato ficou alinhado ponta a ponta: fallback interno do server,
   `HELLO` do server, `HELLO` do firmware e documentação deixam de anunciar
   `160000` como teto efetivo do pipeline.
+- [x] Barge-in deixou de depender de um ciclo circular: firmware detecta fala
+  forte durante `Bridge SAY` por gate próprio e server envia `SPEECH_CANCEL`
+  mesmo quando o handshake inicial ainda vem sem `features`.
 - [ ] Ainda há `timeout` ocasional em fala/resposta longa; tratar como item de
   turn-taking antes de liberar modo narrativo ou realtime.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
