@@ -324,6 +324,20 @@ class FakeFirmwareProtocolTests(unittest.TestCase):
         self.assertEqual(events[0], SESSION_WAKE_DETECTED)
         self.assertIn(SESSION_SESSION_DONE, events)
 
+    def test_reconnect_starts_with_clean_runtime_state(self):
+        first_runtime, first_firmware = self.make_runtime()
+        self.deliver_valid_voice(first_runtime, first_firmware)
+        self.assertTrue(wait_for(lambda: first_runtime.state == "idle"))
+
+        second_runtime, second_firmware = self.make_runtime()
+        second_firmware.deliver(second_runtime, second_firmware.firmware_hello())
+        self.deliver_valid_voice(second_runtime, second_firmware)
+
+        self.assertTrue(wait_for(lambda: second_runtime.state == "idle"))
+        self.assertEqual(second_runtime.peer_capabilities["role"], "firmware")
+        self.assertEqual({event["session_id"] for event in second_firmware.sent_sessions()}, {1})
+        self.assertIn(MSG_SAY, [msg_type for msg_type, _ in second_firmware.decoded_sent()])
+
     def test_long_tts_reply_is_sent_as_multiple_say_chunks(self):
         runtime, firmware = self.make_runtime(tts=LongFakeTts())
 
