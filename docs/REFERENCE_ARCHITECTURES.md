@@ -2,6 +2,10 @@
 
 Este documento registra o que o NoiseBot deve aproveitar das bases StackChan e XiaoZhi sem copiar o firmware inteiro. A regra geral e: importar arquitetura, contratos e criterios de produto; portar codigo apenas quando houver necessidade clara, compatibilidade com a licenca e aderencia as camadas do NoiseBot.
 
+A matriz operacional de adoção fica em `docs/REFERENCE_ADOPTION_MATRIX.md`.
+Antes de iniciar uma nova fase, a decisão deve estar registrada ali com teste e
+rollback claros.
+
 ## Decisao Principal
 
 Nao reiniciar o NoiseBot em cima do firmware StackChan/XiaoZhi.
