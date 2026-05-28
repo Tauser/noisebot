@@ -56,6 +56,21 @@ esp_err_t wake_service_init(void);
 void wake_service_feed(const int16_t *pcm, uint16_t n);
 
 /**
+ * @brief Alimenta o AFE com microfone + referência do alto-falante.
+ *
+ * Copia o desenho do Xiaozhi quando há canal de referência: os samples são
+ * intercalados como M,R para permitir AEC durante TTS. Se o AFE atual estiver
+ * mono, a referência é ignorada e o caminho cai para wake_service_feed().
+ *
+ * @param mic_pcm  Buffer int16 mono 16kHz do microfone.
+ * @param ref_pcm  Buffer int16 mono 16kHz enviado ao speaker; pode ser NULL.
+ * @param n        Número de amostras.
+ */
+void wake_service_feed_with_reference(const int16_t *mic_pcm,
+                                      const int16_t *ref_pcm,
+                                      uint16_t n);
+
+/**
  * @brief Retorna true se WakeNet está ativo (init OK e ww_enabled).
  */
 bool wake_service_is_active(void);

@@ -30,8 +30,11 @@
 #define WAKE_TASK_PRIORITY 7U
 #define WAKE_TASK_CORE     0
 
-/* Buffer de acumulação: AFE tipicamente requer 512 samples @ 16kHz */
-#define FEED_BUF_MAX  512U
+/* Buffer de acumulação: AFE tipicamente requer 512 frames @ 16kHz.
+ * O canal R é a referência de speaker, como no Xiaozhi quando input_reference()
+ * está disponível. */
+#define FEED_BUF_MAX       512U
+#define FEED_CHANNELS_MAX    2U
 #define WAKE_REARM_GUARD_MS  350U
 
 /* Ganho de entrada aplicado antes do feed: o mic cru chega em nível variável.
@@ -51,7 +54,8 @@ static struct {
     const esp_afe_sr_iface_t    *handle;
     esp_afe_sr_data_t           *data;
     int                          feed_chunksize;
-    int16_t                      feed_buf[FEED_BUF_MAX];
+    int                          feed_channels;
+    int16_t                      feed_buf[FEED_BUF_MAX * FEED_CHANNELS_MAX];
     uint16_t                     feed_pos;
     volatile bool                suspended;
     volatile bool                armed;
@@ -217,15 +221,16 @@ esp_err_t wake_service_init(void)
     /* Perfil alinhado ao Xiaozhi/StackChan: WakeNet AFE em HIGH_PERF no S3.
      * Durante TTS, a interrupção confiável vem da wake word, então o detector
      * precisa de mais margem do que o modo low-cost oferece. */
-    afe_config_t *cfg = afe_config_init("M", models, AFE_TYPE_SR, AFE_MODE_HIGH_PERF);
+    afe_config_t *cfg = afe_config_init("MR", models, AFE_TYPE_SR, AFE_MODE_HIGH_PERF);
     if (!cfg) {
         ESP_LOGE(TAG, "afe_config_init falhou");
         esp_srmodel_deinit(models);
         return ESP_FAIL;
     }
 
-    /* Sem AEC (sem loopback de speaker) e sem SE (microfone mono) */
-    cfg->aec_init = false;
+    /* Copiado do desenho Xiaozhi: último canal é referência do speaker. */
+    cfg->aec_init = true;
+    cfg->aec_mode = AEC_MODE_SR_HIGH_PERF;
     cfg->se_init  = false;
 
     /* VAD desabilitado: com VAD ativo o pipeline é VAD→WakeNet e o VAD
@@ -282,10 +287,19 @@ esp_err_t wake_service_init(void)
         s.data = NULL;
         return ESP_FAIL;
     }
+    s.feed_channels = s.handle->get_feed_channel_num
+                    ? s.handle->get_feed_channel_num(s.data)
+                    : 1;
+    if (s.feed_channels <= 0 || s.feed_channels > (int)FEED_CHANNELS_MAX) {
+        ESP_LOGE(TAG, "feed_channels=%d fora do range esperado", s.feed_channels);
+        s.handle->destroy(s.data);
+        s.data = NULL;
+        return ESP_FAIL;
+    }
     ESP_LOGI(TAG, "AFE IO — feed_chunk=%d fetch_chunk=%d feed_ch=%d fetch_ch=%d rate=%d",
              s.feed_chunksize,
              s.handle->get_fetch_chunksize ? s.handle->get_fetch_chunksize(s.data) : -1,
-             s.handle->get_feed_channel_num ? s.handle->get_feed_channel_num(s.data) : -1,
+             s.feed_channels,
              s.handle->get_fetch_channel_num ? s.handle->get_fetch_channel_num(s.data) : -1,
              s.handle->get_samp_rate ? s.handle->get_samp_rate(s.data) : -1);
     s.feed_pos = 0;
@@ -336,12 +350,15 @@ esp_err_t wake_service_init(void)
     return ESP_OK;
 }
 
-void wake_service_feed(const int16_t *pcm, uint16_t n)
+static void wake_service_feed_common(const int16_t *mic_pcm,
+                                     const int16_t *ref_pcm,
+                                     uint16_t n)
 {
-    if (!s.initialized || !s.enabled || !s.data || n == 0) return;
+    if (!s.initialized || !s.enabled || !s.data || !mic_pcm || n == 0) return;
     if (s.suspended || !s.mutex) return;
 
-    const int16_t *src = pcm;
+    const int16_t *mic_src = mic_pcm;
+    const int16_t *ref_src = ref_pcm;
     uint16_t remaining = n;
 
     xSemaphoreTake(s.mutex, portMAX_DELAY);
@@ -352,7 +369,7 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
         uint16_t chunk_peak = 0;
         uint64_t sum_sq = 0;
         for (uint16_t i = 0; i < to_copy; i++) {
-            uint16_t raw_abs = abs_i16(src[i]);
+            uint16_t raw_abs = abs_i16(mic_src[i]);
             if (raw_abs > chunk_peak) {
                 chunk_peak = raw_abs;
             }
@@ -367,7 +384,7 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
         uint16_t post_peak = 0;
         uint16_t saturated = 0;
         for (uint16_t i = 0; i < to_copy; i++) {
-            int32_t sample = (int32_t)src[i];
+            int32_t sample = (int32_t)mic_src[i];
             int32_t v = sample * eff_gain;
             if (v >  32767) {
                 v =  32767;
@@ -381,7 +398,12 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
             if (post_abs > post_peak) {
                 post_peak = post_abs;
             }
-            s.feed_buf[s.feed_pos + i] = (int16_t)v;
+            uint16_t frame = (uint16_t)(s.feed_pos + i);
+            s.feed_buf[frame * (uint16_t)s.feed_channels] = (int16_t)v;
+            if (s.feed_channels > 1) {
+                s.feed_buf[frame * (uint16_t)s.feed_channels + 1U] =
+                    ref_src ? ref_src[i] : 0;
+            }
         }
         s.feed_pos += to_copy;
         s.cur_raw_sumsq += sum_sq;
@@ -399,8 +421,11 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
             s.cur_post_peak = post_peak;
         }
         s.cur_saturated += saturated;
-        src        += to_copy;
-        remaining  -= to_copy;
+        mic_src += to_copy;
+        if (ref_src) {
+            ref_src += to_copy;
+        }
+        remaining -= to_copy;
         if (s.feed_pos >= (uint16_t)s.feed_chunksize) {
             uint16_t samples = (s.cur_samples > 0U) ? s.cur_samples : 1U;
             s.last_raw_rms = (uint32_t)sqrtf((float)(s.cur_raw_sumsq / (uint64_t)samples));
@@ -421,6 +446,18 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
         }
     }
     xSemaphoreGive(s.mutex);
+}
+
+void wake_service_feed(const int16_t *pcm, uint16_t n)
+{
+    wake_service_feed_common(pcm, NULL, n);
+}
+
+void wake_service_feed_with_reference(const int16_t *mic_pcm,
+                                      const int16_t *ref_pcm,
+                                      uint16_t n)
+{
+    wake_service_feed_common(mic_pcm, ref_pcm, n);
 }
 
 bool wake_service_is_active(void)

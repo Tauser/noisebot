@@ -257,8 +257,10 @@ static int16_t  s_wav_chunk[WAV_SAMPLES_PER_CHUNK];
 static int16_t  s_rec_chunk[NB_AUDIO_CHUNK_FRAMES];
 static int16_t  s_sa_buf   [NB_AUDIO_CHUNK_FRAMES]; /* buffer para sound_analysis_tick */
 static int16_t  s_wake_buf [NB_AUDIO_CHUNK_FRAMES]; /* mic cru 16-bit para WakeNet */
+static int16_t  s_wake_ref_buf[NB_AUDIO_CHUNK_FRAMES]; /* ref speaker para AEC WakeNet */
 static int16_t  s_bridge_buf[NB_AUDIO_CHUNK_FRAMES]; /* mic ganho/limit para bridge */
 static int16_t  s_bridge_proc_buf[NB_AUDIO_CHUNK_FRAMES]; /* saida AFE opcional */
+static bool     s_wake_ref_valid;
 static uint32_t s_bridge_diag_chunk_counter = 0;
 static uint32_t s_spk_fail_count = 0;
 static uint32_t s_mic_fail_count = 0;
@@ -1010,6 +1012,10 @@ static void audio_task(void *arg)
                     if (v < -32768) v = -32768;
                     s_bridge_say_chunk.samples[i] = (int16_t)v;
                 }
+                memset(s_wake_ref_buf, 0, sizeof(s_wake_ref_buf));
+                memcpy(s_wake_ref_buf, s_bridge_say_chunk.samples,
+                       n * sizeof(int16_t));
+                s_wake_ref_valid = true;
                 esp_err_t wr = audio_hal_spk_write(s_bridge_say_chunk.samples, n, pdMS_TO_TICKS(100));
                 audio_note_spk_result(wr, "bridge_say");
                 if ((++s_bridge_say_play_count % 64U) == 1U) {
@@ -1083,8 +1089,14 @@ static void audio_task(void *arg)
 
         /* ── 4b. Alimentar pre-roll ring buffer e wake_service ──────────── */
         if (!s.listen_session_active && (!wrote_audio || s.bridge_say_playing)) {
-            wake_service_feed(s_wake_buf, (uint16_t)mic_n);
+            if (s_wake_ref_valid && mic_n <= NB_AUDIO_CHUNK_FRAMES) {
+                wake_service_feed_with_reference(s_wake_buf, s_wake_ref_buf,
+                                                 (uint16_t)mic_n);
+            } else {
+                wake_service_feed(s_wake_buf, (uint16_t)mic_n);
+            }
         }
+        s_wake_ref_valid = false;
         if (mic_n > 0U) {
             memcpy(s_preroll_buf[s_preroll_head], s_sa_buf, mic_n * sizeof(int16_t));
             s_preroll_head = (uint8_t)((s_preroll_head + 1U) % PREROLL_CHUNKS);
