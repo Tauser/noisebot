@@ -1521,8 +1521,8 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         s.bridge_say_playing = true;
         s.bridge_say_empty_ms = 0;
         xSemaphoreGive(s.mutex);
-        wake_service_rearm();
         if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, 0);
+        wake_service_rearm();
         ESP_LOGI(TAG, "Bridge SAY iniciado");
     }
     if (xQueueSend(s.bridge_say_q, &item, 0) == pdTRUE) {
