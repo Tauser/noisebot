@@ -12,6 +12,7 @@ from noisebot_bridge.protocol import (
     MSG_SESSION,
     NB_EVT_VOICE_ACTIVITY_END,
     NB_EVT_VOICE_ACTIVITY_START,
+    SESSION_FOLLOWUP_ARM,
     SESSION_LISTEN_START,
     SESSION_LISTEN_STOP,
     SESSION_SESSION_DONE,
@@ -117,6 +118,18 @@ class FakeStt:
         )
 
 
+class NoSpeechStt(FakeStt):
+    def transcribe(self, pcm):
+        return SttResult(
+            text="",
+            no_speech_prob=0.99,
+            avg_logprob=-2.0,
+            compression_ratio=0.0,
+            elapsed_ms=1.0,
+            backend="fake",
+        )
+
+
 class NoneLlm:
     ready = False
 
@@ -127,6 +140,16 @@ class NoneLlm:
 class FakeTts:
     def synthesize(self, text):
         return np.full(256, 1000, dtype=np.int16)
+
+
+class LongFakeTts:
+    def synthesize(self, text):
+        return np.full(256 * 6, 1000, dtype=np.int16)
+
+
+class FailingTts:
+    def synthesize(self, text):
+        raise RuntimeError("tts_fake_failure")
 
 
 class FakeIntentRouter:
@@ -153,17 +176,28 @@ def wait_for(predicate, timeout_s=1.0):
 
 
 class FakeFirmwareProtocolTests(unittest.TestCase):
-    def make_runtime(self):
+    def make_runtime(self, stt=None, tts=None, intent_router=None):
         transport = ScriptedFirmwareTransport()
         runtime = BridgeRuntime(
             transport,
-            FakeStt(),
+            stt or FakeStt(),
             NoneLlm(),
-            FakeTts(),
+            tts or FakeTts(),
             dry_run=False,
-            intent_router=FakeIntentRouter(),
+            intent_router=intent_router or FakeIntentRouter(),
         )
         return runtime, transport
+
+    def valid_voice_messages(self, firmware):
+        pcm = np.full(9000, 2000, dtype=np.int16)
+        chunks = [
+            firmware.audio_chunk(pcm[i : i + 256])
+            for i in range(0, len(pcm), 256)
+        ]
+        return [firmware.voice_start(), *chunks, firmware.voice_end()]
+
+    def deliver_valid_voice(self, runtime, firmware):
+        firmware.deliver(runtime, *self.valid_voice_messages(firmware))
 
     def test_hello_from_firmware_is_recorded(self):
         runtime, firmware = self.make_runtime()
@@ -198,6 +232,7 @@ class FakeFirmwareProtocolTests(unittest.TestCase):
         self.assertIn(SESSION_TTS_STOP, events)
         self.assertIn(SESSION_SESSION_DONE, events)
         self.assertIn(MSG_SAY, [msg_type for msg_type, _ in firmware.decoded_sent()])
+        self.assertNotIn(SESSION_FOLLOWUP_ARM, firmware.sent_session_events())
 
     def test_wake_without_audio_returns_terminal_error(self):
         runtime, firmware = self.make_runtime()
@@ -288,6 +323,52 @@ class FakeFirmwareProtocolTests(unittest.TestCase):
         events = firmware.sent_session_events()
         self.assertEqual(events[0], SESSION_WAKE_DETECTED)
         self.assertIn(SESSION_SESSION_DONE, events)
+
+    def test_long_tts_reply_is_sent_as_multiple_say_chunks(self):
+        runtime, firmware = self.make_runtime(tts=LongFakeTts())
+
+        self.deliver_valid_voice(runtime, firmware)
+
+        self.assertTrue(wait_for(lambda: runtime.state == "idle"))
+        sent_types = [msg_type for msg_type, _ in firmware.decoded_sent()]
+        self.assertEqual(sent_types.count(MSG_SAY), 6)
+        events = firmware.sent_session_events()
+        self.assertIn(SESSION_TTS_START, events)
+        self.assertIn(SESSION_TTS_STOP, events)
+        self.assertIn(SESSION_SESSION_DONE, events)
+
+    def test_stt_rejection_reports_error_without_tts(self):
+        runtime, firmware = self.make_runtime(stt=NoSpeechStt())
+
+        self.deliver_valid_voice(runtime, firmware)
+
+        self.assertTrue(wait_for(lambda: runtime.state == "idle"))
+        sessions = firmware.sent_sessions()
+        events = [event["event"] for event in sessions]
+        session_errors = [
+            event for event in sessions if event["event"] == SESSION_SESSION_ERROR
+        ]
+        self.assertNotIn(SESSION_TTS_START, events)
+        self.assertEqual(session_errors[-1]["reason"], "stt_rejected")
+        self.assertEqual(events[-1], SESSION_SESSION_DONE)
+
+    def test_tts_failure_reports_error_and_sends_silent_ack(self):
+        runtime, firmware = self.make_runtime(tts=FailingTts())
+
+        self.deliver_valid_voice(runtime, firmware)
+
+        self.assertTrue(wait_for(lambda: runtime.state == "idle"))
+        frames = firmware.decoded_sent()
+        sessions = firmware.sent_sessions()
+        events = [event["event"] for event in sessions]
+        session_errors = [
+            event for event in sessions if event["event"] == SESSION_SESSION_ERROR
+        ]
+        say_payloads = [payload for msg_type, payload in frames if msg_type == MSG_SAY]
+        self.assertIn(SESSION_TTS_START, events)
+        self.assertIn(SESSION_TTS_STOP, events)
+        self.assertEqual(session_errors[-1]["reason"], "tts_failed")
+        self.assertEqual(say_payloads[-1], b"")
 
 
 if __name__ == "__main__":
