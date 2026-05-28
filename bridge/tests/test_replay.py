@@ -11,16 +11,30 @@ from noisebot_bridge.stt import SttResult
 
 class FakeStt:
     ready = True
+    calls = 0
 
     def empty_result(self):
         return SttResult(backend="fake")
 
     def transcribe(self, pcm):
+        self.calls += 1
         return SttResult(
             text="que horas sao",
             no_speech_prob=0.01,
             avg_logprob=-0.2,
             compression_ratio=1.0,
+            backend="fake",
+        )
+
+
+class NoSpeechStt(FakeStt):
+    def transcribe(self, pcm):
+        self.calls += 1
+        return SttResult(
+            text="",
+            no_speech_prob=0.99,
+            avg_logprob=-2.0,
+            compression_ratio=0.0,
             backend="fake",
         )
 
@@ -35,15 +49,18 @@ class FakeTts:
 
 
 class ReplayTests(unittest.TestCase):
+    def write_wav(self, path, pcm):
+        with wave.open(str(path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(np.asarray(pcm, dtype=np.int16).tobytes())
+
     def test_load_audio_accepts_mono_wav(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "sample.wav"
             pcm = np.full(9000, 2000, dtype=np.int16)
-            with wave.open(str(path), "wb") as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(16000)
-                wf.writeframes(pcm.tobytes())
+            self.write_wav(path, pcm)
 
             loaded = load_audio(str(path))
 
@@ -65,6 +82,47 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(data["session"]["session_id"], 1)
         self.assertEqual(data["session"]["route"], "discard")
         self.assertEqual(data["session"]["outcome"], "dry_run_ok")
+
+    def test_replay_good_wav_reaches_stt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "good.wav"
+            pcm = np.full(9000, 2000, dtype=np.int16)
+            self.write_wav(path, pcm)
+            stt = FakeStt()
+
+            result = run_replay(str(path), stt, NoneLlm(), FakeTts(), dry_run=True)
+
+        data = result.to_dict()
+        self.assertEqual(stt.calls, 1)
+        self.assertEqual(data["samples"], 9000)
+        self.assertEqual(data["session"]["outcome"], "dry_run_ok")
+
+    def test_replay_silence_is_rejected_before_stt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "silence.wav"
+            pcm = np.zeros(9000, dtype=np.int16)
+            self.write_wav(path, pcm)
+            stt = FakeStt()
+
+            result = run_replay(str(path), stt, NoneLlm(), FakeTts(), dry_run=False)
+
+        data = result.to_dict()
+        self.assertEqual(stt.calls, 0)
+        self.assertEqual(data["session"]["outcome"], "audio_rejected")
+        self.assertTrue(data["session"]["outcome_detail"].startswith("audio_baixo_"))
+
+    def test_replay_no_speech_stt_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "noise.wav"
+            pcm = np.full(9000, 2000, dtype=np.int16)
+            self.write_wav(path, pcm)
+            stt = NoSpeechStt()
+
+            result = run_replay(str(path), stt, NoneLlm(), FakeTts(), dry_run=False)
+
+        data = result.to_dict()
+        self.assertEqual(stt.calls, 1)
+        self.assertEqual(data["session"]["outcome"], "stt_rejected")
 
 
 if __name__ == "__main__":
