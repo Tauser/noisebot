@@ -1305,11 +1305,10 @@ static esp_err_t phase_services(void)
         update_timer_badge();
     }
 
-    err = vision_service_init();
-    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
-        NB_LOGW(TAG, "vision_service_init falhou: %s — percepcao visual desativada",
-                esp_err_to_name(err));
-    }
+    /* Visão/câmera ficam lazy. Inicializar aqui cria mutex/timer/driver de
+     * câmera antes da voz e consome SRAM interna que o AEC precisa. Os
+     * endpoints /api/vision/observe e /api/camera/snapshot inicializam sob
+     * demanda. */
 
     nb_event_subscribe(NB_EVT_BRIDGE_SESSION, on_bridge_alert_command, NULL, NULL);
 
