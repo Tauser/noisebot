@@ -224,6 +224,7 @@ static struct {
     uint32_t             listen_wait_remaining_ms;    /* espera por 1a fala        */
     uint32_t             listen_speech_elapsed_ms;    /* teto desde fala iniciar   */
     bool                 listen_voice_detected;       /* VAD ativou na sessão    */
+    bool                 listen_skip_preroll;         /* barge-in nao envia TTS antigo */
 } s;
 
 /* ── Fila estática de SAY chunks (sem malloc) ─────────────────────────────── */
@@ -589,7 +590,7 @@ static bool listen_start_bridge_capture(void)
 
     audio_processor_service_bridge_capture_begin();
 
-    uint8_t pr_count = s_preroll_count;
+    uint8_t pr_count = s.listen_skip_preroll ? 0U : s_preroll_count;
     if (pr_count > 0U) {
         uint8_t start = (uint8_t)((s_preroll_head + PREROLL_CHUNKS - pr_count) % PREROLL_CHUNKS);
         for (uint8_t i = 0; i < pr_count; i++) {
@@ -607,6 +608,8 @@ static bool listen_start_bridge_capture(void)
                 s.bridge_audio_sent = true;
             }
         }
+    } else if (s.listen_skip_preroll) {
+        ESP_LOGI(TAG, "pre-roll suprimido para barge-in");
     }
 
     s.bridge_tx_active = true;
@@ -913,6 +916,7 @@ static void audio_task(void *arg)
             if (s.bridge_say_q) {
                 xQueueReset(s.bridge_say_q);
             }
+            (void)audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES, 0);
             if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
             xSemaphoreTake(s.mutex, portMAX_DELAY);
             s.play_state = PLAY_IDLE;
@@ -1273,6 +1277,7 @@ esp_err_t audio_service_init(void)
     s.listen_wait_remaining_ms    = 0;
     s.listen_speech_elapsed_ms    = 0;
     s.listen_voice_detected       = false;
+    s.listen_skip_preroll         = false;
     s_bridge_say_drop_count       = 0;
     s_bridge_say_rx_count         = 0;
     s_bridge_say_play_count       = 0;
@@ -1353,6 +1358,11 @@ esp_err_t audio_play_stop(void)
         s.play_state == PLAY_BRIDGE_SAY ||
         s.bridge_say_playing) {
         s.play_state = PLAY_STOP;
+        s.bridge_say_playing = false;
+        s.bridge_say_empty_ms = 0;
+        if (s.bridge_say_q) {
+            xQueueReset(s.bridge_say_q);
+        }
     }
     xSemaphoreGive(s.mutex);
     return ESP_OK;
@@ -1444,6 +1454,7 @@ esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source
     s.listen_wait_remaining_ms    = LISTEN_WAIT_SPEECH_TIMEOUT_MS;
     s.listen_speech_elapsed_ms    = 0;
     s.listen_voice_detected       = false;
+    s.listen_skip_preroll         = (source == NB_LISTEN_SOURCE_BARGE_IN);
     s.bridge_tx_active            = false;  /* liga apenas quando o VAD detectar fala */
     wake_service_suspend();
     esp_vad_reset();

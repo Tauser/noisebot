@@ -2032,6 +2032,8 @@ Implementação:
 - [x] Wake durante `RESPONDING` passou a abrir escuta como
   `NB_LISTEN_SOURCE_BARGE_IN`, permitindo diferenciar barge-in de wake normal
   nos logs e no tuning de turn-taking.
+- [x] Barge-in passou a suprimir pre-roll antigo e limpar a fila de SAY no stop,
+  evitando que a fala do proprio robo entre no começo do novo turno sem AEC.
 - [x] Server abriu folga de captura para 192000 samples (12 s), evitando que
   fala válida em torno de 10 s seja descartada por alinhamento de chunk
   (`160256/160000`).
