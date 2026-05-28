@@ -9,10 +9,12 @@ from noisebot_bridge.protocol import (
     MSG_EVENT,
     MSG_HELLO,
     MSG_SAY,
+    MSG_SPEECH_CANCEL,
     MSG_SESSION,
     NB_EVT_VOICE_ACTIVITY_END,
     NB_EVT_VOICE_ACTIVITY_START,
     SESSION_FOLLOWUP_ARM,
+    SESSION_ABORT_SPEAKING,
     SESSION_LISTEN_START,
     SESSION_LISTEN_STOP,
     SESSION_SESSION_DONE,
@@ -306,8 +308,11 @@ class FakeFirmwareProtocolTests(unittest.TestCase):
         self.assertTrue(wait_for(lambda: runtime.state == "idle"))
         events = firmware.sent_session_events()
         self.assertEqual(events.count(SESSION_WAKE_DETECTED), 2)
+        self.assertIn(SESSION_ABORT_SPEAKING, events)
         self.assertIn(SESSION_SESSION_DONE, events)
-        self.assertIn(MSG_SAY, [msg_type for msg_type, _ in firmware.decoded_sent()])
+        sent_types = [msg_type for msg_type, _ in firmware.decoded_sent()]
+        self.assertIn(MSG_SPEECH_CANCEL, sent_types)
+        self.assertIn(MSG_SAY, sent_types)
 
     def test_corrupt_frame_is_ignored_before_valid_session(self):
         runtime, firmware = self.make_runtime()

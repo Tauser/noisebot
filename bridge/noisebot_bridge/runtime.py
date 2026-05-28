@@ -9,10 +9,12 @@ from .protocol import (
     MSG_HELLO,
     MSG_AUDIO_CHUNK,
     MSG_EVENT,
+    MSG_SPEECH_CANCEL,
     MSG_SESSION,
     MSG_STATUS,
     NB_EVT_VOICE_ACTIVITY_END,
     NB_EVT_VOICE_ACTIVITY_START,
+    SESSION_ABORT_SPEAKING,
     SESSION_LISTEN_START,
     SESSION_LISTEN_STOP,
     SESSION_SESSION_ERROR,
@@ -107,6 +109,8 @@ class BridgeRuntime:
                     self.set_state("transcribing")
                     threading.Thread(target=self._handle_voice_end_thread, args=(snapshot,), daemon=True).start()
             elif evt_type == NB_EVT_VOICE_ACTIVITY_START:
+                if self.state != "idle":
+                    self.cancel_active_speech("voice_start")
                 self.set_state("receiving_audio")
                 session_id = self.voice.begin_voice()
                 self.log_session_event(SESSION_WAKE_DETECTED, session_id, source="voice_start")
@@ -136,6 +140,16 @@ class BridgeRuntime:
             self.transport.send(encode_frame(MSG_SESSION, payload))
         except Exception as exc:
             log.warning("SESSION v2 envio falhou event=%s session_id=%d: %s", event, session_id, exc)
+
+    def cancel_active_speech(self, reason: str):
+        session_id = self.voice.current_session_id
+        if session_id <= 0:
+            return
+        self.log_session_event(SESSION_ABORT_SPEAKING, session_id, reason=reason)
+        try:
+            self.transport.send(encode_frame(MSG_SPEECH_CANCEL, struct.pack("<I", session_id)))
+        except Exception as exc:
+            log.warning("SPEECH_CANCEL envio falhou session_id=%d: %s", session_id, exc)
 
     def _handle_voice_end_thread(self, snapshot):
         result = self.voice.handle_voice_end(snapshot)

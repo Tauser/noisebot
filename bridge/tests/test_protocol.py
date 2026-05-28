@@ -65,6 +65,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(decoded["audio"]["sample_rate"], 16000)
         self.assertEqual(decoded["audio"]["channels"], 1)
         self.assertEqual(decoded["audio"]["chunk_samples"], 256)
+        self.assertIn("speech_cancel", decoded["tx"])
         self.assertEqual(decoded["codecs"], {"pcm16": True, "opus": False})
         self.assertTrue(decoded["conversation"]["auto"])
         self.assertFalse(decoded["conversation"]["manual"])

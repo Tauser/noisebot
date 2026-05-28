@@ -55,7 +55,18 @@ BRIDGE_HELLO_CAPABILITIES = {
         "device_aec": False,
     },
     "rx": ["audio_chunk", "event", "status", "hello", "session"],
-    "tx": ["say", "expr", "action", "emot_event", "gaze", "text_scroll", "volume", "hello", "session"],
+    "tx": [
+        "say",
+        "expr",
+        "action",
+        "emot_event",
+        "gaze",
+        "text_scroll",
+        "volume",
+        "hello",
+        "session",
+        "speech_cancel",
+    ],
     "features": ["local_intents", "device_commands", "session_metrics", "session_events_v2"],
 }
 
