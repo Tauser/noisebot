@@ -28,8 +28,11 @@ Referências locais analisadas:
 
 ## Decisão Executiva
 
-O próximo avanço deve ser **Conversation Protocol v2 com testes automáticos**,
-não Opus, não AEC e não troca do pipeline de áudio.
+O próximo avanço continua sendo **Conversation Protocol v2 com testes
+automáticos**, não Opus, não AEC e não troca do pipeline de áudio. A primeira
+camada dessa decisão já foi implementada: o bridge agora tem testes de
+capabilities, contrato de sessão e fake firmware byte-compatível para o fluxo
+batch/half-duplex atual.
 
 Motivo:
 
@@ -45,11 +48,11 @@ Motivo:
 
 | Área | XiaoZhi | StackChan | NoiseBot atual | Decisão | Próxima ação | Teste automático |
 | --- | --- | --- | --- | --- | --- | --- |
-| Estados de conversa | `Application` centraliza `Idle`, `Connecting`, `Listening`, `Speaking`; liga voice processing só em `Listening`. | App loop e apps separados; não é motor conversacional principal. | `voice_controller` iniciado, mas ainda há política em firmware/bridge/docs. | Adotar conceito do XiaoZhi, sem portar C++. | Formalizar FSM v2 no bridge e refletir no firmware via eventos. | Simular `wake -> listen -> think -> speak -> idle` sem hardware. |
-| Wake em IDLE | Wake ativo em `Idle`; ao detectar abre canal e muda estado. | Não é referência principal de wake. | Wake local funciona; regressões recentes vieram de filtros agressivos. | Manter caminho atual e só mudar por contrato explícito. | Congelar comportamento atual como caso de teste. | Fake firmware envia wake/listen e valida uma sessão. |
+| Estados de conversa | `Application` centraliza `Idle`, `Connecting`, `Listening`, `Speaking`; liga voice processing só em `Listening`. | App loop e apps separados; não é motor conversacional principal. | `voice_controller` iniciado; bridge já tem eventos v2 e fake firmware para batch/half-duplex. | Adotar conceito do XiaoZhi, sem portar C++. | Evoluir FSM v2 no bridge antes de firmware. | Fake firmware já simula `wake -> listen -> speak -> idle`; falta reconexão e cancelamento explícito. |
+| Wake em IDLE | Wake ativo em `Idle`; ao detectar abre canal e muda estado. | Não é referência principal de wake. | Wake local funciona; regressões recentes vieram de filtros agressivos; caso baseline já está em teste sem hardware. | Manter caminho atual e só mudar por contrato explícito. | Não mexer em threshold/VAD sem falha comprovada e teste. | Fake firmware valida wake/listen, wake sem áudio e áudio fora de sessão. |
 | Escuta durante fala | Em `Speaking`, voice processing fica desligado em modo não realtime; wake pode abortar fala quando suportado. | Expressividade durante fala, não full-duplex agressivo. | Barge-in por wake funciona de forma básica; VAD automático durante TTS causou falso positivo. | Manter half-duplex; realtime só futuro. | Documentar `speaking` como sem captura concorrente por padrão. | Teste `speaking -> wake abort -> no stale SAY`. |
 | Follow-up | Estado/protocolo controla `listen start/stop`; modo realtime separado. | Não é referência principal. | Follow-up automático está em standby. | Manter standby até contrato v2 e testes. | Não reativar follow-up como side-effect. | Teste garante que `FOLLOWUP_ARM` não abre escuta quando feature off. |
-| Protocolo de sessão | WebSocket com `hello`, `listen detect/start/stop`, `abort`, audio params e features. | Integra Xiaozhi como app; não substitui contrato. | TCP próprio já tem `HELLO`, `SESSION`, `SPEECH_CANCEL`, `SAY`, `VOICE_START/END`. | Evoluir protocolo atual, não trocar transporte agora. | Criar/fechar Conversation Protocol v2 no bridge atual. | Testes de schemas e sequências de sessão. |
+| Protocolo de sessão | WebSocket com `hello`, `listen detect/start/stop`, `abort`, audio params e features. | Integra Xiaozhi como app; não substitui contrato. | TCP próprio já tem `HELLO`, `SESSION`, `SPEECH_CANCEL`, `SAY`, `VOICE_START/END`; testes cobrem schemas, sequência e falhas STT/TTS. | Evoluir protocolo atual, não trocar transporte agora. | Fechar reconexão e cancelamento explícito antes de firmware. | `test_protocol.py`, `test_voice_session.py` e `test_fake_firmware.py`. |
 | Capacidades reais | `hello.audio_params` e features negociadas; AEC depende de modo. | CoreS3 informa codec/canais reais. | `HELLO` anuncia PCM e features; `board_caps` bloqueia AEC sem referência. | Adotar negociação forte e não anunciar features falsas. | Expandir `HELLO` com `aec_supported=false`, `realtime=false`, `opus=false`, `afe_opt_in=true`. | Teste do payload `HELLO` e parse de peer caps. |
 | Codec | Opus 16 kHz mono, 60 ms, em WebSocket. | CoreS3 tem codec externo; não implica Opus para NoiseBot. | PCM16 16 kHz mono estável. | Opus fica Fase 6, opcional e com fallback. | Só iniciar Opus depois dos testes do protocolo v2. | Teste deve garantir `pcm16` default e `opus` off. |
 | AFE/VAD | Voice processor ligado só em `Listening`; AFE separado de wake. | CoreS3 hardware ajuda, mas não é igual ao NoiseBot. | AFE VC opt-in passou; RAW teve melhor confiança STT. | Manter RAW padrão, AFE opt-in. | Nenhuma promoção de AFE sem A/B maior. | Teste de config garante AFE off por padrão. |
@@ -61,23 +64,25 @@ Motivo:
 | UI/setup | Status visual claro por estado. | Setup/app center/diagnóstico de produto são fortes. | Dashboard local e overlays existem, mas dev-heavy. | Adotar diagnóstico de produto aos poucos. | Melhorar dashboard depois do protocolo v2. | Teste API local não pode derrubar voz. |
 | Áudio de feedback | Sons curtos para transição de listening/speaking. | Assets/sfx e toasts. | `PODE FALAR`, toasts, overlays. | Manter simples; não usar som que atrapalhe STT. | Só ajustar feedback se houver métrica de não interferência. | Replay de wake sem fala e wake com fala. |
 | Erros | Erros nomeados, network callbacks, abort. | Apps isolam telas e setup. | Já há `SESSION_ERROR`, `FOLLOWUP_CANCEL`, watchdog. | Expandir taxonomia de erro no protocolo v2. | Erros sem silêncio absoluto e sem loop. | Testes STT vazio, LLM falha, TTS falha, timeout. |
-| Replay/testes | Não é foco do firmware, mas arquitetura permite simulação. | Não é referência principal. | Há testes de bridge, voice_session, protocolo e replay. | Virar requisito antes de firmware novo. | Criar suite de Conversation Protocol v2 antes de codar firmware. | CI/pytest com fake firmware e sequências ruins. |
+| Replay/testes | Não é foco do firmware, mas arquitetura permite simulação. | Não é referência principal. | Há testes de bridge, voice_session, protocolo, replay e fake firmware; suíte atual: 135 testes verdes. | Virar requisito antes de firmware novo. | Expandir para reconexão, fixtures WAV reais e cancelamento explícito. | CI/pytest com fake firmware e sequências ruins. |
 | Dependências | C++ amplo, esp-sr, esp-audio-codec, WebSocket, MCP. | Mooncake UI, M5Stack, codecs CoreS3, app mobile. | C17 por regra, C++ apenas display. | Não importar dependências inteiras sem necessidade/licença. | Portar conceitos, não árvores de código. | Revisão de licença por item antes de dependência nova. |
 
 ## Ordem Correta a Partir de Agora
 
-1. **Protocol v2 em testes automáticos**
+1. **Protocol v2 em testes automáticos** — iniciado/concluído para o contrato
+   batch atual.
    - Definir payloads `HELLO`, `SESSION`, `LISTEN_START`, `LISTEN_STOP`,
      `SPEAK_START`, `SPEAK_STOP`, `ABORT_SPEAKING`.
    - Garantir que `pcm16` continua padrão.
    - Garantir que `opus`, `realtime`, `aec` e `followup` não são anunciados como
      ativos quando estão desligados.
 
-2. **Fake firmware / replay de protocolo**
+2. **Fake firmware / replay de protocolo** — iniciado.
    - Simular firmware enviando `HELLO`, `VOICE_START`, `AUDIO_CHUNK`,
      `VOICE_END`.
-   - Simular `VOICE_START` durante `SPEAKING` para validar cancelamento.
-   - Simular frames corrompidos, timeouts e reconexão.
+   - Simular frames corrompidos, áudio fora de sessão, sessões vazias e falhas
+     STT/TTS.
+   - Próximo: simular reconexão e cancelamento explícito de fala.
 
 3. **FSM de conversa no bridge**
    - Estados mínimos: `idle`, `listening`, `transcribing`, `thinking`,
@@ -130,14 +135,13 @@ Antes de qualquer fase nova:
 
 ## Próximo Item Recomendado
 
-Criar testes automáticos de **Conversation Protocol v2** no bridge:
+Expandir os testes automáticos de **Conversation Protocol v2** no bridge para os
+pontos ainda não cobertos:
 
-- `test_hello_capabilities_truthful`
-- `test_wake_listen_speak_idle_sequence`
-- `test_speaking_abort_discards_stale_say`
-- `test_followup_arm_ignored_when_feature_off`
-- `test_protocol_keeps_pcm16_default`
-- `test_aec_realtime_opus_not_advertised_when_disabled`
+- reconexão TCP/UART sem sessão pendente;
+- cancelamento explícito de fala antes de qualquer novo ajuste no firmware;
+- fixtures WAV reais boas/ruins entrando no replay;
+- long-run automatizado curto para detectar estado fantasma.
 
 Essa etapa não exige flash, não exige falar com o robô e reduz o risco de novas
 rodadas manuais de wake/listening.

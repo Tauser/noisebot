@@ -2527,7 +2527,23 @@ Metas de produto:
 
 **Contexto:** XiaoZhi usa um contrato explícito de conversa (`hello`, `listen/detect`, `listen/start`, `listen/stop`) e audio channel sob demanda. O NoiseBot hoje usa um protocolo funcional, mas ainda muito próximo de PCM/eventos de protótipo. Esta etapa define uma versão v2 sem quebrar a v1.
 
-**Status atual:** concluída e validada. O bridge mantém handshake v1 vazio e anuncia `HELLO` v2 em runtime; firmware atualizado responde com capabilities v2 quando recebe esse `HELLO`, preservando compatibilidade com bridge v1. A telemetria v2 de sessão já registra e envia via `MSG_SESSION` os eventos `WAKE_DETECTED`, `LISTEN_START`, `LISTEN_STOP`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `TTS_STOP`, `SESSION_DONE` e `SESSION_ERROR`; o firmware recebe/loga de forma passiva.
+**Status atual:** concluída para contrato batch/half-duplex e em regressão
+automática. O bridge mantém handshake v1 vazio e anuncia `HELLO` v2 em runtime;
+firmware atualizado responde com capabilities v2 quando recebe esse `HELLO`,
+preservando compatibilidade com bridge v1. A telemetria v2 de sessão já registra
+e envia via `MSG_SESSION` os eventos `WAKE_DETECTED`, `LISTEN_START`,
+`LISTEN_STOP`, `TRANSCRIBE_START`, `THINKING_START`, `TTS_START`, `TTS_STOP`,
+`SESSION_DONE` e `SESSION_ERROR`; o firmware recebe/loga de forma passiva. O
+fake firmware em `bridge/tests/test_fake_firmware.py` cobre o protocolo sem
+hardware: handshake, wake/listen/speak/idle, wake sem áudio, áudio fora de
+sessão, frame corrompido, sessão vazia seguida de sessão válida, resposta longa
+em chunks, STT rejeitado e falha de TTS. A suíte do bridge está verde com 135
+testes.
+
+**Limites explícitos:** follow-up automático permanece em standby e não deve ser
+reativado como efeito colateral. Barge-in full-duplex/realtime continua futuro:
+sem AEC/AFE validado, o comportamento suportado é half-duplex com wake word
+obrigatório para nova interação.
 
 **O que entra:**
 
@@ -2567,6 +2583,13 @@ Metas de produto:
 - [x] Queda de bridge durante sessão gera `SESSION_ERROR` nomeado e estado limpo.
 - [x] O protocolo v2 pode ser testado em unidade sem hardware.
 - [x] Firmware loga `MSG_SESSION` passivo em hardware após build/flash do commit `9f86b54`.
+- [x] Fake firmware valida sessão completa, sessão vazia, áudio fora de sessão e
+      frames corrompidos sem hardware.
+- [x] Falhas de STT/TTS geram eventos terminais nomeados e não deixam sessão
+      pendente.
+- [ ] Reconexão TCP/UART coberta por teste automático.
+- [ ] Cancelamento explícito de fala (`SPEECH_CANCEL`/turn id no fio) coberto
+      por teste antes de qualquer nova mudança no firmware.
 
 ---
 

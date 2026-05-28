@@ -408,11 +408,21 @@ Critérios de aceite:
 
 ### Fase 8 — Produto e Regressão Contínua
 
+Status: iniciada no bridge. A regressão automatizada de protocolo agora cobre o
+contrato sem hardware via `bridge/tests/test_fake_firmware.py`. O fake firmware
+simula `HELLO`, `VOICE_START`, `AUDIO_CHUNK`, `VOICE_END`, frames corrompidos,
+áudio fora de sessão, sessão vazia seguida de sessão válida, resposta longa em
+chunks, STT rejeitado e falha de TTS. A suíte do bridge está verde com 135
+testes. Isso não substitui o checklist físico do robô, mas impede que a camada
+de protocolo volte a aceitar áudio fantasma, responder wake vazio ou mascarar
+falhas de STT/TTS.
+
 Objetivo: manter o ciclo funcionando conforme novas features entram.
 
 Mudanças:
 
 - Criar replay de sessões reais boas e ruins.
+- Manter fake firmware byte-compatível com o protocolo atual.
 - Testar localmente:
   - wake sem fala;
   - fala curta;
@@ -426,8 +436,16 @@ Mudanças:
 Critérios de aceite:
 
 - Nenhuma release sai sem passar o replay básico.
-- Toda regressão de voz vira caso de teste.
+- Fake firmware cobre wake/listen/speak/idle e falhas STT/TTS sem hardware.
+- Toda regressão de voz vira caso de teste antes de mexer em firmware.
 - Dashboard dev mostra causa provável antes do usuário precisar ler log.
+
+Pendências:
+
+- Adicionar teste de reconexão TCP/UART no fake firmware.
+- Adicionar fixture/replay de WAVs reais bons e ruins.
+- Só reabrir follow-up automático ou barge-in full-duplex depois de contrato de
+  cancelamento explícito e AEC/AFE validado.
 
 ## Ordem Recomendada
 
