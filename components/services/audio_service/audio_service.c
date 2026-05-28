@@ -1522,6 +1522,27 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
     if (!s.initialized || !samples || count == 0) return;
     if (count > NB_BRIDGE_AUDIO_CHUNK_SAMPLES) count = NB_BRIDGE_AUDIO_CHUNK_SAMPLES;
 
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    bool listening = s.listen_session_active;
+    if (listening) {
+        s.play_state = PLAY_IDLE;
+        s.bridge_say_playing = false;
+        s.bridge_say_empty_ms = 0;
+        if (s.bridge_say_q) {
+            xQueueReset(s.bridge_say_q);
+        }
+    }
+    xSemaphoreGive(s.mutex);
+
+    if (listening) {
+        s_bridge_say_drop_count++;
+        if ((s_bridge_say_drop_count % 32U) == 1U) {
+            ESP_LOGW(TAG, "Bridge SAY descartado durante escuta drops=%lu",
+                     (unsigned long)s_bridge_say_drop_count);
+        }
+        return;
+    }
+
     bridge_say_item_t item;
     item.count = count;
     memcpy(item.samples, samples, count * sizeof(int16_t));

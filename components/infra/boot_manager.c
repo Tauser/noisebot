@@ -387,6 +387,11 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             bus_evt.type = NB_EVT_VOICE_ACTIVITY_END;
             break;
         case NB_AUDIO_EVT_PLAYBACK_START:
+            if (audio_service_is_listening()) {
+                NB_LOGW(TAG, "PLAYBACK_START ignorado durante escuta ativa");
+                audio_play_stop();
+                return;
+            }
             s_bridge_reply_playing = (data == 0U);
             state_machine_on_audio_started();
             bus_evt.type = NB_EVT_AUDIO_STARTED;
