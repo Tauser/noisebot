@@ -23,6 +23,7 @@ MSG_EMOT_EVENT = 0x13
 MSG_GAZE = 0x14
 MSG_TEXT_SCROLL = 0x15
 MSG_VOLUME = 0x16
+MSG_SPEECH_CANCEL = 0x20
 
 NB_EVT_VOICE_ACTIVITY_START = 9
 NB_EVT_VOICE_ACTIVITY_END = 10
@@ -37,6 +38,22 @@ BRIDGE_HELLO_CAPABILITIES = {
         "channels": 1,
         "chunk_samples": 256,
     },
+    "codecs": {
+        "pcm16": True,
+        "opus": False,
+    },
+    "conversation": {
+        "auto": True,
+        "manual": False,
+        "followup": False,
+        "realtime": False,
+    },
+    "audio_processor": {
+        "afe_opt_in": True,
+        "afe_default": False,
+        "aec_supported": False,
+        "device_aec": False,
+    },
     "rx": ["audio_chunk", "event", "status", "hello", "session"],
     "tx": ["say", "expr", "action", "emot_event", "gaze", "text_scroll", "volume", "hello", "session"],
     "features": ["local_intents", "device_commands", "session_metrics", "session_events_v2"],
@@ -49,6 +66,11 @@ SESSION_TRANSCRIBE_START = "TRANSCRIBE_START"
 SESSION_THINKING_START = "THINKING_START"
 SESSION_TTS_START = "TTS_START"
 SESSION_TTS_STOP = "TTS_STOP"
+SESSION_SPEAK_START = "SPEAK_START"
+SESSION_SPEAK_STOP = "SPEAK_STOP"
+SESSION_ABORT_SPEAKING = "ABORT_SPEAKING"
+SESSION_FOLLOWUP_ARM = "FOLLOWUP_ARM"
+SESSION_FOLLOWUP_CANCEL = "FOLLOWUP_CANCEL"
 SESSION_SESSION_DONE = "SESSION_DONE"
 SESSION_SESSION_ERROR = "SESSION_ERROR"
 

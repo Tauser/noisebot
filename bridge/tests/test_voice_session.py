@@ -341,6 +341,26 @@ class VoiceSessionTests(unittest.TestCase):
         frames = decode_frames(bytearray(transport.sent[-1][1]))
         self.assertEqual(frames[0][0], MSG_SESSION)
 
+    def test_voice_start_during_active_session_discards_stale_audio(self):
+        transport = NullTransport()
+        runtime = VoiceSessionRuntime(transport, FakeStt(), NoneLlm(), FakeTts(), dry_run=True)
+        old_audio = np.full(256, 1000, dtype=np.int16)
+        new_audio = np.full(512, 2000, dtype=np.int16)
+
+        first_session_id = runtime.begin_voice()
+        runtime.append_audio_chunk(old_audio.tobytes())
+        second_session_id = runtime.begin_voice()
+        runtime.append_audio_chunk(new_audio.tobytes())
+
+        stale_snapshot = runtime.snapshot_voice_session(first_session_id, end_reason="replaced")
+        fresh_snapshot = runtime.snapshot_voice_session(second_session_id, end_reason="silence")
+
+        self.assertIsNone(stale_snapshot)
+        self.assertIsNotNone(fresh_snapshot)
+        self.assertEqual(fresh_snapshot.session_id, second_session_id)
+        self.assertEqual(len(fresh_snapshot.audio_chunks), 1)
+        np.testing.assert_array_equal(fresh_snapshot.audio_chunks[0], new_audio)
+
     def test_real_mode_device_intent_dispatches_command(self):
         transport = NullTransport()
         events = []
