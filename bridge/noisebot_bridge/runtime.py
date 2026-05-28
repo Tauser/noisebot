@@ -84,14 +84,20 @@ class BridgeRuntime:
             return
 
         if msg_type == MSG_AUDIO_CHUNK:
-            self.set_state("receiving_audio")
-            self.voice.append_audio_chunk(payload)
+            if self.voice.streaming:
+                self.set_state("receiving_audio")
+                self.voice.append_audio_chunk(payload)
+            else:
+                log.debug("AUDIO_CHUNK fora de sessão ativa — ignorando")
             return
 
         if msg_type == MSG_EVENT and len(payload) >= 4:
             evt_type = struct.unpack_from("<I", payload)[0]
             log.info("EVENT evt_type=%d", evt_type)
             if evt_type == NB_EVT_VOICE_ACTIVITY_END:
+                if not self.voice.streaming and not self.voice.audio_buf:
+                    log.debug("VOICE_END fora de sessão ativa — ignorando")
+                    return
                 reason_code = struct.unpack_from("<I", payload, 4)[0] if len(payload) >= 8 else None
                 end_reason = self.voice.voice_end_reason_name(reason_code)
                 log.info("VOICE_END recebido — processando reason=%s session_id=%d", end_reason, self.voice.current_session_id)

@@ -15,6 +15,7 @@ from noisebot_bridge.protocol import (
     SESSION_LISTEN_START,
     SESSION_LISTEN_STOP,
     SESSION_SESSION_DONE,
+    SESSION_SESSION_ERROR,
     SESSION_TTS_START,
     SESSION_TTS_STOP,
     SESSION_WAKE_DETECTED,
@@ -205,12 +206,49 @@ class FakeFirmwareProtocolTests(unittest.TestCase):
 
         self.assertTrue(wait_for(lambda: runtime.state == "idle"))
         events = firmware.sent_sessions()
+        sent_types = [msg_type for msg_type, _ in firmware.decoded_sent()]
         self.assertEqual(events[0]["event"], SESSION_WAKE_DETECTED)
         self.assertEqual(events[1]["event"], SESSION_LISTEN_START)
         self.assertEqual(events[2]["event"], SESSION_LISTEN_STOP)
-        self.assertEqual(events[-2]["event"], "SESSION_ERROR")
+        self.assertEqual(events[-2]["event"], SESSION_SESSION_ERROR)
         self.assertEqual(events[-2]["reason"], "audio_rejected")
         self.assertEqual(events[-1]["event"], SESSION_SESSION_DONE)
+        self.assertNotIn(MSG_SAY, sent_types)
+
+    def test_audio_chunk_outside_voice_session_is_ignored(self):
+        runtime, firmware = self.make_runtime()
+
+        firmware.deliver(
+            runtime,
+            firmware.audio_chunk(np.full(9000, 2000, dtype=np.int16)),
+            firmware.voice_end(),
+        )
+
+        self.assertTrue(wait_for(lambda: runtime.state == "idle"))
+        self.assertEqual(firmware.sent_sessions(), [])
+        self.assertEqual(firmware.decoded_sent(), [])
+
+    def test_empty_session_does_not_contaminate_next_valid_session(self):
+        runtime, firmware = self.make_runtime()
+        pcm = np.full(9000, 2000, dtype=np.int16)
+        chunks = [
+            firmware.audio_chunk(pcm[i : i + 256])
+            for i in range(0, len(pcm), 256)
+        ]
+
+        firmware.deliver(runtime, firmware.voice_start(), firmware.voice_end())
+        self.assertTrue(wait_for(lambda: runtime.state == "idle"))
+        firmware.deliver(runtime, firmware.voice_start(), *chunks, firmware.voice_end())
+
+        self.assertTrue(wait_for(lambda: runtime.state == "idle"))
+        sessions = firmware.sent_sessions()
+        session_ids = {event["session_id"] for event in sessions}
+        self.assertEqual(session_ids, {1, 2})
+        self.assertEqual(firmware.sent_session_events().count(SESSION_SESSION_DONE), 2)
+        self.assertEqual(
+            [msg_type for msg_type, _ in firmware.decoded_sent()].count(MSG_SAY),
+            1,
+        )
 
     def test_voice_start_during_speaking_discards_previous_audio(self):
         runtime, firmware = self.make_runtime()
