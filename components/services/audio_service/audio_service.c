@@ -1475,7 +1475,10 @@ esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source
         } else {
             ESP_LOGI(TAG, "[ PODE FALAR ]");
         }
-        if (listen_start_bridge_capture()) {
+        if (source == NB_LISTEN_SOURCE_WAKE_WORD) {
+            ESP_LOGI(TAG, "captura bridge aguardando VAD source=%s",
+                     listen_source_name(source));
+        } else if (listen_start_bridge_capture()) {
             ESP_LOGI(TAG, "bridge captura aberta imediatamente source=%s",
                      listen_source_name(source));
         } else {
