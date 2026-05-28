@@ -18,10 +18,21 @@ typedef enum {
     VOICE_PENDING_NONE = 0,
     VOICE_PENDING_WAKE_WORD,
     VOICE_PENDING_FOLLOWUP,
+    VOICE_PENDING_BARGE_IN,
 } voice_pending_listen_t;
 
 static bool s_initialized;
 static voice_pending_listen_t s_pending_listen = VOICE_PENDING_NONE;
+
+static const char *pending_listen_name(voice_pending_listen_t pending)
+{
+    switch (pending) {
+        case VOICE_PENDING_WAKE_WORD: return "wake_word";
+        case VOICE_PENDING_FOLLOWUP:  return "followup";
+        case VOICE_PENDING_BARGE_IN:  return "barge_in";
+        default:                      return "none";
+    }
+}
 
 esp_err_t voice_controller_init(void)
 {
@@ -49,9 +60,11 @@ bool voice_controller_on_wake_word_detected(void)
     if (st == NB_STATE_RESPONDING) {
         ESP_LOGI(TAG, "wake word durante RESPONDING: interrompendo fala");
         audio_play_stop();
+        s_pending_listen = VOICE_PENDING_BARGE_IN;
+    } else {
+        s_pending_listen = VOICE_PENDING_WAKE_WORD;
     }
 
-    s_pending_listen = VOICE_PENDING_WAKE_WORD;
     state_machine_on_wake_word();
     if (state_machine_get_state() != NB_STATE_ATTENTIVE) {
         s_pending_listen = VOICE_PENDING_NONE;
@@ -79,10 +92,15 @@ static void begin_pending_listen(void)
         case VOICE_PENDING_FOLLOWUP:
             source = NB_LISTEN_SOURCE_FOLLOWUP;
             break;
+        case VOICE_PENDING_BARGE_IN:
+            source = NB_LISTEN_SOURCE_BARGE_IN;
+            break;
         default:
             return;
     }
 
+    ESP_LOGI(TAG, "abrindo escuta source=%s",
+             pending_listen_name(s_pending_listen));
     if (audio_service_begin_listen_session(source) == ESP_OK) {
         ui_overlay_listening_set(true);
     }
