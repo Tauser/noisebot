@@ -2029,6 +2029,9 @@ Implementação:
 - [x] `voice_controller` iniciado como ponto unico para wake word, follow-up e
   efeitos principais de `ATTENTIVE`/`RESPONDING`, reduzindo politica
   conversacional espalhada no `boot_manager`.
+- [x] Wake durante `RESPONDING` passou a abrir escuta como
+  `NB_LISTEN_SOURCE_BARGE_IN`, permitindo diferenciar barge-in de wake normal
+  nos logs e no tuning de turn-taking.
 - [x] Server abriu folga de captura para 192000 samples (12 s), evitando que
   fala válida em torno de 10 s seja descartada por alinhamento de chunk
   (`160256/160000`).

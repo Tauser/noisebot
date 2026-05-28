@@ -44,8 +44,10 @@
 /* overhead fixo: SOF(1) + LEN(2) + TYPE(1) + CRC(1) = 5 bytes */
 #define FRAME_OVERHEAD   5u
 
-/* tamanho máximo de frame: maior payload é AUDIO_CHUNK = 256×2 = 512 bytes */
-#define FRAME_MAX_PAYLOAD  (NB_BRIDGE_AUDIO_CHUNK_SAMPLES * 2u)
+/* AUDIO_CHUNK usa 512 bytes, mas mensagens JSON de controle (SESSION/HELLO)
+ * podem ser maiores. Mantemos 1KB para evitar resync em metadados sem mudar o
+ * contrato de chunk PCM. */
+#define FRAME_MAX_PAYLOAD  1024u
 #define FRAME_MAX_SIZE     (FRAME_OVERHEAD + FRAME_MAX_PAYLOAD)
 
 static const char BRIDGE_HELLO_V2[] =
