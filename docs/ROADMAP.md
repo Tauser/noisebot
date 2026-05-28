@@ -2026,6 +2026,9 @@ Implementação:
 - [x] Timeout de `LISTENING` após barge-in deixou de virar `SESSION_ERROR`:
   ausência de nova fala agora encerra o turno como `listen_timeout` e cancela
   follow-up de forma limpa.
+- [x] `voice_controller` iniciado como ponto unico para wake word, follow-up e
+  efeitos principais de `ATTENTIVE`/`RESPONDING`, reduzindo politica
+  conversacional espalhada no `boot_manager`.
 - [x] Server abriu folga de captura para 192000 samples (12 s), evitando que
   fala válida em torno de 10 s seja descartada por alinhamento de chunk
   (`160256/160000`).

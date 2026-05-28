@@ -92,6 +92,7 @@ components/
 ├── behavior/
 │   ├── CMakeLists.txt
 │   ├── behavior_engine.c / .h   # Roteamento de eventos → ações
+│   ├── voice_controller.c/.h    # Política de wake/listening/speaking
 │   ├── state_machine.c / .h     # Estados de alto nível do robot
 │   └── emotion_model.c / .h     # Vetor (valência, ativação), decaimento
 │
@@ -117,6 +118,16 @@ No perfil atual:
 
 Isso segue a mesma ideia de `Board/GetAudioCodec` em XiaoZhi/StackChan, mas em
 C17 e respeitando as camadas do NoiseBot.
+
+### Voice Controller
+
+`behavior/voice_controller` concentra a politica conversacional que antes ficava
+espalhada no `boot_manager`: wake word aceita/ignorada por estado, interrupcao
+de resposta, abertura de escuta por wake/follow-up, overlay de listening e
+suspensao/rearme do WakeNet nas transicoes principais.
+
+O `boot_manager` continua sendo a ponte de boot/event bus, mas o controlador de
+voz passa a ser o ponto unico para regras de turn-taking no firmware.
 
 ---
 

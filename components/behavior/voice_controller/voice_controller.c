@@ -1,0 +1,135 @@
+/*
+ * voice_controller.c - Politica de turn-taking de voz do NoiseBot (Layer 6)
+ */
+
+#include "voice_controller.h"
+
+#include "audio_service.h"
+#include "led_service.h"
+#include "synth_service.h"
+#include "ui_overlay_service.h"
+#include "wake_service.h"
+
+#include "esp_log.h"
+
+#define TAG "nb_voice_ctl"
+
+typedef enum {
+    VOICE_PENDING_NONE = 0,
+    VOICE_PENDING_WAKE_WORD,
+    VOICE_PENDING_FOLLOWUP,
+} voice_pending_listen_t;
+
+static bool s_initialized;
+static voice_pending_listen_t s_pending_listen = VOICE_PENDING_NONE;
+
+esp_err_t voice_controller_init(void)
+{
+    if (s_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    s_pending_listen = VOICE_PENDING_NONE;
+    s_initialized = true;
+    return ESP_OK;
+}
+
+bool voice_controller_on_wake_word_detected(void)
+{
+    nb_robot_state_t st = state_machine_get_state();
+    if (st != NB_STATE_IDLE &&
+        st != NB_STATE_SLEEPING &&
+        st != NB_STATE_TOUCH_REACTING &&
+        st != NB_STATE_RESPONDING) {
+        ESP_LOGI(TAG, "wake word ignorada em estado %s",
+                 state_machine_state_name(st));
+        return false;
+    }
+
+    if (st == NB_STATE_RESPONDING) {
+        ESP_LOGI(TAG, "wake word durante RESPONDING: interrompendo fala");
+        audio_play_stop();
+    }
+
+    s_pending_listen = VOICE_PENDING_WAKE_WORD;
+    state_machine_on_wake_word();
+    if (state_machine_get_state() != NB_STATE_ATTENTIVE) {
+        s_pending_listen = VOICE_PENDING_NONE;
+    }
+    return true;
+}
+
+void voice_controller_request_followup_listen(void)
+{
+    s_pending_listen = VOICE_PENDING_FOLLOWUP;
+    state_machine_on_followup_listen();
+    if (state_machine_get_state() != NB_STATE_ATTENTIVE) {
+        s_pending_listen = VOICE_PENDING_NONE;
+    }
+}
+
+static void begin_pending_listen(void)
+{
+    nb_listen_source_t source;
+
+    switch (s_pending_listen) {
+        case VOICE_PENDING_WAKE_WORD:
+            source = NB_LISTEN_SOURCE_WAKE_WORD;
+            break;
+        case VOICE_PENDING_FOLLOWUP:
+            source = NB_LISTEN_SOURCE_FOLLOWUP;
+            break;
+        default:
+            return;
+    }
+
+    if (audio_service_begin_listen_session(source) == ESP_OK) {
+        ui_overlay_listening_set(true);
+    }
+    s_pending_listen = VOICE_PENDING_NONE;
+}
+
+void voice_controller_on_state_changed(nb_robot_state_t new_state,
+                                       nb_robot_state_t old_state)
+{
+    if (!s_initialized) {
+        return;
+    }
+
+    if (old_state == NB_STATE_ATTENTIVE && new_state != NB_STATE_ATTENTIVE) {
+        led_base_set(NB_LED_BASE_ATTENTIVE, false);
+        if (audio_service_is_listening()) {
+            ui_overlay_listening_set(false);
+            audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
+        }
+    }
+
+    if (old_state == NB_STATE_RESPONDING && new_state != NB_STATE_RESPONDING) {
+        led_base_set(NB_LED_BASE_RESPONDING, false);
+    }
+
+    switch (new_state) {
+        case NB_STATE_ATTENTIVE:
+            synth_stop();
+            begin_pending_listen();
+            led_base_set(NB_LED_BASE_ATTENTIVE, true);
+            break;
+        case NB_STATE_RESPONDING:
+            synth_stop();
+            led_base_set(NB_LED_BASE_RESPONDING, true);
+            wake_service_suspend();
+            break;
+        case NB_STATE_SLEEPING:
+        case NB_STATE_MEDITATION:
+        case NB_STATE_SILENT_COMPANY:
+            wake_service_suspend();
+            s_pending_listen = VOICE_PENDING_NONE;
+            break;
+        case NB_STATE_IDLE:
+            s_pending_listen = VOICE_PENDING_NONE;
+            wake_service_rearm();
+            break;
+        default:
+            break;
+    }
+}

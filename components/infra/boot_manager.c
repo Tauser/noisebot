@@ -46,6 +46,7 @@
 #include "diagnostics_service.h"
 #include "schedule_service.h"
 #include "behavior_engine.h"
+#include "voice_controller.h"
 #include "sound_analysis_service.h"
 #include "synth_service.h"
 #include "attention_service.h"
@@ -94,8 +95,6 @@ static nb_boot_status_t s_status = {
 static bool     s_initialized       = false;
 static uint32_t s_silence_ms        = 0;    /* ms sem interação — acumula em IDLE/SLEEPING */
 static bool     s_milestone_100h    = false; /* greet especial de 100h pendente ao primeiro IDLE */
-static bool     s_wake_word_triggered = false; /* sinaliza que ATTENTIVE foi ativado via wake word */
-static bool     s_followup_listen_triggered = false; /* ATTENTIVE abriu por continuacao de conversa */
 static bool     s_bridge_reply_playing = false; /* PLAYBACK atual veio de SAY do bridge */
 static uint32_t s_sleep_touch_guard_ms = 0; /* ignora toque residual ao entrar em SLEEPING */
 static uint32_t s_sleep_wake_guard_ms  = 0; /* evita falso wake word logo após dormir */
@@ -402,9 +401,7 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             if (start_followup &&
                 bridge_service_is_connected() &&
                 bridge_service_consume_followup_request()) {
-                s_followup_listen_triggered = true;
-                state_machine_on_followup_listen();
-                s_followup_listen_triggered = false;
+                voice_controller_request_followup_listen();
             }
             bus_evt.type = NB_EVT_AUDIO_ENDED;
             break;
@@ -536,67 +533,26 @@ static void on_state_changed(nb_robot_state_t new_state,
         s_sleep_wake_guard_ms = 0u;
     }
 
-    if (old_state == NB_STATE_ATTENTIVE && new_state != NB_STATE_ATTENTIVE) {
-        led_base_set(NB_LED_BASE_ATTENTIVE, false);
-        if (audio_service_is_listening()) {
-            ui_overlay_listening_set(false);
-            audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
-        }
-    }
-    if (old_state == NB_STATE_RESPONDING && new_state != NB_STATE_RESPONDING) {
-        led_base_set(NB_LED_BASE_RESPONDING, false);
-    }
     if (old_state == NB_STATE_SLEEPING && new_state != NB_STATE_SLEEPING) {
         led_base_set(NB_LED_BASE_SLEEPING, false);
     }
 
-    /* LED + sessão de escuta + synth para transições de estado. */
+    voice_controller_on_state_changed(new_state, old_state);
+
+    /* Transições comportamentais não relacionadas diretamente ao pipeline de voz. */
     switch (new_state) {
-        case NB_STATE_ATTENTIVE:
-            /* Escuta ativa abre apenas por wake word. Touch fica reservado para interação afetiva. */
-            synth_stop();
-            if (s_wake_word_triggered) {
-                if (audio_service_begin_listen_session(NB_LISTEN_SOURCE_WAKE_WORD) == ESP_OK) {
-                    ui_overlay_listening_set(true);
-                }
-                s_wake_word_triggered = false;
-            } else if (s_followup_listen_triggered) {
-                if (audio_service_begin_listen_session(NB_LISTEN_SOURCE_FOLLOWUP) == ESP_OK) {
-                    ui_overlay_listening_set(true);
-                }
-                s_followup_listen_triggered = false;
-            }
-            led_base_set(NB_LED_BASE_ATTENTIVE, true);
-            break;
-        case NB_STATE_RESPONDING:
-            synth_stop();
-            led_base_set(NB_LED_BASE_RESPONDING, true);
-            wake_service_suspend();
-            break;
         case NB_STATE_SLEEPING:
             led_base_set(NB_LED_BASE_SLEEPING, true);
-            wake_service_suspend();
             break;
         case NB_STATE_MEDITATION:
             led_base_set(NB_LED_BASE_MEDITATION, true);
-            wake_service_suspend();
             break;
         case NB_STATE_SILENT_COMPANY:
             led_base_set(NB_LED_BASE_SILENT_COMPANY, true);
-            wake_service_suspend();
             break;
         case NB_STATE_IDLE:
-            s_wake_word_triggered = false;
-            s_followup_listen_triggered = false;
             if (old_state == NB_STATE_ATTENTIVE) {
-                led_base_set(NB_LED_BASE_ATTENTIVE, false);
                 expression_service_set(NB_EXPR_NEUTRAL, 600.0f);
-                /* Encerra sessão se ainda ativa (fallback — normalmente VOICE_END
-                 * já a fechou antes desta transição). */
-                if (audio_service_is_listening()) {
-                    ui_overlay_listening_set(false);
-                    audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
-                }
             } else if (old_state == NB_STATE_MEDITATION) {
                 led_base_set(NB_LED_BASE_MEDITATION, false);
                 synth_stop();
@@ -616,7 +572,6 @@ static void on_state_changed(nb_robot_state_t new_state,
                 nb_event_t me = { .type = NB_EVT_MILESTONE_UPTIME_100H };
                 nb_event_publish_async(&me);
             }
-            wake_service_rearm();
             break;
         default: break;
     }
@@ -854,22 +809,7 @@ static void on_circadian_phase(const nb_event_t *ev, void *ctx)
 static void on_wake_word_detected(const nb_event_t *evt, void *ctx)
 {
     (void)evt; (void)ctx;
-    nb_robot_state_t st = state_machine_get_state();
-    if (st != NB_STATE_IDLE &&
-        st != NB_STATE_SLEEPING &&
-        st != NB_STATE_TOUCH_REACTING &&
-        st != NB_STATE_RESPONDING) {
-        NB_LOGI(TAG, "wake word ignorada em estado %s",
-                state_machine_state_name(st));
-        return;
-    }
-    if (st == NB_STATE_RESPONDING) {
-        NB_LOGI(TAG, "wake word durante RESPONDING: interrompendo fala");
-        audio_play_stop();
-    }
-    s_wake_word_triggered = true;
-    state_machine_on_wake_word();
-    s_wake_word_triggered = false;  /* garante reset mesmo se SM não transitou */
+    (void)voice_controller_on_wake_word_detected();
 }
 
 
@@ -1194,6 +1134,10 @@ static esp_err_t phase_services(void)
                               s_status.safe_mode,
                               on_state_changed);
     NB_ASSERT(err == ESP_OK, TAG, "state_machine_init falhou: %s",
+              esp_err_to_name(err));
+
+    err = voice_controller_init();
+    NB_ASSERT(err == ESP_OK, TAG, "voice_controller_init falhou: %s",
               esp_err_to_name(err));
 
     /* NVS pode ter SLEEPY gravado de um boot anterior ao fix. Substituir por

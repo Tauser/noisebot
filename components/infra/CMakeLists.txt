@@ -46,6 +46,7 @@ idf_component_register(
         conductor
         schedule_service
         behavior_engine
+        voice_controller
         long_term_memory
         sound_analysis_service
         synth_service

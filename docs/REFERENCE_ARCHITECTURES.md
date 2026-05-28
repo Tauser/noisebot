@@ -76,6 +76,9 @@ Adotar no NoiseBot:
 - politica unica de pipeline de voz: wake ativo em estados permitidos, voice
   processor ativo apenas durante `listening`, e `speaking` sem captura de voz
   concorrente exceto quando houver modo realtime explicitamente medido.
+- um controlador de voz dedicado, no estilo da `Application` do XiaoZhi, para
+  que wake/listening/speaking/follow-up nao fiquem espalhados por callbacks de
+  boot.
 
 Nao adotar diretamente:
 
@@ -117,6 +120,8 @@ Nao adotar diretamente:
 - Criar overlays de listening/speaking/error no NoiseBot.
 - Centralizar capacidades reais de hardware e bloquear features incompatíveis
   por contrato, nao por tentativa em runtime.
+- Iniciar `voice_controller` como dono incremental das regras de turn-taking no
+  firmware.
 
 ### Medio Prazo
 
