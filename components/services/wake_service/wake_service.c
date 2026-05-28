@@ -462,3 +462,24 @@ float wake_service_get_threshold(void)
 {
     return WAKE_WAKENET_THRESHOLD;
 }
+
+bool wake_service_get_last_detection_stats(nb_wake_detection_stats_t *out)
+{
+    if (!out) {
+        return false;
+    }
+
+    if (s.mutex) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+    }
+    out->raw_rms = s.last_raw_rms;
+    out->raw_peak = s.last_raw_peak;
+    out->gain_min = s.last_gain_min;
+    out->gain_max = s.last_gain_max;
+    out->post_peak = s.last_post_peak;
+    out->saturated = s.last_saturated;
+    if (s.mutex) {
+        xSemaphoreGive(s.mutex);
+    }
+    return true;
+}

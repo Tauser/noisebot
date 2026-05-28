@@ -82,6 +82,11 @@
 #define NVS_NS_MILESTONE        "nb_ms"
 #define NVS_KEY_MS_H100         "ms_h100"
 
+/* Enquanto não houver classificação robusta de fala dirigida ao robô, follow-up
+ * automático abre o microfone para conversa ambiente. Primeiro contato e nova
+ * fala continuam exigindo wake word explícita. */
+#define NB_VOICE_AUTO_FOLLOWUP_ENABLED 0
+
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
 static nb_boot_status_t s_status = {
@@ -406,7 +411,11 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             if (start_followup &&
                 bridge_service_is_connected() &&
                 bridge_service_consume_followup_request()) {
+#if NB_VOICE_AUTO_FOLLOWUP_ENABLED
                 voice_controller_request_followup_listen();
+#else
+                NB_LOGI(TAG, "FOLLOWUP_ARM ignorado; aguardando wake word");
+#endif
             }
             bus_evt.type = NB_EVT_AUDIO_ENDED;
             break;

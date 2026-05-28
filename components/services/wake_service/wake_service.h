@@ -34,6 +34,15 @@
 extern "C" {
 #endif
 
+typedef struct {
+    uint32_t raw_rms;
+    uint16_t raw_peak;
+    uint16_t gain_min;
+    uint16_t gain_max;
+    uint16_t post_peak;
+    uint16_t saturated;
+} nb_wake_detection_stats_t;
+
 /**
  * @brief Inicializa o wake_service.
  *
@@ -70,6 +79,14 @@ uint32_t wake_service_get_detect_count(void);
  * @brief Threshold de detecção configurado (0.0–1.0).
  */
 float wake_service_get_threshold(void);
+
+/**
+ * @brief Copia as métricas da última detecção aceita pelo WakeNet.
+ *
+ * Usado por camadas superiores para aplicar política de produto, por exemplo
+ * rejeitar primeiro contato fraco/distante sem alterar o detector global.
+ */
+bool wake_service_get_last_detection_stats(nb_wake_detection_stats_t *out);
 
 /**
  * @brief Suspende temporariamente o WakeNet e limpa o buffer do AFE.

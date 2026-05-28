@@ -14,6 +14,10 @@
 
 #define TAG "nb_voice_ctl"
 
+#define FIRST_CONTACT_MIN_RAW_RMS    260U
+#define FIRST_CONTACT_MIN_RAW_PEAK   800U
+#define FIRST_CONTACT_MIN_POST_PEAK 10000U
+
 typedef enum {
     VOICE_PENDING_NONE = 0,
     VOICE_PENDING_WAKE_WORD,
@@ -32,6 +36,28 @@ static const char *pending_listen_name(voice_pending_listen_t pending)
         case VOICE_PENDING_BARGE_IN:  return "barge_in";
         default:                      return "none";
     }
+}
+
+static bool first_contact_wake_is_too_weak(void)
+{
+    nb_wake_detection_stats_t stats;
+    if (!wake_service_get_last_detection_stats(&stats)) {
+        return false;
+    }
+
+    bool weak = stats.raw_rms < FIRST_CONTACT_MIN_RAW_RMS
+             && stats.raw_peak < FIRST_CONTACT_MIN_RAW_PEAK
+             && stats.post_peak < FIRST_CONTACT_MIN_POST_PEAK;
+    if (weak) {
+        ESP_LOGW(TAG,
+                 "wake word rejeitada em IDLE — energia baixa raw_rms=%lu raw_peak=%u gain=%u..%u post_peak=%u",
+                 (unsigned long)stats.raw_rms,
+                 (unsigned)stats.raw_peak,
+                 (unsigned)stats.gain_min,
+                 (unsigned)stats.gain_max,
+                 (unsigned)stats.post_peak);
+    }
+    return weak;
 }
 
 esp_err_t voice_controller_init(void)
@@ -54,6 +80,11 @@ bool voice_controller_on_wake_word_detected(void)
         st != NB_STATE_RESPONDING) {
         ESP_LOGI(TAG, "wake word ignorada em estado %s",
                  state_machine_state_name(st));
+        return false;
+    }
+
+    if (st == NB_STATE_IDLE && first_contact_wake_is_too_weak()) {
+        wake_service_rearm();
         return false;
     }
 
