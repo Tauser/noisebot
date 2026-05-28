@@ -257,6 +257,18 @@ A/B curto RAW vs AFE em 2026-05-27 (`docs/VOICE_AB_PHASE5_8192.md`):
 - Decisão: AFE candidata; coletar mais repetições com frases variadas antes de
   promover como padrão.
 
+A/B controlado RAW vs AFE em 2026-05-28:
+
+- Firmware AFE opt-in subiu em runtime com `processed_bridge_enabled=true`.
+- Custo observado do shadow AFE: ~128 KB de PSRAM.
+- Rodada AFE: `processed_bridge_chunks=3922`, `fallbacks=36`,
+  `overruns=0`, `shadow_fetch_nulls=0`.
+- STT AFE: 3/3 `GOOD`, `no_speech` médio `0.007`, `logprob` médio `-0.54`.
+- STT RAW: 3/3 `GOOD`, `no_speech` médio `0.007`, `logprob` médio `-0.37`.
+- Decisão: AFE aprovado como experimento opt-in e saudável, mas ainda não
+  promovido para padrão porque o RAW teve confiança STT melhor nesta rodada.
+  Manter RAW como padrão e repetir A/B maior antes de qualquer promoção.
+
 Guard de idioma em 2026-05-27:
 
 - O prompt da LLM exige resposta em português do Brasil.
@@ -339,8 +351,9 @@ Critérios de aceite:
 
 Pendências para promover AFE:
 
-- Rodar bateria A/B maior com 3 a 5 frases diferentes.
+- Rodar bateria A/B maior com 5 a 10 frases diferentes.
 - Exigir zero overrun e fallback baixo/estável.
+- Exigir ganho claro de STT contra RAW, não apenas estabilidade do pipeline.
 - Confirmar que respostas longas não aumentam `timeout` ou `audio_longo`.
 - Só então ligar fonte AFE como padrão do bridge, mantendo fallback RAW.
 

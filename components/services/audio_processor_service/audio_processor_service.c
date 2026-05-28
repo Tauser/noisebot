@@ -32,8 +32,8 @@
 #define FEED_BUF_MAX            512U
 #define PROCESSED_RING_SAMPLES  8192U
 #define SHADOW_LOG_FETCH_CHUNKS 250U
-#define AFE_MIN_INTERNAL_FREE_KB 96U
-#define AFE_MIN_DMA_LARGEST_KB   48U
+#define AFE_MIN_INTERNAL_FREE_KB 32U
+#define AFE_MIN_DMA_LARGEST_KB   32U
 
 typedef struct {
     nb_audio_processor_status_t status;
@@ -597,7 +597,19 @@ esp_err_t audio_processor_service_shadow_start(void)
              s.status.fetch_chunksize);
     xSemaphoreGive(s.mutex);
 
-    BaseType_t rc = xTaskCreatePinnedToCore(
+    BaseType_t rc;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+    rc = xTaskCreateWithCaps(
+        shadow_task,
+        "nb_afe_shadow",
+        SHADOW_TASK_STACK,
+        NULL,
+        SHADOW_TASK_PRIORITY,
+        &s.task,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT
+    );
+#else
+    rc = xTaskCreatePinnedToCore(
         shadow_task,
         "nb_afe_shadow",
         SHADOW_TASK_STACK,
@@ -606,6 +618,7 @@ esp_err_t audio_processor_service_shadow_start(void)
         &s.task,
         SHADOW_TASK_CORE
     );
+#endif
     if (rc != pdPASS) {
         (void)audio_processor_service_shadow_stop();
         return ESP_ERR_NO_MEM;
