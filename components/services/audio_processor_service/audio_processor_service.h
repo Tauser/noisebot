@@ -29,6 +29,8 @@ typedef struct {
     bool probe_ok;
     bool aec_probe_ran;
     bool aec_probe_ok;
+    bool aec_supported;
+    bool aec_blocked_no_reference;
     bool shadow_active;
     bool shadow_stop_requested;
     bool processed_bridge_enabled;

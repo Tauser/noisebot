@@ -9,4 +9,5 @@ idf_component_register(
         esp_timer
         nvs_flash
         espressif__esp-sr
+        nb_hal
 )

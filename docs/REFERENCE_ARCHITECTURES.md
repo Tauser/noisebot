@@ -73,6 +73,9 @@ Adotar no NoiseBot:
 - handshake de capacidades;
 - erros nomeados e sem silencio absoluto;
 - replay offline para testar STT/routing sem acordar o robo.
+- politica unica de pipeline de voz: wake ativo em estados permitidos, voice
+  processor ativo apenas durante `listening`, e `speaking` sem captura de voz
+  concorrente exceto quando houver modo realtime explicitamente medido.
 
 Nao adotar diretamente:
 
@@ -80,6 +83,29 @@ Nao adotar diretamente:
 - inicializacao monolitica;
 - comandos que passam ao redor do event bus;
 - presuncao de hardware CoreS3/codec ES7210.
+
+### Audio, Codec e AEC
+
+XiaoZhi/StackChan nao tratam AEC como recurso generico do ESP32-S3. O AEC no
+dispositivo depende da placa: `AudioCodec` informa se ha `input_reference()` e
+quantos canais entram no AFE. No CoreS3/StackChan, o codec ES7210/AW88298
+oferece caminho full-duplex com canal limpo de referencia do speaker. No
+NoiseBot atual, INMP441 + MAX98357A nao fornece esse canal.
+
+Adotar no NoiseBot:
+
+- descritor de capacidades da placa (`nb_board_caps_t`) como fonte de verdade;
+- device AEC condicionado a `supports_device_aec`;
+- `input_format` do ESP-SR derivado das capacidades reais, nao de tentativa;
+- endpoint de diagnostico explicando quando AEC foi bloqueado por falta de
+  referencia fisica.
+
+Nao adotar diretamente:
+
+- habilitar `MR`/`MMR` sem canal `R` real;
+- importar `esp_codec_dev`/`esp_audio_codec` antes de existir codec externo;
+- usar AEC para mascarar problema de turn-taking, wake rearm ou contrato de
+  sessao.
 
 ## Mapa de Adoção
 
@@ -89,6 +115,8 @@ Nao adotar diretamente:
 - Formalizar intents e device commands.
 - Adicionar diagnostico de sessao e replay.
 - Criar overlays de listening/speaking/error no NoiseBot.
+- Centralizar capacidades reais de hardware e bloquear features incompatíveis
+  por contrato, nao por tentativa em runtime.
 
 ### Medio Prazo
 
@@ -111,4 +139,3 @@ Nao adotar diretamente:
 - Nenhum movimento novo ignora `motion_safety`.
 - Nenhum codigo externo entra sem revisao de licenca e necessidade tecnica.
 - Cada port deve ter criterio de aceitacao e rollback claro.
-

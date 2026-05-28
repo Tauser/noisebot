@@ -2075,7 +2075,7 @@ Implementação:
 
 **Dependências:** 12.10 validada com 1 mic; 12.11 concluída
 **Hardware necessário:** Protótipo com segundo microfone ou codec adequado
-**Status:** Adiada por decisão de produto — não desenvolver até haver hardware/necessidade real
+**Status:** Adiada por decisão de produto — não desenvolver até haver hardware/necessidade real. O firmware agora declara essa limitação via `nb_board_caps_t` e bloqueia AEC de dispositivo quando a placa não tem referência limpa de playback.
 
 **Contexto:** StackChan/CoreS3 usa dual microphones e codec ES7210, mas dois microfones não corrigem bugs de sessão, bridge, wake rearm ou timeouts. A avaliação dual mic só deve acontecer depois que 1 mic + AFE/VADNet + bridge estiver estável.
 
@@ -2097,6 +2097,13 @@ Investigação:
 - AEC:
   - só habilitar se houver referência digital limpa do speaker;
   - não misturar com mute heurístico sem medição.
+- Implementação base no firmware:
+  - `nb_board_caps_t` declara `audio_input_reference=false` e
+    `supports_device_aec=false` para o hardware INMP441 + MAX98357A atual;
+  - `CONFIG_NB_USE_DEVICE_AEC` depende de
+    `CONFIG_NB_BOARD_HAS_AUDIO_REFERENCE`;
+  - `/api/audio/processor/aec/probe` retorna bloqueio explícito quando não há
+    referência, em vez de tentar criar AFE `MR` como se a placa fosse CoreS3.
 
 **Critérios de decisão:**
 

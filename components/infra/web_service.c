@@ -1298,11 +1298,13 @@ static esp_err_t send_audio_processor_status(httpd_req_t *req, esp_err_t probe_e
     nb_audio_processor_status_t st;
     audio_processor_service_get_status(&st);
 
-    char buf[1536];
+    char buf[1664];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"enabled\":%s,"
              "\"probe_ran\":%s,\"probe_ok\":%s,"
              "\"aec_probe_ran\":%s,\"aec_probe_ok\":%s,"
+             "\"aec_supported\":%s,"
+             "\"aec_blocked_no_reference\":%s,"
              "\"shadow_active\":%s,\"shadow_stop_requested\":%s,"
              "\"processed_bridge_enabled\":%s,"
              "\"processed_capture_active\":%s,"
@@ -1340,6 +1342,8 @@ static esp_err_t send_audio_processor_status(httpd_req_t *req, esp_err_t probe_e
              st.probe_ok ? "true" : "false",
              st.aec_probe_ran ? "true" : "false",
              st.aec_probe_ok ? "true" : "false",
+             st.aec_supported ? "true" : "false",
+             st.aec_blocked_no_reference ? "true" : "false",
              st.shadow_active ? "true" : "false",
              st.shadow_stop_requested ? "true" : "false",
              st.processed_bridge_enabled ? "true" : "false",

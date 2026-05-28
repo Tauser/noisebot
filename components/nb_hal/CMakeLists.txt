@@ -25,6 +25,7 @@ idf_component_register(
         "touch_hal.c"
         "servo_hal.c"
         "audio_hal.c"
+        "board_caps.c"
         "i2c_hal.c"
         "camera_hal.c"
     INCLUDE_DIRS "."

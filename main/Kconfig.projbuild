@@ -1,5 +1,26 @@
 menu "NoiseBot"
 
+    menu "Audio"
+
+        config NB_BOARD_HAS_AUDIO_REFERENCE
+            bool "Board has clean speaker reference input"
+            default n
+            help
+                Enable only on hardware with a real, clean speaker reference
+                channel wired into the audio input path. The current NoiseBot
+                board uses INMP441 + MAX98357A without that reference path.
+
+        config NB_USE_DEVICE_AEC
+            bool "Enable device-side AEC"
+            default n
+            depends on NB_BOARD_HAS_AUDIO_REFERENCE
+            help
+                Device-side AEC requires a clean output reference path from the
+                speaker signal plus acoustic isolation. Keep disabled on the
+                current mono-mic/no-reference hardware profile.
+
+    endmenu
+
     menu "Camera"
 
         config NB_CAMERA_DIAG_ENABLED

@@ -3,6 +3,7 @@
  */
 
 #include "audio_processor_service.h"
+#include "board_caps.h"
 
 #include "esp_afe_sr_iface.h"
 #include "esp_afe_sr_models.h"
@@ -89,6 +90,14 @@ static bool afe_runtime_heap_ok(void)
 {
     return internal_free_kb() >= AFE_MIN_INTERNAL_FREE_KB &&
            dma_largest_kb() >= AFE_MIN_DMA_LARGEST_KB;
+}
+
+static void update_board_caps_locked(void)
+{
+    const nb_board_caps_t *caps = nb_board_caps_get();
+    bool supported = caps != NULL && caps->supports_device_aec;
+    s.status.aec_supported = supported;
+    s.status.aec_blocked_no_reference = !supported;
 }
 
 static bool probe_enabled_from_nvs(void)
@@ -392,8 +401,18 @@ esp_err_t audio_processor_service_aec_probe_once(void)
         s.status.aec_psram_before_kb = psram_free_kb();
         s.status.aec_psram_after_create_kb = 0;
         s.status.aec_psram_after_destroy_kb = 0;
+        update_board_caps_locked();
         update_heap_status_locked();
         xSemaphoreGive(s.mutex);
+    }
+
+    if (!nb_board_caps_get()->supports_device_aec) {
+        ESP_LOGW(TAG,
+                 "AEC probe bloqueado: placa sem canal limpo de referencia do speaker");
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s.status.aec_last_error = ESP_ERR_NOT_SUPPORTED;
+        xSemaphoreGive(s.mutex);
+        return ESP_ERR_NOT_SUPPORTED;
     }
 
     if (!afe_runtime_heap_ok()) {
@@ -804,6 +823,8 @@ esp_err_t audio_processor_service_init(void)
     }
     s.status.initialized = true;
     s.status.last_error = ESP_OK;
+    s.status.aec_last_error = ESP_OK;
+    update_board_caps_locked();
     update_heap_status_locked();
     s.status.enabled = probe_enabled_from_nvs();
 
@@ -828,6 +849,7 @@ void audio_processor_service_get_status(nb_audio_processor_status_t *out)
     if (s.mutex) {
         xSemaphoreTake(s.mutex, portMAX_DELAY);
         s.status.shadow_psram_current_kb = psram_free_kb();
+        update_board_caps_locked();
         update_heap_status_locked();
         *out = s.status;
         xSemaphoreGive(s.mutex);

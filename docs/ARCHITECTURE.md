@@ -67,6 +67,7 @@ components/
 │   ├── display_lgfx_config.hpp  # Configuração do panel ST7789
 │   ├── servo_hal.c / .h         # UART + protocolo SCSCL Feetech
 │   ├── audio_hal.c / .h         # I2S0 (mic) + I2S1 (speaker)
+│   ├── board_caps.c / .h        # Capacidades reais da placa (AEC, canais, camera)
 │   ├── led_hal.c / .h           # RMT + WS2812
 │   ├── touch_hal.c / .h         # Touch peripheral ESP32-S3
 │   ├── sd_hal.c / .h            # SPI3 + FATFS + mount
@@ -99,6 +100,23 @@ components/
     ├── persona_service.c / .h   # Persona seed, preferências, modulação
     └── long_term_memory.c / .h  # interaction_history, event_journal, stats
 ```
+
+### Capacidades de Placa
+
+`nb_hal/board_caps` declara capacidades fisicas do hardware ativo. Servicos de
+camadas superiores devem consultar esse contrato antes de habilitar features
+sensíveis a topologia de hardware.
+
+No perfil atual:
+
+- audio full-duplex em I2S0 compartilhado;
+- 1 canal de microfone (`INMP441`);
+- 1 canal de speaker (`MAX98357A`);
+- sem canal limpo de referencia do speaker;
+- device-side AEC desabilitado por contrato.
+
+Isso segue a mesma ideia de `Board/GetAudioCodec` em XiaoZhi/StackChan, mas em
+C17 e respeitando as camadas do NoiseBot.
 
 ---
 
