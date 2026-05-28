@@ -374,12 +374,22 @@ Mudanças:
 - Usar referência do speaker se o caminho de áudio permitir.
 - Ativar `realtime` apenas com AEC validado.
 - Server deve distinguir fala do usuário de eco do TTS.
+- O AEC agora tem probe próprio em `/api/audio/processor/aec/probe`: ele cria
+  um AFE `MR` com AEC, mede PSRAM/heap interno/DMA e destrói antes de retornar.
+  O caminho principal não ativa AEC se a margem de heap estiver baixa.
+
+Nota de bancada em 2026-05-27: a tentativa de promover WakeNet `MR + AEC`
+direto para runtime compilou, mas no hardware causou pressão de memória
+observada como `sdmmc_read_sectors: not enough mem`, degradação do SD e queda
+de WiFi/bridge. A decisão correta é manter AEC fora do caminho principal até o
+probe passar com margem e sem regressão em SD/WiFi.
 
 Critérios de aceite:
 
 - Usuário consegue interromper o robô falando por cima.
 - O próprio TTS não reabre escuta falsa.
 - Sem loops de escuta/resposta.
+- Sem regressão de SD/WiFi/bridge durante ou após o probe.
 
 ### Fase 8 — Produto e Regressão Contínua
 

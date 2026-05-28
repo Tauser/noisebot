@@ -31,6 +31,8 @@
 #define FEED_BUF_MAX            512U
 #define PROCESSED_RING_SAMPLES  8192U
 #define SHADOW_LOG_FETCH_CHUNKS 250U
+#define AFE_MIN_INTERNAL_FREE_KB 96U
+#define AFE_MIN_DMA_LARGEST_KB   48U
 
 typedef struct {
     nb_audio_processor_status_t status;
@@ -55,6 +57,40 @@ static uint32_t psram_free_kb(void)
     return (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024U);
 }
 
+static uint32_t internal_free_kb(void)
+{
+    return (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024U);
+}
+
+static uint32_t internal_largest_kb(void)
+{
+    return (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024U);
+}
+
+static uint32_t dma_free_kb(void)
+{
+    return (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_DMA) / 1024U);
+}
+
+static uint32_t dma_largest_kb(void)
+{
+    return (uint32_t)(heap_caps_get_largest_free_block(MALLOC_CAP_DMA) / 1024U);
+}
+
+static void update_heap_status_locked(void)
+{
+    s.status.internal_free_kb = internal_free_kb();
+    s.status.internal_largest_kb = internal_largest_kb();
+    s.status.dma_free_kb = dma_free_kb();
+    s.status.dma_largest_kb = dma_largest_kb();
+}
+
+static bool afe_runtime_heap_ok(void)
+{
+    return internal_free_kb() >= AFE_MIN_INTERNAL_FREE_KB &&
+           dma_largest_kb() >= AFE_MIN_DMA_LARGEST_KB;
+}
+
 static bool probe_enabled_from_nvs(void)
 {
     bool enabled = false;
@@ -69,8 +105,12 @@ static bool probe_enabled_from_nvs(void)
     return enabled;
 }
 
-static esp_err_t create_vc_afe(const esp_afe_sr_iface_t **handle_out,
-                               esp_afe_sr_data_t **data_out)
+static esp_err_t create_afe_instance(const char *input_format,
+                                     afe_type_t type,
+                                     afe_mode_t mode,
+                                     bool enable_aec,
+                                     const esp_afe_sr_iface_t **handle_out,
+                                     esp_afe_sr_data_t **data_out)
 {
     srmodel_list_t *models = NULL;
     afe_config_t *cfg = NULL;
@@ -85,19 +125,21 @@ static esp_err_t create_vc_afe(const esp_afe_sr_iface_t **handle_out,
         goto done;
     }
 
-    cfg = afe_config_init("M", models, AFE_TYPE_VC, AFE_MODE_HIGH_PERF);
+    cfg = afe_config_init(input_format, models, type, mode);
     if (cfg == NULL) {
-        ESP_LOGE(TAG, "afe_config_init(AFE_TYPE_VC) falhou");
+        ESP_LOGE(TAG, "afe_config_init(%s) falhou", input_format);
         err = ESP_FAIL;
         goto done;
     }
 
-    /* Probe mono sem referência de speaker: AEC e SE ficam desligados até o
-     * hardware de referência estar validado. Mantemos VAD/NS/AGC conforme o
-     * default do AFE VC para medir o custo real do modo de voz. */
-    cfg->aec_init = false;
+    /* SE fica desligado no hardware mono. O AEC só entra nos probes dedicados;
+     * o runtime principal continua opt-in e protegido por margem de heap. */
+    cfg->aec_init = enable_aec;
     cfg->se_init = false;
     cfg->wakenet_init = false;
+    if (enable_aec) {
+        cfg->aec_mode = AEC_MODE_SR_HIGH_PERF;
+    }
     cfg->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
 
     afe_config_check(cfg);
@@ -143,6 +185,20 @@ done:
         esp_srmodel_deinit(models);
     }
     return err;
+}
+
+static esp_err_t create_vc_afe(const esp_afe_sr_iface_t **handle_out,
+                               esp_afe_sr_data_t **data_out)
+{
+    return create_afe_instance("M", AFE_TYPE_VC, AFE_MODE_HIGH_PERF, false,
+                               handle_out, data_out);
+}
+
+static esp_err_t create_aec_probe_afe(const esp_afe_sr_iface_t **handle_out,
+                                      esp_afe_sr_data_t **data_out)
+{
+    return create_afe_instance("MR", AFE_TYPE_SR, AFE_MODE_HIGH_PERF, true,
+                               handle_out, data_out);
 }
 
 static void update_io_status_locked(void)
@@ -269,6 +325,7 @@ esp_err_t audio_processor_service_probe_once(void)
         s.status.probe_ok = false;
         s.status.last_error = ESP_FAIL;
         s.status.psram_before_kb = psram_free_kb();
+        update_heap_status_locked();
         s.status.psram_after_create_kb = 0;
         s.status.psram_after_destroy_kb = 0;
         s.status.feed_chunksize = 0;
@@ -313,6 +370,79 @@ esp_err_t audio_processor_service_probe_once(void)
     ESP_LOGI(TAG, "probe AFE VC finalizado — err=%s PSRAM apos destroy=%lu KB",
              esp_err_to_name(err),
              (unsigned long)s.status.psram_after_destroy_kb);
+    xSemaphoreGive(s.mutex);
+    return err;
+}
+
+esp_err_t audio_processor_service_aec_probe_once(void)
+{
+    const esp_afe_sr_iface_t *handle = NULL;
+    esp_afe_sr_data_t *data = NULL;
+
+    if (s.mutex) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        if (s.status.shadow_active) {
+            xSemaphoreGive(s.mutex);
+            return ESP_ERR_INVALID_STATE;
+        }
+        s.status.aec_probe_ran = true;
+        s.status.aec_probe_ok = false;
+        s.status.aec_last_error = ESP_FAIL;
+        s.status.aec_psram_before_kb = psram_free_kb();
+        s.status.aec_psram_after_create_kb = 0;
+        s.status.aec_psram_after_destroy_kb = 0;
+        update_heap_status_locked();
+        xSemaphoreGive(s.mutex);
+    }
+
+    if (!afe_runtime_heap_ok()) {
+        ESP_LOGW(TAG,
+                 "AEC probe bloqueado por margem de heap — internal=%lu KB dma_largest=%lu KB",
+                 (unsigned long)internal_free_kb(),
+                 (unsigned long)dma_largest_kb());
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s.status.aec_last_error = ESP_ERR_NO_MEM;
+        xSemaphoreGive(s.mutex);
+        return ESP_ERR_NO_MEM;
+    }
+
+    ESP_LOGI(TAG, "probe AEC iniciado — PSRAM antes=%lu KB internal=%lu KB dma_largest=%lu KB",
+             (unsigned long)s.status.aec_psram_before_kb,
+             (unsigned long)internal_free_kb(),
+             (unsigned long)dma_largest_kb());
+
+    esp_err_t err = create_aec_probe_afe(&handle, &data);
+    if (err == ESP_OK) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s.handle = handle;
+        s.data = data;
+        s.status.aec_psram_after_create_kb = psram_free_kb();
+        update_io_status_locked();
+        update_heap_status_locked();
+        s.status.aec_probe_ok = true;
+        ESP_LOGI(TAG,
+                 "probe AEC OK — PSRAM apos create=%lu KB feed=%d fetch=%d feed_ch=%d fetch_ch=%d",
+                 (unsigned long)s.status.aec_psram_after_create_kb,
+                 s.status.feed_chunksize,
+                 s.status.fetch_chunksize,
+                 s.status.feed_channels,
+                 s.status.fetch_channels);
+        s.handle = NULL;
+        s.data = NULL;
+        xSemaphoreGive(s.mutex);
+    }
+
+    if (handle != NULL && data != NULL) {
+        handle->destroy(data);
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s.status.aec_psram_after_destroy_kb = psram_free_kb();
+    update_heap_status_locked();
+    s.status.aec_last_error = err;
+    ESP_LOGI(TAG, "probe AEC finalizado — err=%s PSRAM apos destroy=%lu KB",
+             esp_err_to_name(err),
+             (unsigned long)s.status.aec_psram_after_destroy_kb);
     xSemaphoreGive(s.mutex);
     return err;
 }
@@ -382,6 +512,7 @@ esp_err_t audio_processor_service_shadow_start(void)
     }
     s.status.shadow_psram_start_kb = psram_free_kb();
     s.status.shadow_psram_current_kb = s.status.shadow_psram_start_kb;
+    update_heap_status_locked();
     s.status.shadow_feed_chunks = 0;
     s.status.shadow_fetch_chunks = 0;
     s.status.shadow_fetch_nulls = 0;
@@ -395,6 +526,21 @@ esp_err_t audio_processor_service_shadow_start(void)
     s.status.processed_capture_active = false;
     s.status.shadow_stop_requested = false;
     s.feed_pos = 0;
+    xSemaphoreGive(s.mutex);
+
+    if (!afe_runtime_heap_ok()) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s.status.last_error = ESP_ERR_NO_MEM;
+        update_heap_status_locked();
+        xSemaphoreGive(s.mutex);
+        ESP_LOGW(TAG,
+                 "shadow AFE bloqueado por margem de heap — internal=%lu KB dma_largest=%lu KB",
+                 (unsigned long)internal_free_kb(),
+                 (unsigned long)dma_largest_kb());
+        return ESP_ERR_NO_MEM;
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
     esp_err_t ring_err = processed_ring_ensure_locked();
     xSemaphoreGive(s.mutex);
 
@@ -420,6 +566,7 @@ esp_err_t audio_processor_service_shadow_start(void)
     s.data = data;
     s.status.shadow_active = true;
     s.status.shadow_psram_current_kb = psram_free_kb();
+    update_heap_status_locked();
     update_io_status_locked();
     s.status.last_error = ESP_OK;
     ESP_LOGI(TAG,
@@ -485,6 +632,7 @@ esp_err_t audio_processor_service_shadow_stop(void)
 
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     s.status.shadow_psram_current_kb = psram_free_kb();
+    update_heap_status_locked();
     ESP_LOGI(TAG,
              "shadow AFE parado — feed=%lu fetch=%lu nulls=%lu drops=%lu psram=%lu KB",
              (unsigned long)s.status.shadow_feed_chunks,
@@ -655,6 +803,7 @@ esp_err_t audio_processor_service_init(void)
     }
     s.status.initialized = true;
     s.status.last_error = ESP_OK;
+    update_heap_status_locked();
     s.status.enabled = probe_enabled_from_nvs();
 
     if (!s.status.enabled) {
@@ -678,6 +827,7 @@ void audio_processor_service_get_status(nb_audio_processor_status_t *out)
     if (s.mutex) {
         xSemaphoreTake(s.mutex, portMAX_DELAY);
         s.status.shadow_psram_current_kb = psram_free_kb();
+        update_heap_status_locked();
         *out = s.status;
         xSemaphoreGive(s.mutex);
     } else {

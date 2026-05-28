@@ -27,6 +27,8 @@ typedef struct {
     bool enabled;
     bool probe_ran;
     bool probe_ok;
+    bool aec_probe_ran;
+    bool aec_probe_ok;
     bool shadow_active;
     bool shadow_stop_requested;
     bool processed_bridge_enabled;
@@ -34,6 +36,13 @@ typedef struct {
     uint32_t psram_before_kb;
     uint32_t psram_after_create_kb;
     uint32_t psram_after_destroy_kb;
+    uint32_t aec_psram_before_kb;
+    uint32_t aec_psram_after_create_kb;
+    uint32_t aec_psram_after_destroy_kb;
+    uint32_t internal_free_kb;
+    uint32_t internal_largest_kb;
+    uint32_t dma_free_kb;
+    uint32_t dma_largest_kb;
     uint32_t shadow_psram_start_kb;
     uint32_t shadow_psram_current_kb;
     uint32_t shadow_feed_chunks;
@@ -52,6 +61,7 @@ typedef struct {
     int fetch_channels;
     int sample_rate_hz;
     esp_err_t last_error;
+    esp_err_t aec_last_error;
 } nb_audio_processor_status_t;
 
 /**
@@ -70,6 +80,15 @@ esp_err_t audio_processor_service_init(void);
  * destruído antes do retorno.
  */
 esp_err_t audio_processor_service_probe_once(void);
+
+/**
+ * @brief Executa um probe curto de AEC, sem alimentar áudio.
+ *
+ * Cria um AFE_TYPE_SR em formato "MR" com AEC habilitado e destrói antes de
+ * retornar. Serve apenas para medir se o custo de memória cabe no firmware
+ * atual antes de qualquer promoção para runtime.
+ */
+esp_err_t audio_processor_service_aec_probe_once(void);
 
 /**
  * @brief Inicia shadow mode.
