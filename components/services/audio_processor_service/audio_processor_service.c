@@ -138,7 +138,8 @@ static esp_err_t create_afe_instance(const char *input_format,
     cfg->se_init = false;
     cfg->wakenet_init = false;
     if (enable_aec) {
-        cfg->aec_mode = AEC_MODE_SR_HIGH_PERF;
+        cfg->aec_mode = AEC_MODE_VOIP_HIGH_PERF;
+        cfg->vad_init = false;
     }
     cfg->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
 
@@ -197,7 +198,7 @@ static esp_err_t create_vc_afe(const esp_afe_sr_iface_t **handle_out,
 static esp_err_t create_aec_probe_afe(const esp_afe_sr_iface_t **handle_out,
                                       esp_afe_sr_data_t **data_out)
 {
-    return create_afe_instance("MR", AFE_TYPE_SR, AFE_MODE_HIGH_PERF, true,
+    return create_afe_instance("MR", AFE_TYPE_VC, AFE_MODE_HIGH_PERF, true,
                                handle_out, data_out);
 }
 

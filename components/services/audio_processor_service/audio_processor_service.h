@@ -84,8 +84,8 @@ esp_err_t audio_processor_service_probe_once(void);
 /**
  * @brief Executa um probe curto de AEC, sem alimentar áudio.
  *
- * Cria um AFE_TYPE_SR em formato "MR" com AEC habilitado e destrói antes de
- * retornar. Serve apenas para medir se o custo de memória cabe no firmware
+ * Cria um AFE_TYPE_VC em formato "MR" com AEC VoIP habilitado e destrói antes
+ * de retornar. Serve apenas para medir se o custo de memória cabe no firmware
  * atual antes de qualquer promoção para runtime.
  */
 esp_err_t audio_processor_service_aec_probe_once(void);

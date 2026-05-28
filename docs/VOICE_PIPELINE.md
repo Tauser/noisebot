@@ -374,9 +374,11 @@ Mudanças:
 - Usar referência do speaker se o caminho de áudio permitir.
 - Ativar `realtime` apenas com AEC validado.
 - Server deve distinguir fala do usuário de eco do TTS.
-- O AEC agora tem probe próprio em `/api/audio/processor/aec/probe`: ele cria
-  um AFE `MR` com AEC, mede PSRAM/heap interno/DMA e destrói antes de retornar.
-  O caminho principal não ativa AEC se a margem de heap estiver baixa.
+- O AEC agora tem probe próprio em `/api/audio/processor/aec/probe`: alinhado
+  ao Xiaozhi, ele cria um AFE `MR` de voz (`AFE_TYPE_VC` +
+  `AEC_MODE_VOIP_HIGH_PERF`), mede PSRAM/heap interno/DMA e destrói antes de
+  retornar. O caminho principal não ativa AEC se a margem de heap estiver
+  baixa.
 
 Nota de bancada em 2026-05-27: a tentativa de promover WakeNet `MR + AEC`
 direto para runtime compilou, mas no hardware causou pressão de memória
