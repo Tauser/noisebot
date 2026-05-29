@@ -29,8 +29,6 @@ typedef struct {
     bool probe_ok;
     bool aec_probe_ran;
     bool aec_probe_ok;
-    bool opus_probe_ran;
-    bool opus_probe_ok;
     bool aec_supported;
     bool aec_blocked_no_reference;
     bool shadow_active;
@@ -43,9 +41,6 @@ typedef struct {
     uint32_t aec_psram_before_kb;
     uint32_t aec_psram_after_create_kb;
     uint32_t aec_psram_after_destroy_kb;
-    uint32_t opus_psram_before_kb;
-    uint32_t opus_psram_after_create_kb;
-    uint32_t opus_psram_after_destroy_kb;
     uint32_t internal_free_kb;
     uint32_t internal_largest_kb;
     uint32_t dma_free_kb;
@@ -67,13 +62,8 @@ typedef struct {
     int feed_channels;
     int fetch_channels;
     int sample_rate_hz;
-    int opus_frame_in_bytes;
-    int opus_frame_out_bytes;
-    uint32_t opus_encoded_bytes;
-    uint32_t opus_encode_us;
     esp_err_t last_error;
     esp_err_t aec_last_error;
-    esp_err_t opus_last_error;
 } nb_audio_processor_status_t;
 
 /**
@@ -101,14 +91,6 @@ esp_err_t audio_processor_service_probe_once(void);
  * atual antes de qualquer promoção para runtime.
  */
 esp_err_t audio_processor_service_aec_probe_once(void);
-
-/**
- * @brief Executa probe isolado do encoder Opus.
- *
- * Cria um encoder Opus 16 kHz mono, 60 ms, codifica um frame de silêncio e
- * destrói o encoder antes de retornar. Não altera microfone, bridge ou TTS.
- */
-esp_err_t audio_processor_service_opus_probe_once(void);
 
 /**
  * @brief Inicia shadow mode.
