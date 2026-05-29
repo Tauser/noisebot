@@ -66,7 +66,7 @@ def run_opus_live_trial(
     before_metrics = get_json(f"{server_url}/ai/metrics")
     before_session = _as_dict(before_metrics.get("last_voice_session"))
     previous_turn_id = _optional_int(before_session.get("turn_id"))
-    before_worker = get_json(f"{firmware_url}/api/audio/opus/worker")
+    worker_baseline: dict[str, Any] = {}
 
     enable_payload: dict[str, Any] = {}
     disable_payload: dict[str, Any] = {}
@@ -82,6 +82,7 @@ def run_opus_live_trial(
         if not server_opus_confirmed:
             print_fn("Aviso: /ai/status ainda nao confirmou opus_tx; continuando o teste.")
 
+        worker_baseline = get_json(f"{firmware_url}/api/audio/opus/worker")
         print_fn(f"Opus ligado. Fale depois do wake word: {phrase}")
         input_fn("Pressione Enter quando o robo terminar a resposta: ")
 
@@ -101,17 +102,17 @@ def run_opus_live_trial(
     packets_drained = max(
         0,
         _required_int(after_worker.get("opus_packet_drained"))
-        - _required_int(before_worker.get("opus_packet_drained")),
+        - _required_int(worker_baseline.get("opus_packet_drained")),
     )
     packet_drops = max(
         0,
         _required_int(after_worker.get("opus_packet_drops"))
-        - _required_int(before_worker.get("opus_packet_drops")),
+        - _required_int(worker_baseline.get("opus_packet_drops")),
     )
     encoded_bytes = max(
         0,
         _required_int(after_worker.get("opus_packet_bytes_total"))
-        - _required_int(before_worker.get("opus_packet_bytes_total")),
+        - _required_int(worker_baseline.get("opus_packet_bytes_total")),
     )
     quality = str(session.get("transcript_quality") or "")
     transcript = str(session.get("transcript") or "")
