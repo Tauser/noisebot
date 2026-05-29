@@ -1498,6 +1498,10 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
              "\"frame_samples\":%d,"
              "\"outbuf_bytes\":%d,"
              "\"encoded_bytes\":%d,"
+             "\"encode_requests\":%lu,"
+             "\"encode_packets\":%lu,"
+             "\"encode_failures\":%lu,"
+             "\"encoded_bytes_total\":%lu,"
              "\"codec_error\":%d,"
              "\"last_error\":\"%s\","
              "\"probe_error\":\"%s\"}",
@@ -1520,6 +1524,10 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
              st.frame_samples,
              st.outbuf_bytes,
              st.encoded_bytes,
+             (unsigned long)st.encode_requests,
+             (unsigned long)st.encode_packets,
+             (unsigned long)st.encode_failures,
+             (unsigned long)st.encoded_bytes_total,
              st.codec_error,
              esp_err_to_name(st.last_error),
              esp_err_to_name(err));
@@ -1569,6 +1577,17 @@ static esp_err_t handle_api_audio_opus_worker_start(httpd_req_t *req)
 static esp_err_t handle_api_audio_opus_worker_stop(httpd_req_t *req)
 {
     esp_err_t err = audio_processor_service_opus_worker_stop();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_STATE
+                                   ? "409 Conflict"
+                                   : "500 Internal Server Error");
+    }
+    return send_audio_opus_worker_status(req, err);
+}
+
+static esp_err_t handle_api_audio_opus_worker_encode_test(httpd_req_t *req)
+{
+    esp_err_t err = audio_processor_service_opus_worker_encode_test_once();
     if (err != ESP_OK) {
         httpd_resp_set_status(req, err == ESP_ERR_INVALID_STATE
                                    ? "409 Conflict"
@@ -2655,6 +2674,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/opus/worker/probe", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_probe },
     { .uri = "/api/audio/opus/worker/start", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_start },
     { .uri = "/api/audio/opus/worker/stop", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_stop },
+    { .uri = "/api/audio/opus/worker/encode-test", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_encode_test },
     { .uri = "/api/audio/record",   .method = HTTP_POST,   .handler = handle_api_audio_record },
     { .uri = "/api/audio/files",    .method = HTTP_GET,    .handler = handle_api_audio_files },
     { .uri = "/api/audio/file",     .method = HTTP_GET,    .handler = handle_api_audio_file },

@@ -85,6 +85,10 @@ typedef struct {
     int frame_samples;
     int outbuf_bytes;
     int encoded_bytes;
+    uint32_t encode_requests;
+    uint32_t encode_packets;
+    uint32_t encode_failures;
+    uint32_t encoded_bytes_total;
     int codec_error;
     esp_err_t last_error;
 } nb_opus_worker_status_t;
@@ -132,6 +136,11 @@ esp_err_t audio_processor_service_opus_worker_start(void);
  * @brief Para worker Opus persistente.
  */
 esp_err_t audio_processor_service_opus_worker_stop(void);
+
+/**
+ * @brief Solicita um encode sintético no worker persistente.
+ */
+esp_err_t audio_processor_service_opus_worker_encode_test_once(void);
 
 /**
  * @brief Copia o último status do worker Opus.

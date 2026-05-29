@@ -81,6 +81,7 @@ static StaticSemaphore_t s_opus_done_buf;
 static SemaphoreHandle_t s_opus_done;
 static TaskHandle_t s_opus_task;
 static volatile bool s_opus_stop_requested;
+static uint32_t s_opus_pending_encode_requests;
 static int16_t s_opus_pcm[OPUS_FRAME_SAMPLES];
 static uint8_t s_opus_out[2048];
 
@@ -696,7 +697,27 @@ static void opus_persistent_task(void *arg)
     }
 
     while (!s_opus_stop_requested && st.ok) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
+
+        uint32_t pending = 0;
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        if (s_opus_pending_encode_requests > 0U) {
+            s_opus_pending_encode_requests--;
+            pending = 1U;
+        }
+        xSemaphoreGive(s.mutex);
+
+        if (pending > 0U) {
+            st.encode_requests++;
+            bool encoded = opus_encode_static_frame(enc, &st);
+            if (encoded) {
+                st.encode_packets++;
+                st.encoded_bytes_total += (uint32_t)st.encoded_bytes;
+            } else {
+                st.encode_failures++;
+            }
+            opus_worker_set_status(&st);
+        }
     }
 
     if (enc != NULL) {
@@ -739,6 +760,7 @@ esp_err_t audio_processor_service_opus_worker_probe_once(void)
         return ESP_ERR_INVALID_STATE;
     }
     memset(&s_opus, 0, sizeof(s_opus));
+    s_opus_pending_encode_requests = 0;
     s_opus.running = true;
     s_opus.last_error = ESP_ERR_TIMEOUT;
     xSemaphoreGive(s.mutex);
@@ -800,6 +822,7 @@ esp_err_t audio_processor_service_opus_worker_start(void)
         return ESP_ERR_INVALID_STATE;
     }
     memset(&s_opus, 0, sizeof(s_opus));
+    s_opus_pending_encode_requests = 0;
     s_opus.running = true;
     s_opus.persistent = true;
     s_opus.last_error = ESP_ERR_TIMEOUT;
@@ -858,6 +881,41 @@ esp_err_t audio_processor_service_opus_worker_stop(void)
         return ESP_ERR_TIMEOUT;
     }
     return ESP_OK;
+}
+
+esp_err_t audio_processor_service_opus_worker_encode_test_once(void)
+{
+    if (s.mutex == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    uint32_t target = 0;
+    uint32_t failures_before = 0;
+    TaskHandle_t task = NULL;
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    if (!s_opus.running || !s_opus.persistent || s_opus_task == NULL) {
+        xSemaphoreGive(s.mutex);
+        return ESP_ERR_INVALID_STATE;
+    }
+    failures_before = s_opus.encode_failures;
+    s_opus_pending_encode_requests++;
+    target = s_opus.encode_packets + s_opus.encode_failures + s_opus_pending_encode_requests;
+    task = s_opus_task;
+    xSemaphoreGive(s.mutex);
+
+    xTaskNotifyGive(task);
+
+    for (uint16_t i = 0; i < 100U; i++) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        bool done = (s_opus.encode_packets + s_opus.encode_failures) >= target;
+        bool ok = s_opus.last_error == ESP_OK && s_opus.encode_failures == failures_before;
+        xSemaphoreGive(s.mutex);
+        if (done) {
+            return ok ? ESP_OK : ESP_FAIL;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return ESP_ERR_TIMEOUT;
 }
 
 static void shadow_task(void *arg)
