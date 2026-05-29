@@ -335,6 +335,7 @@ def test_server_cli_runs_opus_live_debug_command(monkeypatch, capsys) -> None:
             encoded_bytes=1776,
             enable_ok=True,
             disable_ok=True,
+            server_opus_confirmed=True,
         )
 
     monkeypatch.setattr(opus_live, "run_opus_live_trial", fake_run_opus_live_trial)

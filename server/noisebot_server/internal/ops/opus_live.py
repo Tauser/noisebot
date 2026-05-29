@@ -27,6 +27,7 @@ class OpusLiveTrial:
     encoded_bytes: int
     enable_ok: bool
     disable_ok: bool
+    server_opus_confirmed: bool
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -45,6 +46,7 @@ class OpusLiveTrial:
             "encoded_bytes": self.encoded_bytes,
             "enable_ok": self.enable_ok,
             "disable_ok": self.disable_ok,
+            "server_opus_confirmed": self.server_opus_confirmed,
         }
 
 
@@ -68,14 +70,17 @@ def run_opus_live_trial(
 
     enable_payload: dict[str, Any] = {}
     disable_payload: dict[str, Any] = {}
+    server_opus_confirmed = False
     try:
         enable_payload = post_json(f"{firmware_url}/api/audio/opus/transport/enable")
         if not enable_payload.get("ok") or not enable_payload.get("opus_enabled"):
             raise VoiceAbError(f"falha ao ligar Opus: {enable_payload}")
-        _wait_for_server_opus(
+        server_opus_confirmed = _wait_for_server_opus(
             server_url=server_url,
             timeout_s=min(5.0, max(1.0, timeout_s / 3.0)),
         )
+        if not server_opus_confirmed:
+            print_fn("Aviso: /ai/status ainda nao confirmou opus_tx; continuando o teste.")
 
         print_fn(f"Opus ligado. Fale depois do wake word: {phrase}")
         input_fn("Pressione Enter quando o robo terminar a resposta: ")
@@ -138,6 +143,7 @@ def run_opus_live_trial(
         encoded_bytes=encoded_bytes,
         enable_ok=bool(enable_payload.get("ok")),
         disable_ok=bool(disable_payload.get("ok")),
+        server_opus_confirmed=server_opus_confirmed,
     )
 
 
@@ -155,6 +161,7 @@ def format_opus_live_markdown(trial: OpusLiveTrial) -> str:
             f"- Pacotes drenados: {trial.packets_drained}",
             f"- Drops Opus: {trial.packet_drops}",
             f"- Bytes Opus: {trial.encoded_bytes}",
+            f"- Server confirmou Opus: {'sim' if trial.server_opus_confirmed else 'nao'}",
             f"- Transcript: {trial.transcript}",
             "",
         ]
@@ -165,16 +172,15 @@ def format_opus_live_json(trial: OpusLiveTrial) -> str:
     return json.dumps(trial.to_dict(), ensure_ascii=False, indent=2)
 
 
-def _wait_for_server_opus(*, server_url: str, timeout_s: float) -> None:
+def _wait_for_server_opus(*, server_url: str, timeout_s: float) -> bool:
     deadline = time.monotonic() + timeout_s
-    last_status: dict[str, Any] | None = None
     while time.monotonic() < deadline:
         last_status = get_json(f"{server_url}/ai/status")
         features = last_status.get("features", [])
         if isinstance(features, list) and "opus_tx" in features:
-            return
+            return True
         time.sleep(0.2)
-    raise VoiceAbError(f"server ainda nao confirmou opus_tx: {last_status}")
+    return False
 
 
 def _as_dict(value: object) -> dict[str, Any]:
