@@ -369,12 +369,12 @@ Pendências para promover AFE:
 
 ### Fase 6 — Opus/Frames de 60 ms
 
-Status: concluida como modo experimental opt-in e candidata a capability
-oficial. PCM16 continua sendo o fallback seguro (`audio.format=pcm16`,
+Status: concluida como capability oficial opt-in e candidata a A/B mais amplo.
+PCM16 continua sendo o fallback seguro (`audio.format=pcm16`,
 `pcm16=true`, `opus=false` quando Opus não é negociado). O firmware agora
 consegue iniciar um worker Opus persistente, codificar PCM real em frames de
 60 ms (`NB_BRIDGE_OPUS_FRAME_MS=60`, `NB_BRIDGE_OPUS_FRAME_SAMPLES=960`),
-enfileirar pacotes Opus em PSRAM e, quando a flag experimental é ligada,
+enfileirar pacotes Opus em PSRAM e, quando a flag opt-in é ligada,
 anunciar `audio.format=opus` no `HELLO` e enviar esses pacotes como
 `AUDIO_CHUNK`. O rollback é imediato via API: desligar a flag volta o contrato
 para PCM16 e para o worker.
@@ -388,6 +388,8 @@ desliga Opus no final. O adapter do server aceita um peer
 experimental que negocie `audio.format=opus` e publica PCM16 para o
 orchestrator. O fake firmware do server aceita `--audio-format opus`, anuncia
 `codecs.opus=true`, empacota PCM em Opus e exercita o caminho TCP completo.
+O `/ai/status` agora expõe `audio`, `codecs`, `features` e `firmware.*`, então
+o harness `opus-live` consegue confirmar `opus_tx` depois da renegociação.
 
 Objetivo: reduzir banda e aproximar o protocolo do Xiaozhi quando fizer sentido.
 
@@ -442,11 +444,21 @@ Validação atual:
   orchestrator e aciona STT com PCM decodificado.
 - `noisebot_server debug opus-live`: harness para teste real fim-a-fim com
   firmware, server metrics e desligamento automatico do transporte Opus.
+- Server Ops API proxy para os endpoints Opus do firmware:
+  `/api/device/audio/opus/worker`,
+  `/api/device/audio/opus/worker/probe`,
+  `/api/device/audio/opus/worker/start`,
+  `/api/device/audio/opus/worker/stop`,
+  `/api/device/audio/opus/worker/encode-test`,
+  `/api/device/audio/opus/worker/drain-packets`,
+  `/api/device/audio/opus/transport/enable` e
+  `/api/device/audio/opus/transport/disable`.
 - `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém PCM16
   como contrato padrão e exige flag explicita para Opus.
 - `bridge/tests`: 153 testes verdes após a integração.
-- `server/tests`: 92 testes verdes após adicionar o harness `opus-live` e o
-  fallback de decode Opus antes do `HELLO` dinâmico.
+- `server/tests`: 102 testes verdes após promover Opus como capability
+  oficial opt-in no status/API de operação.
+- Build ESP-IDF concluído após a promoção de status/API.
 - `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
   packets, `opus_bytes=3043` contra `input_bytes=32000`
   (`compression_ratio=0.0951`) no ambiente local.
@@ -463,8 +475,10 @@ Critérios de aceite:
 - [x] Sessão multi-turn em Opus com STT `good`, LLM/local intent e zero drops.
 - [x] Manter Opus como opt-in até A/B maior de latência/CPU antes de promover
   como padrão obrigatório.
-- [ ] Promover Opus de experimento manual para capability oficial opt-in, com
+- [x] Promover Opus de experimento manual para capability oficial opt-in, com
   status/HELLO/metrics coerentes e fallback PCM16 automático.
+- [ ] Rodar A/B maior de latência/CPU e sessão longa antes de considerar Opus
+  como padrão obrigatório.
 
 ### Fase 7 — AEC e Modo Realtime
 

@@ -144,6 +144,33 @@ class FirmwareDiagClient:
     def audio_processor_bridge_stop(self) -> dict[str, Any]:
         return self._post_json("api/audio/processor/bridge/stop")
 
+    def audio_opus_worker_status(self) -> dict[str, Any]:
+        payload = self._get_json("api/audio/opus/worker")
+        if not isinstance(payload, dict):
+            raise FirmwareDiagError("api/audio/opus/worker: resposta invalida")
+        return payload
+
+    def audio_opus_worker_probe(self) -> dict[str, Any]:
+        return self._post_json("api/audio/opus/worker/probe")
+
+    def audio_opus_worker_start(self) -> dict[str, Any]:
+        return self._post_json("api/audio/opus/worker/start")
+
+    def audio_opus_worker_stop(self) -> dict[str, Any]:
+        return self._post_json("api/audio/opus/worker/stop")
+
+    def audio_opus_worker_encode_test(self) -> dict[str, Any]:
+        return self._post_json("api/audio/opus/worker/encode-test")
+
+    def audio_opus_worker_drain_packets(self) -> dict[str, Any]:
+        return self._post_json("api/audio/opus/worker/drain-packets")
+
+    def audio_opus_transport_enable(self) -> dict[str, Any]:
+        return self._post_json("api/audio/opus/transport/enable")
+
+    def audio_opus_transport_disable(self) -> dict[str, Any]:
+        return self._post_json("api/audio/opus/transport/disable")
+
 
 def _env_float(key: str, default: float) -> float:
     try:

@@ -2050,10 +2050,14 @@ Implementação:
 - [x] AEC de dispositivo foi classificado como não promovível no hardware atual:
   `aec_blocked_no_reference=true`, `aec_supported=false`,
   `ESP_ERR_NOT_SUPPORTED`.
+- [x] Opus foi promovido de experimento manual para capability oficial opt-in:
+  `/ai/status` expõe `audio`, `codecs`, `features` e `firmware.*`, a Ops API
+  proxy os endpoints Opus do firmware e PCM16 segue como fallback padrão.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
   padrão. Ver `docs/VOICE_PIPELINE.md` e `docs/VOICE_AB_PHASE5_8192.md`.
-- [ ] Próximo avanço: promover Opus para capability oficial opt-in com fallback
-  PCM16, sem alterar wake word, VAD, follow-up, realtime ou AEC.
+- [ ] Próximo avanço: rodar A/B maior de latência/CPU e sessão longa antes de
+  considerar Opus como padrão obrigatório, sem alterar wake word, VAD,
+  follow-up, realtime ou AEC.
 
 ---
 

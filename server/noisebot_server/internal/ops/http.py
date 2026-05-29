@@ -131,6 +131,14 @@ class OpsHttpServer:
         wa.router.add_post("/api/device/audio/processor/shadow/stop", self._post_device_audio_processor_shadow_stop)
         wa.router.add_post("/api/device/audio/processor/bridge/start", self._post_device_audio_processor_bridge_start)
         wa.router.add_post("/api/device/audio/processor/bridge/stop", self._post_device_audio_processor_bridge_stop)
+        wa.router.add_get("/api/device/audio/opus/worker", self._get_device_audio_opus_worker)
+        wa.router.add_post("/api/device/audio/opus/worker/probe", self._post_device_audio_opus_worker_probe)
+        wa.router.add_post("/api/device/audio/opus/worker/start", self._post_device_audio_opus_worker_start)
+        wa.router.add_post("/api/device/audio/opus/worker/stop", self._post_device_audio_opus_worker_stop)
+        wa.router.add_post("/api/device/audio/opus/worker/encode-test", self._post_device_audio_opus_worker_encode_test)
+        wa.router.add_post("/api/device/audio/opus/worker/drain-packets", self._post_device_audio_opus_worker_drain_packets)
+        wa.router.add_post("/api/device/audio/opus/transport/enable", self._post_device_audio_opus_transport_enable)
+        wa.router.add_post("/api/device/audio/opus/transport/disable", self._post_device_audio_opus_transport_disable)
         wa.router.add_get("/api/vision/status", self._get_vision_status)
         wa.router.add_get("/api/vision/observe", self._get_vision_observe)
         wa.router.add_get("/api/vision/analyze", self._get_vision_analyze)
@@ -215,10 +223,14 @@ class OpsHttpServer:
             api_key = provider == "ollama"
 
         supervisor = getattr(self._app, "_supervisor", None)
+        adapter = self._get_adapter()
         live_connected = bool(
             supervisor is not None and getattr(supervisor, "is_connected", False)
         )
         store.firmware_connected = live_connected
+        capabilities = {}
+        if adapter is not None:
+            capabilities = getattr(adapter, "peer_capabilities", {}) or {}
 
         return _json(ai_status_response(
             connected=live_connected,
@@ -236,6 +248,7 @@ class OpsHttpServer:
             last_transcript=store.last_transcript,
             last_reply=store.last_reply,
             last_route=store.last_route,
+            firmware_capabilities=capabilities,
         ))
 
     async def _get_ai_metrics(self, request: web.Request) -> web.Response:
@@ -396,6 +409,80 @@ class OpsHttpServer:
             payload = await asyncio.to_thread(
                 self._firmware_diag_client.audio_processor_bridge_stop
             )
+        except FirmwareDiagError as exc:
+            return _json(error_response(str(exc)), status=503)
+        status = 200 if payload.get("ok", False) else 500
+        return _json({"source": "firmware_http", **payload}, status=status)
+
+    async def _get_device_audio_opus_worker(self, request: web.Request) -> web.Response:
+        return await self._proxy_firmware_diag_get(
+            self._firmware_diag_client.audio_opus_worker_status
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_opus_worker_probe(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_opus_worker_probe
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_opus_worker_start(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_opus_worker_start
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_opus_worker_stop(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_opus_worker_stop
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_opus_worker_encode_test(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_opus_worker_encode_test
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_opus_worker_drain_packets(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_opus_worker_drain_packets
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_opus_transport_enable(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_opus_transport_enable
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_opus_transport_disable(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_opus_transport_disable
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _proxy_firmware_diag_get(self, fn) -> web.Response:
+        if fn is None:
+            return _json(error_response("firmware HTTP não configurado"), status=503)
+        try:
+            payload = await asyncio.to_thread(fn)
+        except FirmwareDiagError as exc:
+            return _json(error_response(str(exc)), status=503)
+        return _json({"source": "firmware_http", **payload})
+
+    async def _proxy_firmware_diag_post(self, fn) -> web.Response:
+        if fn is None:
+            return _json(error_response("firmware HTTP não configurado"), status=503)
+        try:
+            payload = await asyncio.to_thread(fn)
         except FirmwareDiagError as exc:
             return _json(error_response(str(exc)), status=503)
         status = 200 if payload.get("ok", False) else 500

@@ -141,13 +141,13 @@ Antes de qualquer fase nova:
 
 ## Próximo Item Recomendado
 
-Promover **Opus capability oficial opt-in com fallback PCM16**, sem tocar no
-firmware de wake/VAD:
+Rodar **A/B maior de latência/CPU e sessão longa com Opus opt-in**, sem tornar
+Opus padrão obrigatório ainda:
 
-- deixar status/HELLO/metrics coerentes entre firmware e server;
-- garantir fallback PCM16 quando Opus não é confirmado;
+- comparar PCM16 vs Opus em frases curtas, médias e longas;
+- registrar STT, duração, bytes, drops, CPU/memória e reconexão;
 - manter `opus-live` e testes automáticos como gate;
-- documentar que AEC/realtime/follow-up seguem em standby.
+- manter AEC/realtime/follow-up em standby.
 
-Essa etapa só toca codec/negociação. Qualquer mudança em wake, VAD, AEC,
+Essa etapa só valida promoção de codec. Qualquer mudança em wake, VAD, AEC,
 follow-up ou realtime fica fora do escopo.

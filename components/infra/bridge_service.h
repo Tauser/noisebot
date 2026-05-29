@@ -78,7 +78,7 @@ extern "C" {
 #define NB_BRIDGE_RECONNECT_TIMEOUT_MS 60000/* para de tentar após 60s         */
 
 #define NB_BRIDGE_AUDIO_CHUNK_SAMPLES 256   /* amostras por chunk PCM          */
-#define NB_BRIDGE_OPUS_FRAME_MS       60    /* contrato experimental, desligado */
+#define NB_BRIDGE_OPUS_FRAME_MS       60    /* contrato Opus opt-in             */
 #define NB_BRIDGE_OPUS_FRAME_SAMPLES  960   /* 16 kHz mono, 60 ms              */
 #define NB_BRIDGE_OPUS_MAX_PACKET_BYTES 1024/* limite do framing atual         */
 #define NB_BRIDGE_TEXT_MAX_LEN      128     /* tamanho máximo TEXT_SCROLL      */
@@ -209,8 +209,7 @@ esp_err_t bridge_service_send_audio_chunk(const int16_t *samples, uint16_t count
 /**
  * @brief Retorna true se o envio Opus estiver habilitado no firmware real.
  *
- * Atualmente sempre false: o servidor e o fake firmware já testam Opus, mas o
- * robô continua em PCM16 até existir encoder validado sem regressão de voz.
+ * Retorna true quando o transporte Opus opt-in está ativo.
  */
 bool bridge_service_opus_is_enabled(void);
 
@@ -224,8 +223,7 @@ void bridge_service_set_opus_enabled(bool enabled);
 /**
  * @brief Envia pacote Opus para o bridge quando o codec estiver habilitado.
  *
- * Stub intencional enquanto o firmware real anuncia codecs.opus=false.
- * Mantém o ponto de integração explícito sem alterar o pipeline PCM16 atual.
+ * Enfileira o pacote Opus no bridge quando o transporte Opus está ativo.
  *
  * @return ESP_ERR_NOT_SUPPORTED enquanto Opus estiver desligado no firmware.
  */

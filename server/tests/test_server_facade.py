@@ -358,6 +358,94 @@ def test_server_cli_runs_opus_live_debug_command(monkeypatch, capsys) -> None:
     assert calls["phrase"] == "me diga uma curiosidade"
 
 
+def test_server_ai_status_exposes_firmware_audio_capabilities() -> None:
+    schemas = importlib.import_module("noisebot_server.internal.ops.schemas")
+
+    payload = schemas.ai_status_response(
+        connected=True,
+        pipeline="v2",
+        mode="normal",
+        provider="ollama",
+        model="qwen2.5:7b",
+        api_key_configured=True,
+        stt_status="ok",
+        llm_status="ok",
+        tts_status="ok",
+        last_error=None,
+        last_turn_id=7,
+        last_outcome="llm",
+        last_transcript="me diga uma curiosidade",
+        last_reply="claro",
+        last_route="llm",
+        firmware_capabilities={
+            "audio": {
+                "format": "opus",
+                "sample_rate": 16000,
+                "channels": 1,
+                "chunk_samples": 960,
+            },
+            "codecs": {"pcm16": False, "opus": True},
+            "features": ["voice_session_v2", "opus_tx"],
+        },
+    )
+
+    assert payload["audio"]["format"] == "opus"
+    assert payload["codecs"] == {"pcm16": False, "opus": True}
+    assert payload["features"] == ["voice_session_v2", "opus_tx"]
+    assert payload["firmware"]["features"] == payload["features"]
+
+
+def test_server_opus_live_accepts_status_capabilities() -> None:
+    opus_live = importlib.import_module("noisebot_server.internal.ops.opus_live")
+
+    assert opus_live._status_confirms_opus({"features": ["opus_tx"]})
+    assert opus_live._status_confirms_opus({"audio": {"format": "opus"}})
+    assert opus_live._status_confirms_opus({
+        "firmware": {"codecs": {"pcm16": False, "opus": True}},
+    })
+    assert not opus_live._status_confirms_opus({
+        "firmware": {"codecs": {"pcm16": True, "opus": False}},
+    })
+
+
+def test_server_firmware_diag_client_exposes_opus_endpoints(monkeypatch) -> None:
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    client = firmware_diag.FirmwareDiagClient("http://robot.local/")
+    get_paths: list[str] = []
+    post_paths: list[str] = []
+
+    def fake_get_json(self, path):
+        get_paths.append(path)
+        return {"ok": True}
+
+    def fake_post_json(self, path, payload=None):
+        post_paths.append(path)
+        return {"ok": True}
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "_get_json", fake_get_json)
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "_post_json", fake_post_json)
+
+    assert client.audio_opus_worker_status()["ok"]
+    assert client.audio_opus_worker_probe()["ok"]
+    assert client.audio_opus_worker_start()["ok"]
+    assert client.audio_opus_worker_stop()["ok"]
+    assert client.audio_opus_worker_encode_test()["ok"]
+    assert client.audio_opus_worker_drain_packets()["ok"]
+    assert client.audio_opus_transport_enable()["ok"]
+    assert client.audio_opus_transport_disable()["ok"]
+
+    assert get_paths == ["api/audio/opus/worker"]
+    assert post_paths == [
+        "api/audio/opus/worker/probe",
+        "api/audio/opus/worker/start",
+        "api/audio/opus/worker/stop",
+        "api/audio/opus/worker/encode-test",
+        "api/audio/opus/worker/drain-packets",
+        "api/audio/opus/transport/enable",
+        "api/audio/opus/transport/disable",
+    ]
+
+
 def test_server_cli_parses_barge_live_debug_command() -> None:
     cli = importlib.import_module("noisebot_server.cli")
 

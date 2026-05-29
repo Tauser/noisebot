@@ -177,11 +177,32 @@ def _wait_for_server_opus(*, server_url: str, timeout_s: float) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         last_status = get_json(f"{server_url}/ai/status")
-        features = last_status.get("features", [])
-        if isinstance(features, list) and "opus_tx" in features:
+        if _status_confirms_opus(last_status):
             return True
         time.sleep(0.2)
     return False
+
+
+def _status_confirms_opus(status: dict[str, Any]) -> bool:
+    firmware = status.get("firmware")
+    firmware_caps = firmware if isinstance(firmware, dict) else {}
+
+    features = status.get("features")
+    if not isinstance(features, list):
+        features = firmware_caps.get("features", [])
+    if isinstance(features, list) and "opus_tx" in features:
+        return True
+
+    audio = status.get("audio")
+    if not isinstance(audio, dict):
+        audio = firmware_caps.get("audio", {})
+    if isinstance(audio, dict) and audio.get("format") == "opus":
+        return True
+
+    codecs = status.get("codecs")
+    if not isinstance(codecs, dict):
+        codecs = firmware_caps.get("codecs", {})
+    return isinstance(codecs, dict) and codecs.get("opus") is True and codecs.get("pcm16") is False
 
 
 def _as_dict(value: object) -> dict[str, Any]:
