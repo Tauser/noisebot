@@ -425,7 +425,7 @@ STT rejeitado e falha de TTS. O replay agora usa fixtures reais de
 `voice_samples/` para cobrir amostras boas e ruins sem hardware, e o CLI aceita
 `--replay-dir` para rodar uma pasta inteira e emitir resumo JSON de outcomes.
 O baseline versionado fica em `docs/VOICE_REPLAY_BASELINE.json`. A suíte do
-bridge está verde com 148 testes. Isso
+bridge está verde com 149 testes. Isso
 não substitui o checklist físico do robô, mas impede que a camada de protocolo
 volte a aceitar áudio fantasma, responder wake vazio, mascarar falhas de STT/TTS
 ou quebrar novamente o contrato mínimo de barge-in.
@@ -447,6 +447,8 @@ Mudanças:
 - Colocar esses cenários em checklist antes de release.
 - Rodar lote local de amostras:
   `noisebot_bridge --dry-run --replay-dir voice_samples --replay-json`.
+- Rodar validação única de release de voz:
+  `python bridge/voice_check.py`.
 
 Critérios de aceite:
 
@@ -454,6 +456,8 @@ Critérios de aceite:
 - Fake firmware cobre wake/listen/speak/idle e falhas STT/TTS sem hardware.
 - Contrato de barge-in no firmware fica coberto por teste automático antes de
   qualquer novo ajuste de VAD/escuta.
+- Checklist de voz roda em comando único e falha se pytest ou baseline de replay
+  falharem.
 - Toda regressão de voz vira caso de teste antes de mexer em firmware.
 - Dashboard dev mostra causa provável antes do usuário precisar ler log.
 
