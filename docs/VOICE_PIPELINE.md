@@ -366,6 +366,10 @@ Pendências para promover AFE:
 
 ### Fase 6 — Opus/Frames de 60 ms
 
+Status: iniciada apenas no contrato. Bridge e firmware anunciam negociação de
+codec no `HELLO` mantendo `pcm16=true` e `opus=false`; nenhum caminho de áudio
+foi alterado e Opus segue desabilitado por padrão.
+
 Objetivo: reduzir banda e aproximar o protocolo do Xiaozhi quando fizer sentido.
 
 Mudanças:
@@ -425,7 +429,7 @@ STT rejeitado e falha de TTS. O replay agora usa fixtures reais de
 `voice_samples/` para cobrir amostras boas e ruins sem hardware, e o CLI aceita
 `--replay-dir` para rodar uma pasta inteira e emitir resumo JSON de outcomes.
 O baseline versionado fica em `docs/VOICE_REPLAY_BASELINE.json`. A suíte do
-bridge está verde com 149 testes. Isso
+bridge está verde com 150 testes. Isso
 não substitui o checklist físico do robô, mas impede que a camada de protocolo
 volte a aceitar áudio fantasma, responder wake vazio, mascarar falhas de STT/TTS
 ou quebrar novamente o contrato mínimo de barge-in.

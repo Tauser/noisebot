@@ -53,7 +53,8 @@
 static const char BRIDGE_HELLO_V2[] =
     "{\"protocol\":\"noisebot-bridge\",\"version\":2,\"role\":\"firmware\","
     "\"audio\":{\"format\":\"pcm16\",\"sample_rate\":16000,\"channels\":1,"
-    "\"chunk_samples\":256},\"listen\":{\"mode\":\"auto\",\"max_speech_ms\":9200,"
+    "\"chunk_samples\":256},\"codecs\":{\"pcm16\":true,\"opus\":false},"
+    "\"listen\":{\"mode\":\"auto\",\"max_speech_ms\":9200,"
     "\"min_utterance_samples\":8000,\"max_utterance_samples\":192000,"
     "\"end_silence_ms\":900},\"rx\":[\"say\",\"expr\",\"action\","
     "\"emot_event\",\"gaze\",\"text_scroll\",\"volume\",\"hello\",\"session\","
