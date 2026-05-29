@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 import wave
@@ -11,6 +12,7 @@ from noisebot_bridge.stt import SttResult
 
 ROOT = Path(__file__).resolve().parents[2]
 VOICE_SAMPLES = ROOT / "voice_samples"
+VOICE_REPLAY_BASELINE = ROOT / "docs" / "VOICE_REPLAY_BASELINE.json"
 REAL_GOOD_WAVS = (
     VOICE_SAMPLES / "bridge_tx_comando_curto_468s.wav",
     VOICE_SAMPLES / "raw_comando_curto_402s.wav",
@@ -184,6 +186,28 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(data["total"], 2)
         self.assertEqual(data["outcomes"], {"dry_run_ok": 2})
         self.assertEqual([Path(r["path"]).name for r in data["results"]], ["a_good.wav", "b_good.wav"])
+
+    def test_voice_replay_baseline_matches_real_fixtures(self):
+        baseline = json.loads(VOICE_REPLAY_BASELINE.read_text(encoding="utf-8"))
+
+        self.assertEqual(baseline["sample_rate_hz"], 16000)
+        self.assertEqual(baseline["source_dir"], "voice_samples")
+
+        for sample in baseline["good_samples"]:
+            with self.subTest(file=sample["file"]):
+                path = VOICE_SAMPLES / sample["file"]
+                self.assertTrue(path.exists(), f"fixture ausente: {path}")
+                result = run_replay(str(path), FakeStt(), NoneLlm(), FakeTts(), dry_run=True)
+
+                self.assertEqual(result.session.outcome, sample["expected_outcome"])
+
+        for sample in baseline["rejected_samples"]:
+            with self.subTest(file=sample["file"]):
+                path = VOICE_SAMPLES / sample["file"]
+                self.assertTrue(path.exists(), f"fixture ausente: {path}")
+                result = run_replay(str(path), NoSpeechStt(), NoneLlm(), FakeTts(), dry_run=False)
+
+                self.assertEqual(result.session.outcome, sample["expected_outcome"])
 
 
 if __name__ == "__main__":

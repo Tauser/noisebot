@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "sample_rate_hz": 16000,
+  "source_dir": "voice_samples",
+  "good_samples": [
+    {
+      "file": "bridge_tx_comando_curto_468s.wav",
+      "expected_outcome": "dry_run_ok"
+    },
+    {
+      "file": "raw_comando_curto_402s.wav",
+      "expected_outcome": "dry_run_ok"
+    }
+  ],
+  "rejected_samples": [
+    {
+      "file": "bridge_tx_ruido_ambiente_548s.wav",
+      "expected_outcome": "stt_rejected"
+    },
+    {
+      "file": "bridge_tx_mesa_vibrando_616s.wav",
+      "expected_outcome": "stt_rejected"
+    }
+  ]
+}
