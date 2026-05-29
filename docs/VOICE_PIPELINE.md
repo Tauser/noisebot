@@ -366,10 +366,15 @@ Pendências para promover AFE:
 
 ### Fase 6 — Opus/Frames de 60 ms
 
-Status: iniciada apenas no contrato. Bridge e firmware anunciam negociação de
-codec no `HELLO` mantendo `pcm16=true` e `opus=false`; o bridge valida PCM16
-16kHz mono com chunks de 256 samples antes de aceitar o contrato. Nenhum caminho
-de áudio foi alterado e Opus segue desabilitado por padrão.
+Status: codec validado no server, sem alterar o firmware. Bridge e firmware
+anunciam negociação de codec no `HELLO` mantendo `pcm16=true` e `opus=false`;
+o bridge valida PCM16 16kHz mono com chunks de 256 samples antes de aceitar o
+contrato. O server possui `noisebot_server.internal.transport.opus_codec` para
+round-trip PCM16 -> Opus -> PCM16 com frames de 60 ms e comando
+`noisebot_server debug opus-selftest`. O adapter do server ja consegue aceitar
+um peer experimental que negocie `audio.format=opus` e publicar PCM16 para o
+orchestrator. Nenhum caminho de áudio do robô foi alterado e Opus segue
+desabilitado por padrão no protocolo vivo.
 
 Objetivo: reduzir banda e aproximar o protocolo do Xiaozhi quando fizer sentido.
 
@@ -381,6 +386,16 @@ Mudanças:
 - Implementar Opus apenas atrás de feature flag.
 - Server deve aceitar os dois formatos durante a transição.
 - Medir latência e CPU antes de tornar padrão.
+
+Validação atual:
+
+- `server/tests/test_opus_codec.py`: frame Opus de 60 ms, packetizer e
+  round-trip com compressão.
+- `server/tests/test_server_facade.py`: adapter converte `AUDIO_CHUNK` Opus
+  negociado para `AudioChunkIn` PCM16.
+- `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
+  packets, `opus_bytes=3043` contra `input_bytes=32000`
+  (`compression_ratio=0.0951`) no ambiente local.
 
 Critérios de aceite:
 

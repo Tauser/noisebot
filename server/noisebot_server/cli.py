@@ -54,6 +54,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     afe_ab.add_argument("--output", help="Arquivo Markdown de saida")
     afe_ab.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    opus_test = debug_sub.add_parser("opus-selftest")
+    opus_test.add_argument("--seconds", type=float, default=1.0)
+    opus_test.add_argument("--bitrate", type=int, default=24000)
+    opus_test.add_argument("--json", action="store_true", help="Emitir JSON")
+
     parser.add_argument("--host", help="IP do ESP32")
     parser.add_argument("--port", type=int, help="Porta TCP")
     parser.add_argument("--uart", help="Porta UART")
@@ -230,6 +235,45 @@ def run_debug_command(args: argparse.Namespace) -> None:
                 file.write(text)
         else:
             print(text)
+        return
+    if args.debug_command == "opus-selftest":
+        import math
+
+        import numpy as np
+
+        from .internal.transport.opus_codec import (
+            OPUS_FRAME_MS,
+            OPUS_FRAME_SAMPLES,
+            OPUS_SAMPLE_RATE_HZ,
+            roundtrip_pcm,
+        )
+
+        n_samples = max(OPUS_FRAME_SAMPLES, int(args.seconds * OPUS_SAMPLE_RATE_HZ))
+        t = np.arange(n_samples, dtype=np.float32) / float(OPUS_SAMPLE_RATE_HZ)
+        pcm = (np.sin(2.0 * math.pi * 440.0 * t) * 8000.0).astype(np.int16)
+        decoded, stats = roundtrip_pcm(pcm, bitrate=args.bitrate)
+        payload = {
+            "ok": True,
+            "sample_rate_hz": OPUS_SAMPLE_RATE_HZ,
+            "frame_ms": OPUS_FRAME_MS,
+            "frame_samples": OPUS_FRAME_SAMPLES,
+            "bitrate": args.bitrate,
+            "input_bytes": stats.input_bytes,
+            "packet_count": stats.packet_count,
+            "opus_bytes": stats.opus_bytes,
+            "decoded_bytes": len(decoded),
+            "compression_ratio": round(stats.compression_ratio, 4),
+        }
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(
+                "Opus OK: "
+                f"{payload['packet_count']} packets, "
+                f"{payload['opus_bytes']} bytes de {payload['input_bytes']} "
+                f"({payload['compression_ratio']:.2%}), "
+                f"decoded={payload['decoded_bytes']} bytes"
+            )
         return
     raise SystemExit(2)
 

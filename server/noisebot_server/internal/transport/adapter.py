@@ -91,6 +91,7 @@ class FirmwareAdapter:
         self._tx_queue: asyncio.Queue[_TxItem] = asyncio.Queue(maxsize=256)
         self._connected = False
         self._last_rx_mono = 0.0
+        self._opus_decoder = None
 
     @property
     def peer_capabilities(self) -> dict[str, Any]:
@@ -221,6 +222,11 @@ class FirmwareAdapter:
                 audio_caps = self._peer_capabilities.get("audio", {})
                 if not isinstance(audio_caps, dict):
                     audio_caps = SERVER_HELLO_CAPABILITIES["audio"]
+                if self._peer_uses_opus_audio(audio_caps):
+                    pcm = self._decode_opus_audio(payload)
+                    if pcm:
+                        await self._bus.publish(AudioChunkIn(pcm=pcm))
+                    return
                 chunk_samples = int(
                     audio_caps.get(
                         "chunk_samples",
@@ -268,10 +274,29 @@ class FirmwareAdapter:
         except Exception:
             log.exception("RX dispatch error type=0x%02X", msg_type)
 
+    def _peer_uses_opus_audio(self, audio_caps: dict[str, Any]) -> bool:
+        if audio_caps.get("format") == "opus":
+            return True
+        codecs = self._peer_capabilities.get("codecs", {})
+        return isinstance(codecs, dict) and codecs.get("opus") is True and codecs.get("pcm16") is not True
+
+    def _decode_opus_audio(self, payload: bytes) -> bytes:
+        if self._opus_decoder is None:
+            from .opus_codec import OpusDecoder
+
+            self._opus_decoder = OpusDecoder()
+        return self._opus_decoder.decode_packet(payload)
+
     async def _dispatch_event(self, evt_type: int, data: bytes) -> None:
         if evt_type == NB_EVT_VOICE_ACTIVITY_START:
+            self._opus_decoder = None
             await self._bus.publish(VoiceActivityStart())
         elif evt_type == NB_EVT_VOICE_ACTIVITY_END:
+            if self._opus_decoder is not None:
+                pcm = self._opus_decoder.finish()
+                self._opus_decoder = None
+                if pcm:
+                    await self._bus.publish(AudioChunkIn(pcm=pcm))
             reason_byte = data[0] if data else 0
             try:
                 reason = VoiceEndReason(reason_byte)

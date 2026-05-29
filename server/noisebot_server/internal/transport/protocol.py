@@ -53,6 +53,10 @@ SERVER_HELLO_CAPABILITIES: dict[str, Any] = {
         "channels": 1,
         "chunk_samples": 256,
     },
+    "codecs": {
+        "pcm16": True,
+        "opus": False,
+    },
     "listen": {
         "mode": "auto",
         "max_speech_ms": 9200,
