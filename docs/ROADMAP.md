@@ -2040,10 +2040,20 @@ Implementação:
 - [x] Contrato ficou alinhado ponta a ponta: fallback interno do server,
   `HELLO` do server, `HELLO` do firmware e documentação deixam de anunciar
   `160000` como teto efetivo do pipeline.
-- [ ] Ainda há `timeout` ocasional em fala/resposta longa; tratar como item de
-  turn-taking antes de liberar modo narrativo ou realtime.
+- [x] Barge-in por wake word durante resposta foi validado em hardware com
+  harness `barge-live`: `outcome=interrupted`,
+  `discard_reason=barge_in` e cancelamento em 0,9 ms.
+- [x] No-echo foi validado com harness `no-echo-live`: após resposta longa não
+  surgiu turno fantasma dentro de janela de 10 s.
+- [x] Opus 16 kHz mono/60 ms foi validado como modo experimental opt-in em
+  turno real e multi-turn, com STT `good`, LLM/local intent e zero drops.
+- [x] AEC de dispositivo foi classificado como não promovível no hardware atual:
+  `aec_blocked_no_reference=true`, `aec_supported=false`,
+  `ESP_ERR_NOT_SUPPORTED`.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
   padrão. Ver `docs/VOICE_PIPELINE.md` e `docs/VOICE_AB_PHASE5_8192.md`.
+- [ ] Próximo avanço: promover Opus para capability oficial opt-in com fallback
+  PCM16, sem alterar wake word, VAD, follow-up, realtime ou AEC.
 
 ---
 
@@ -2541,9 +2551,11 @@ em chunks, STT rejeitado e falha de TTS. A suíte do bridge está verde com 135
 testes.
 
 **Limites explícitos:** follow-up automático permanece em standby e não deve ser
-reativado como efeito colateral. Barge-in full-duplex/realtime continua futuro:
-sem AEC/AFE validado, o comportamento suportado é half-duplex com wake word
-obrigatório para nova interação.
+reativado como efeito colateral. Barge-in por wake word está validado; barge-in
+automático por VAD sem wake e realtime continuam futuros. AEC de dispositivo
+está bloqueado no hardware atual por falta de referência limpa de playback; AEC
+server-side depende de referência/timestamps de playback que ainda não existem
+no protocolo.
 
 **O que entra:**
 
@@ -2551,7 +2563,7 @@ obrigatório para nova interação.
 - Definir handshake v2:
   - versão de protocolo;
   - sample rate;
-  - formato de áudio (`pcm16` inicialmente, `opus` futuro);
+  - formato de áudio (`pcm16` fallback seguro, `opus` capability opt-in);
   - recursos do firmware (`say`, `expr`, `gaze`, `action`, `text_scroll`, `status`);
   - recursos do bridge (`stt`, `llm`, `tts`, `local_intents`, `tools`).
 - Mensagens explícitas:
@@ -2587,9 +2599,16 @@ obrigatório para nova interação.
       frames corrompidos sem hardware.
 - [x] Falhas de STT/TTS geram eventos terminais nomeados e não deixam sessão
       pendente.
+- [x] Opus foi validado como capability experimental opt-in com fallback PCM16,
+      `opus-live`, fake firmware Opus e testes de codec/adapter.
+- [x] Barge-in por wake word e no-echo foram validados por harness live.
+- [x] AEC-live classifica AEC de dispositivo como `promotable=false` quando o
+      firmware retorna diagnóstico de falta de referência.
 - [ ] Reconexão TCP/UART coberta por teste automático.
 - [ ] Cancelamento explícito de fala (`SPEECH_CANCEL`/turn id no fio) coberto
       por teste antes de qualquer nova mudança no firmware.
+- [ ] Promover Opus de experimento manual para capability oficial opt-in, com
+      status/HELLO/metrics coerentes e fallback PCM16 automático.
 
 ---
 

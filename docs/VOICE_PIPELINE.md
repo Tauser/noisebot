@@ -22,8 +22,9 @@ atraso de `VOICE_END` e alinhamento por chunks sem descartar fala válida como
 
 ## Decisões
 
-- O caminho atual permanece PCM local. Opus é uma evolução futura, não requisito
-para estabilidade local.
+- O caminho atual permanece PCM16 como fallback seguro. Opus 16 kHz mono em
+frames de 60 ms já foi validado como modo experimental opt-in e é o próximo
+modo a ser promovido para capability oficial negociada.
 - Supressão de ruído em Python fica desligada por padrão. Nos testes práticos
 ela piorou a transcrição e aumentou risco de watchdog.
 - Backpressure persistente no bridge encerra a sessão. Áudio atrasado ou
@@ -37,9 +38,11 @@ ela piorou a transcrição e aumentou risco de watchdog.
 ## Referência Xiaozhi/StackChan
 
 O Xiaozhi usa Opus 16 kHz mono com frames de 60 ms, filas curtas e processamento
-de voz via AFE quando disponível. O que absorvemos neste estágio é a disciplina
-de contrato, filas e limites. A migração para AFE/Opus deve ser uma fase própria,
-com medição de RAM junto da câmera e do TTS.
+de voz via AFE/AEC quando o hardware informa capacidades reais. StackChan/CoreS3
+tem codec e referência de áudio mais favoráveis que o INMP441 + MAX98357A atual
+do NoiseBot. O que absorvemos agora é: Opus como codec negociado, capacidades
+explícitas no protocolo e AEC como modo condicionado a referência limpa, não
+como feature universal do ESP32-S3.
 
 ## Roadmap de Fechamento do Ciclo
 
@@ -366,8 +369,9 @@ Pendências para promover AFE:
 
 ### Fase 6 — Opus/Frames de 60 ms
 
-Status: concluida como modo experimental opt-in. PCM16 continua sendo o padrão
-seguro (`audio.format=pcm16`, `pcm16=true`, `opus=false`). O firmware agora
+Status: concluida como modo experimental opt-in e candidata a capability
+oficial. PCM16 continua sendo o fallback seguro (`audio.format=pcm16`,
+`pcm16=true`, `opus=false` quando Opus não é negociado). O firmware agora
 consegue iniciar um worker Opus persistente, codificar PCM real em frames de
 60 ms (`NB_BRIDGE_OPUS_FRAME_MS=60`, `NB_BRIDGE_OPUS_FRAME_SAMPLES=960`),
 enfileirar pacotes Opus em PSRAM e, quando a flag experimental é ligada,
@@ -457,10 +461,18 @@ Critérios de aceite:
 - [x] Nenhuma mudança de codec quebrou a suíte do bridge.
 - [x] Sessão real em Opus com STT `good` e resposta LLM ponta a ponta.
 - [x] Sessão multi-turn em Opus com STT `good`, LLM/local intent e zero drops.
-- [ ] Manter Opus como opt-in até A/B maior de latência/CPU antes de promover
-  como padrão.
+- [x] Manter Opus como opt-in até A/B maior de latência/CPU antes de promover
+  como padrão obrigatório.
+- [ ] Promover Opus de experimento manual para capability oficial opt-in, com
+  status/HELLO/metrics coerentes e fallback PCM16 automático.
 
 ### Fase 7 — AEC e Modo Realtime
+
+Status: concluida para barge-in por wake word, no-echo e gate de AEC. AEC de
+dispositivo fica em standby no hardware atual porque o probe real retornou
+`aec_blocked_no_reference=true`, `aec_supported=false` e
+`ESP_ERR_NOT_SUPPORTED`. Server-side AEC também fica futuro até existir
+referência/timestamps de playback no protocolo.
 
 Objetivo: permitir barge-in e conversa mais natural enquanto o robô fala.
 
@@ -508,6 +520,15 @@ Validação atual:
   - `outcome=llm`;
   - transcript: `É muito longa.`;
   - `discard_reason=""`.
+- Firmware real, `aec-live` em 2026-05-29:
+  - endpoint retornou diagnóstico JSON com HTTP 500, tratado pelo harness sem
+    traceback;
+  - `aec_supported=false`;
+  - `aec_blocked_no_reference=true`;
+  - `probe_error=ESP_ERR_NOT_SUPPORTED`;
+  - `internal_free_kb=31`;
+  - `dma_largest_kb=30`;
+  - decisão: `promotable=false`, não promover AEC de dispositivo nesta placa.
 
 Nota de bancada em 2026-05-27: a tentativa de promover WakeNet `MR + AEC`
 direto para runtime compilou, mas no hardware causou pressão de memória
@@ -522,8 +543,8 @@ Critérios de aceite:
 - [x] `interruption_cancel_ms` fica abaixo de 200 ms no teste real.
 - [x] `no-echo-live` retorna `ok=true`; o próprio TTS não reabre escuta falsa.
 - [x] Sem loops de escuta/resposta no teste live sem eco.
-- [ ] `aec-live` roda sem derrubar firmware/bridge e retorna recomendação de
-  não promoção ou promoção condicionada.
+- [x] `aec-live` roda sem derrubar firmware/bridge e retorna recomendação de
+  não promoção quando o firmware expõe falta de referência limpa.
 
 ### Fase 8 — Produto e Regressão Contínua
 
@@ -580,10 +601,14 @@ Pendências:
 
 ## Ordem Recomendada
 
-1. Coletar amostras reais da Fase 4.
-2. Só então iniciar AFE experimental.
-3. Só depois de AFE estável avaliar Opus.
-4. Só depois de AFE/Opus maduros avaliar AEC/realtime.
+1. Preservar wake/VAD/turn-taking atual: sem ajuste novo sem regressão
+   comprovada e teste.
+2. Promover Opus para capability oficial opt-in com fallback PCM16.
+3. Ampliar regressão automática de protocolo, incluindo reconexão e
+   cancelamento explícito.
+4. Só depois avaliar se Opus deve virar padrão obrigatório.
+5. AEC/realtime/follow-up continuam standby até existir referência limpa de
+   playback ou server-side AEC validado.
 
 Essa ordem evita a armadilha de trocar codec, VAD, AEC e STT ao mesmo tempo. O
 fim desejado é ambicioso, mas cada fase precisa ter medição própria para o robô
