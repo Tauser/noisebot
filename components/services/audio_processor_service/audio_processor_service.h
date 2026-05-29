@@ -71,6 +71,8 @@ typedef struct {
     bool running;
     bool ok;
     bool task_created;
+    bool persistent;
+    bool stop_requested;
     uint32_t internal_before_kb;
     uint32_t internal_after_open_kb;
     uint32_t internal_after_close_kb;
@@ -120,6 +122,16 @@ esp_err_t audio_processor_service_aec_probe_once(void);
  * Não altera bridge, captura, wake word ou caminho principal de voz.
  */
 esp_err_t audio_processor_service_opus_worker_probe_once(void);
+
+/**
+ * @brief Inicia worker Opus persistente, sem conectar ao bridge.
+ */
+esp_err_t audio_processor_service_opus_worker_start(void);
+
+/**
+ * @brief Para worker Opus persistente.
+ */
+esp_err_t audio_processor_service_opus_worker_stop(void);
 
 /**
  * @brief Copia o último status do worker Opus.
