@@ -496,6 +496,14 @@ Validação atual:
   - transcript original: `Me conte uma história longa.`;
   - reply parcial cancelada: `Havia uma vez, numa vila encantada chamada
     Lumina, um pequeno riu azul que era o lar de milhares de fadas.`
+- Firmware real, `no-echo-live` em 2026-05-29:
+  - `ok=true`;
+  - turno de resposta: `10`;
+  - `unexpected_turn_id=null`;
+  - janela de silêncio: `10.0s`;
+  - `outcome=llm`;
+  - transcript: `É muito longa.`;
+  - `discard_reason=""`.
 
 Nota de bancada em 2026-05-27: a tentativa de promover WakeNet `MR + AEC`
 direto para runtime compilou, mas no hardware causou pressão de memória
@@ -508,8 +516,8 @@ Critérios de aceite:
 - [x] Usuário consegue interromper o robô falando por cima.
 - [x] `barge-live` retorna `ok=true` com `discard_reason=barge_in`.
 - [x] `interruption_cancel_ms` fica abaixo de 200 ms no teste real.
-- [ ] `no-echo-live` retorna `ok=true`; o próprio TTS não reabre escuta falsa.
-- Sem loops de escuta/resposta.
+- [x] `no-echo-live` retorna `ok=true`; o próprio TTS não reabre escuta falsa.
+- [x] Sem loops de escuta/resposta no teste live sem eco.
 - Sem regressão de SD/WiFi/bridge durante ou após o probe.
 
 ### Fase 8 — Produto e Regressão Contínua
