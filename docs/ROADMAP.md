@@ -2053,10 +2053,12 @@ Implementação:
 - [x] Opus foi promovido de experimento manual para capability oficial opt-in:
   `/ai/status` expõe `audio`, `codecs`, `features` e `firmware.*`, a Ops API
   proxy os endpoints Opus do firmware e PCM16 segue como fallback padrão.
+- [x] Harness pareado `noisebot_server debug codec-ab` criado para comparar
+  PCM16 vs Opus em frases repetíveis antes de qualquer promoção para padrão.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
   padrão. Ver `docs/VOICE_PIPELINE.md` e `docs/VOICE_AB_PHASE5_8192.md`.
-- [ ] Próximo avanço: rodar A/B maior de latência/CPU e sessão longa antes de
-  considerar Opus como padrão obrigatório, sem alterar wake word, VAD,
+- [ ] Próximo avanço: executar o A/B maior e sessão longa antes de considerar
+  Opus como padrão obrigatório, sem alterar wake word, VAD,
   follow-up, realtime ou AEC.
 
 ---

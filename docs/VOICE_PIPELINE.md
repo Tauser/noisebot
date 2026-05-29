@@ -444,6 +444,9 @@ Validação atual:
   orchestrator e aciona STT com PCM decodificado.
 - `noisebot_server debug opus-live`: harness para teste real fim-a-fim com
   firmware, server metrics e desligamento automatico do transporte Opus.
+- `noisebot_server debug codec-ab`: harness pareado para rodar PCM16 e Opus
+  nas mesmas frases, com relatório Markdown/JSON de STT, duração, samples,
+  pacotes, bytes e drops.
 - Server Ops API proxy para os endpoints Opus do firmware:
   `/api/device/audio/opus/worker`,
   `/api/device/audio/opus/worker/probe`,
@@ -456,8 +459,7 @@ Validação atual:
 - `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém PCM16
   como contrato padrão e exige flag explicita para Opus.
 - `bridge/tests`: 153 testes verdes após a integração.
-- `server/tests`: 102 testes verdes após promover Opus como capability
-  oficial opt-in no status/API de operação.
+- `server/tests`: 105 testes verdes após adicionar o harness `codec-ab`.
 - Build ESP-IDF concluído após a promoção de status/API.
 - `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
   packets, `opus_bytes=3043` contra `input_bytes=32000`
@@ -477,6 +479,7 @@ Critérios de aceite:
   como padrão obrigatório.
 - [x] Promover Opus de experimento manual para capability oficial opt-in, com
   status/HELLO/metrics coerentes e fallback PCM16 automático.
+- [x] Criar harness pareado PCM16 vs Opus para A/B maior repetível.
 - [ ] Rodar A/B maior de latência/CPU e sessão longa antes de considerar Opus
   como padrão obrigatório.
 

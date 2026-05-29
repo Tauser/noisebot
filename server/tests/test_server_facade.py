@@ -358,6 +358,143 @@ def test_server_cli_runs_opus_live_debug_command(monkeypatch, capsys) -> None:
     assert calls["phrase"] == "me diga uma curiosidade"
 
 
+def test_server_cli_parses_codec_ab_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-ab",
+        "me diga uma curiosidade",
+        "que horas sao",
+        "--repeat",
+        "2",
+        "--server-url",
+        "http://127.0.0.1:8765",
+        "--timeout-s",
+        "12",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "codec-ab"
+    assert args.host == "192.168.1.30"
+    assert args.phrases == ["me diga uma curiosidade", "que horas sao"]
+    assert args.repeat == 2
+    assert args.server_url == "http://127.0.0.1:8765"
+    assert args.timeout_s == 12.0
+    assert args.json
+
+
+def test_server_cli_runs_codec_ab_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    codec_ab = importlib.import_module("noisebot_server.internal.ops.codec_ab")
+
+    calls: dict[str, object] = {}
+
+    def fake_run_codec_ab_trials(**kwargs):
+        calls.update(kwargs)
+        return [
+            codec_ab.CodecAbTrial(
+                codec="pcm16",
+                phrase="me diga uma curiosidade",
+                ok=True,
+                turn_id=10,
+                outcome="llm",
+                transcript_quality="good",
+                transcript="me diga uma curiosidade",
+                discard_reason="",
+                total_samples=32000,
+                stt_ms=1000.0,
+                duration_ms=3000.0,
+                packets_drained=0,
+                packet_drops=0,
+                encoded_bytes=0,
+                server_codec_confirmed=True,
+            ),
+            codec_ab.CodecAbTrial(
+                codec="opus",
+                phrase="me diga uma curiosidade",
+                ok=True,
+                turn_id=11,
+                outcome="llm",
+                transcript_quality="good",
+                transcript="me diga uma curiosidade",
+                discard_reason="",
+                total_samples=32000,
+                stt_ms=1000.0,
+                duration_ms=3000.0,
+                packets_drained=34,
+                packet_drops=0,
+                encoded_bytes=4896,
+                server_codec_confirmed=True,
+            ),
+        ]
+
+    monkeypatch.setattr(codec_ab, "run_codec_ab_trials", fake_run_codec_ab_trials)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-ab",
+        "me diga uma curiosidade",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"codec": "opus"' in captured.out
+    assert calls["firmware_url"] == "http://192.168.1.30"
+    assert calls["phrases"] == ["me diga uma curiosidade"]
+
+
+def test_server_codec_ab_summary_keeps_opus_opt_in_on_drops() -> None:
+    codec_ab = importlib.import_module("noisebot_server.internal.ops.codec_ab")
+
+    trials = [
+        codec_ab.CodecAbTrial(
+            codec="pcm16",
+            phrase="x",
+            ok=True,
+            turn_id=1,
+            outcome="llm",
+            transcript_quality="good",
+            transcript="x",
+            discard_reason="",
+            total_samples=16000,
+            stt_ms=1000.0,
+            duration_ms=2000.0,
+            packets_drained=0,
+            packet_drops=0,
+            encoded_bytes=0,
+            server_codec_confirmed=True,
+        ),
+        codec_ab.CodecAbTrial(
+            codec="opus",
+            phrase="x",
+            ok=False,
+            turn_id=2,
+            outcome="llm",
+            transcript_quality="good",
+            transcript="x",
+            discard_reason="",
+            total_samples=16000,
+            stt_ms=1000.0,
+            duration_ms=2000.0,
+            packets_drained=10,
+            packet_drops=1,
+            encoded_bytes=1400,
+            server_codec_confirmed=True,
+        ),
+    ]
+
+    summary = "\n".join(codec_ab.summarize_codec_ab(trials))
+
+    assert "Opus drops: 1" in summary
+    assert "Opus permanece opt-in" in summary
+
+
 def test_server_ai_status_exposes_firmware_audio_capabilities() -> None:
     schemas = importlib.import_module("noisebot_server.internal.ops.schemas")
 

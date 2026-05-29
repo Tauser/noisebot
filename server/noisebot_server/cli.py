@@ -68,6 +68,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     opus_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     opus_live.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    codec_ab = debug_sub.add_parser("codec-ab")
+    codec_ab.add_argument(
+        "phrases",
+        nargs="+",
+        help="Frases pareadas para testar em PCM16 e Opus",
+    )
+    codec_ab.add_argument("--server-url", default="http://127.0.0.1:8765")
+    codec_ab.add_argument("--firmware-url", default="")
+    codec_ab.add_argument("--repeat", type=int, default=1)
+    codec_ab.add_argument("--timeout-s", type=float, default=45.0)
+    codec_ab.add_argument("--output", help="Arquivo Markdown/JSON de saida")
+    codec_ab.add_argument("--json", action="store_true", help="Emitir JSON")
+
     barge_live = debug_sub.add_parser("barge-live")
     barge_live.add_argument("phrase", nargs="?", default="me conte uma historia longa")
     barge_live.add_argument("--server-url", default="http://127.0.0.1:8765")
@@ -333,6 +346,37 @@ def run_debug_command(args: argparse.Namespace) -> None:
         else:
             print(text)
         if not trial.ok:
+            raise SystemExit(1)
+        return
+    if args.debug_command == "codec-ab":
+        from .internal.ops.codec_ab import (
+            format_codec_ab_json,
+            format_codec_ab_markdown,
+            run_codec_ab_trials,
+        )
+
+        firmware_url = args.firmware_url or os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "")
+        if not firmware_url:
+            host = args.host or os.environ.get("NOISEBOT_HOST", "")
+            if host:
+                firmware_url = f"http://{host}"
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+
+        trials = run_codec_ab_trials(
+            phrases=args.phrases,
+            server_url=args.server_url,
+            firmware_url=firmware_url,
+            repeat=args.repeat,
+            timeout_s=args.timeout_s,
+        )
+        text = format_codec_ab_json(trials) if args.json else format_codec_ab_markdown(trials)
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        if not all(trial.ok for trial in trials):
             raise SystemExit(1)
         return
     if args.debug_command == "barge-live":

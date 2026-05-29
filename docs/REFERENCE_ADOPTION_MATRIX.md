@@ -144,9 +144,9 @@ Antes de qualquer fase nova:
 Rodar **A/B maior de latência/CPU e sessão longa com Opus opt-in**, sem tornar
 Opus padrão obrigatório ainda:
 
-- comparar PCM16 vs Opus em frases curtas, médias e longas;
+- executar `noisebot_server debug codec-ab` com frases curtas, médias e longas;
 - registrar STT, duração, bytes, drops, CPU/memória e reconexão;
-- manter `opus-live` e testes automáticos como gate;
+- manter `codec-ab`, `opus-live` e testes automáticos como gate;
 - manter AEC/realtime/follow-up em standby.
 
 Essa etapa só valida promoção de codec. Qualquer mudança em wake, VAD, AEC,
