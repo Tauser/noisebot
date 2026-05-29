@@ -366,10 +366,15 @@ Pendências para promover AFE:
 
 ### Fase 6 — Opus/Frames de 60 ms
 
-Status: codec validado no server, sem alterar o firmware. Bridge e firmware
-anunciam negociação de codec no `HELLO` mantendo `pcm16=true` e `opus=false`;
-o bridge valida PCM16 16kHz mono com chunks de 256 samples antes de aceitar o
-contrato. O server possui `noisebot_server.internal.transport.opus_codec` para
+Status: codec validado no server e contrato preparado no firmware sem ligar o
+encoder real. Bridge e firmware anunciam negociação de codec no `HELLO`
+mantendo `pcm16=true` e `opus=false`; o bridge valida PCM16 16kHz mono com
+chunks de 256 samples antes de aceitar o contrato. O firmware declara o contrato
+experimental de 60 ms (`NB_BRIDGE_OPUS_FRAME_MS=60`,
+`NB_BRIDGE_OPUS_FRAME_SAMPLES=960`) e expõe
+`bridge_service_send_opus_packet()`, mas a função retorna
+`ESP_ERR_NOT_SUPPORTED` enquanto `bridge_service_opus_is_enabled()` for `false`.
+O server possui `noisebot_server.internal.transport.opus_codec` para
 round-trip PCM16 -> Opus -> PCM16 com frames de 60 ms e comando
 `noisebot_server debug opus-selftest`. O adapter do server ja consegue aceitar
 um peer experimental que negocie `audio.format=opus` e publicar PCM16 para o
@@ -397,6 +402,8 @@ Validação atual:
   negociado para `AudioChunkIn` PCM16.
 - `server/tests/test_server_facade.py`: fake firmware Opus via TCP chega ao
   orchestrator e aciona STT com PCM decodificado.
+- `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém
+  `opus=false` no `HELLO` e possui stub Opus explicitamente desabilitado.
 - `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
   packets, `opus_bytes=3043` contra `input_bytes=32000`
   (`compression_ratio=0.0951`) no ambiente local.

@@ -1145,6 +1145,18 @@ esp_err_t bridge_service_send_audio_chunk(const int16_t *samples, uint16_t count
     return err;
 }
 
+bool bridge_service_opus_is_enabled(void)
+{
+    return false;
+}
+
+esp_err_t bridge_service_send_opus_packet(const uint8_t *packet, uint16_t len)
+{
+    (void)packet;
+    (void)len;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
 esp_err_t bridge_service_send_event(const nb_event_t *evt)
 {
     if (!evt) return ESP_ERR_INVALID_ARG;
