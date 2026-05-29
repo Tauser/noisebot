@@ -421,7 +421,9 @@ crítico do barge-in no firmware é verificado por
 `bridge/tests/test_firmware_audio_service_contract.py`. O fake firmware simula
 `HELLO`, `VOICE_START`, `AUDIO_CHUNK`, `VOICE_END`, frames corrompidos, áudio
 fora de sessão, sessão vazia seguida de sessão válida, resposta longa em chunks,
-STT rejeitado e falha de TTS. A suíte do bridge está verde com 143 testes. Isso
+STT rejeitado e falha de TTS. O replay agora usa fixtures reais de
+`voice_samples/` para cobrir amostras boas e ruins sem hardware. A suíte do
+bridge está verde com 145 testes. Isso
 não substitui o checklist físico do robô, mas impede que a camada de protocolo
 volte a aceitar áudio fantasma, responder wake vazio, mascarar falhas de STT/TTS
 ou quebrar novamente o contrato mínimo de barge-in.
@@ -453,7 +455,6 @@ Critérios de aceite:
 
 Pendências:
 
-- Adicionar fixture/replay de WAVs reais bons e ruins.
 - Só reabrir follow-up automático ou barge-in por VAD sem wake word depois de
   AEC/AFE validado.
 

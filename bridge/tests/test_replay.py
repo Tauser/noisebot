@@ -9,6 +9,18 @@ from noisebot_bridge.replay import load_audio, run_replay
 from noisebot_bridge.stt import SttResult
 
 
+ROOT = Path(__file__).resolve().parents[2]
+VOICE_SAMPLES = ROOT / "voice_samples"
+REAL_GOOD_WAVS = (
+    VOICE_SAMPLES / "bridge_tx_comando_curto_468s.wav",
+    VOICE_SAMPLES / "raw_comando_curto_402s.wav",
+)
+REAL_BAD_WAVS = (
+    VOICE_SAMPLES / "bridge_tx_ruido_ambiente_548s.wav",
+    VOICE_SAMPLES / "bridge_tx_mesa_vibrando_616s.wav",
+)
+
+
 class FakeStt:
     ready = True
     calls = 0
@@ -123,6 +135,32 @@ class ReplayTests(unittest.TestCase):
         data = result.to_dict()
         self.assertEqual(stt.calls, 1)
         self.assertEqual(data["session"]["outcome"], "stt_rejected")
+
+    def test_replay_real_good_voice_samples_reach_stt(self):
+        for path in REAL_GOOD_WAVS:
+            with self.subTest(path=path.name):
+                self.assertTrue(path.exists(), f"fixture ausente: {path}")
+                stt = FakeStt()
+
+                result = run_replay(str(path), stt, NoneLlm(), FakeTts(), dry_run=True)
+
+                data = result.to_dict()
+                self.assertEqual(stt.calls, 1)
+                self.assertGreater(data["samples"], 16000)
+                self.assertEqual(data["session"]["outcome"], "dry_run_ok")
+
+    def test_replay_real_bad_voice_samples_reject_no_speech(self):
+        for path in REAL_BAD_WAVS:
+            with self.subTest(path=path.name):
+                self.assertTrue(path.exists(), f"fixture ausente: {path}")
+                stt = NoSpeechStt()
+
+                result = run_replay(str(path), stt, NoneLlm(), FakeTts(), dry_run=False)
+
+                data = result.to_dict()
+                self.assertEqual(stt.calls, 1)
+                self.assertGreater(data["samples"], 16000)
+                self.assertEqual(data["session"]["outcome"], "stt_rejected")
 
 
 if __name__ == "__main__":
