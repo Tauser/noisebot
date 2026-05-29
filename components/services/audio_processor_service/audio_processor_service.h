@@ -95,6 +95,11 @@ typedef struct {
     uint32_t pcm_feed_drops;
     uint32_t pcm_encode_packets;
     uint32_t pcm_encoded_bytes_total;
+    uint32_t opus_packet_enqueued;
+    uint32_t opus_packet_drops;
+    uint32_t opus_packet_drained;
+    uint32_t opus_packet_bytes_total;
+    uint16_t opus_packet_queue_count;
     int codec_error;
     esp_err_t last_error;
 } nb_opus_worker_status_t;
@@ -154,6 +159,12 @@ esp_err_t audio_processor_service_opus_worker_encode_test_once(void);
  * Não altera o bridge nem bloqueia a captura quando o worker está desligado.
  */
 void audio_processor_service_opus_worker_feed_pcm(const int16_t *pcm, uint16_t n);
+
+/**
+ * @brief Descarta pacotes Opus codificados e retorna quantos havia na fila.
+ */
+esp_err_t audio_processor_service_opus_worker_drain_packets(uint32_t *out_packets,
+                                                            uint32_t *out_bytes);
 
 /**
  * @brief Copia o último status do worker Opus.

@@ -42,6 +42,8 @@
 #define OPUS_WORKER_TASK_CORE    0
 #define OPUS_WORKER_TIMEOUT_MS   5000U
 #define OPUS_PCM_QUEUE_FRAMES    8U
+#define OPUS_PACKET_QUEUE_DEPTH  32U
+#define OPUS_PACKET_MAX_BYTES    1024U
 
 #define OPUS_FRAME_DURATION_MS   60
 #define OPUS_FRAME_SAMPLES       ((16000 * OPUS_FRAME_DURATION_MS) / 1000)
@@ -88,6 +90,10 @@ static uint8_t s_opus_pcm_queue_read;
 static uint8_t s_opus_pcm_queue_write;
 static uint8_t s_opus_pcm_queue_count;
 static int16_t *s_opus_pcm_queue;
+static uint8_t *s_opus_packet_queue;
+static uint16_t s_opus_packet_lens[OPUS_PACKET_QUEUE_DEPTH];
+static uint8_t s_opus_packet_read;
+static uint8_t s_opus_packet_write;
 static int16_t s_opus_pcm[OPUS_FRAME_SAMPLES];
 static int16_t s_opus_feed_frame[OPUS_FRAME_SAMPLES];
 static uint8_t s_opus_out[2048];
@@ -513,7 +519,25 @@ static void opus_worker_set_status(const nb_opus_worker_status_t *st)
     }
     if (s.mutex != NULL) {
         xSemaphoreTake(s.mutex, portMAX_DELAY);
+        uint32_t pcm_feed_chunks = s_opus.pcm_feed_chunks;
+        uint32_t pcm_feed_samples = s_opus.pcm_feed_samples;
+        uint32_t pcm_feed_frames = s_opus.pcm_feed_frames;
+        uint32_t pcm_feed_drops = s_opus.pcm_feed_drops;
+        uint32_t opus_packet_enqueued = s_opus.opus_packet_enqueued;
+        uint32_t opus_packet_drops = s_opus.opus_packet_drops;
+        uint32_t opus_packet_drained = s_opus.opus_packet_drained;
+        uint32_t opus_packet_bytes_total = s_opus.opus_packet_bytes_total;
+        uint16_t opus_packet_queue_count = s_opus.opus_packet_queue_count;
         s_opus = *st;
+        s_opus.pcm_feed_chunks = pcm_feed_chunks;
+        s_opus.pcm_feed_samples = pcm_feed_samples;
+        s_opus.pcm_feed_frames = pcm_feed_frames;
+        s_opus.pcm_feed_drops = pcm_feed_drops;
+        s_opus.opus_packet_enqueued = opus_packet_enqueued;
+        s_opus.opus_packet_drops = opus_packet_drops;
+        s_opus.opus_packet_drained = opus_packet_drained;
+        s_opus.opus_packet_bytes_total = opus_packet_bytes_total;
+        s_opus.opus_packet_queue_count = opus_packet_queue_count;
         xSemaphoreGive(s.mutex);
     } else {
         s_opus = *st;
@@ -674,6 +698,43 @@ static bool opus_encode_static_frame(void *enc, nb_opus_worker_status_t *st)
     return opus_encode_pcm_frame(enc, st, s_opus_pcm);
 }
 
+static void opus_packet_queue_status_locked(nb_opus_worker_status_t *st)
+{
+    if (st == NULL) {
+        return;
+    }
+
+    st->opus_packet_enqueued = s_opus.opus_packet_enqueued;
+    st->opus_packet_drops = s_opus.opus_packet_drops;
+    st->opus_packet_drained = s_opus.opus_packet_drained;
+    st->opus_packet_bytes_total = s_opus.opus_packet_bytes_total;
+    st->opus_packet_queue_count = s_opus.opus_packet_queue_count;
+}
+
+static void opus_packet_queue_push(const uint8_t *packet, uint16_t len)
+{
+    if (packet == NULL || len == 0U || len > OPUS_PACKET_MAX_BYTES) {
+        return;
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    if (s_opus_packet_queue == NULL ||
+        s_opus.opus_packet_queue_count >= OPUS_PACKET_QUEUE_DEPTH) {
+        s_opus.opus_packet_drops++;
+        xSemaphoreGive(s.mutex);
+        return;
+    }
+
+    uint8_t *dst = &s_opus_packet_queue[(size_t)s_opus_packet_write * OPUS_PACKET_MAX_BYTES];
+    memcpy(dst, packet, len);
+    s_opus_packet_lens[s_opus_packet_write] = len;
+    s_opus_packet_write = (uint8_t)((s_opus_packet_write + 1U) % OPUS_PACKET_QUEUE_DEPTH);
+    s_opus.opus_packet_queue_count++;
+    s_opus.opus_packet_enqueued++;
+    s_opus.opus_packet_bytes_total += len;
+    xSemaphoreGive(s.mutex);
+}
+
 static void opus_persistent_task(void *arg)
 {
     (void)arg;
@@ -761,6 +822,10 @@ static void opus_persistent_task(void *arg)
             if (encoded) {
                 st.pcm_encode_packets++;
                 st.pcm_encoded_bytes_total += (uint32_t)st.encoded_bytes;
+                opus_packet_queue_push(s_opus_out, (uint16_t)st.encoded_bytes);
+                xSemaphoreTake(s.mutex, portMAX_DELAY);
+                opus_packet_queue_status_locked(&st);
+                xSemaphoreGive(s.mutex);
             } else {
                 st.encode_failures++;
             }
@@ -774,13 +839,21 @@ static void opus_persistent_task(void *arg)
 
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     int16_t *pcm_queue = s_opus_pcm_queue;
+    uint8_t *packet_queue = s_opus_packet_queue;
     s_opus_pcm_queue = NULL;
+    s_opus_packet_queue = NULL;
     s_opus_pcm_queue_read = 0;
     s_opus_pcm_queue_write = 0;
     s_opus_pcm_queue_count = 0;
+    s_opus_packet_read = 0;
+    s_opus_packet_write = 0;
+    memset(s_opus_packet_lens, 0, sizeof(s_opus_packet_lens));
     xSemaphoreGive(s.mutex);
     if (pcm_queue != NULL) {
         heap_caps_free(pcm_queue);
+    }
+    if (packet_queue != NULL) {
+        heap_caps_free(packet_queue);
     }
 
     st.internal_after_close_kb = internal_free_kb();
@@ -824,6 +897,9 @@ esp_err_t audio_processor_service_opus_worker_probe_once(void)
     s_opus_pcm_queue_read = 0;
     s_opus_pcm_queue_write = 0;
     s_opus_pcm_queue_count = 0;
+    s_opus_packet_read = 0;
+    s_opus_packet_write = 0;
+    memset(s_opus_packet_lens, 0, sizeof(s_opus_packet_lens));
     s_opus.running = true;
     s_opus.last_error = ESP_ERR_TIMEOUT;
     xSemaphoreGive(s.mutex);
@@ -895,11 +971,29 @@ esp_err_t audio_processor_service_opus_worker_start(void)
         xSemaphoreGive(s.mutex);
         return ESP_ERR_NO_MEM;
     }
+    uint8_t *packet_queue = (uint8_t *)heap_caps_calloc(
+        OPUS_PACKET_QUEUE_DEPTH * OPUS_PACKET_MAX_BYTES,
+        sizeof(uint8_t),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (packet_queue == NULL) {
+        heap_caps_free(pcm_queue);
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        memset(&s_opus, 0, sizeof(s_opus));
+        s_opus.ran = true;
+        s_opus.persistent = true;
+        s_opus.internal_before_kb = internal_free_kb();
+        s_opus.dma_before_kb = dma_free_kb();
+        s_opus.psram_before_kb = psram_free_kb();
+        s_opus.last_error = ESP_ERR_NO_MEM;
+        xSemaphoreGive(s.mutex);
+        return ESP_ERR_NO_MEM;
+    }
 
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     if (s_opus.running || s_opus_task != NULL) {
         xSemaphoreGive(s.mutex);
         heap_caps_free(pcm_queue);
+        heap_caps_free(packet_queue);
         return ESP_ERR_INVALID_STATE;
     }
     memset(&s_opus, 0, sizeof(s_opus));
@@ -909,6 +1003,10 @@ esp_err_t audio_processor_service_opus_worker_start(void)
     s_opus_pcm_queue_read = 0;
     s_opus_pcm_queue_write = 0;
     s_opus_pcm_queue_count = 0;
+    s_opus_packet_queue = packet_queue;
+    s_opus_packet_read = 0;
+    s_opus_packet_write = 0;
+    memset(s_opus_packet_lens, 0, sizeof(s_opus_packet_lens));
     s_opus.running = true;
     s_opus.persistent = true;
     s_opus.last_error = ESP_ERR_TIMEOUT;
@@ -935,9 +1033,11 @@ esp_err_t audio_processor_service_opus_worker_start(void)
         s_opus.psram_before_kb = psram_free_kb();
         s_opus.last_error = ESP_ERR_NO_MEM;
         s_opus_pcm_queue = NULL;
+        s_opus_packet_queue = NULL;
         xSemaphoreGive(s.mutex);
         s_opus_task = NULL;
         heap_caps_free(pcm_queue);
+        heap_caps_free(packet_queue);
         return ESP_ERR_NO_MEM;
     }
 
@@ -1047,6 +1147,36 @@ void audio_processor_service_opus_worker_feed_pcm(const int16_t *pcm, uint16_t n
     if (notify && task != NULL) {
         xTaskNotifyGive(task);
     }
+}
+
+esp_err_t audio_processor_service_opus_worker_drain_packets(uint32_t *out_packets,
+                                                            uint32_t *out_bytes)
+{
+    if (s.mutex == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    uint32_t packets = s_opus.opus_packet_queue_count;
+    uint32_t bytes = 0;
+    for (uint16_t i = 0; i < s_opus.opus_packet_queue_count; i++) {
+        uint8_t idx = (uint8_t)((s_opus_packet_read + i) % OPUS_PACKET_QUEUE_DEPTH);
+        bytes += s_opus_packet_lens[idx];
+        s_opus_packet_lens[idx] = 0;
+    }
+    s_opus.opus_packet_drained += packets;
+    s_opus.opus_packet_queue_count = 0;
+    s_opus_packet_read = 0;
+    s_opus_packet_write = 0;
+    xSemaphoreGive(s.mutex);
+
+    if (out_packets != NULL) {
+        *out_packets = packets;
+    }
+    if (out_bytes != NULL) {
+        *out_bytes = bytes;
+    }
+    return ESP_OK;
 }
 
 static void shadow_task(void *arg)

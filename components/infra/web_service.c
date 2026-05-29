@@ -1480,7 +1480,7 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
     nb_opus_worker_status_t st;
     audio_processor_service_get_opus_worker_status(&st);
 
-    char buf[768];
+    char buf[1024];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"ran\":%s,\"running\":%s,\"task_created\":%s,"
              "\"worker_ok\":%s,"
@@ -1508,6 +1508,11 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
              "\"pcm_feed_drops\":%lu,"
              "\"pcm_encode_packets\":%lu,"
              "\"pcm_encoded_bytes_total\":%lu,"
+             "\"opus_packet_enqueued\":%lu,"
+             "\"opus_packet_drops\":%lu,"
+             "\"opus_packet_drained\":%lu,"
+             "\"opus_packet_bytes_total\":%lu,"
+             "\"opus_packet_queue_count\":%u,"
              "\"codec_error\":%d,"
              "\"last_error\":\"%s\","
              "\"probe_error\":\"%s\"}",
@@ -1540,6 +1545,11 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.pcm_feed_drops,
              (unsigned long)st.pcm_encode_packets,
              (unsigned long)st.pcm_encoded_bytes_total,
+             (unsigned long)st.opus_packet_enqueued,
+             (unsigned long)st.opus_packet_drops,
+             (unsigned long)st.opus_packet_drained,
+             (unsigned long)st.opus_packet_bytes_total,
+             (unsigned)st.opus_packet_queue_count,
              st.codec_error,
              esp_err_to_name(st.last_error),
              esp_err_to_name(err));
@@ -1606,6 +1616,26 @@ static esp_err_t handle_api_audio_opus_worker_encode_test(httpd_req_t *req)
                                    : "500 Internal Server Error");
     }
     return send_audio_opus_worker_status(req, err);
+}
+
+static esp_err_t handle_api_audio_opus_worker_drain_packets(httpd_req_t *req)
+{
+    uint32_t packets = 0;
+    uint32_t bytes = 0;
+    esp_err_t err = audio_processor_service_opus_worker_drain_packets(&packets, &bytes);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "409 Conflict");
+    }
+    httpd_resp_set_type(req, "application/json");
+
+    char buf[160];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"drained_packets\":%lu,\"drained_bytes\":%lu,\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             (unsigned long)packets,
+             (unsigned long)bytes,
+             esp_err_to_name(err));
+    return httpd_resp_sendstr(req, buf);
 }
 
 static void sanitize_audio_scenario(const char *src, char *dst, size_t dst_len)
@@ -2687,6 +2717,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/opus/worker/start", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_start },
     { .uri = "/api/audio/opus/worker/stop", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_stop },
     { .uri = "/api/audio/opus/worker/encode-test", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_encode_test },
+    { .uri = "/api/audio/opus/worker/drain-packets", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_drain_packets },
     { .uri = "/api/audio/record",   .method = HTTP_POST,   .handler = handle_api_audio_record },
     { .uri = "/api/audio/files",    .method = HTTP_GET,    .handler = handle_api_audio_files },
     { .uri = "/api/audio/file",     .method = HTTP_GET,    .handler = handle_api_audio_file },
