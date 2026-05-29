@@ -1479,6 +1479,12 @@ esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source
             ESP_LOGI(TAG, "captura bridge aguardando VAD source=%s",
                      listen_source_name(source));
         } else if (listen_start_bridge_capture()) {
+            s.listen_voice_detected = true;
+            s.listen_phase = LISTEN_PHASE_CAPTURING_SPEECH;
+            s.listen_wait_remaining_ms = 0;
+            s.listen_speech_elapsed_ms = 0;
+            s.vad_state = VAD_ACTIVE;
+            s.vad_silence_start_us = 0;
             ESP_LOGI(TAG, "bridge captura aberta imediatamente source=%s",
                      listen_source_name(source));
         } else {
