@@ -470,6 +470,11 @@ Mudanças:
 - Usar referência do speaker se o caminho de áudio permitir.
 - Ativar `realtime` apenas com AEC validado.
 - Server deve distinguir fala do usuário de eco do TTS.
+- Antes de qualquer mudança no firmware, medir barge-in real com:
+  `noisebot_server debug barge-live "me conte uma historia longa" --json`.
+  O comando espera um turno interrompido em `/ai/metrics`, registra
+  `discard_reason=barge_in`, `outcome=interrupted` e a latência
+  `interruption_cancel_ms`.
 - O AEC agora tem probe próprio em `/api/audio/processor/aec/probe`: alinhado
   ao Xiaozhi, ele cria um AFE `MR` de voz (`AFE_TYPE_VC` +
   `AEC_MODE_VOIP_HIGH_PERF`), mede PSRAM/heap interno/DMA e destrói antes de
@@ -485,6 +490,7 @@ probe passar com margem e sem regressão em SD/WiFi.
 Critérios de aceite:
 
 - Usuário consegue interromper o robô falando por cima.
+- `barge-live` retorna `ok=true` com `discard_reason=barge_in`.
 - O próprio TTS não reabre escuta falsa.
 - Sem loops de escuta/resposta.
 - Sem regressão de SD/WiFi/bridge durante ou após o probe.

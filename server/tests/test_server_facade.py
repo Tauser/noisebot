@@ -355,6 +355,61 @@ def test_server_cli_runs_opus_live_debug_command(monkeypatch, capsys) -> None:
     assert calls["phrase"] == "me diga uma curiosidade"
 
 
+def test_server_cli_parses_barge_live_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "debug",
+        "barge-live",
+        "me conte uma historia longa",
+        "--server-url",
+        "http://127.0.0.1:8765",
+        "--timeout-s",
+        "12",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "barge-live"
+    assert args.phrase == "me conte uma historia longa"
+    assert args.server_url == "http://127.0.0.1:8765"
+    assert args.timeout_s == 12.0
+    assert args.json
+
+
+def test_server_cli_runs_barge_live_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    barge_live = importlib.import_module("noisebot_server.internal.ops.barge_live")
+
+    calls: dict[str, object] = {}
+
+    def fake_run_barge_live_trial(**kwargs):
+        calls.update(kwargs)
+        return barge_live.BargeLiveTrial(
+            phrase=kwargs["phrase"],
+            ok=True,
+            interrupted_turn_id=88,
+            interruption_cancel_ms=12.5,
+            transcript="me conte uma historia longa",
+            reply="era uma vez",
+            discard_reason="barge_in",
+            outcome="interrupted",
+        )
+
+    monkeypatch.setattr(barge_live, "run_barge_live_trial", fake_run_barge_live_trial)
+
+    cli.main([
+        "debug",
+        "barge-live",
+        "me conte uma historia longa",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"ok": true' in captured.out
+    assert calls["phrase"] == "me conte uma historia longa"
+
+
 def test_server_cli_runs_service_status_without_bridge_entrypoint(
     monkeypatch,
     capsys,

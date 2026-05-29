@@ -68,6 +68,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     opus_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     opus_live.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    barge_live = debug_sub.add_parser("barge-live")
+    barge_live.add_argument("phrase", nargs="?", default="me conte uma historia longa")
+    barge_live.add_argument("--server-url", default="http://127.0.0.1:8765")
+    barge_live.add_argument("--timeout-s", type=float, default=45.0)
+    barge_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
+    barge_live.add_argument("--json", action="store_true", help="Emitir JSON")
+
     parser.add_argument("--host", help="IP do ESP32")
     parser.add_argument("--port", type=int, help="Porta TCP")
     parser.add_argument("--uart", help="Porta UART")
@@ -307,6 +314,27 @@ def run_debug_command(args: argparse.Namespace) -> None:
             timeout_s=args.timeout_s,
         )
         text = format_opus_live_json(trial) if args.json else format_opus_live_markdown(trial)
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        if not trial.ok:
+            raise SystemExit(1)
+        return
+    if args.debug_command == "barge-live":
+        from .internal.ops.barge_live import (
+            format_barge_live_json,
+            format_barge_live_markdown,
+            run_barge_live_trial,
+        )
+
+        trial = run_barge_live_trial(
+            phrase=args.phrase,
+            server_url=args.server_url,
+            timeout_s=args.timeout_s,
+        )
+        text = format_barge_live_json(trial) if args.json else format_barge_live_markdown(trial)
         if args.output:
             with open(args.output, "w", encoding="utf-8", newline="\n") as file:
                 file.write(text)
