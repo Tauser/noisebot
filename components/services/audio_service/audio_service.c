@@ -260,11 +260,32 @@ static int16_t  s_sa_buf   [NB_AUDIO_CHUNK_FRAMES]; /* buffer para sound_analysi
 static int16_t  s_wake_buf [NB_AUDIO_CHUNK_FRAMES]; /* mic cru 16-bit para WakeNet */
 static int16_t  s_bridge_buf[NB_AUDIO_CHUNK_FRAMES]; /* mic ganho/limit para bridge */
 static int16_t  s_bridge_proc_buf[NB_AUDIO_CHUNK_FRAMES]; /* saida AFE opcional */
+static uint8_t  s_opus_packet_buf[NB_BRIDGE_OPUS_MAX_PACKET_BYTES];
 static uint32_t s_bridge_diag_chunk_counter = 0;
 static uint32_t s_spk_fail_count = 0;
 static uint32_t s_mic_fail_count = 0;
 
 static void esp_vad_reset(void);
+
+static void bridge_drain_opus_packets_if_enabled(void)
+{
+    if (!bridge_service_opus_is_enabled()) {
+        return;
+    }
+
+    for (uint8_t i = 0; i < 4U; i++) {
+        uint16_t packet_len = 0;
+        esp_err_t read_rc = audio_processor_service_opus_worker_read_packet(
+            s_opus_packet_buf, sizeof(s_opus_packet_buf), &packet_len);
+        if (read_rc != ESP_OK) {
+            break;
+        }
+        esp_err_t tx_rc = bridge_service_send_opus_packet(s_opus_packet_buf, packet_len);
+        if (tx_rc != ESP_OK) {
+            break;
+        }
+    }
+}
 
 static void audio_service_recover_hal(const char *where, esp_err_t err)
 {
@@ -1112,6 +1133,7 @@ static void audio_task(void *arg)
             esp_err_t tx_rc = bridge_service_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n);
             if (tx_rc == ESP_OK) {
                 audio_processor_service_opus_worker_feed_pcm(s_bridge_buf, (uint16_t)mic_n);
+                bridge_drain_opus_packets_if_enabled();
                 s.bridge_audio_sent = true;
                 s.bridge_tx_fail_count = 0;
                 if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {

@@ -1179,6 +1179,43 @@ esp_err_t audio_processor_service_opus_worker_drain_packets(uint32_t *out_packet
     return ESP_OK;
 }
 
+esp_err_t audio_processor_service_opus_worker_read_packet(uint8_t *out,
+                                                          uint16_t out_capacity,
+                                                          uint16_t *out_len)
+{
+    if (out == NULL || out_len == NULL || out_capacity == 0U) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (s.mutex == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    if (s_opus_packet_queue == NULL || s_opus.opus_packet_queue_count == 0U) {
+        xSemaphoreGive(s.mutex);
+        *out_len = 0;
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    uint16_t len = s_opus_packet_lens[s_opus_packet_read];
+    if (len == 0U || len > out_capacity) {
+        xSemaphoreGive(s.mutex);
+        *out_len = 0;
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    uint8_t *src = &s_opus_packet_queue[(size_t)s_opus_packet_read * OPUS_PACKET_MAX_BYTES];
+    memcpy(out, src, len);
+    s_opus_packet_lens[s_opus_packet_read] = 0;
+    s_opus_packet_read = (uint8_t)((s_opus_packet_read + 1U) % OPUS_PACKET_QUEUE_DEPTH);
+    s_opus.opus_packet_queue_count--;
+    s_opus.opus_packet_drained++;
+    xSemaphoreGive(s.mutex);
+
+    *out_len = len;
+    return ESP_OK;
+}
+
 static void shadow_task(void *arg)
 {
     (void)arg;

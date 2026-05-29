@@ -42,4 +42,5 @@ def test_firmware_opus_contract_is_explicit_but_disabled():
     assert "bool bridge_service_opus_is_enabled(void);" in header
     assert "esp_err_t bridge_service_send_opus_packet(" in header
     assert "bool bridge_service_opus_is_enabled(void)\n{\n    return false;\n}" in src
-    assert "return ESP_ERR_NOT_SUPPORTED;" in src
+    assert "if (!bridge_service_opus_is_enabled()) return ESP_ERR_NOT_SUPPORTED;" in src
+    assert "enqueue_frame(NB_BRIDGE_MSG_AUDIO_CHUNK, packet, len)" in src

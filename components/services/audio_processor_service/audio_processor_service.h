@@ -167,6 +167,13 @@ esp_err_t audio_processor_service_opus_worker_drain_packets(uint32_t *out_packet
                                                             uint32_t *out_bytes);
 
 /**
+ * @brief Lê um pacote Opus codificado da fila, se disponível.
+ */
+esp_err_t audio_processor_service_opus_worker_read_packet(uint8_t *out,
+                                                          uint16_t out_capacity,
+                                                          uint16_t *out_len);
+
+/**
  * @brief Copia o último status do worker Opus.
  */
 void audio_processor_service_get_opus_worker_status(nb_opus_worker_status_t *out);

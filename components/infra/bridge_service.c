@@ -1152,9 +1152,39 @@ bool bridge_service_opus_is_enabled(void)
 
 esp_err_t bridge_service_send_opus_packet(const uint8_t *packet, uint16_t len)
 {
-    (void)packet;
-    (void)len;
-    return ESP_ERR_NOT_SUPPORTED;
+    if (!bridge_service_opus_is_enabled()) return ESP_ERR_NOT_SUPPORTED;
+    if (!bridge_service_is_connected()) return ESP_ERR_INVALID_STATE;
+    if (packet == NULL || len == 0u || len > NB_BRIDGE_OPUS_MAX_PACKET_BYTES) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (s.tx_queue && uxQueueMessagesWaiting(s.tx_queue) >= TX_AUDIO_BACKLOG_MAX) {
+        s_diag_audio_drops++;
+        if (!s_diag_audio_drop_logged || (s_diag_audio_drops % 32u) == 0u) {
+            s_diag_audio_drop_logged = true;
+            NB_LOGW(TAG, "OPUS AUDIO_CHUNK dropado por backlog TX drops=%lu",
+                    (unsigned long)s_diag_audio_drops);
+        }
+        return ESP_ERR_NO_MEM;
+    }
+
+    esp_err_t err = enqueue_frame(NB_BRIDGE_MSG_AUDIO_CHUNK, packet, len);
+    if (err == ESP_OK) {
+        s_diag_audio_chunks++;
+        if (s_diag_waiting_first_audio) {
+            s_diag_waiting_first_audio = false;
+            NB_LOGI(TAG, "OPUS AUDIO_CHUNK primeiro enfileirado bytes=%u",
+                    (unsigned)len);
+        }
+    } else {
+        s_diag_audio_drops++;
+        if (!s_diag_audio_drop_logged || (s_diag_audio_drops % 32u) == 0u) {
+            s_diag_audio_drop_logged = true;
+            NB_LOGW(TAG, "OPUS AUDIO_CHUNK nao entrou na fila: %s drops=%lu",
+                    esp_err_to_name(err), (unsigned long)s_diag_audio_drops);
+        }
+    }
+    return err;
 }
 
 esp_err_t bridge_service_send_event(const nb_event_t *evt)
