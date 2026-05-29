@@ -127,7 +127,6 @@ class OpsHttpServer:
         wa.router.add_get("/api/device/audio/files/{name}", self._get_device_audio_file)
         wa.router.add_get("/api/device/audio/processor", self._get_device_audio_processor)
         wa.router.add_post("/api/device/audio/processor/probe", self._post_device_audio_processor_probe)
-        wa.router.add_post("/api/device/audio/processor/opus/probe", self._post_device_audio_processor_opus_probe)
         wa.router.add_post("/api/device/audio/processor/shadow/start", self._post_device_audio_processor_shadow_start)
         wa.router.add_post("/api/device/audio/processor/shadow/stop", self._post_device_audio_processor_shadow_stop)
         wa.router.add_post("/api/device/audio/processor/bridge/start", self._post_device_audio_processor_bridge_start)
@@ -345,17 +344,6 @@ class OpsHttpServer:
             return _json(error_response("firmware HTTP não configurado"), status=503)
         try:
             payload = await asyncio.to_thread(self._firmware_diag_client.audio_processor_probe)
-        except FirmwareDiagError as exc:
-            return _json(error_response(str(exc)), status=503)
-        status = 200 if payload.get("ok", False) else 500
-        return _json({"source": "firmware_http", **payload}, status=status)
-
-    async def _post_device_audio_processor_opus_probe(self, request: web.Request) -> web.Response:
-        self._require_token(request)
-        if self._firmware_diag_client is None:
-            return _json(error_response("firmware HTTP não configurado"), status=503)
-        try:
-            payload = await asyncio.to_thread(self._firmware_diag_client.audio_processor_opus_probe)
         except FirmwareDiagError as exc:
             return _json(error_response(str(exc)), status=503)
         status = 200 if payload.get("ok", False) else 500

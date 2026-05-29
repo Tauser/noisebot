@@ -528,10 +528,6 @@ export async function stopAudioProcessorBridge(token: string): Promise<void> {
   await authedJson<{ ok: boolean }>("/api/device/audio/processor/bridge/stop", token, { method: "POST" });
 }
 
-export async function runAudioProcessorOpusProbe(token: string): Promise<void> {
-  await authedJson<{ ok: boolean }>("/api/device/audio/processor/opus/probe", token, { method: "POST" });
-}
-
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${SERVER_URL}${path}`, { cache: "no-store" });
   if (!response.ok) {
