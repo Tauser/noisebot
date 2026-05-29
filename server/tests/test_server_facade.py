@@ -471,6 +471,61 @@ def test_server_cli_runs_no_echo_live_debug_command(monkeypatch, capsys) -> None
     assert calls["quiet_window_s"] == 6.0
 
 
+def test_server_cli_parses_aec_live_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "aec-live",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "aec-live"
+    assert args.host == "192.168.1.30"
+    assert args.json
+
+
+def test_server_cli_runs_aec_live_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    aec_live = importlib.import_module("noisebot_server.internal.ops.aec_live")
+
+    calls: dict[str, object] = {}
+
+    def fake_run_aec_live_probe(**kwargs):
+        calls.update(kwargs)
+        return aec_live.AecLiveTrial(
+            ok=True,
+            promotable=False,
+            probe_ok=False,
+            supported=False,
+            blocked_no_reference=True,
+            probe_error="ESP_OK",
+            internal_free_kb=39,
+            dma_largest_kb=38,
+            psram_current_kb=7313,
+            status_after_ok=True,
+            recommendation="Nao promover AEC: placa sem referencia limpa de speaker.",
+        )
+
+    monkeypatch.setattr(aec_live, "run_aec_live_probe", fake_run_aec_live_probe)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "aec-live",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"ok": true' in captured.out
+    assert '"promotable": false' in captured.out
+    assert calls["firmware_url"] == "http://192.168.1.30"
+
+
 def test_server_cli_runs_service_status_without_bridge_entrypoint(
     monkeypatch,
     capsys,

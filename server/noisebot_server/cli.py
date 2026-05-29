@@ -83,6 +83,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     no_echo_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     no_echo_live.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    aec_live = debug_sub.add_parser("aec-live")
+    aec_live.add_argument("--firmware-url", default="")
+    aec_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
+    aec_live.add_argument("--json", action="store_true", help="Emitir JSON")
+
     parser.add_argument("--host", help="IP do ESP32")
     parser.add_argument("--port", type=int, help="Porta TCP")
     parser.add_argument("--uart", help="Porta UART")
@@ -365,6 +370,31 @@ def run_debug_command(args: argparse.Namespace) -> None:
             timeout_s=args.timeout_s,
         )
         text = format_no_echo_live_json(trial) if args.json else format_no_echo_live_markdown(trial)
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        if not trial.ok:
+            raise SystemExit(1)
+        return
+    if args.debug_command == "aec-live":
+        from .internal.ops.aec_live import (
+            format_aec_live_json,
+            format_aec_live_markdown,
+            run_aec_live_probe,
+        )
+
+        firmware_url = args.firmware_url or os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "")
+        if not firmware_url:
+            host = args.host or os.environ.get("NOISEBOT_HOST", "")
+            if host:
+                firmware_url = f"http://{host}"
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+
+        trial = run_aec_live_probe(firmware_url=firmware_url)
+        text = format_aec_live_json(trial) if args.json else format_aec_live_markdown(trial)
         if args.output:
             with open(args.output, "w", encoding="utf-8", newline="\n") as file:
                 file.write(text)

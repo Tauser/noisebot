@@ -484,6 +484,10 @@ Mudanças:
   `AEC_MODE_VOIP_HIGH_PERF`), mede PSRAM/heap interno/DMA e destrói antes de
   retornar. O caminho principal não ativa AEC se a margem de heap estiver
   baixa.
+- O comando `noisebot_server debug aec-live --host 192.168.1.30 --json`
+  encapsula o probe AEC e classifica se ele é promovível. Resultado seguro
+  pode ser `ok=true` com `promotable=false`, quando o firmware permanece vivo
+  mas a placa não tem referência limpa do speaker ou margem suficiente.
 
 Validação atual:
 
@@ -518,7 +522,8 @@ Critérios de aceite:
 - [x] `interruption_cancel_ms` fica abaixo de 200 ms no teste real.
 - [x] `no-echo-live` retorna `ok=true`; o próprio TTS não reabre escuta falsa.
 - [x] Sem loops de escuta/resposta no teste live sem eco.
-- Sem regressão de SD/WiFi/bridge durante ou após o probe.
+- [ ] `aec-live` roda sem derrubar firmware/bridge e retorna recomendação de
+  não promoção ou promoção condicionada.
 
 ### Fase 8 — Produto e Regressão Contínua
 
