@@ -5,7 +5,7 @@ import socket
 import threading
 import time
 
-from .protocol import FRAME_OVERHEAD, MSG_HELLO, decode_frames, encode_frame
+from .protocol import FRAME_OVERHEAD, MSG_HELLO, decode_frames, decode_hello_payload, encode_frame, validate_pcm16_audio_contract
 
 log = logging.getLogger("noisebot_bridge.transport")
 
@@ -150,6 +150,13 @@ def do_handshake(transport, timeout: float = 1.0) -> bool:
         if len(buf) >= FRAME_OVERHEAD:
             frames = decode_frames(buf)
             if frames and frames[0][0] == MSG_HELLO:
+                try:
+                    capabilities = decode_hello_payload(frames[0][1])
+                    if capabilities.get("version", 1) >= 2:
+                        validate_pcm16_audio_contract(capabilities)
+                except ValueError as e:
+                    log.warning("Handshake HELLO invalido: %s", e)
+                    return False
                 return True
     return False
 

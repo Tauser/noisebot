@@ -26,6 +26,7 @@ from .protocol import (
     encode_frame,
     encode_hello_payload,
     encode_session_payload,
+    validate_pcm16_audio_contract,
 )
 from .voice_session import VoiceSessionRuntime
 
@@ -62,10 +63,18 @@ class BridgeRuntime:
             except ValueError as exc:
                 log.warning("HELLO v2 invalido — ignorando: %s", exc)
                 return
+            try:
+                validate_pcm16_audio_contract(self.peer_capabilities)
+            except ValueError as exc:
+                log.warning("HELLO v2 contrato de audio rejeitado: %s", exc)
+                self.peer_capabilities = None
+                return
             log.info(
-                "PROTO peer role=%s version=%s features=%s",
+                "PROTO peer role=%s version=%s audio=%s codecs=%s features=%s",
                 self.peer_capabilities.get("role", "unknown"),
                 self.peer_capabilities.get("version", 1),
+                self.peer_capabilities.get("audio", {}),
+                self.peer_capabilities.get("codecs", {}),
                 ",".join(self.peer_capabilities.get("features", [])),
             )
             return

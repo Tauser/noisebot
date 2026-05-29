@@ -125,6 +125,25 @@ def decode_hello_payload(payload: bytes) -> dict[str, Any]:
     return decoded
 
 
+def validate_pcm16_audio_contract(capabilities: dict[str, Any]) -> None:
+    audio = capabilities.get("audio")
+    codecs = capabilities.get("codecs", {"pcm16": True, "opus": False})
+    if not isinstance(audio, dict):
+        raise ValueError("HELLO sem contrato de audio")
+    if audio.get("format") != "pcm16":
+        raise ValueError("HELLO audio.format precisa ser pcm16")
+    if audio.get("sample_rate") != 16000:
+        raise ValueError("HELLO audio.sample_rate precisa ser 16000")
+    if audio.get("channels") != 1:
+        raise ValueError("HELLO audio.channels precisa ser 1")
+    if audio.get("chunk_samples") != 256:
+        raise ValueError("HELLO audio.chunk_samples precisa ser 256")
+    if not isinstance(codecs, dict) or codecs.get("pcm16") is not True:
+        raise ValueError("HELLO precisa anunciar codec pcm16")
+    if codecs.get("opus") is True:
+        raise ValueError("HELLO anunciou opus antes de suporte habilitado")
+
+
 def encode_session_payload(event: str, session_id: int, **fields: Any) -> bytes:
     payload = {"event": event, "session_id": session_id, **fields}
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")

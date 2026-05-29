@@ -22,6 +22,7 @@ from noisebot_bridge.protocol import (
     encode_frame,
     encode_hello_payload,
     encode_session_payload,
+    validate_pcm16_audio_contract,
 )
 
 
@@ -82,6 +83,25 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(caps["audio"]["format"], "pcm16")
         self.assertTrue(caps["codecs"]["pcm16"])
         self.assertFalse(caps["codecs"]["opus"])
+        validate_pcm16_audio_contract(caps)
+
+    def test_audio_contract_rejects_opus_until_enabled(self):
+        caps = {
+            **BRIDGE_HELLO_CAPABILITIES,
+            "codecs": {"pcm16": True, "opus": True},
+        }
+
+        with self.assertRaises(ValueError):
+            validate_pcm16_audio_contract(caps)
+
+    def test_audio_contract_rejects_chunk_size_change(self):
+        caps = {
+            **BRIDGE_HELLO_CAPABILITIES,
+            "audio": {**BRIDGE_HELLO_CAPABILITIES["audio"], "chunk_samples": 960},
+        }
+
+        with self.assertRaises(ValueError):
+            validate_pcm16_audio_contract(caps)
 
     def test_aec_realtime_opus_not_advertised_when_disabled(self):
         decoded = decode_hello_payload(encode_hello_payload())
