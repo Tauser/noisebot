@@ -366,22 +366,21 @@ Pendências para promover AFE:
 
 ### Fase 6 — Opus/Frames de 60 ms
 
-Status: codec validado no server e contrato preparado no firmware sem ligar o
-encoder real. Bridge e firmware anunciam negociação de codec no `HELLO`
-mantendo `pcm16=true` e `opus=false`; o bridge valida PCM16 16kHz mono com
-chunks de 256 samples antes de aceitar o contrato. O firmware declara o contrato
-experimental de 60 ms (`NB_BRIDGE_OPUS_FRAME_MS=60`,
-`NB_BRIDGE_OPUS_FRAME_SAMPLES=960`) e expõe
-`bridge_service_send_opus_packet()`, mas a função retorna
-`ESP_ERR_NOT_SUPPORTED` enquanto `bridge_service_opus_is_enabled()` for `false`.
-O server possui `noisebot_server.internal.transport.opus_codec` para
-round-trip PCM16 -> Opus -> PCM16 com frames de 60 ms e comando
-`noisebot_server debug opus-selftest`. O adapter do server ja consegue aceitar
-um peer experimental que negocie `audio.format=opus` e publicar PCM16 para o
+Status: concluida como modo experimental opt-in. PCM16 continua sendo o padrão
+seguro (`audio.format=pcm16`, `pcm16=true`, `opus=false`). O firmware agora
+consegue iniciar um worker Opus persistente, codificar PCM real em frames de
+60 ms (`NB_BRIDGE_OPUS_FRAME_MS=60`, `NB_BRIDGE_OPUS_FRAME_SAMPLES=960`),
+enfileirar pacotes Opus em PSRAM e, quando a flag experimental é ligada,
+anunciar `audio.format=opus` no `HELLO` e enviar esses pacotes como
+`AUDIO_CHUNK`. O rollback é imediato via API: desligar a flag volta o contrato
+para PCM16 e para o worker.
+
+O server possui `noisebot_server.internal.transport.opus_codec` para round-trip
+PCM16 -> Opus -> PCM16 com frames de 60 ms e comando
+`noisebot_server debug opus-selftest`. O adapter do server aceita um peer
+experimental que negocie `audio.format=opus` e publica PCM16 para o
 orchestrator. O fake firmware do server aceita `--audio-format opus`, anuncia
 `codecs.opus=true`, empacota PCM em Opus e exercita o caminho TCP completo.
-Nenhum caminho de áudio do robô foi alterado e Opus segue desabilitado por
-padrão no protocolo vivo.
 
 Objetivo: reduzir banda e aproximar o protocolo do Xiaozhi quando fizer sentido.
 
@@ -390,30 +389,53 @@ Mudanças:
 - Adicionar negociação de codec no `HELLO`:
   - `pcm16` como baseline;
   - `opus` como opcional.
-- Implementar Opus apenas atrás de feature flag.
-- Server deve aceitar os dois formatos durante a transição.
+- Implementar Opus apenas atrás de feature flag:
+  - `POST /api/audio/opus/transport/enable`;
+  - `POST /api/audio/opus/transport/disable`.
+- Server aceita os dois formatos durante a transição.
 - Medir latência e CPU antes de tornar padrão.
 
 Validação atual:
 
+- Firmware real, teste manual em 2026-05-29:
+  - `POST /api/audio/opus/transport/enable` retornou `opus_enabled=true`;
+  - `pcm_feed_chunks=519`, `pcm_feed_frames=138`, `pcm_feed_drops=0`;
+  - `pcm_encode_packets=138`, `opus_packet_enqueued=138`;
+  - `opus_packet_drained=138`, `opus_packet_drops=0`;
+  - `opus_packet_queue_count=0`;
+  - `POST /api/audio/opus/transport/disable` retornou `opus_enabled=false`.
+- Firmware real mantém PCM16 como padrão; Opus só liga por API experimental.
+- Firmware real passou por builds ESP-IDF limpos após os commits:
+  - `38eadb6` worker isolado;
+  - `6715dc8` worker persistente;
+  - `80ab9d6` teste de fila;
+  - `2e20116`, `f9ffb42`, `3814e49` espelhamento PCM e fila;
+  - `dc376f1` fila de pacotes Opus;
+  - `243a7ca` envio ao bridge preparado;
+  - `6fe5aa3` transporte Opus experimental.
 - `server/tests/test_opus_codec.py`: frame Opus de 60 ms, packetizer e
   round-trip com compressão.
 - `server/tests/test_server_facade.py`: adapter converte `AUDIO_CHUNK` Opus
   negociado para `AudioChunkIn` PCM16.
 - `server/tests/test_server_facade.py`: fake firmware Opus via TCP chega ao
   orchestrator e aciona STT com PCM decodificado.
-- `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém
-  `opus=false` no `HELLO` e possui stub Opus explicitamente desabilitado.
+- `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém PCM16
+  como contrato padrão e exige flag explicita para Opus.
+- `bridge/tests`: 153 testes verdes após a integração.
 - `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
   packets, `opus_bytes=3043` contra `input_bytes=32000`
   (`compression_ratio=0.0951`) no ambiente local.
 
 Critérios de aceite:
 
-- PCM continua funcionando como fallback.
-- Opus não aumenta latência perceptível.
-- Filas continuam curtas e previsíveis.
-- Nenhuma mudança de codec quebra dashboard, STT ou TTS.
+- [x] PCM continua funcionando como fallback e padrão.
+- [x] Opus só liga por flag experimental.
+- [x] Pacotes Opus reais são codificados, enfileirados, enviados/drenados sem
+  drops no teste manual.
+- [x] Filas continuam curtas e previsíveis (`queue_count=0` após envio).
+- [x] Nenhuma mudança de codec quebrou a suíte do bridge.
+- [ ] Rodar uma sessão longa em Opus com logs do server confirmando STT final e
+  resposta LLM/TTS de ponta a ponta antes de promover como padrão.
 
 ### Fase 7 — AEC e Modo Realtime
 

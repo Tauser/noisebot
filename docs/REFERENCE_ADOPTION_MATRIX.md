@@ -99,10 +99,13 @@ Motivo:
    - Adicionar campos de capacidade se necessário.
 
 5. **Opus Fase 6**
-   - Feature flag.
-   - `pcm16` fallback.
+   - Implementado como modo experimental opt-in.
+   - `pcm16` permanece fallback e padrão.
    - Frame de 60 ms compatível com XiaoZhi.
-   - Só promover se latência/CPU/memória melhorarem sem regressão.
+   - Firmware validado com worker persistente, fila PSRAM e envio/dreno sem
+     drops em teste real.
+   - Só promover como padrão após sessão longa com STT/LLM/TTS validada no
+     server e sem regressão perceptível.
 
 6. **Tools/MCP**
    - Primeiro tools locais determinísticas.
@@ -116,7 +119,7 @@ Motivo:
 
 ## Itens Explicitamente Bloqueados
 
-- Promover AFE para padrão sem A/B maior com ganho claro contra RAW.
+- Promover AFE ou Opus para padrão sem A/B maior e sessão longa ponta a ponta.
 - Habilitar AEC `MR`/`MMR` no hardware INMP441 + MAX98357A atual.
 - Reativar follow-up automático sem teste de protocolo.
 - Trocar TCP por WebSocket antes do contrato v2 estar estável.

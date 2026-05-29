@@ -73,7 +73,7 @@ Adotar no NoiseBot:
 
 - estados explicitos: `connecting`, `idle`, `listening`, `transcribing`, `thinking`, `speaking`, `error`;
 - protocolo com `hello`, `wake/detect`, `listen/start`, `listen/stop`, `tts/start`, `tts/stop`;
-- audio compacto em Opus para uma futura ponte de produto;
+- audio compacto em Opus para ponte de produto, mantendo PCM16 como fallback;
 - handshake de capacidades;
 - erros nomeados e sem silencio absoluto;
 - replay offline para testar STT/routing sem acordar o robo.
@@ -136,7 +136,9 @@ Nao adotar diretamente:
 
 ### Longo Prazo
 
-- Avaliar Opus/WebSocket.
+- Promover Opus experimental para padrão somente após sessão longa
+  STT/LLM/TTS sem regressão.
+- Avaliar WebSocket separadamente.
 - Avaliar service remoto/produto.
 - Avaliar AEC/dual mic apenas depois do caminho com 1 mic estar mensurado.
 - Avaliar app/hub externo se houver necessidade real de produto.
