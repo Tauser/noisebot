@@ -119,6 +119,12 @@ foi corrigido no protocolo: o firmware aceita `SPEECH_CANCEL` e drena a fila
 SAY. A tentativa de disparar barge-in automaticamente por VAD secundário durante
 TTS gerou falso positivo com o próprio áudio do robô; por isso o disparo
 automático fica desativado até existir AEC/AFE validado.
+Validação em hardware em 2026-05-29 confirmou o caminho suportado: wake word
+durante `RESPONDING` interrompe o TTS, envia `SPEECH_CANCEL`, abre escuta
+`source=barge_in`, encerra por silêncio e responde ao novo comando. A regressão
+automática `bridge/tests/test_firmware_audio_service_contract.py` trava o
+contrato mínimo no fonte do firmware para não voltar a forçar `VAD_ACTIVE` no
+barge-in nem alterar a escuta normal por wake word.
 
 Objetivo: o robô deve saber quando ouvir, quando parar e quando não responder.
 
@@ -136,7 +142,8 @@ Critérios de aceite:
 
 - Wake sem fala: no máximo uma ajuda, depois volta ao `IDLE`.
 - Wake + fala curta: uma resposta, sem repetir turno.
-- Interromper TTS por fala fica reservado para a fase com AEC/AFE validado.
+- Interromper TTS por wake word durante a fala funciona; interrupção automática
+  por fala sem wake fica reservada para a fase com AEC/AFE validado.
 - Follow-up funciona sem reacordar o robô artificialmente.
 
 ### Fase 4 — Qualidade de Entrada Sem Denoise Arriscado
@@ -409,13 +416,15 @@ Critérios de aceite:
 ### Fase 8 — Produto e Regressão Contínua
 
 Status: iniciada no bridge. A regressão automatizada de protocolo agora cobre o
-contrato sem hardware via `bridge/tests/test_fake_firmware.py`. O fake firmware
-simula `HELLO`, `VOICE_START`, `AUDIO_CHUNK`, `VOICE_END`, frames corrompidos,
-áudio fora de sessão, sessão vazia seguida de sessão válida, resposta longa em
-chunks, STT rejeitado e falha de TTS. A suíte do bridge está verde com 135
-testes. Isso não substitui o checklist físico do robô, mas impede que a camada
-de protocolo volte a aceitar áudio fantasma, responder wake vazio ou mascarar
-falhas de STT/TTS.
+contrato sem hardware via `bridge/tests/test_fake_firmware.py`, e o contrato
+crítico do barge-in no firmware é verificado por
+`bridge/tests/test_firmware_audio_service_contract.py`. O fake firmware simula
+`HELLO`, `VOICE_START`, `AUDIO_CHUNK`, `VOICE_END`, frames corrompidos, áudio
+fora de sessão, sessão vazia seguida de sessão válida, resposta longa em chunks,
+STT rejeitado e falha de TTS. A suíte do bridge está verde com 143 testes. Isso
+não substitui o checklist físico do robô, mas impede que a camada de protocolo
+volte a aceitar áudio fantasma, responder wake vazio, mascarar falhas de STT/TTS
+ou quebrar novamente o contrato mínimo de barge-in.
 
 Objetivo: manter o ciclo funcionando conforme novas features entram.
 
@@ -437,15 +446,16 @@ Critérios de aceite:
 
 - Nenhuma release sai sem passar o replay básico.
 - Fake firmware cobre wake/listen/speak/idle e falhas STT/TTS sem hardware.
+- Contrato de barge-in no firmware fica coberto por teste automático antes de
+  qualquer novo ajuste de VAD/escuta.
 - Toda regressão de voz vira caso de teste antes de mexer em firmware.
 - Dashboard dev mostra causa provável antes do usuário precisar ler log.
 
 Pendências:
 
-- Adicionar teste de reconexão TCP/UART no fake firmware.
 - Adicionar fixture/replay de WAVs reais bons e ruins.
-- Só reabrir follow-up automático ou barge-in full-duplex depois de contrato de
-  cancelamento explícito e AEC/AFE validado.
+- Só reabrir follow-up automático ou barge-in por VAD sem wake word depois de
+  AEC/AFE validado.
 
 ## Ordem Recomendada
 
