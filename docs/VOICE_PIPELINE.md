@@ -413,6 +413,14 @@ Validação atual:
   - `total_samples=55664`, `duration_ms=3479.0`, `stt_ms=1088.6`;
   - `packets_drained=58`, `packet_drops=0`, `encoded_bytes=8357`;
   - `enable_ok=true`, `disable_ok=true`.
+- Firmware real, `opus-live` multi-turn em 2026-05-29:
+  - `me conte uma historia curta`: `ok=true`, `outcome=llm`,
+    `total_samples=62384`, `packets_drained=65`, `packet_drops=0`;
+  - `me diga outra curiosidade`: `ok=true`, `outcome=llm`,
+    `total_samples=151664`, `packets_drained=158`, `packet_drops=0`;
+  - `que horas sao`: `ok=true`, `outcome=local_intent`,
+    `total_samples=46064`, `packets_drained=48`, `packet_drops=0`;
+  - todos com `transcript_quality=good`, `enable_ok=true` e `disable_ok=true`.
 - Firmware real mantém PCM16 como padrão; Opus só liga por API experimental.
 - Firmware real passou por builds ESP-IDF limpos após os commits:
   - `38eadb6` worker isolado;
@@ -448,7 +456,9 @@ Critérios de aceite:
 - [x] Filas continuam curtas e previsíveis (`queue_count=0` após envio).
 - [x] Nenhuma mudança de codec quebrou a suíte do bridge.
 - [x] Sessão real em Opus com STT `good` e resposta LLM ponta a ponta.
-- [ ] Rodar sessão longa multi-turn em Opus antes de promover como padrão.
+- [x] Sessão multi-turn em Opus com STT `good`, LLM/local intent e zero drops.
+- [ ] Manter Opus como opt-in até A/B maior de latência/CPU antes de promover
+  como padrão.
 
 ### Fase 7 — AEC e Modo Realtime
 
