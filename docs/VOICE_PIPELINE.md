@@ -444,6 +444,13 @@ Validação atual:
   - match semantico estimado: PCM16 9/10, Opus 6/10;
   - decisao: transporte Opus aprovado como opt-in estavel, mas nao promover
     para padrao obrigatorio antes de melhorar/entender a perda semantica.
+- Firmware real, teste cirurgico de curiosidade em 2026-05-29:
+  - PCM16 ouviu `Anote uma curiosidade.`, marcou `ok=false` por similaridade
+    literal (`0.707`), mas roteou `outcome=local_intent`;
+  - Opus ouviu `Me conte uma curiosidade.`, `ok=true`, `outcome=local_intent`,
+    `packets_drained=63`, `packet_drops=0`;
+  - o problema de resposta em ingles para curiosidade ficou coberto por intent
+    local e fallback pt-BR especifico.
 - Firmware real mantém PCM16 como padrão; Opus só liga por API experimental.
 - Firmware real passou por builds ESP-IDF limpos após os commits:
   - `38eadb6` worker isolado;
