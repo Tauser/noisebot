@@ -2058,9 +2058,12 @@ Implementação:
 - [x] A/B curto PCM16 vs Opus executado em hardware: 3/3 turnos Opus `ok`,
   zero drops e 160 pacotes drenados; manter Opus como opt-in porque duas
   transcricoes Opus ficaram semanticamente piores que PCM16.
+- [x] A/B maior PCM16 vs Opus executado em hardware: 10/10 turnos Opus
+  `ok`, zero drops, 897 pacotes drenados e STT medio equivalente; manter Opus
+  opt-in porque o match semantico estimado ficou abaixo de PCM16.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
   padrão. Ver `docs/VOICE_PIPELINE.md` e `docs/VOICE_AB_PHASE5_8192.md`.
-- [ ] Próximo avanço: executar o A/B maior e sessão longa antes de considerar
+- [ ] Próximo avanço: investigar perda semantica em Opus antes de considerar
   Opus como padrão obrigatório, sem alterar wake word, VAD,
   follow-up, realtime ou AEC.
 

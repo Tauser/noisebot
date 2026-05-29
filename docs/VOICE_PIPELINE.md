@@ -436,6 +436,14 @@ Validação atual:
   - duas transcricoes Opus ficaram semanticamente piores que PCM16, apesar de
     aceitas pelo STT; decisao: Opus segue candidato opt-in e ainda nao vira
     padrao obrigatorio.
+- Firmware real, `codec-ab --repeat 2` em 2026-05-29:
+  - PCM16: 10/10 turnos `ok=true`, `transcript_quality=good`;
+  - Opus: 10/10 turnos `ok=true`, `transcript_quality=good`;
+  - Opus drenou 897 pacotes, 129696 bytes e `packet_drops=0`;
+  - STT medio: PCM16 1412,0 ms, Opus 1420,7 ms;
+  - match semantico estimado: PCM16 9/10, Opus 6/10;
+  - decisao: transporte Opus aprovado como opt-in estavel, mas nao promover
+    para padrao obrigatorio antes de melhorar/entender a perda semantica.
 - Firmware real mantém PCM16 como padrão; Opus só liga por API experimental.
 - Firmware real passou por builds ESP-IDF limpos após os commits:
   - `38eadb6` worker isolado;
@@ -455,7 +463,7 @@ Validação atual:
   firmware, server metrics e desligamento automatico do transporte Opus.
 - `noisebot_server debug codec-ab`: harness pareado para rodar PCM16 e Opus
   nas mesmas frases, com relatório Markdown/JSON de STT, duração, samples,
-  pacotes, bytes e drops.
+  pacotes, bytes, drops e similaridade semantica contra a frase alvo.
 - Server Ops API proxy para os endpoints Opus do firmware:
   `/api/device/audio/opus/worker`,
   `/api/device/audio/opus/worker/probe`,
@@ -468,7 +476,8 @@ Validação atual:
 - `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém PCM16
   como contrato padrão e exige flag explicita para Opus.
 - `bridge/tests`: 153 testes verdes após a integração.
-- `server/tests`: 105 testes verdes após adicionar o harness `codec-ab`.
+- `server/tests`: 107 testes verdes após adicionar match semantico ao
+  `codec-ab`.
 - Build ESP-IDF concluído após a promoção de status/API.
 - `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
   packets, `opus_bytes=3043` contra `input_bytes=32000`
@@ -490,7 +499,8 @@ Critérios de aceite:
   status/HELLO/metrics coerentes e fallback PCM16 automático.
 - [x] Criar harness pareado PCM16 vs Opus para A/B maior repetível.
 - [x] Rodar A/B curto PCM16 vs Opus com zero drops e STT `good`.
-- [ ] Rodar A/B maior de latência/CPU e sessão longa antes de considerar Opus
+- [x] Rodar A/B maior PCM16 vs Opus com zero drops e STT `good`.
+- [ ] Investigar perda semantica em Opus antes de considerar Opus
   como padrão obrigatório.
 
 ### Fase 7 — AEC e Modo Realtime

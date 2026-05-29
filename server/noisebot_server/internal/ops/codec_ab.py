@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import time
+import unicodedata
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import Any, Callable
 
 from .opus_live import _status_confirms_opus
@@ -28,6 +30,8 @@ class CodecAbTrial:
     packet_drops: int
     encoded_bytes: int
     server_codec_confirmed: bool
+    transcript_similarity: float
+    transcript_match: bool
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -46,6 +50,8 @@ class CodecAbTrial:
             "packet_drops": self.packet_drops,
             "encoded_bytes": self.encoded_bytes,
             "server_codec_confirmed": self.server_codec_confirmed,
+            "transcript_similarity": self.transcript_similarity,
+            "transcript_match": self.transcript_match,
         }
 
 
@@ -104,15 +110,17 @@ def format_codec_ab_markdown(trials: list[CodecAbTrial]) -> str:
     lines = [
         "# Codec A/B PCM16 vs Opus",
         "",
-        "| codec | ok | turno | qualidade | stt_ms | dur_ms | samples | packets | drops | bytes | transcript |",
-        "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| codec | ok | match | sim | turno | qualidade | stt_ms | dur_ms | samples | packets | drops | bytes | transcript |",
+        "| --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for trial in trials:
         lines.append(
-            "| {codec} | {ok} | {turn} | {quality} | {stt} | {duration} | "
-            "{samples} | {packets} | {drops} | {bytes} | {transcript} |".format(
+            "| {codec} | {ok} | {match} | {sim} | {turn} | {quality} | {stt} | "
+            "{duration} | {samples} | {packets} | {drops} | {bytes} | {transcript} |".format(
                 codec=trial.codec,
                 ok="sim" if trial.ok else "nao",
+                match="sim" if trial.transcript_match else "nao",
+                sim=_fmt_float(trial.transcript_similarity),
                 turn=trial.turn_id if trial.turn_id is not None else "",
                 quality=trial.transcript_quality or trial.outcome,
                 stt=_fmt_float(trial.stt_ms),
@@ -142,6 +150,8 @@ def summarize_codec_ab(trials: list[CodecAbTrial]) -> list[str]:
 
     pcm_ok = sum(trial.ok for trial in pcm)
     opus_ok = sum(trial.ok for trial in opus)
+    pcm_match = sum(trial.transcript_match for trial in pcm)
+    opus_match = sum(trial.transcript_match for trial in opus)
     opus_drops = sum(trial.packet_drops for trial in opus)
     opus_packets = sum(trial.packets_drained for trial in opus)
     opus_bytes = sum(trial.encoded_bytes for trial in opus)
@@ -150,6 +160,8 @@ def summarize_codec_ab(trials: list[CodecAbTrial]) -> list[str]:
 
     lines.append(f"- PCM16 ok: {pcm_ok}/{len(pcm)}.")
     lines.append(f"- Opus ok: {opus_ok}/{len(opus)}.")
+    lines.append(f"- PCM16 match semantico: {pcm_match}/{len(pcm)}.")
+    lines.append(f"- Opus match semantico: {opus_match}/{len(opus)}.")
     lines.append(f"- STT PCM16 medio: {_fmt_float(pcm_stt)} ms.")
     lines.append(f"- STT Opus medio: {_fmt_float(opus_stt)} ms.")
     lines.append(f"- Opus packets drenados: {opus_packets}.")
@@ -157,6 +169,8 @@ def summarize_codec_ab(trials: list[CodecAbTrial]) -> list[str]:
     lines.append(f"- Opus bytes: {opus_bytes}.")
     if opus_drops > 0:
         lines.append("- Decisao: Opus permanece opt-in; houve drop.")
+    elif opus_match < pcm_match:
+        lines.append("- Decisao: Opus permanece opt-in; transcricao abaixo de PCM16.")
     elif opus_ok < pcm_ok:
         lines.append("- Decisao: Opus permanece opt-in; qualidade abaixo de PCM16.")
     elif opus_ok == len(opus) and pcm_ok == len(pcm):
@@ -229,6 +243,8 @@ def _trial_from_payload(
     turn_id = _optional_int(session.get("turn_id"))
     quality = str(session.get("transcript_quality") or "")
     transcript = str(session.get("transcript") or "")
+    similarity = _transcript_similarity(phrase, transcript)
+    transcript_match = similarity >= 0.72
     packets_drained = _delta(worker_after, worker_before, "opus_packet_drained")
     packet_drops = _delta(worker_after, worker_before, "opus_packet_drops")
     encoded_bytes = _delta(worker_after, worker_before, "opus_packet_bytes_total")
@@ -240,6 +256,7 @@ def _trial_from_payload(
         and turn_id != previous_turn_id
         and quality.lower() in {"good", "ok"}
         and bool(transcript.strip())
+        and transcript_match
         and transport_confirmed
     )
     return CodecAbTrial(
@@ -258,6 +275,8 @@ def _trial_from_payload(
         packet_drops=packet_drops,
         encoded_bytes=encoded_bytes,
         server_codec_confirmed=transport_confirmed,
+        transcript_similarity=round(similarity, 3),
+        transcript_match=transcript_match,
     )
 
 
@@ -323,6 +342,28 @@ def _avg(values: list[float | None]) -> float | None:
     if not valid:
         return None
     return sum(valid) / len(valid)
+
+
+def _transcript_similarity(expected: str, actual: str) -> float:
+    expected_norm = _normalize_text(expected)
+    actual_norm = _normalize_text(actual)
+    if not expected_norm or not actual_norm:
+        return 0.0
+    expected_tokens = expected_norm.split()
+    actual_tokens = actual_norm.split()
+    sequence_score = SequenceMatcher(None, expected_norm, actual_norm).ratio()
+    token_recall = 0.0
+    if expected_tokens:
+        token_recall = sum(token in actual_tokens for token in expected_tokens) / len(expected_tokens)
+    return (sequence_score * 0.6) + (token_recall * 0.4)
+
+
+def _normalize_text(value: str) -> str:
+    decomposed = unicodedata.normalize("NFD", value.lower())
+    ascii_text = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+    return " ".join(
+        "".join(ch if ch.isalnum() else " " for ch in ascii_text).split()
+    )
 
 
 def _fmt_float(value: float | None) -> str:

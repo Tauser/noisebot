@@ -412,6 +412,8 @@ def test_server_cli_runs_codec_ab_debug_command(monkeypatch, capsys) -> None:
                 packet_drops=0,
                 encoded_bytes=0,
                 server_codec_confirmed=True,
+                transcript_similarity=1.0,
+                transcript_match=True,
             ),
             codec_ab.CodecAbTrial(
                 codec="opus",
@@ -429,6 +431,8 @@ def test_server_cli_runs_codec_ab_debug_command(monkeypatch, capsys) -> None:
                 packet_drops=0,
                 encoded_bytes=4896,
                 server_codec_confirmed=True,
+                transcript_similarity=1.0,
+                transcript_match=True,
             ),
         ]
 
@@ -469,6 +473,8 @@ def test_server_codec_ab_summary_keeps_opus_opt_in_on_drops() -> None:
             packet_drops=0,
             encoded_bytes=0,
             server_codec_confirmed=True,
+            transcript_similarity=1.0,
+            transcript_match=True,
         ),
         codec_ab.CodecAbTrial(
             codec="opus",
@@ -486,6 +492,8 @@ def test_server_codec_ab_summary_keeps_opus_opt_in_on_drops() -> None:
             packet_drops=1,
             encoded_bytes=1400,
             server_codec_confirmed=True,
+            transcript_similarity=1.0,
+            transcript_match=True,
         ),
     ]
 
@@ -528,6 +536,39 @@ def test_server_codec_ab_confirms_opus_from_packet_counters() -> None:
     assert trial.server_codec_confirmed
     assert trial.packets_drained == 34
     assert trial.encoded_bytes == 4896
+
+
+def test_server_codec_ab_rejects_semantic_transcript_mismatch() -> None:
+    codec_ab = importlib.import_module("noisebot_server.internal.ops.codec_ab")
+
+    trial = codec_ab._trial_from_payload(
+        codec="opus",
+        phrase="me conte uma piada",
+        previous_turn_id=20,
+        metrics={
+            "last_voice_session": {
+                "turn_id": 21,
+                "outcome": "llm",
+                "transcript_quality": "good",
+                "transcript": "me concha em piada",
+            },
+        },
+        worker_before={
+            "opus_packet_drained": 0,
+            "opus_packet_drops": 0,
+            "opus_packet_bytes_total": 0,
+        },
+        worker_after={
+            "opus_packet_drained": 52,
+            "opus_packet_drops": 0,
+            "opus_packet_bytes_total": 7502,
+        },
+        server_codec_confirmed=True,
+    )
+
+    assert not trial.ok
+    assert not trial.transcript_match
+    assert trial.transcript_similarity < 0.72
 
 
 def test_server_ai_status_exposes_firmware_audio_capabilities() -> None:
