@@ -373,8 +373,10 @@ contrato. O server possui `noisebot_server.internal.transport.opus_codec` para
 round-trip PCM16 -> Opus -> PCM16 com frames de 60 ms e comando
 `noisebot_server debug opus-selftest`. O adapter do server ja consegue aceitar
 um peer experimental que negocie `audio.format=opus` e publicar PCM16 para o
-orchestrator. Nenhum caminho de áudio do robô foi alterado e Opus segue
-desabilitado por padrão no protocolo vivo.
+orchestrator. O fake firmware do server aceita `--audio-format opus`, anuncia
+`codecs.opus=true`, empacota PCM em Opus e exercita o caminho TCP completo.
+Nenhum caminho de áudio do robô foi alterado e Opus segue desabilitado por
+padrão no protocolo vivo.
 
 Objetivo: reduzir banda e aproximar o protocolo do Xiaozhi quando fizer sentido.
 
@@ -393,6 +395,8 @@ Validação atual:
   round-trip com compressão.
 - `server/tests/test_server_facade.py`: adapter converte `AUDIO_CHUNK` Opus
   negociado para `AudioChunkIn` PCM16.
+- `server/tests/test_server_facade.py`: fake firmware Opus via TCP chega ao
+  orchestrator e aciona STT com PCM decodificado.
 - `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
   packets, `opus_bytes=3043` contra `input_bytes=32000`
   (`compression_ratio=0.0951`) no ambiente local.

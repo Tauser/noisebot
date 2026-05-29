@@ -38,6 +38,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     fake_fw.add_argument("--host", default="127.0.0.1")
     fake_fw.add_argument("--port", type=int, default=9001)
     fake_fw.add_argument("--features", default="")
+    fake_fw.add_argument("--audio-format", choices=["pcm16", "opus"], default="pcm16")
     fake_fw.add_argument("--auto-silence-chunks", type=int, default=0)
 
     audio_report = debug_sub.add_parser("audio-report")
@@ -126,6 +127,7 @@ def run_debug_command(args: argparse.Namespace) -> None:
                     args.host,
                     args.port,
                     features,
+                    args.audio_format,
                     args.auto_silence_chunks,
                 )
             )

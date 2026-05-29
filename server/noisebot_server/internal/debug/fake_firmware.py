@@ -17,6 +17,7 @@ import logging
 import struct
 import time
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import AsyncIterator
 
@@ -41,11 +42,13 @@ FIRMWARE_HELLO = {
     "version": 2,
     "role": "firmware",
     "audio": {"format": "pcm16", "sample_rate": 16000, "channels": 1, "chunk_samples": 256},
+    "codecs": {"pcm16": True, "opus": False},
     "features": [],  # firmware base: sem extensoes v2 por padrao
 }
 
 CHUNK_SAMPLES = 256
 SAMPLE_RATE = 16000
+OPUS_FRAME_SAMPLES = 960
 
 
 @dataclass
@@ -69,13 +72,24 @@ class FakeFirmware:
         host: str = "127.0.0.1",
         port: int = 9001,
         firmware_features: list[str] | None = None,
+        audio_format: str = "pcm16",
     ) -> None:
         self._host = host
         self._port = port
-        self._firmware_caps = dict(FIRMWARE_HELLO)
+        self._firmware_caps = deepcopy(FIRMWARE_HELLO)
         if firmware_features is not None:
-            self._firmware_caps = dict(FIRMWARE_HELLO)
             self._firmware_caps["features"] = firmware_features
+        if audio_format == "opus":
+            self._firmware_caps["audio"] = {
+                "format": "opus",
+                "sample_rate": SAMPLE_RATE,
+                "channels": 1,
+                "frame_ms": 60,
+                "frame_samples": OPUS_FRAME_SAMPLES,
+            }
+            self._firmware_caps["codecs"] = {"pcm16": False, "opus": True}
+        elif audio_format != "pcm16":
+            raise ValueError(f"audio_format invalido: {audio_format}")
 
         self._server: asyncio.Server | None = None
         self._writer: asyncio.StreamWriter | None = None
@@ -84,6 +98,8 @@ class FakeFirmware:
         self._received: list[ReceivedFrame] = []
         self._rx_task: asyncio.Task | None = None
         self._bridge_caps: dict = {}
+        self._audio_format = audio_format
+        self._opus_packetizer = None
 
     # -- Ciclo de vida -------------------------------------------------------
 
@@ -91,6 +107,9 @@ class FakeFirmware:
         self._server = await asyncio.start_server(
             self._handle_connection, self._host, self._port
         )
+        sock = self._server.sockets[0] if self._server.sockets else None
+        if sock is not None:
+            self._port = int(sock.getsockname()[1])
         log.debug("FakeFirmware: ouvindo em %s:%d", self._host, self._port)
 
     async def stop(self) -> None:
@@ -207,17 +226,37 @@ class FakeFirmware:
 
     async def send_voice_end(self, reason: int = 0) -> None:
         """Injeta NB_EVT_VOICE_ACTIVITY_END com reason code."""
+        await self.flush_audio()
         payload = struct.pack("<II", NB_EVT_VOICE_ACTIVITY_END, 0) + bytes([reason]) + b"\x00" * 3
         await self._send(encode_frame(MSG_EVENT, payload))
 
     async def send_audio_chunk(self, samples: int = CHUNK_SAMPLES) -> None:
         """Injeta um AUDIO_CHUNK de silencio (zeros int16)."""
         pcm = bytes(samples * 2)  # int16 zeros
-        await self._send(encode_frame(MSG_AUDIO_CHUNK, pcm))
+        await self.send_pcm(pcm)
 
     async def send_audio_chunks(self, count: int, samples_each: int = CHUNK_SAMPLES) -> None:
         for _ in range(count):
             await self.send_audio_chunk(samples_each)
+
+    async def send_pcm(self, pcm: bytes) -> None:
+        if self._audio_format == "pcm16":
+            await self._send(encode_frame(MSG_AUDIO_CHUNK, pcm))
+            return
+
+        if self._opus_packetizer is None:
+            from ..transport.opus_codec import OpusPacketizer
+
+            self._opus_packetizer = OpusPacketizer()
+        for packet in self._opus_packetizer.feed_pcm(pcm):
+            await self._send(encode_frame(MSG_AUDIO_CHUNK, packet))
+
+    async def flush_audio(self) -> None:
+        if self._opus_packetizer is None:
+            return
+        for packet in self._opus_packetizer.finish(pad=True):
+            await self._send(encode_frame(MSG_AUDIO_CHUNK, packet))
+        self._opus_packetizer = None
 
     async def send_status(
         self,
@@ -252,6 +291,10 @@ class FakeFirmware:
     @property
     def is_connected(self) -> bool:
         return self._connected_event.is_set()
+
+    @property
+    def port(self) -> int:
+        return self._port
 
     async def _send(self, frame: bytes) -> None:
         if self._writer is None or self._writer.is_closing():

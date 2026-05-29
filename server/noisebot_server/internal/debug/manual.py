@@ -99,12 +99,19 @@ async def run_fake_firmware_debug(
     host: str,
     port: int,
     features: list[str],
+    audio_format: str,
     auto_silence_chunks: int,
 ) -> int:
     """Run the fake firmware and optionally inject a silent voice session."""
-    firmware = FakeFirmware(host=host, port=port, firmware_features=features)
+    firmware = FakeFirmware(
+        host=host,
+        port=port,
+        firmware_features=features,
+        audio_format=audio_format,
+    )
     await firmware.start()
     print(f"fake_firmware ouvindo em {host}:{port}")
+    print(f"audio_format={audio_format}")
     print("rode o server em outro terminal, por exemplo:")
     print(f"  python -m noisebot_server --host {host} --port {port} --log-level DEBUG")
 

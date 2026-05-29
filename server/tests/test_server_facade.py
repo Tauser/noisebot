@@ -728,6 +728,149 @@ async def test_server_firmware_adapter_decodes_opus_audio_chunk_when_negotiated(
     assert decoded.std() > 100
 
 
+async def test_fake_firmware_opus_session_reaches_adapter_as_pcm() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    adapter_module = importlib.import_module("noisebot_server.internal.transport.adapter")
+    fake_module = importlib.import_module("noisebot_server.internal.debug.fake_firmware")
+    tcp_module = importlib.import_module("noisebot_server.internal.transport.tcp")
+    opus_codec = importlib.import_module("noisebot_server.internal.transport.opus_codec")
+
+    if not opus_codec.opus_available():
+        pytest.skip("PyAV/libopus indisponivel")
+
+    import numpy as np
+
+    bus = runtime.EventBus()
+    queue = bus.subscribe(
+        runtime.FirmwareConnected,
+        runtime.VoiceActivityStart,
+        runtime.AudioChunkIn,
+        runtime.VoiceActivityEnd,
+    )
+    firmware = fake_module.FakeFirmware(port=0, audio_format="opus")
+    await firmware.start()
+    transport = tcp_module.TcpTransport("127.0.0.1", firmware.port)
+    adapter = adapter_module.FirmwareAdapter(transport, bus)
+    task = None
+    try:
+        await transport.connect()
+        task = asyncio.create_task(adapter.run())
+        connected = await asyncio.wait_for(queue.get(), timeout=1.0)
+        assert isinstance(connected, runtime.FirmwareConnected)
+        assert connected.peer_capabilities["audio"]["format"] == "opus"
+        assert connected.peer_capabilities["codecs"] == {"pcm16": False, "opus": True}
+
+        await firmware.send_voice_start()
+        t = np.arange(opus_codec.OPUS_FRAME_SAMPLES, dtype=np.float32) / 16000.0
+        pcm = (np.sin(2.0 * math.pi * 440.0 * t) * 5000.0).astype(np.int16)
+        await firmware.send_pcm(pcm.tobytes())
+        await firmware.send_voice_end()
+
+        start = await asyncio.wait_for(queue.get(), timeout=1.0)
+        audio = await asyncio.wait_for(queue.get(), timeout=1.0)
+        end = await asyncio.wait_for(queue.get(), timeout=1.0)
+        assert isinstance(start, runtime.VoiceActivityStart)
+        assert isinstance(audio, runtime.AudioChunkIn)
+        assert isinstance(end, runtime.VoiceActivityEnd)
+        decoded = np.frombuffer(audio.pcm, dtype=np.int16)
+        assert decoded.size > 0
+        assert decoded.std() > 100
+    finally:
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        await transport.disconnect()
+        await firmware.stop()
+
+
+async def test_fake_firmware_opus_session_reaches_orchestrator_stt() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+    adapter_module = importlib.import_module("noisebot_server.internal.transport.adapter")
+    fake_module = importlib.import_module("noisebot_server.internal.debug.fake_firmware")
+    tcp_module = importlib.import_module("noisebot_server.internal.transport.tcp")
+    opus_codec = importlib.import_module("noisebot_server.internal.transport.opus_codec")
+
+    if not opus_codec.opus_available():
+        pytest.skip("PyAV/libopus indisponivel")
+
+    import numpy as np
+
+    class MockStt:
+        def __init__(self) -> None:
+            self.finalize_calls = 0
+            self.samples = 0
+
+        async def initialize(self) -> None:
+            pass
+
+        def feed(self, pcm: bytes) -> None:
+            pass
+
+        async def finalize(self, full_pcm: bytes, turn_id: int):
+            self.finalize_calls += 1
+            self.samples = len(full_pcm) // 2
+            return runtime.FinalTranscript(
+                turn_id=turn_id,
+                text="que horas sao agora",
+                quality=runtime.TranscriptQuality.GOOD,
+            )
+
+        async def close(self) -> None:
+            pass
+
+        async def reset(self) -> None:
+            pass
+
+    bus = runtime.EventBus(default_maxsize=512)
+    stt = MockStt()
+    firmware = fake_module.FakeFirmware(port=0, audio_format="opus")
+    await firmware.start()
+    transport = tcp_module.TcpTransport("127.0.0.1", firmware.port)
+    adapter = adapter_module.FirmwareAdapter(transport, bus)
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(max_utterance_samples=192000),
+        get_adapter=lambda: adapter,
+        stt_provider=stt,
+    )
+    intents = bus.subscribe(runtime.IntentResolved)
+    adapter_task = None
+    orchestrator_task = None
+    try:
+        await transport.connect()
+        adapter_task = asyncio.create_task(adapter.run())
+        orchestrator_task = asyncio.create_task(orchestrator.run())
+        assert await firmware.wait_connected(timeout=1.0)
+        await _wait_until(lambda: adapter.is_connected, timeout_s=1.0)
+
+        await firmware.send_voice_start()
+        base = np.arange(opus_codec.OPUS_FRAME_SAMPLES, dtype=np.float32) / 16000.0
+        tone = (np.sin(2.0 * math.pi * 440.0 * base) * 5000.0).astype(np.int16)
+        for _ in range(10):
+            await firmware.send_pcm(tone.tobytes())
+        await firmware.send_voice_end()
+
+        await _wait_until(lambda: stt.finalize_calls == 1, timeout_s=1.0)
+        intent = await asyncio.wait_for(intents.get(), timeout=1.0)
+        assert stt.samples >= 8000
+        assert intent.turn_id > 0
+        assert intent.reply_text
+    finally:
+        await orchestrator.shutdown()
+        for task in (adapter_task, orchestrator_task):
+            if task is not None:
+                task.cancel()
+        await asyncio.gather(
+            *(task for task in (adapter_task, orchestrator_task) if task is not None),
+            return_exceptions=True,
+        )
+        await transport.disconnect()
+        await firmware.stop()
+
+
 async def test_server_firmware_adapter_drops_pending_speech_before_cancel() -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     adapter_module = importlib.import_module("noisebot_server.internal.transport.adapter")
