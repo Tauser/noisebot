@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import io
+import json
 import logging
 import math
 import sys
 import struct
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 
@@ -524,6 +527,43 @@ def test_server_cli_runs_aec_live_debug_command(monkeypatch, capsys) -> None:
     assert '"ok": true' in captured.out
     assert '"promotable": false' in captured.out
     assert calls["firmware_url"] == "http://192.168.1.30"
+
+
+def test_aec_live_accepts_firmware_500_diagnostic(monkeypatch) -> None:
+    aec_live = importlib.import_module("noisebot_server.internal.ops.aec_live")
+
+    diagnostic = {
+        "ok": False,
+        "aec_probe_ok": False,
+        "aec_supported": False,
+        "aec_blocked_no_reference": True,
+        "probe_error": "ESP_ERR_NOT_SUPPORTED",
+        "internal_free_kb": 31,
+        "dma_largest_kb": 30,
+        "shadow_psram_current_kb": 7246,
+    }
+
+    def fake_urlopen(*_: object, **__: object) -> object:
+        body = io.BytesIO(json.dumps(diagnostic).encode("utf-8"))
+        raise HTTPError(
+            url="http://192.168.1.30/api/audio/processor/aec/probe",
+            code=500,
+            msg="Internal Server Error",
+            hdrs={},
+            fp=body,
+        )
+
+    monkeypatch.setattr(aec_live, "urlopen", fake_urlopen)
+    monkeypatch.setattr(aec_live, "get_json", lambda *_args, **_kwargs: {"ok": True})
+
+    trial = aec_live.run_aec_live_probe(firmware_url="http://192.168.1.30")
+
+    assert trial.ok is True
+    assert trial.promotable is False
+    assert trial.supported is False
+    assert trial.blocked_no_reference is True
+    assert trial.probe_error == "ESP_ERR_NOT_SUPPORTED"
+    assert "Nao promover AEC" in trial.recommendation
 
 
 def test_server_cli_runs_service_status_without_bridge_entrypoint(

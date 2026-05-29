@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
-from .voice_ab import get_json, post_json
+from .voice_ab import VoiceAbError, get_json
 
 
 @dataclass(frozen=True)
@@ -43,7 +45,10 @@ def run_aec_live_probe(*, firmware_url: str) -> AecLiveTrial:
     """Run the firmware AEC probe and classify whether it can be promoted."""
 
     firmware_url = firmware_url.rstrip("/")
-    probe = post_json(f"{firmware_url}/api/audio/processor/aec/probe", timeout_s=5.0)
+    probe = _post_json_diagnostic(
+        f"{firmware_url}/api/audio/processor/aec/probe",
+        timeout_s=5.0,
+    )
     status_after = get_json(f"{firmware_url}/api/audio/processor", timeout_s=3.0)
 
     probe_ok = bool(probe.get("ok") and probe.get("aec_probe_ok"))
@@ -124,6 +129,42 @@ def _recommendation(
     if not probe_ok:
         return f"Nao promover AEC: probe falhou ({probe_error or 'sem detalhe'})."
     return "Nao promover AEC: margem insuficiente ou status pos-probe inconclusivo."
+
+
+def _post_json_diagnostic(url: str, timeout_s: float) -> dict[str, Any]:
+    """POST JSON and accept diagnostic JSON bodies returned with HTTP errors."""
+
+    request = Request(
+        url,
+        data=b"{}",
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "NoiseBot-AecLive/0.1",
+        },
+    )
+    try:
+        with urlopen(request, timeout=timeout_s) as response:
+            data = response.read().decode("utf-8")
+    except HTTPError as exc:
+        try:
+            data = exc.read().decode("utf-8")
+        except Exception as read_exc:
+            raise VoiceAbError(f"{url}: HTTP Error {exc.code}: {exc.reason}") from read_exc
+        return _decode_json_payload(url, data)
+    except (URLError, TimeoutError, OSError) as exc:
+        raise VoiceAbError(f"{url}: {exc}") from exc
+    return _decode_json_payload(url, data)
+
+
+def _decode_json_payload(url: str, data: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(data)
+    except json.JSONDecodeError as exc:
+        raise VoiceAbError(f"{url}: resposta nao e JSON") from exc
+    if not isinstance(payload, dict):
+        raise VoiceAbError(f"{url}: resposta invalida")
+    return payload
 
 
 def _optional_int(value: object) -> int | None:
