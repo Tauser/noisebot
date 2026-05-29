@@ -366,13 +366,10 @@ Pendências para promover AFE:
 
 ### Fase 6 — Opus/Frames de 60 ms
 
-Status: iniciada no contrato e no probe isolado. Bridge e firmware anunciam
-negociação de codec no `HELLO` mantendo `pcm16=true` e `opus=false`; o bridge
-valida PCM16 16kHz mono com chunks de 256 samples antes de aceitar o contrato.
-O firmware expõe `/api/audio/processor/opus/probe`, que abre encoder/decoder
-Opus 16kHz mono de 60 ms, codifica um frame silencioso, decodifica o pacote e
-fecha os handles. Nenhum caminho de áudio foi alterado e Opus segue desabilitado
-por padrão.
+Status: iniciada apenas no contrato. Bridge e firmware anunciam negociação de
+codec no `HELLO` mantendo `pcm16=true` e `opus=false`; o bridge valida PCM16
+16kHz mono com chunks de 256 samples antes de aceitar o contrato. Nenhum caminho
+de áudio foi alterado e Opus segue desabilitado por padrão.
 
 Objetivo: reduzir banda e aproximar o protocolo do Xiaozhi quando fizer sentido.
 

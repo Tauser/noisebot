@@ -9,9 +9,6 @@
 #include "esp_afe_sr_models.h"
 #include "esp_afe_config.h"
 #include "model_path.h"
-#include "esp_audio_types.h"
-#include "encoder/impl/esp_opus_enc.h"
-#include "decoder/impl/esp_opus_dec.h"
 
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -37,11 +34,6 @@
 #define SHADOW_LOG_FETCH_CHUNKS 250U
 #define AFE_MIN_INTERNAL_FREE_KB 32U
 #define AFE_MIN_DMA_LARGEST_KB   32U
-#define OPUS_PROBE_FRAME_MS      60
-#define OPUS_PROBE_SAMPLE_RATE   16000
-#define OPUS_PROBE_SAMPLES       ((OPUS_PROBE_SAMPLE_RATE * OPUS_PROBE_FRAME_MS) / 1000)
-#define OPUS_PROBE_PCM_BYTES     (OPUS_PROBE_SAMPLES * sizeof(int16_t))
-#define OPUS_PROBE_OUT_MAX       512U
 
 typedef struct {
     nb_audio_processor_status_t status;
@@ -60,9 +52,6 @@ typedef struct {
 } audio_processor_state_t;
 
 static audio_processor_state_t s;
-static int16_t s_opus_probe_pcm[OPUS_PROBE_SAMPLES];
-static uint8_t s_opus_probe_encoded[OPUS_PROBE_OUT_MAX];
-static int16_t s_opus_probe_decoded[OPUS_PROBE_SAMPLES];
 
 static uint32_t psram_free_kb(void)
 {
@@ -101,23 +90,6 @@ static bool afe_runtime_heap_ok(void)
 {
     return internal_free_kb() >= AFE_MIN_INTERNAL_FREE_KB &&
            dma_largest_kb() >= AFE_MIN_DMA_LARGEST_KB;
-}
-
-static esp_err_t audio_err_to_esp(esp_audio_err_t err)
-{
-    switch (err) {
-        case ESP_AUDIO_ERR_OK:
-            return ESP_OK;
-        case ESP_AUDIO_ERR_MEM_LACK:
-        case ESP_AUDIO_ERR_BUFF_NOT_ENOUGH:
-            return ESP_ERR_NO_MEM;
-        case ESP_AUDIO_ERR_INVALID_PARAMETER:
-            return ESP_ERR_INVALID_ARG;
-        case ESP_AUDIO_ERR_NOT_SUPPORT:
-            return ESP_ERR_NOT_SUPPORTED;
-        default:
-            return ESP_FAIL;
-    }
 }
 
 static void update_board_caps_locked(void)
@@ -495,160 +467,6 @@ esp_err_t audio_processor_service_aec_probe_once(void)
     return err;
 }
 
-esp_err_t audio_processor_service_opus_probe_once(void)
-{
-    void *enc_handle = NULL;
-    void *dec_handle = NULL;
-    esp_err_t err = ESP_FAIL;
-    int in_size = 0;
-    int out_size = 0;
-    esp_audio_err_t audio_err;
-
-    if (s.mutex) {
-        xSemaphoreTake(s.mutex, portMAX_DELAY);
-        s.status.opus_probe_ran = true;
-        s.status.opus_probe_ok = false;
-        s.status.opus_last_error = ESP_FAIL;
-        s.status.opus_psram_before_kb = psram_free_kb();
-        s.status.opus_psram_after_create_kb = 0;
-        s.status.opus_psram_after_destroy_kb = 0;
-        s.status.opus_frame_duration_ms = OPUS_PROBE_FRAME_MS;
-        s.status.opus_encoder_frame_bytes = 0;
-        s.status.opus_encoder_out_bytes = 0;
-        s.status.opus_encoded_bytes = 0;
-        s.status.opus_decoded_bytes = 0;
-        update_heap_status_locked();
-        xSemaphoreGive(s.mutex);
-    }
-
-    esp_opus_enc_config_t enc_cfg = {
-        .sample_rate = ESP_AUDIO_SAMPLE_RATE_16K,
-        .channel = ESP_AUDIO_MONO,
-        .bits_per_sample = ESP_AUDIO_BIT16,
-        .bitrate = ESP_OPUS_BITRATE_AUTO,
-        .frame_duration = ESP_OPUS_ENC_FRAME_DURATION_60_MS,
-        .application_mode = ESP_OPUS_ENC_APPLICATION_AUDIO,
-        .complexity = 0,
-        .enable_fec = false,
-        .enable_dtx = true,
-        .enable_vbr = true,
-    };
-    esp_opus_dec_cfg_t dec_cfg = {
-        .sample_rate = ESP_AUDIO_SAMPLE_RATE_16K,
-        .channel = ESP_AUDIO_MONO,
-        .frame_duration = ESP_OPUS_DEC_FRAME_DURATION_60_MS,
-        .self_delimited = false,
-    };
-
-    audio_err = esp_opus_enc_open(&enc_cfg, sizeof(enc_cfg), &enc_handle);
-    if (audio_err != ESP_AUDIO_ERR_OK) {
-        err = audio_err_to_esp(audio_err);
-        goto done;
-    }
-
-    audio_err = esp_opus_enc_get_frame_size(enc_handle, &in_size, &out_size);
-    if (audio_err != ESP_AUDIO_ERR_OK) {
-        err = audio_err_to_esp(audio_err);
-        goto done;
-    }
-    if (in_size <= 0 || out_size <= 0 ||
-        in_size > (int)sizeof(s_opus_probe_pcm) ||
-        out_size > (int)sizeof(s_opus_probe_encoded)) {
-        err = ESP_ERR_NO_MEM;
-        goto done;
-    }
-
-    audio_err = esp_opus_dec_open(&dec_cfg, sizeof(dec_cfg), &dec_handle);
-    if (audio_err != ESP_AUDIO_ERR_OK) {
-        err = audio_err_to_esp(audio_err);
-        goto done;
-    }
-
-    if (s.mutex) {
-        xSemaphoreTake(s.mutex, portMAX_DELAY);
-        s.status.opus_psram_after_create_kb = psram_free_kb();
-        s.status.opus_encoder_frame_bytes = in_size;
-        s.status.opus_encoder_out_bytes = out_size;
-        update_heap_status_locked();
-        xSemaphoreGive(s.mutex);
-    }
-
-    memset(s_opus_probe_pcm, 0, (size_t)in_size);
-    memset(s_opus_probe_encoded, 0, (size_t)out_size);
-    memset(s_opus_probe_decoded, 0, sizeof(s_opus_probe_decoded));
-
-    esp_audio_enc_in_frame_t enc_in = {
-        .buffer = (uint8_t *)s_opus_probe_pcm,
-        .len = (uint32_t)in_size,
-    };
-    esp_audio_enc_out_frame_t enc_out = {
-        .buffer = s_opus_probe_encoded,
-        .len = (uint32_t)out_size,
-        .encoded_bytes = 0,
-        .pts = 0,
-    };
-    audio_err = esp_opus_enc_process(enc_handle, &enc_in, &enc_out);
-    if (audio_err != ESP_AUDIO_ERR_OK) {
-        err = audio_err_to_esp(audio_err);
-        goto done;
-    }
-
-    esp_audio_dec_in_raw_t dec_raw = {
-        .buffer = s_opus_probe_encoded,
-        .len = enc_out.encoded_bytes,
-        .consumed = 0,
-        .frame_recover = ESP_AUDIO_DEC_RECOVERY_NONE,
-    };
-    esp_audio_dec_out_frame_t dec_out = {
-        .buffer = (uint8_t *)s_opus_probe_decoded,
-        .len = sizeof(s_opus_probe_decoded),
-        .needed_size = 0,
-        .decoded_size = 0,
-    };
-    esp_audio_dec_info_t dec_info = {0};
-    audio_err = esp_opus_dec_decode(dec_handle, &dec_raw, &dec_out, &dec_info);
-    if (audio_err != ESP_AUDIO_ERR_OK) {
-        err = audio_err_to_esp(audio_err);
-        goto done;
-    }
-
-    if (s.mutex) {
-        xSemaphoreTake(s.mutex, portMAX_DELAY);
-        s.status.opus_encoded_bytes = (int)enc_out.encoded_bytes;
-        s.status.opus_decoded_bytes = (int)dec_out.decoded_size;
-        xSemaphoreGive(s.mutex);
-    }
-    err = ESP_OK;
-
-done:
-    if (dec_handle != NULL) {
-        (void)esp_opus_dec_close(dec_handle);
-    }
-    if (enc_handle != NULL) {
-        esp_opus_enc_close(enc_handle);
-    }
-
-    if (s.mutex) {
-        xSemaphoreTake(s.mutex, portMAX_DELAY);
-        s.status.opus_probe_ok = (err == ESP_OK);
-        s.status.opus_last_error = err;
-        s.status.opus_psram_after_destroy_kb = psram_free_kb();
-        update_heap_status_locked();
-        ESP_LOGI(TAG,
-                 "probe Opus finalizado — err=%s frame=%d out=%d encoded=%d decoded=%d psram=%lu/%lu/%lu KB",
-                 esp_err_to_name(err),
-                 s.status.opus_encoder_frame_bytes,
-                 s.status.opus_encoder_out_bytes,
-                 s.status.opus_encoded_bytes,
-                 s.status.opus_decoded_bytes,
-                 (unsigned long)s.status.opus_psram_before_kb,
-                 (unsigned long)s.status.opus_psram_after_create_kb,
-                 (unsigned long)s.status.opus_psram_after_destroy_kb);
-        xSemaphoreGive(s.mutex);
-    }
-    return err;
-}
-
 static void shadow_task(void *arg)
 {
     (void)arg;
@@ -1019,7 +837,6 @@ esp_err_t audio_processor_service_init(void)
     s.status.initialized = true;
     s.status.last_error = ESP_OK;
     s.status.aec_last_error = ESP_OK;
-    s.status.opus_last_error = ESP_OK;
     update_board_caps_locked();
     update_heap_status_locked();
     s.status.enabled = probe_enabled_from_nvs();

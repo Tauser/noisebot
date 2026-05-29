@@ -1298,12 +1298,11 @@ static esp_err_t send_audio_processor_status(httpd_req_t *req, esp_err_t probe_e
     nb_audio_processor_status_t st;
     audio_processor_service_get_status(&st);
 
-    char buf[2304];
+    char buf[1664];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"enabled\":%s,"
              "\"probe_ran\":%s,\"probe_ok\":%s,"
              "\"aec_probe_ran\":%s,\"aec_probe_ok\":%s,"
-             "\"opus_probe_ran\":%s,\"opus_probe_ok\":%s,"
              "\"aec_supported\":%s,"
              "\"aec_blocked_no_reference\":%s,"
              "\"shadow_active\":%s,\"shadow_stop_requested\":%s,"
@@ -1315,9 +1314,6 @@ static esp_err_t send_audio_processor_status(httpd_req_t *req, esp_err_t probe_e
              "\"aec_psram_before_kb\":%lu,"
              "\"aec_psram_after_create_kb\":%lu,"
              "\"aec_psram_after_destroy_kb\":%lu,"
-             "\"opus_psram_before_kb\":%lu,"
-             "\"opus_psram_after_create_kb\":%lu,"
-             "\"opus_psram_after_destroy_kb\":%lu,"
              "\"internal_free_kb\":%lu,"
              "\"internal_largest_kb\":%lu,"
              "\"dma_free_kb\":%lu,"
@@ -1337,13 +1333,7 @@ static esp_err_t send_audio_processor_status(httpd_req_t *req, esp_err_t probe_e
              "\"feed_chunksize\":%d,\"fetch_chunksize\":%d,"
              "\"feed_channels\":%d,\"fetch_channels\":%d,"
              "\"sample_rate_hz\":%d,"
-             "\"opus_frame_duration_ms\":%d,"
-             "\"opus_encoder_frame_bytes\":%d,"
-             "\"opus_encoder_out_bytes\":%d,"
-             "\"opus_encoded_bytes\":%d,"
-             "\"opus_decoded_bytes\":%d,"
              "\"last_error\":\"%s\",\"aec_last_error\":\"%s\","
-             "\"opus_last_error\":\"%s\","
              "\"probe_error\":\"%s\"}",
              (probe_err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
@@ -1352,8 +1342,6 @@ static esp_err_t send_audio_processor_status(httpd_req_t *req, esp_err_t probe_e
              st.probe_ok ? "true" : "false",
              st.aec_probe_ran ? "true" : "false",
              st.aec_probe_ok ? "true" : "false",
-             st.opus_probe_ran ? "true" : "false",
-             st.opus_probe_ok ? "true" : "false",
              st.aec_supported ? "true" : "false",
              st.aec_blocked_no_reference ? "true" : "false",
              st.shadow_active ? "true" : "false",
@@ -1366,9 +1354,6 @@ static esp_err_t send_audio_processor_status(httpd_req_t *req, esp_err_t probe_e
              (unsigned long)st.aec_psram_before_kb,
              (unsigned long)st.aec_psram_after_create_kb,
              (unsigned long)st.aec_psram_after_destroy_kb,
-             (unsigned long)st.opus_psram_before_kb,
-             (unsigned long)st.opus_psram_after_create_kb,
-             (unsigned long)st.opus_psram_after_destroy_kb,
              (unsigned long)st.internal_free_kb,
              (unsigned long)st.internal_largest_kb,
              (unsigned long)st.dma_free_kb,
@@ -1390,14 +1375,8 @@ static esp_err_t send_audio_processor_status(httpd_req_t *req, esp_err_t probe_e
              st.feed_channels,
              st.fetch_channels,
              st.sample_rate_hz,
-             st.opus_frame_duration_ms,
-             st.opus_encoder_frame_bytes,
-             st.opus_encoder_out_bytes,
-             st.opus_encoded_bytes,
-             st.opus_decoded_bytes,
              esp_err_to_name(st.last_error),
              esp_err_to_name(st.aec_last_error),
-             esp_err_to_name(st.opus_last_error),
              esp_err_to_name(probe_err));
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);
@@ -1432,23 +1411,6 @@ static esp_err_t handle_api_audio_processor_aec_probe(httpd_req_t *req)
     }
 
     esp_err_t err = audio_processor_service_aec_probe_once();
-    if (err != ESP_OK) {
-        httpd_resp_set_status(req, err == ESP_ERR_NO_MEM
-                                   ? "409 Conflict"
-                                   : "500 Internal Server Error");
-    }
-    return send_audio_processor_status(req, err);
-}
-
-static esp_err_t handle_api_audio_processor_opus_probe(httpd_req_t *req)
-{
-    if (audio_service_is_busy()) {
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_set_status(req, "409 Conflict");
-        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
-    }
-
-    esp_err_t err = audio_processor_service_opus_probe_once();
     if (err != ESP_OK) {
         httpd_resp_set_status(req, err == ESP_ERR_NO_MEM
                                    ? "409 Conflict"
@@ -2583,7 +2545,6 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
     { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },
     { .uri = "/api/audio/processor/aec/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_aec_probe },
-    { .uri = "/api/audio/processor/opus/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_opus_probe },
     { .uri = "/api/audio/processor/shadow/start", .method = HTTP_POST, .handler = handle_api_audio_processor_shadow_start },
     { .uri = "/api/audio/processor/shadow/stop", .method = HTTP_POST, .handler = handle_api_audio_processor_shadow_stop },
     { .uri = "/api/audio/processor/bridge/start", .method = HTTP_POST, .handler = handle_api_audio_processor_bridge_start },
