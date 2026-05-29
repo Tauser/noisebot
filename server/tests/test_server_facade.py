@@ -2491,6 +2491,21 @@ def test_server_agent_local_intent_matches_time() -> None:
     assert result.reply_text
 
 
+def test_server_agent_local_intent_answers_curiosity_in_pt_br() -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("me conte uma curiosidade", turn_id=44)
+
+    assert result.intent_name == "local_curiosity_fact"
+    assert result.reply_text
+    assert "Curiosidade:" in result.reply_text
+    assert "idioma errado" not in result.reply_text
+    assert result.expression_id == 4
+
+
 def test_server_agent_llm_and_intents_are_server_owned() -> None:
     _ensure_bridgev2_path()
 

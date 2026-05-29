@@ -257,6 +257,11 @@ def _mood_reply(status: dict) -> tuple[str, int, int, int]:
     )
 
 
+def _curiosity_reply(turn_id: int) -> str:
+    index = max(0, turn_id) % len(_CURIOSITY_REPLIES)
+    return _CURIOSITY_REPLIES[index]
+
+
 def _vision_unavailable_reply() -> str:
     return "Ainda nao consegui acessar minha camera agora."
 
@@ -355,6 +360,13 @@ _EMOT_HAPPY      = 3
 _EMOT_CURIOUS    = 4
 _ACTION_NOD      = 1
 _ACTION_NONE     = 0
+
+_CURIOSITY_REPLIES = (
+    "Curiosidade: polvos tem tres coracoes e sangue azulado.",
+    "Curiosidade: em Venus, um dia dura mais que um ano.",
+    "Curiosidade: bananas sao classificadas como bagas pela botanica.",
+    "Curiosidade: o mel quase nao estraga quando fica bem fechado.",
+)
 
 
 class LocalIntentProvider:
@@ -659,6 +671,27 @@ class LocalIntentProvider:
                 turn_id=turn_id,
                 intent_name="local_market_btc_price",
                 reply_text="Preco do Bitcoin indisponivel no momento.",
+                expression_id=_EXPR_CURIOUS,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_CURIOUS,
+            )
+
+        # -- Curiosidade local ------------------------------------------------
+        if _has(norm, "curiosidade") and _has(
+            norm,
+            "me conte",
+            "conte",
+            "me diga",
+            "diga",
+            "me fale",
+            "fale",
+            "outra",
+            "uma",
+        ):
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_curiosity_fact",
+                reply_text=_curiosity_reply(turn_id),
                 expression_id=_EXPR_CURIOUS,
                 action_id=_ACTION_NONE,
                 emot_event_id=_EMOT_CURIOUS,
