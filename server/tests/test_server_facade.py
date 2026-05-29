@@ -326,6 +326,8 @@ def test_server_cli_runs_opus_live_debug_command(monkeypatch, capsys) -> None:
             outcome="llm",
             transcript_quality="GOOD",
             transcript="me diga uma curiosidade",
+            discard_reason="",
+            total_samples=32000,
             stt_ms=1234.0,
             duration_ms=4567.0,
             packets_drained=12,

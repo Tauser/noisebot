@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -17,6 +18,8 @@ class OpusLiveTrial:
     outcome: str
     transcript_quality: str
     transcript: str
+    discard_reason: str
+    total_samples: int | None
     stt_ms: float | None
     duration_ms: float | None
     packets_drained: int
@@ -33,6 +36,8 @@ class OpusLiveTrial:
             "outcome": self.outcome,
             "transcript_quality": self.transcript_quality,
             "transcript": self.transcript,
+            "discard_reason": self.discard_reason,
+            "total_samples": self.total_samples,
             "stt_ms": self.stt_ms,
             "duration_ms": self.duration_ms,
             "packets_drained": self.packets_drained,
@@ -67,6 +72,10 @@ def run_opus_live_trial(
         enable_payload = post_json(f"{firmware_url}/api/audio/opus/transport/enable")
         if not enable_payload.get("ok") or not enable_payload.get("opus_enabled"):
             raise VoiceAbError(f"falha ao ligar Opus: {enable_payload}")
+        _wait_for_server_opus(
+            server_url=server_url,
+            timeout_s=min(5.0, max(1.0, timeout_s / 3.0)),
+        )
 
         print_fn(f"Opus ligado. Fale depois do wake word: {phrase}")
         input_fn("Pressione Enter quando o robo terminar a resposta: ")
@@ -102,6 +111,7 @@ def run_opus_live_trial(
     quality = str(session.get("transcript_quality") or "")
     transcript = str(session.get("transcript") or "")
     turn_id = _optional_int(session.get("turn_id"))
+    total_samples = _optional_int(session.get("total_samples"))
     ok = (
         turn_id is not None
         and turn_id != previous_turn_id
@@ -119,6 +129,8 @@ def run_opus_live_trial(
         outcome=str(session.get("outcome") or ""),
         transcript_quality=quality,
         transcript=transcript,
+        discard_reason=str(session.get("discard_reason") or ""),
+        total_samples=total_samples,
         stt_ms=_optional_float(session.get("stt_ms")),
         duration_ms=_optional_float(session.get("duration_ms")),
         packets_drained=packets_drained,
@@ -138,6 +150,8 @@ def format_opus_live_markdown(trial: OpusLiveTrial) -> str:
             f"- Status: {status}",
             f"- Turno: {trial.turn_id if trial.turn_id is not None else ''}",
             f"- Qualidade STT: {trial.transcript_quality or trial.outcome}",
+            f"- Descarte: {trial.discard_reason}",
+            f"- Samples: {trial.total_samples if trial.total_samples is not None else ''}",
             f"- Pacotes drenados: {trial.packets_drained}",
             f"- Drops Opus: {trial.packet_drops}",
             f"- Bytes Opus: {trial.encoded_bytes}",
@@ -149,6 +163,18 @@ def format_opus_live_markdown(trial: OpusLiveTrial) -> str:
 
 def format_opus_live_json(trial: OpusLiveTrial) -> str:
     return json.dumps(trial.to_dict(), ensure_ascii=False, indent=2)
+
+
+def _wait_for_server_opus(*, server_url: str, timeout_s: float) -> None:
+    deadline = time.monotonic() + timeout_s
+    last_status: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        last_status = get_json(f"{server_url}/ai/status")
+        features = last_status.get("features", [])
+        if isinstance(features, list) and "opus_tx" in features:
+            return
+        time.sleep(0.2)
+    raise VoiceAbError(f"server ainda nao confirmou opus_tx: {last_status}")
 
 
 def _as_dict(value: object) -> dict[str, Any]:
