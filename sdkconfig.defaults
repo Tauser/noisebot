@@ -168,3 +168,9 @@ CONFIG_MODEL_IN_FLASH=y
 # Data cache 64KB e cache line 64B: recomendado pelo ESP-SR para S3.
 CONFIG_ESP32S3_DATA_CACHE_64KB=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+
+# ── Opus — spike isolado baseado em StackChan/Xiaozhi ───────────────────────
+# Usado apenas por /api/audio/processor/opus/probe nesta fase. O caminho real
+# de voz continua PCM16 ate o probe provar custo de heap/CPU aceitavel.
+CONFIG_AUDIO_DECODER_OPUS_SUPPORT=y
+CONFIG_AUDIO_ENCODER_OPUS_SUPPORT=y
