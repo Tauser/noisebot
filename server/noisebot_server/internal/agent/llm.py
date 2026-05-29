@@ -41,6 +41,14 @@ _SYSTEM_PROMPT = (
 _FOREIGN_SCRIPT_RE = re.compile(
     r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]"
 )
+_ENGLISH_LEAK_RE = re.compile(
+    r"\b("
+    r"did you know|penguins?|they(?:'| a)?re|can't|cannot|amazing|swimmers?|"
+    r"actually|because|instead|water|doctor|book|story|once upon|"
+    r"the|that|with|about|what|why|how|when|where"
+    r")\b",
+    re.IGNORECASE,
+)
 _PT_LANGUAGE_FALLBACK = (
     "Desculpa, minha resposta saiu no idioma errado. Vou responder em portugues."
 )
@@ -131,15 +139,25 @@ def recover_llm_reply_text(raw: str) -> str:
 
 
 def enforce_pt_br_reply(reply: str, user_text: str = "") -> tuple[str, bool]:
-    """Return a safe pt-BR reply when the model leaks unsupported scripts."""
+    """Return a safe pt-BR reply when the model leaks unsupported languages."""
     cleaned = " ".join(reply.split()).strip()
     if not cleaned:
         return cleaned, False
-    if not _FOREIGN_SCRIPT_RE.search(cleaned):
+    if not _FOREIGN_SCRIPT_RE.search(cleaned) and not _looks_like_english_leak(cleaned):
         return cleaned, False
     user_lower = user_text.casefold()
     fallback = _PT_JOKE_FALLBACK if "piada" in user_lower else _PT_LANGUAGE_FALLBACK
     return fallback, True
+
+
+def _looks_like_english_leak(text: str) -> bool:
+    if not re.search(r"[a-zA-Z]", text):
+        return False
+    markers = _ENGLISH_LEAK_RE.findall(text)
+    if len(markers) >= 2:
+        return True
+    lower = text.casefold()
+    return "did you know" in lower or "can't" in lower or "cannot" in lower
 
 
 def _int_or_none(value: Any) -> int | None:
