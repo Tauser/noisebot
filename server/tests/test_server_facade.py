@@ -145,7 +145,21 @@ def test_llm_language_guard_replaces_english_reply() -> None:
     )
 
     assert replaced
-    assert "portugues" in reply
+    assert "Curiosidade:" in reply
+    assert "penguins" not in reply
+
+
+def test_llm_language_guard_replaces_english_curiosity_with_fact() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    reply, replaced = llm.enforce_pt_br_reply(
+        "Did you know that penguins can't fly? They're amazing swimmers instead!",
+        "Me conte uma curiosidade.",
+    )
+
+    assert replaced
+    assert "Curiosidade:" in reply
+    assert "idioma errado" not in reply
     assert "penguins" not in reply
 
 

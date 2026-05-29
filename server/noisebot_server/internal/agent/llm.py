@@ -56,6 +56,9 @@ _PT_JOKE_FALLBACK = (
     "Claro. Por que o robo nao gosta de elevador? "
     "Porque ele prefere subir de versao."
 )
+_PT_CURIOSITY_FALLBACK = (
+    "Curiosidade: em Venus, um dia dura mais que um ano."
+)
 
 
 class LLMProvider(ABC):
@@ -146,7 +149,12 @@ def enforce_pt_br_reply(reply: str, user_text: str = "") -> tuple[str, bool]:
     if not _FOREIGN_SCRIPT_RE.search(cleaned) and not _looks_like_english_leak(cleaned):
         return cleaned, False
     user_lower = user_text.casefold()
-    fallback = _PT_JOKE_FALLBACK if "piada" in user_lower else _PT_LANGUAGE_FALLBACK
+    if "curiosidade" in user_lower or "curioso" in user_lower:
+        fallback = _PT_CURIOSITY_FALLBACK
+    elif "piada" in user_lower:
+        fallback = _PT_JOKE_FALLBACK
+    else:
+        fallback = _PT_LANGUAGE_FALLBACK
     return fallback, True
 
 
