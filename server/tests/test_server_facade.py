@@ -286,6 +286,72 @@ def test_server_cli_parses_afe_ab_debug_command() -> None:
     assert args.output == "afe.md"
 
 
+def test_server_cli_parses_opus_live_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "opus-live",
+        "me diga uma curiosidade",
+        "--server-url",
+        "http://127.0.0.1:8765",
+        "--timeout-s",
+        "12",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "opus-live"
+    assert args.host == "192.168.1.30"
+    assert args.phrase == "me diga uma curiosidade"
+    assert args.server_url == "http://127.0.0.1:8765"
+    assert args.timeout_s == 12.0
+    assert args.json
+
+
+def test_server_cli_runs_opus_live_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    opus_live = importlib.import_module("noisebot_server.internal.ops.opus_live")
+
+    calls: dict[str, object] = {}
+
+    def fake_run_opus_live_trial(**kwargs):
+        calls.update(kwargs)
+        return opus_live.OpusLiveTrial(
+            phrase=kwargs["phrase"],
+            ok=True,
+            turn_id=77,
+            outcome="llm",
+            transcript_quality="GOOD",
+            transcript="me diga uma curiosidade",
+            stt_ms=1234.0,
+            duration_ms=4567.0,
+            packets_drained=12,
+            packet_drops=0,
+            encoded_bytes=1776,
+            enable_ok=True,
+            disable_ok=True,
+        )
+
+    monkeypatch.setattr(opus_live, "run_opus_live_trial", fake_run_opus_live_trial)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "opus-live",
+        "me diga uma curiosidade",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"ok": true' in captured.out
+    assert calls["firmware_url"] == "http://192.168.1.30"
+    assert calls["phrase"] == "me diga uma curiosidade"
+
+
 def test_server_cli_runs_service_status_without_bridge_entrypoint(
     monkeypatch,
     capsys,

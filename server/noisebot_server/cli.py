@@ -60,6 +60,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     opus_test.add_argument("--bitrate", type=int, default=24000)
     opus_test.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    opus_live = debug_sub.add_parser("opus-live")
+    opus_live.add_argument("phrase", nargs="?", default="fale algo curto")
+    opus_live.add_argument("--server-url", default="http://127.0.0.1:8765")
+    opus_live.add_argument("--firmware-url", default="")
+    opus_live.add_argument("--timeout-s", type=float, default=45.0)
+    opus_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
+    opus_live.add_argument("--json", action="store_true", help="Emitir JSON")
+
     parser.add_argument("--host", help="IP do ESP32")
     parser.add_argument("--port", type=int, help="Porta TCP")
     parser.add_argument("--uart", help="Porta UART")
@@ -276,6 +284,36 @@ def run_debug_command(args: argparse.Namespace) -> None:
                 f"({payload['compression_ratio']:.2%}), "
                 f"decoded={payload['decoded_bytes']} bytes"
             )
+        return
+    if args.debug_command == "opus-live":
+        from .internal.ops.opus_live import (
+            format_opus_live_json,
+            format_opus_live_markdown,
+            run_opus_live_trial,
+        )
+
+        firmware_url = args.firmware_url or os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "")
+        if not firmware_url:
+            host = args.host or os.environ.get("NOISEBOT_HOST", "")
+            if host:
+                firmware_url = f"http://{host}"
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+
+        trial = run_opus_live_trial(
+            phrase=args.phrase,
+            server_url=args.server_url,
+            firmware_url=firmware_url,
+            timeout_s=args.timeout_s,
+        )
+        text = format_opus_live_json(trial) if args.json else format_opus_live_markdown(trial)
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        if not trial.ok:
+            raise SystemExit(1)
         return
     raise SystemExit(2)
 

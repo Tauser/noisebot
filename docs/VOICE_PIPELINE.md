@@ -377,7 +377,10 @@ para PCM16 e para o worker.
 
 O server possui `noisebot_server.internal.transport.opus_codec` para round-trip
 PCM16 -> Opus -> PCM16 com frames de 60 ms e comando
-`noisebot_server debug opus-selftest`. O adapter do server aceita um peer
+`noisebot_server debug opus-selftest`. O comando
+`noisebot_server debug opus-live` automatiza a validacao real: liga Opus no
+firmware, espera um turno novo em `/ai/metrics`, confere pacotes drenados e
+desliga Opus no final. O adapter do server aceita um peer
 experimental que negocie `audio.format=opus` e publica PCM16 para o
 orchestrator. O fake firmware do server aceita `--audio-format opus`, anuncia
 `codecs.opus=true`, empacota PCM em Opus e exercita o caminho TCP completo.
@@ -404,6 +407,8 @@ Validação atual:
   - `opus_packet_drained=138`, `opus_packet_drops=0`;
   - `opus_packet_queue_count=0`;
   - `POST /api/audio/opus/transport/disable` retornou `opus_enabled=false`.
+- Proximo teste real padronizado:
+  `noisebot_server --host 192.168.1.30 debug opus-live "me diga uma curiosidade" --json`.
 - Firmware real mantém PCM16 como padrão; Opus só liga por API experimental.
 - Firmware real passou por builds ESP-IDF limpos após os commits:
   - `38eadb6` worker isolado;
@@ -419,9 +424,12 @@ Validação atual:
   negociado para `AudioChunkIn` PCM16.
 - `server/tests/test_server_facade.py`: fake firmware Opus via TCP chega ao
   orchestrator e aciona STT com PCM decodificado.
+- `noisebot_server debug opus-live`: harness para teste real fim-a-fim com
+  firmware, server metrics e desligamento automatico do transporte Opus.
 - `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém PCM16
   como contrato padrão e exige flag explicita para Opus.
 - `bridge/tests`: 153 testes verdes após a integração.
+- `server/tests`: 91 testes verdes após adicionar o harness `opus-live`.
 - `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
   packets, `opus_bytes=3043` contra `input_bytes=32000`
   (`compression_ratio=0.0951`) no ambiente local.
