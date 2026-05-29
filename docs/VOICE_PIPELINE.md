@@ -475,6 +475,10 @@ Mudanças:
   O comando espera um turno interrompido em `/ai/metrics`, registra
   `discard_reason=barge_in`, `outcome=interrupted` e a latência
   `interruption_cancel_ms`.
+- Medir eco/falso follow-up sem AEC com:
+  `noisebot_server debug no-echo-live "me conte uma historia longa" --json`.
+  O comando espera uma resposta real, abre uma janela de silêncio e falha se
+  surgir turno extra em `/ai/metrics` sem fala do usuário.
 - O AEC agora tem probe próprio em `/api/audio/processor/aec/probe`: alinhado
   ao Xiaozhi, ele cria um AFE `MR` de voz (`AFE_TYPE_VC` +
   `AEC_MODE_VOIP_HIGH_PERF`), mede PSRAM/heap interno/DMA e destrói antes de
@@ -504,7 +508,7 @@ Critérios de aceite:
 - [x] Usuário consegue interromper o robô falando por cima.
 - [x] `barge-live` retorna `ok=true` com `discard_reason=barge_in`.
 - [x] `interruption_cancel_ms` fica abaixo de 200 ms no teste real.
-- O próprio TTS não reabre escuta falsa.
+- [ ] `no-echo-live` retorna `ok=true`; o próprio TTS não reabre escuta falsa.
 - Sem loops de escuta/resposta.
 - Sem regressão de SD/WiFi/bridge durante ou após o probe.
 

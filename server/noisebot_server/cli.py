@@ -75,6 +75,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     barge_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     barge_live.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    no_echo_live = debug_sub.add_parser("no-echo-live")
+    no_echo_live.add_argument("phrase", nargs="?", default="me conte uma historia longa")
+    no_echo_live.add_argument("--server-url", default="http://127.0.0.1:8765")
+    no_echo_live.add_argument("--quiet-window-s", type=float, default=10.0)
+    no_echo_live.add_argument("--timeout-s", type=float, default=45.0)
+    no_echo_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
+    no_echo_live.add_argument("--json", action="store_true", help="Emitir JSON")
+
     parser.add_argument("--host", help="IP do ESP32")
     parser.add_argument("--port", type=int, help="Porta TCP")
     parser.add_argument("--uart", help="Porta UART")
@@ -335,6 +343,28 @@ def run_debug_command(args: argparse.Namespace) -> None:
             timeout_s=args.timeout_s,
         )
         text = format_barge_live_json(trial) if args.json else format_barge_live_markdown(trial)
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        if not trial.ok:
+            raise SystemExit(1)
+        return
+    if args.debug_command == "no-echo-live":
+        from .internal.ops.no_echo_live import (
+            format_no_echo_live_json,
+            format_no_echo_live_markdown,
+            run_no_echo_live_trial,
+        )
+
+        trial = run_no_echo_live_trial(
+            phrase=args.phrase,
+            server_url=args.server_url,
+            quiet_window_s=args.quiet_window_s,
+            timeout_s=args.timeout_s,
+        )
+        text = format_no_echo_live_json(trial) if args.json else format_no_echo_live_markdown(trial)
         if args.output:
             with open(args.output, "w", encoding="utf-8", newline="\n") as file:
                 file.write(text)

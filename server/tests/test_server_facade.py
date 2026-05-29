@@ -410,6 +410,67 @@ def test_server_cli_runs_barge_live_debug_command(monkeypatch, capsys) -> None:
     assert calls["phrase"] == "me conte uma historia longa"
 
 
+def test_server_cli_parses_no_echo_live_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "debug",
+        "no-echo-live",
+        "me conte uma historia longa",
+        "--server-url",
+        "http://127.0.0.1:8765",
+        "--quiet-window-s",
+        "6",
+        "--timeout-s",
+        "12",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "no-echo-live"
+    assert args.phrase == "me conte uma historia longa"
+    assert args.server_url == "http://127.0.0.1:8765"
+    assert args.quiet_window_s == 6.0
+    assert args.timeout_s == 12.0
+    assert args.json
+
+
+def test_server_cli_runs_no_echo_live_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    no_echo = importlib.import_module("noisebot_server.internal.ops.no_echo_live")
+
+    calls: dict[str, object] = {}
+
+    def fake_run_no_echo_live_trial(**kwargs):
+        calls.update(kwargs)
+        return no_echo.NoEchoLiveTrial(
+            phrase=kwargs["phrase"],
+            ok=True,
+            response_turn_id=91,
+            unexpected_turn_id=None,
+            quiet_window_s=kwargs["quiet_window_s"],
+            outcome="llm",
+            transcript="me conte uma historia longa",
+            discard_reason="",
+        )
+
+    monkeypatch.setattr(no_echo, "run_no_echo_live_trial", fake_run_no_echo_live_trial)
+
+    cli.main([
+        "debug",
+        "no-echo-live",
+        "me conte uma historia longa",
+        "--quiet-window-s",
+        "6",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"ok": true' in captured.out
+    assert calls["phrase"] == "me conte uma historia longa"
+    assert calls["quiet_window_s"] == 6.0
+
+
 def test_server_cli_runs_service_status_without_bridge_entrypoint(
     monkeypatch,
     capsys,
