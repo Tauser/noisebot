@@ -145,6 +145,7 @@ class BridgeRuntime:
         session_id = self.voice.current_session_id
         if session_id <= 0:
             return
+        self.voice.cancel_session(session_id)
         self.log_session_event(SESSION_ABORT_SPEAKING, session_id, reason=reason)
         try:
             self.transport.send(encode_frame(MSG_SPEECH_CANCEL, struct.pack("<I", session_id)))

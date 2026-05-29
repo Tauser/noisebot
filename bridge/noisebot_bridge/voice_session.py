@@ -123,6 +123,7 @@ class VoiceSessionRuntime:
         self._session_n_chunks = 0
         self._session_audio_seen = False
         self._session_id = 0
+        self._cancelled_sessions: set[int] = set()
 
     def emit_session_event(self, event: str, session_id: int, **fields):
         if self.session_event_cb is not None:
@@ -135,13 +136,28 @@ class VoiceSessionRuntime:
     def send_msg(self, msg_type: int, payload: bytes = b""):
         self.transport.send(encode_frame(msg_type, payload))
 
-    def send_say_pcm(self, pcm: np.ndarray):
+    def cancel_session(self, session_id: int):
+        with self._lock:
+            if session_id > 0:
+                self._cancelled_sessions.add(session_id)
+
+    def is_session_cancelled(self, session_id: int) -> bool:
+        with self._lock:
+            return session_id in self._cancelled_sessions or (
+                self._session_id > 0 and session_id < self._session_id
+            )
+
+    def send_say_pcm(self, pcm: np.ndarray, session_id: int | None = None) -> bool:
         for i in range(0, len(pcm), CHUNK_SAMPLES):
+            if session_id is not None and self.is_session_cancelled(session_id):
+                log.info("SAY cancelado session_id=%d", session_id)
+                return False
             chunk = pcm[i : i + CHUNK_SAMPLES]
             if len(chunk) < CHUNK_SAMPLES:
                 chunk = np.pad(chunk, (0, CHUNK_SAMPLES - len(chunk)))
             self.send_msg(MSG_SAY, chunk.astype(np.int16).tobytes())
             time.sleep(0.014)
+        return True
 
     def send_silent_ack(self):
         self.send_msg(MSG_SAY, b"")
@@ -196,6 +212,7 @@ class VoiceSessionRuntime:
             self._session_n_chunks = 0
             self._session_audio_seen = False
             session_id = self._session_id
+            self._cancelled_sessions.discard(session_id)
             self.arm_voice_timer()
         log.info("VOICE_START recebido session_id=%d", session_id)
         return session_id
@@ -273,6 +290,9 @@ class VoiceSessionRuntime:
 
         def speak_text(text_to_speak: str, action: int = 0) -> bool:
             nonlocal discard_reason, tts_elapsed_ms
+            if self.is_session_cancelled(session_id):
+                discard_reason = "cancelled"
+                return False
             self.emit_session_event(SESSION_TTS_START, session_id)
             t0 = time.perf_counter()
             try:
@@ -284,9 +304,16 @@ class VoiceSessionRuntime:
                 ack_once()
                 self.emit_session_event(SESSION_TTS_STOP, session_id, reason="tts_failed")
                 return False
+            if self.is_session_cancelled(session_id):
+                discard_reason = "cancelled"
+                self.emit_session_event(SESSION_TTS_STOP, session_id, reason="cancelled")
+                return False
             try:
                 self.send_msg(MSG_ACTION, struct.pack("<I", action))
-                self.send_say_pcm(tts_pcm)
+                if not self.send_say_pcm(tts_pcm, session_id=session_id):
+                    discard_reason = "cancelled"
+                    self.emit_session_event(SESSION_TTS_STOP, session_id, reason="cancelled")
+                    return False
             except Exception as e:
                 tts_elapsed_ms += (time.perf_counter() - t0) * 1000.0
                 discard_reason = "tts_send_failed"
@@ -368,6 +395,10 @@ class VoiceSessionRuntime:
                 ack_once()
                 finish_session()
 
+            if self.is_session_cancelled(session_id):
+                discard_reason = "cancelled"
+                finish_session()
+
             if self.intent_router is not None:
                 local_intent = self.intent_router.route(text, self.last_status)
                 if local_intent is not None:
@@ -425,6 +456,9 @@ class VoiceSessionRuntime:
             finally:
                 thinking_cancel.set()
                 thinking_timer.cancel()
+            if self.is_session_cancelled(session_id):
+                discard_reason = "cancelled"
+                finish_session()
             if llm_result.error:
                 discard_reason = llm_result.error
                 ack_once()

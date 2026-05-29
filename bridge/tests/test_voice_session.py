@@ -141,6 +141,15 @@ class FailingTts:
         raise RuntimeError("piper_falhou:voz_ausente")
 
 
+class CancellingTts:
+    def __init__(self, runtime):
+        self.runtime = runtime
+
+    def synthesize(self, text):
+        self.runtime.cancel_session(1)
+        return np.full(512, 1000, dtype=np.int16)
+
+
 class RecordingTransport(NullTransport):
     def __init__(self, timeline):
         super().__init__()
@@ -416,6 +425,37 @@ class VoiceSessionTests(unittest.TestCase):
         frames = decode_frames(bytearray(transport.sent[-1][1]))
         self.assertEqual(frames[-1], (MSG_SAY, b""))
 
+    def test_cancelled_session_does_not_send_stale_say(self):
+        transport = NullTransport()
+        events = []
+        runtime = VoiceSessionRuntime(
+            transport,
+            FakeStt(),
+            NoneLlm(),
+            FakeTts(),
+            dry_run=False,
+            intent_router=FakeSpeakingIntentRouter(),
+            session_event_cb=lambda event, session_id, **fields: events.append((event, fields.get("reason"))),
+        )
+        runtime.tts = CancellingTts(runtime)
+        runtime.begin_voice()
+        audio = np.full(9000, 2000, dtype=np.int16)
+        snapshot = VoiceSnapshot(
+            session_id=1,
+            audio_chunks=[audio],
+            avg_rms=1200.0,
+            duration_s=0.6,
+            end_reason="replay",
+        )
+
+        result = runtime.handle_voice_end(snapshot)
+
+        decoded = []
+        for _, frame in transport.sent:
+            decoded.extend(decode_frames(bytearray(frame)))
+        self.assertNotIn(MSG_SAY, [msg_type for msg_type, _ in decoded])
+        self.assertIn((SESSION_TTS_STOP, "cancelled"), events)
+        self.assertEqual(result.outcome_detail, "cancelled")
 
     def test_unknown_text_uses_llm_when_available(self):
         transport = NullTransport()
