@@ -215,6 +215,13 @@ esp_err_t bridge_service_send_audio_chunk(const int16_t *samples, uint16_t count
 bool bridge_service_opus_is_enabled(void);
 
 /**
+ * @brief Liga/desliga o transporte experimental Opus.
+ *
+ * Desligado por padrão. Ao ligar, o próximo HELLO anuncia audio.format=opus.
+ */
+void bridge_service_set_opus_enabled(bool enabled);
+
+/**
  * @brief Envia pacote Opus para o bridge quando o codec estiver habilitado.
  *
  * Stub intencional enquanto o firmware real anuncia codecs.opus=false.

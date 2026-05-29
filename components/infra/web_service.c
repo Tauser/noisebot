@@ -1638,6 +1638,46 @@ static esp_err_t handle_api_audio_opus_worker_drain_packets(httpd_req_t *req)
     return httpd_resp_sendstr(req, buf);
 }
 
+static esp_err_t handle_api_audio_opus_transport_enable(httpd_req_t *req)
+{
+    esp_err_t err = audio_processor_service_opus_worker_start();
+    if (err == ESP_ERR_INVALID_STATE) {
+        err = ESP_OK;
+    }
+    if (err == ESP_OK) {
+        bridge_service_set_opus_enabled(true);
+    } else {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+
+    char buf[160];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"opus_enabled\":%s,\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             bridge_service_opus_is_enabled() ? "true" : "false",
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_audio_opus_transport_disable(httpd_req_t *req)
+{
+    bridge_service_set_opus_enabled(false);
+    esp_err_t err = audio_processor_service_opus_worker_stop();
+    if (err == ESP_ERR_INVALID_STATE) {
+        err = ESP_OK;
+    }
+
+    char buf[160];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"opus_enabled\":%s,\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             bridge_service_opus_is_enabled() ? "true" : "false",
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
 static void sanitize_audio_scenario(const char *src, char *dst, size_t dst_len)
 {
     size_t j = 0U;
@@ -2718,6 +2758,8 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/opus/worker/stop", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_stop },
     { .uri = "/api/audio/opus/worker/encode-test", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_encode_test },
     { .uri = "/api/audio/opus/worker/drain-packets", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_drain_packets },
+    { .uri = "/api/audio/opus/transport/enable", .method = HTTP_POST, .handler = handle_api_audio_opus_transport_enable },
+    { .uri = "/api/audio/opus/transport/disable", .method = HTTP_POST, .handler = handle_api_audio_opus_transport_disable },
     { .uri = "/api/audio/record",   .method = HTTP_POST,   .handler = handle_api_audio_record },
     { .uri = "/api/audio/files",    .method = HTTP_GET,    .handler = handle_api_audio_files },
     { .uri = "/api/audio/file",     .method = HTTP_GET,    .handler = handle_api_audio_file },

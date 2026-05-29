@@ -63,6 +63,19 @@ static const char BRIDGE_HELLO_V2[] =
     "\"features\":[\"voice_events\",\"status\",\"device_commands_v1\",\"volume_control\","
     "\"session_events_v2\",\"barge_in\"]}";
 
+static const char BRIDGE_HELLO_V2_OPUS[] =
+    "{\"protocol\":\"noisebot-bridge\",\"version\":2,\"role\":\"firmware\","
+    "\"audio\":{\"format\":\"opus\",\"sample_rate\":16000,\"channels\":1,"
+    "\"chunk_samples\":960},\"codecs\":{\"pcm16\":false,\"opus\":true},"
+    "\"listen\":{\"mode\":\"auto\",\"max_speech_ms\":9200,"
+    "\"min_utterance_samples\":8000,\"max_utterance_samples\":192000,"
+    "\"end_silence_ms\":900},\"rx\":[\"say\",\"expr\",\"action\","
+    "\"emot_event\",\"gaze\",\"text_scroll\",\"volume\",\"hello\",\"session\","
+    "\"speech_cancel\"],"
+    "\"tx\":[\"audio_chunk\",\"event\",\"status\",\"hello\",\"session\"],"
+    "\"features\":[\"voice_events\",\"status\",\"device_commands_v1\",\"volume_control\","
+    "\"session_events_v2\",\"barge_in\",\"opus_tx\"]}";
+
 /* ── TX queue ─────────────────────────────────────────────────────────────── */
 
 /* Cada item na fila é um frame serializado completo precedido por tamanho */
@@ -112,6 +125,12 @@ static struct {
 /* USB CDC desabilitado por padrão: GPIO 19/20 são usados pelo servo HAL (UART1).
  * Habilitar apenas se GPIO 19/20 estiverem livres de periféricos concorrentes. */
 static bool s_usb_cdc_enabled = false;
+static bool s_opus_enabled = false;
+
+static const char *bridge_hello_payload(void)
+{
+    return bridge_service_opus_is_enabled() ? BRIDGE_HELLO_V2_OPUS : BRIDGE_HELLO_V2;
+}
 
 /* ── CRC-8/SMBUS (poly 0x07, init 0x00) ──────────────────────────────────── */
 
@@ -261,9 +280,10 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
                     xSemaphoreGive(s.mutex);
                 }
             }
+            const char *hello = bridge_hello_payload();
             esp_err_t err = enqueue_frame(NB_BRIDGE_MSG_HELLO,
-                                          BRIDGE_HELLO_V2,
-                                          (uint16_t)strlen(BRIDGE_HELLO_V2));
+                                          hello,
+                                          (uint16_t)strlen(hello));
             if (err != ESP_OK) {
                 NB_LOGW(TAG, "HELLO v2 resposta falhou: %s", esp_err_to_name(err));
             } else {
@@ -1147,7 +1167,34 @@ esp_err_t bridge_service_send_audio_chunk(const int16_t *samples, uint16_t count
 
 bool bridge_service_opus_is_enabled(void)
 {
-    return false;
+    if (s.mutex == NULL) return false;
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    bool enabled = s_opus_enabled;
+    xSemaphoreGive(s.mutex);
+    return enabled;
+}
+
+void bridge_service_set_opus_enabled(bool enabled)
+{
+    if (s.mutex == NULL) {
+        s_opus_enabled = enabled;
+        return;
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s_opus_enabled = enabled;
+    xSemaphoreGive(s.mutex);
+
+    if (bridge_service_is_connected()) {
+        const char *hello = bridge_hello_payload();
+        esp_err_t err = enqueue_frame(NB_BRIDGE_MSG_HELLO,
+                                      hello,
+                                      (uint16_t)strlen(hello));
+        if (err != ESP_OK) {
+            NB_LOGW(TAG, "HELLO opus=%d falhou: %s",
+                    enabled ? 1 : 0, esp_err_to_name(err));
+        }
+    }
 }
 
 esp_err_t bridge_service_send_opus_packet(const uint8_t *packet, uint16_t len)

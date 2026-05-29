@@ -267,12 +267,13 @@ static uint32_t s_mic_fail_count = 0;
 
 static void esp_vad_reset(void);
 
-static void bridge_drain_opus_packets_if_enabled(void)
+static bool bridge_drain_opus_packets_if_enabled(void)
 {
     if (!bridge_service_opus_is_enabled()) {
-        return;
+        return false;
     }
 
+    bool sent = false;
     for (uint8_t i = 0; i < 4U; i++) {
         uint16_t packet_len = 0;
         esp_err_t read_rc = audio_processor_service_opus_worker_read_packet(
@@ -284,7 +285,9 @@ static void bridge_drain_opus_packets_if_enabled(void)
         if (tx_rc != ESP_OK) {
             break;
         }
+        sent = true;
     }
+    return sent;
 }
 
 static void audio_service_recover_hal(const char *where, esp_err_t err)
@@ -624,11 +627,19 @@ static bool listen_start_bridge_capture(void)
             bridge_prepare_tx_audio(s_preroll_buf[idx], s_bridge_buf,
                                     NB_AUDIO_CHUNK_FRAMES,
                                     &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
-            if (bridge_service_send_audio_chunk(s_bridge_buf,
-                                                NB_AUDIO_CHUNK_FRAMES) == ESP_OK) {
+            if (bridge_service_opus_is_enabled()) {
                 audio_processor_service_opus_worker_feed_pcm(s_bridge_buf,
                                                              NB_AUDIO_CHUNK_FRAMES);
-                s.bridge_audio_sent = true;
+                if (bridge_drain_opus_packets_if_enabled()) {
+                    s.bridge_audio_sent = true;
+                }
+            } else {
+                if (bridge_service_send_audio_chunk(s_bridge_buf,
+                                                    NB_AUDIO_CHUNK_FRAMES) == ESP_OK) {
+                    audio_processor_service_opus_worker_feed_pcm(s_bridge_buf,
+                                                                 NB_AUDIO_CHUNK_FRAMES);
+                    s.bridge_audio_sent = true;
+                }
             }
         }
     } else if (s.listen_skip_preroll) {
@@ -1130,52 +1141,69 @@ static void audio_task(void *arg)
             const int16_t *bridge_src = used_processed ? s_bridge_proc_buf : s_sa_buf;
             bridge_prepare_tx_audio(bridge_src, s_bridge_buf, mic_n,
                                     &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
-            esp_err_t tx_rc = bridge_service_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n);
-            if (tx_rc == ESP_OK) {
+            if (bridge_service_opus_is_enabled()) {
                 audio_processor_service_opus_worker_feed_pcm(s_bridge_buf, (uint16_t)mic_n);
-                bridge_drain_opus_packets_if_enabled();
-                s.bridge_audio_sent = true;
-                s.bridge_tx_fail_count = 0;
-                if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
-                    ESP_LOGI(TAG,
-                             "bridge tx diag: source=%s raw_rms=%ld raw_peak=%u tx_rms=%ld tx_peak=%u sat=%u/%u",
-                             used_processed ? "afe" : "raw",
-                             (long)raw_rms,
-                             (unsigned)raw_peak,
-                             (long)tx_rms,
-                             (unsigned)tx_peak,
-                             (unsigned)saturated,
-                             (unsigned)mic_n);
+                if (bridge_drain_opus_packets_if_enabled()) {
+                    s.bridge_audio_sent = true;
+                    s.bridge_tx_fail_count = 0;
+                    if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
+                        ESP_LOGI(TAG,
+                                 "bridge tx diag: source=opus raw_rms=%ld raw_peak=%u tx_rms=%ld tx_peak=%u sat=%u/%u",
+                                 (long)raw_rms,
+                                 (unsigned)raw_peak,
+                                 (long)tx_rms,
+                                 (unsigned)tx_peak,
+                                 (unsigned)saturated,
+                                 (unsigned)mic_n);
+                    }
                 }
             } else {
-                if (tx_rc == ESP_ERR_INVALID_STATE) {
-                    ESP_LOGW(TAG, "bridge desconectou durante sessao — encerrando escuta");
-                    s.bridge_flush_before_end = false;
-                    listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
-                } else if (tx_rc == ESP_ERR_NO_MEM) {
-                    /* Backpressure persistente não é fala saudável: a fila já ficou
-                     * atrás do tempo real. Encerra limpo após poucas falhas para não
-                     * alimentar STT com áudio picotado ou atrasado. */
-                    if (s.bridge_tx_fail_count < UINT8_MAX) {
-                        s.bridge_tx_fail_count++;
-                    }
-                    if (s.bridge_tx_fail_count >= BRIDGE_TX_FAIL_ABORT_COUNT) {
-                        ESP_LOGW(TAG,
-                                 "bridge TX congestionado (%u chunks dropados seguidos) — encerrando sessao",
-                                 (unsigned)s.bridge_tx_fail_count);
-                        s.bridge_flush_before_end = true;
-                        listen_session_finish(NB_LISTEN_END_TIMEOUT);
+                esp_err_t tx_rc = bridge_service_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n);
+                if (tx_rc == ESP_OK) {
+                    audio_processor_service_opus_worker_feed_pcm(s_bridge_buf, (uint16_t)mic_n);
+                    s.bridge_audio_sent = true;
+                    s.bridge_tx_fail_count = 0;
+                    if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
+                        ESP_LOGI(TAG,
+                                 "bridge tx diag: source=%s raw_rms=%ld raw_peak=%u tx_rms=%ld tx_peak=%u sat=%u/%u",
+                                 used_processed ? "afe" : "raw",
+                                 (long)raw_rms,
+                                 (unsigned)raw_peak,
+                                 (long)tx_rms,
+                                 (unsigned)tx_peak,
+                                 (unsigned)saturated,
+                                 (unsigned)mic_n);
                     }
                 } else {
-                    if (s.bridge_tx_fail_count < UINT8_MAX) {
-                        s.bridge_tx_fail_count++;
-                    }
-                    if (s.bridge_tx_fail_count >= BRIDGE_TX_FAIL_ABORT_COUNT) {
-                        ESP_LOGW(TAG,
-                                 "bridge TX travou (%u falhas seguidas: %s) — encerrando sessao",
-                                 (unsigned)s.bridge_tx_fail_count, esp_err_to_name(tx_rc));
-                        s.bridge_flush_before_end = true;
+                    if (tx_rc == ESP_ERR_INVALID_STATE) {
+                        ESP_LOGW(TAG, "bridge desconectou durante sessao — encerrando escuta");
+                        s.bridge_flush_before_end = false;
                         listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
+                    } else if (tx_rc == ESP_ERR_NO_MEM) {
+                        /* Backpressure persistente não é fala saudável: a fila já ficou
+                         * atrás do tempo real. Encerra limpo após poucas falhas para não
+                         * alimentar STT com áudio picotado ou atrasado. */
+                        if (s.bridge_tx_fail_count < UINT8_MAX) {
+                            s.bridge_tx_fail_count++;
+                        }
+                        if (s.bridge_tx_fail_count >= BRIDGE_TX_FAIL_ABORT_COUNT) {
+                            ESP_LOGW(TAG,
+                                     "bridge TX congestionado (%u chunks dropados seguidos) — encerrando sessao",
+                                     (unsigned)s.bridge_tx_fail_count);
+                            s.bridge_flush_before_end = true;
+                            listen_session_finish(NB_LISTEN_END_TIMEOUT);
+                        }
+                    } else {
+                        if (s.bridge_tx_fail_count < UINT8_MAX) {
+                            s.bridge_tx_fail_count++;
+                        }
+                        if (s.bridge_tx_fail_count >= BRIDGE_TX_FAIL_ABORT_COUNT) {
+                            ESP_LOGW(TAG,
+                                     "bridge TX travou (%u falhas seguidas: %s) — encerrando sessao",
+                                     (unsigned)s.bridge_tx_fail_count, esp_err_to_name(tx_rc));
+                            s.bridge_flush_before_end = true;
+                            listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
+                        }
                     }
                 }
             }

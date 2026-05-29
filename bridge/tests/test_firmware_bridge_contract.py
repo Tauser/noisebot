@@ -41,6 +41,8 @@ def test_firmware_opus_contract_is_explicit_but_disabled():
     assert "#define NB_BRIDGE_OPUS_MAX_PACKET_BYTES 1024" in header
     assert "bool bridge_service_opus_is_enabled(void);" in header
     assert "esp_err_t bridge_service_send_opus_packet(" in header
-    assert "bool bridge_service_opus_is_enabled(void)\n{\n    return false;\n}" in src
+    assert "static bool s_opus_enabled = false;" in src
+    assert "void bridge_service_set_opus_enabled(bool enabled)" in src
+    assert "bridge_service_opus_is_enabled() ? BRIDGE_HELLO_V2_OPUS : BRIDGE_HELLO_V2" in src
     assert "if (!bridge_service_opus_is_enabled()) return ESP_ERR_NOT_SUPPORTED;" in src
     assert "enqueue_frame(NB_BRIDGE_MSG_AUDIO_CHUNK, packet, len)" in src
