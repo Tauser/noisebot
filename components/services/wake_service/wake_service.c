@@ -41,9 +41,9 @@
 #define WAKE_INPUT_GAIN_MIN       2
 #define WAKE_INPUT_TARGET_PEAK 18000
 #define WAKE_WAKENET_THRESHOLD 0.50f
-#define WAKE_MIN_DETECT_RAW_RMS   120U
-#define WAKE_MIN_DETECT_RAW_PEAK  350U
-#define WAKE_MIN_DETECT_POST_PEAK 6000U
+#define WAKE_MIN_DETECT_RAW_RMS    80U
+#define WAKE_MIN_DETECT_RAW_PEAK  180U
+#define WAKE_MIN_DETECT_POST_PEAK 3000U
 
 static struct {
     bool                         initialized;
