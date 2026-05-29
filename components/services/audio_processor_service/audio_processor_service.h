@@ -66,6 +66,27 @@ typedef struct {
     esp_err_t aec_last_error;
 } nb_audio_processor_status_t;
 
+typedef struct {
+    bool ran;
+    bool running;
+    bool ok;
+    bool task_created;
+    uint32_t internal_before_kb;
+    uint32_t internal_after_open_kb;
+    uint32_t internal_after_close_kb;
+    uint32_t dma_before_kb;
+    uint32_t dma_after_open_kb;
+    uint32_t dma_after_close_kb;
+    uint32_t psram_before_kb;
+    uint32_t psram_after_open_kb;
+    uint32_t psram_after_close_kb;
+    int frame_samples;
+    int outbuf_bytes;
+    int encoded_bytes;
+    int codec_error;
+    esp_err_t last_error;
+} nb_opus_worker_status_t;
+
 /**
  * @brief Inicializa o serviço experimental.
  *
@@ -91,6 +112,19 @@ esp_err_t audio_processor_service_probe_once(void);
  * atual antes de qualquer promoção para runtime.
  */
 esp_err_t audio_processor_service_aec_probe_once(void);
+
+/**
+ * @brief Executa self-test isolado do encoder Opus em task propria.
+ *
+ * O codec roda em uma task dedicada com stack grande, inspirado no Xiaozhi.
+ * Não altera bridge, captura, wake word ou caminho principal de voz.
+ */
+esp_err_t audio_processor_service_opus_worker_probe_once(void);
+
+/**
+ * @brief Copia o último status do worker Opus.
+ */
+void audio_processor_service_get_opus_worker_status(nb_opus_worker_status_t *out);
 
 /**
  * @brief Inicia shadow mode.

@@ -1475,6 +1475,76 @@ static esp_err_t handle_api_audio_processor_bridge_stop(httpd_req_t *req)
     return send_audio_processor_status(req, err);
 }
 
+static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
+{
+    nb_opus_worker_status_t st;
+    audio_processor_service_get_opus_worker_status(&st);
+
+    char buf[768];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"ran\":%s,\"running\":%s,\"task_created\":%s,"
+             "\"worker_ok\":%s,"
+             "\"internal_before_kb\":%lu,"
+             "\"internal_after_open_kb\":%lu,"
+             "\"internal_after_close_kb\":%lu,"
+             "\"dma_before_kb\":%lu,"
+             "\"dma_after_open_kb\":%lu,"
+             "\"dma_after_close_kb\":%lu,"
+             "\"psram_before_kb\":%lu,"
+             "\"psram_after_open_kb\":%lu,"
+             "\"psram_after_close_kb\":%lu,"
+             "\"frame_samples\":%d,"
+             "\"outbuf_bytes\":%d,"
+             "\"encoded_bytes\":%d,"
+             "\"codec_error\":%d,"
+             "\"last_error\":\"%s\","
+             "\"probe_error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             st.ran ? "true" : "false",
+             st.running ? "true" : "false",
+             st.task_created ? "true" : "false",
+             st.ok ? "true" : "false",
+             (unsigned long)st.internal_before_kb,
+             (unsigned long)st.internal_after_open_kb,
+             (unsigned long)st.internal_after_close_kb,
+             (unsigned long)st.dma_before_kb,
+             (unsigned long)st.dma_after_open_kb,
+             (unsigned long)st.dma_after_close_kb,
+             (unsigned long)st.psram_before_kb,
+             (unsigned long)st.psram_after_open_kb,
+             (unsigned long)st.psram_after_close_kb,
+             st.frame_samples,
+             st.outbuf_bytes,
+             st.encoded_bytes,
+             st.codec_error,
+             esp_err_to_name(st.last_error),
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_audio_opus_worker_status(httpd_req_t *req)
+{
+    return send_audio_opus_worker_status(req, ESP_OK);
+}
+
+static esp_err_t handle_api_audio_opus_worker_probe(httpd_req_t *req)
+{
+    if (audio_service_is_busy()) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "409 Conflict");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
+    }
+
+    esp_err_t err = audio_processor_service_opus_worker_probe_once();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_NO_MEM
+                                   ? "409 Conflict"
+                                   : "500 Internal Server Error");
+    }
+    return send_audio_opus_worker_status(req, err);
+}
+
 static void sanitize_audio_scenario(const char *src, char *dst, size_t dst_len)
 {
     size_t j = 0U;
@@ -2549,6 +2619,8 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/processor/shadow/stop", .method = HTTP_POST, .handler = handle_api_audio_processor_shadow_stop },
     { .uri = "/api/audio/processor/bridge/start", .method = HTTP_POST, .handler = handle_api_audio_processor_bridge_start },
     { .uri = "/api/audio/processor/bridge/stop", .method = HTTP_POST, .handler = handle_api_audio_processor_bridge_stop },
+    { .uri = "/api/audio/opus/worker", .method = HTTP_GET, .handler = handle_api_audio_opus_worker_status },
+    { .uri = "/api/audio/opus/worker/probe", .method = HTTP_POST, .handler = handle_api_audio_opus_worker_probe },
     { .uri = "/api/audio/record",   .method = HTTP_POST,   .handler = handle_api_audio_record },
     { .uri = "/api/audio/files",    .method = HTTP_GET,    .handler = handle_api_audio_files },
     { .uri = "/api/audio/file",     .method = HTTP_GET,    .handler = handle_api_audio_file },

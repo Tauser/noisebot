@@ -14,6 +14,9 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "nvs.h"
+#include "esp_audio_enc.h"
+#include "esp_audio_types.h"
+#include "esp_opus_enc.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -34,6 +37,26 @@
 #define SHADOW_LOG_FETCH_CHUNKS 250U
 #define AFE_MIN_INTERNAL_FREE_KB 32U
 #define AFE_MIN_DMA_LARGEST_KB   32U
+#define OPUS_WORKER_TASK_STACK   (2048U * 12U)
+#define OPUS_WORKER_TASK_PRIORITY 2U
+#define OPUS_WORKER_TASK_CORE    0
+#define OPUS_WORKER_TIMEOUT_MS   5000U
+
+#define OPUS_FRAME_DURATION_MS   60
+#define OPUS_FRAME_SAMPLES       ((16000 * OPUS_FRAME_DURATION_MS) / 1000)
+
+#define OPUS_ENC_CONFIG() {                                       \
+        .sample_rate        = ESP_AUDIO_SAMPLE_RATE_16K,          \
+        .channel            = ESP_AUDIO_MONO,                     \
+        .bits_per_sample    = ESP_AUDIO_BIT16,                    \
+        .bitrate            = ESP_OPUS_BITRATE_AUTO,              \
+        .frame_duration     = ESP_OPUS_ENC_FRAME_DURATION_60_MS,  \
+        .application_mode   = ESP_OPUS_ENC_APPLICATION_AUDIO,     \
+        .complexity         = 0,                                  \
+        .enable_fec         = false,                              \
+        .enable_dtx         = true,                               \
+        .enable_vbr         = true,                               \
+    }
 
 typedef struct {
     nb_audio_processor_status_t status;
@@ -52,6 +75,13 @@ typedef struct {
 } audio_processor_state_t;
 
 static audio_processor_state_t s;
+
+static nb_opus_worker_status_t s_opus;
+static StaticSemaphore_t s_opus_done_buf;
+static SemaphoreHandle_t s_opus_done;
+static TaskHandle_t s_opus_task;
+static int16_t s_opus_pcm[OPUS_FRAME_SAMPLES];
+static uint8_t s_opus_out[2048];
 
 static uint32_t psram_free_kb(void)
 {
@@ -467,6 +497,181 @@ esp_err_t audio_processor_service_aec_probe_once(void)
     return err;
 }
 
+static void opus_worker_set_status(const nb_opus_worker_status_t *st)
+{
+    if (st == NULL) {
+        return;
+    }
+    if (s.mutex != NULL) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s_opus = *st;
+        xSemaphoreGive(s.mutex);
+    } else {
+        s_opus = *st;
+    }
+}
+
+static void opus_worker_task(void *arg)
+{
+    (void)arg;
+
+    nb_opus_worker_status_t st = {0};
+    st.ran = true;
+    st.running = true;
+    st.task_created = true;
+    st.internal_before_kb = internal_free_kb();
+    st.dma_before_kb = dma_free_kb();
+    st.psram_before_kb = psram_free_kb();
+    st.last_error = ESP_FAIL;
+    st.codec_error = -1;
+    opus_worker_set_status(&st);
+
+    ESP_LOGI(TAG,
+             "opus worker iniciado — stack=%u internal=%lu KB dma=%lu KB psram=%lu KB",
+             (unsigned)OPUS_WORKER_TASK_STACK,
+             (unsigned long)st.internal_before_kb,
+             (unsigned long)st.dma_before_kb,
+             (unsigned long)st.psram_before_kb);
+
+    void *enc = NULL;
+    esp_opus_enc_config_t cfg = OPUS_ENC_CONFIG();
+    esp_audio_err_t codec_err = esp_opus_enc_open(&cfg,
+                                                  sizeof(esp_opus_enc_config_t),
+                                                  &enc);
+    st.codec_error = (int)codec_err;
+    st.internal_after_open_kb = internal_free_kb();
+    st.dma_after_open_kb = dma_free_kb();
+    st.psram_after_open_kb = psram_free_kb();
+
+    if (codec_err == ESP_AUDIO_ERR_OK && enc != NULL) {
+        int frame_bytes = 0;
+        int out_bytes = 0;
+        codec_err = esp_opus_enc_get_frame_size(enc, &frame_bytes, &out_bytes);
+        st.codec_error = (int)codec_err;
+        st.frame_samples = frame_bytes / (int)sizeof(int16_t);
+        st.outbuf_bytes = out_bytes;
+
+        if (codec_err == ESP_AUDIO_ERR_OK &&
+            st.frame_samples > 0 &&
+            st.frame_samples <= (int)OPUS_FRAME_SAMPLES &&
+            out_bytes > 0 &&
+            out_bytes <= (int)sizeof(s_opus_out)) {
+            for (int i = 0; i < st.frame_samples; i++) {
+                s_opus_pcm[i] = (int16_t)((i & 0x3f) * 64 - 2048);
+            }
+
+            esp_audio_enc_in_frame_t in = {
+                .buffer = (uint8_t *)s_opus_pcm,
+                .len = (uint32_t)(st.frame_samples * (int)sizeof(int16_t)),
+            };
+            esp_audio_enc_out_frame_t out = {
+                .buffer = s_opus_out,
+                .len = (uint32_t)out_bytes,
+                .encoded_bytes = 0,
+            };
+            codec_err = esp_opus_enc_process(enc, &in, &out);
+            st.codec_error = (int)codec_err;
+            st.encoded_bytes = (int)out.encoded_bytes;
+            if (codec_err == ESP_AUDIO_ERR_OK && out.encoded_bytes > 0U) {
+                st.ok = true;
+                st.last_error = ESP_OK;
+            }
+        } else {
+            st.last_error = ESP_ERR_INVALID_SIZE;
+        }
+    } else {
+        st.last_error = ESP_ERR_NO_MEM;
+    }
+
+    if (enc != NULL) {
+        esp_opus_enc_close(enc);
+    }
+
+    st.internal_after_close_kb = internal_free_kb();
+    st.dma_after_close_kb = dma_free_kb();
+    st.psram_after_close_kb = psram_free_kb();
+    st.running = false;
+    opus_worker_set_status(&st);
+
+    ESP_LOGI(TAG,
+             "opus worker finalizado — ok=%d codec=%d frame=%d outbuf=%d encoded=%d internal=%lu KB",
+             st.ok ? 1 : 0,
+             st.codec_error,
+             st.frame_samples,
+             st.outbuf_bytes,
+             st.encoded_bytes,
+             (unsigned long)st.internal_after_close_kb);
+
+    if (s_opus_done != NULL) {
+        xSemaphoreGive(s_opus_done);
+    }
+    s_opus_task = NULL;
+    vTaskDelete(NULL);
+}
+
+esp_err_t audio_processor_service_opus_worker_probe_once(void)
+{
+    if (s.mutex == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (s_opus_done == NULL) {
+        s_opus_done = xSemaphoreCreateBinaryStatic(&s_opus_done_buf);
+        if (s_opus_done == NULL) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    while (xSemaphoreTake(s_opus_done, 0) == pdTRUE) {
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    if (s_opus.running || s_opus_task != NULL) {
+        xSemaphoreGive(s.mutex);
+        return ESP_ERR_INVALID_STATE;
+    }
+    memset(&s_opus, 0, sizeof(s_opus));
+    s_opus.running = true;
+    s_opus.last_error = ESP_ERR_TIMEOUT;
+    xSemaphoreGive(s.mutex);
+
+    BaseType_t rc = xTaskCreatePinnedToCore(
+        opus_worker_task,
+        "nb_opus_probe",
+        OPUS_WORKER_TASK_STACK,
+        NULL,
+        OPUS_WORKER_TASK_PRIORITY,
+        &s_opus_task,
+        OPUS_WORKER_TASK_CORE
+    );
+    if (rc != pdPASS) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s_opus.ran = true;
+        s_opus.running = false;
+        s_opus.task_created = false;
+        s_opus.internal_before_kb = internal_free_kb();
+        s_opus.dma_before_kb = dma_free_kb();
+        s_opus.psram_before_kb = psram_free_kb();
+        s_opus.last_error = ESP_ERR_NO_MEM;
+        xSemaphoreGive(s.mutex);
+        s_opus_task = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (xSemaphoreTake(s_opus_done, pdMS_TO_TICKS(OPUS_WORKER_TIMEOUT_MS)) != pdTRUE) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s_opus.running = false;
+        s_opus.last_error = ESP_ERR_TIMEOUT;
+        xSemaphoreGive(s.mutex);
+        return ESP_ERR_TIMEOUT;
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    esp_err_t err = s_opus.ok ? ESP_OK : s_opus.last_error;
+    xSemaphoreGive(s.mutex);
+    return err;
+}
+
 static void shadow_task(void *arg)
 {
     (void)arg;
@@ -868,5 +1073,19 @@ void audio_processor_service_get_status(nb_audio_processor_status_t *out)
         xSemaphoreGive(s.mutex);
     } else {
         *out = s.status;
+    }
+}
+
+void audio_processor_service_get_opus_worker_status(nb_opus_worker_status_t *out)
+{
+    if (out == NULL) {
+        return;
+    }
+    if (s.mutex != NULL) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        *out = s_opus;
+        xSemaphoreGive(s.mutex);
+    } else {
+        *out = s_opus;
     }
 }

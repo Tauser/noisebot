@@ -168,3 +168,8 @@ CONFIG_MODEL_IN_FLASH=y
 # Data cache 64KB e cache line 64B: recomendado pelo ESP-SR para S3.
 CONFIG_ESP32S3_DATA_CACHE_64KB=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+
+# ── Opus diagnóstico (Etapa voz) ─────────────────────────────────────────────
+# Encoder habilitado apenas para worker isolado de probe. O bridge continua
+# anunciando codecs.opus=false até existir pipeline dedicado e validado.
+CONFIG_AUDIO_ENCODER_OPUS_SUPPORT=y

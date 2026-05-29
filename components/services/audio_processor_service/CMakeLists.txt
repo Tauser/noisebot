@@ -8,6 +8,7 @@ idf_component_register(
         esp_common
         esp_timer
         nvs_flash
+        espressif__esp_audio_codec
         espressif__esp-sr
         nb_hal
 )
