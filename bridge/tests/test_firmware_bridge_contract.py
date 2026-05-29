@@ -43,3 +43,16 @@ def test_firmware_opus_contract_is_explicit_but_disabled():
     assert "esp_err_t bridge_service_send_opus_packet(" in header
     assert "bool bridge_service_opus_is_enabled(void)\n{\n    return false;\n}" in src
     assert "return ESP_ERR_NOT_SUPPORTED;" in src
+
+
+def test_firmware_exposes_isolated_opus_probe_endpoint():
+    web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+    svc_h = (ROOT / "components" / "services" / "audio_processor_service" / "audio_processor_service.h").read_text(encoding="utf-8")
+    svc_c = (ROOT / "components" / "services" / "audio_processor_service" / "audio_processor_service.c").read_text(encoding="utf-8")
+
+    assert '"/api/audio/opus/probe"' in web
+    assert "audio_processor_service_opus_probe_once" in web
+    assert "esp_err_t audio_processor_service_opus_probe_once(void);" in svc_h
+    assert "esp_opus_enc_open" in svc_c
+    assert "esp_opus_enc_process" in svc_c
+    assert "esp_opus_enc_close" in svc_c

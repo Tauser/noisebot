@@ -374,6 +374,10 @@ experimental de 60 ms (`NB_BRIDGE_OPUS_FRAME_MS=60`,
 `NB_BRIDGE_OPUS_FRAME_SAMPLES=960`) e expõe
 `bridge_service_send_opus_packet()`, mas a função retorna
 `ESP_ERR_NOT_SUPPORTED` enquanto `bridge_service_opus_is_enabled()` for `false`.
+O firmware também tem um probe isolado em `POST /api/audio/opus/probe`: ele
+cria um encoder `esp_opus_enc` 16 kHz mono/60 ms, codifica um frame de silêncio,
+mede tamanho de frame, bytes gerados, tempo de encode e heap, e destrói o encoder
+antes de retornar. Esse probe não toca microfone, TTS, bridge nem `HELLO`.
 O server possui `noisebot_server.internal.transport.opus_codec` para
 round-trip PCM16 -> Opus -> PCM16 com frames de 60 ms e comando
 `noisebot_server debug opus-selftest`. O adapter do server ja consegue aceitar
@@ -404,6 +408,8 @@ Validação atual:
   orchestrator e aciona STT com PCM decodificado.
 - `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém
   `opus=false` no `HELLO` e possui stub Opus explicitamente desabilitado.
+- `POST /api/audio/opus/probe`: valida criação/processamento/destruição do
+  encoder Opus no firmware real antes de qualquer integração no pipeline.
 - `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
   packets, `opus_bytes=3043` contra `input_bytes=32000`
   (`compression_ratio=0.0951`) no ambiente local.

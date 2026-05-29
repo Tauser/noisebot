@@ -168,3 +168,8 @@ CONFIG_MODEL_IN_FLASH=y
 # Data cache 64KB e cache line 64B: recomendado pelo ESP-SR para S3.
 CONFIG_ESP32S3_DATA_CACHE_64KB=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
+
+# ── Opus probe (Fase 6) ─────────────────────────────────────────────────────
+# Apenas encoder para o endpoint isolado /api/audio/opus/probe. O pipeline vivo
+# continua PCM16 e o firmware segue anunciando codecs.opus=false no HELLO.
+CONFIG_AUDIO_ENCODER_OPUS_SUPPORT=y

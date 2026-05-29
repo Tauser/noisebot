@@ -14,6 +14,8 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "nvs.h"
+#include "esp_audio_types.h"
+#include "esp_opus_enc.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -34,6 +36,12 @@
 #define SHADOW_LOG_FETCH_CHUNKS 250U
 #define AFE_MIN_INTERNAL_FREE_KB 32U
 #define AFE_MIN_DMA_LARGEST_KB   32U
+#define OPUS_PROBE_SAMPLE_RATE_HZ 16000
+#define OPUS_PROBE_CHANNELS       1
+#define OPUS_PROBE_BITS           16
+#define OPUS_PROBE_FRAME_MS       60
+#define OPUS_PROBE_SAMPLES        ((OPUS_PROBE_SAMPLE_RATE_HZ * OPUS_PROBE_FRAME_MS) / 1000)
+#define OPUS_PROBE_OUT_MAX_BYTES  1275U
 
 typedef struct {
     nb_audio_processor_status_t status;
@@ -52,6 +60,8 @@ typedef struct {
 } audio_processor_state_t;
 
 static audio_processor_state_t s;
+static int16_t s_opus_probe_pcm[OPUS_PROBE_SAMPLES];
+static uint8_t s_opus_probe_out[OPUS_PROBE_OUT_MAX_BYTES];
 
 static uint32_t psram_free_kb(void)
 {
@@ -90,6 +100,11 @@ static bool afe_runtime_heap_ok(void)
 {
     return internal_free_kb() >= AFE_MIN_INTERNAL_FREE_KB &&
            dma_largest_kb() >= AFE_MIN_DMA_LARGEST_KB;
+}
+
+static esp_err_t audio_err_to_esp_err(esp_audio_err_t err)
+{
+    return (err == ESP_AUDIO_ERR_OK) ? ESP_OK : ESP_FAIL;
 }
 
 static void update_board_caps_locked(void)
@@ -463,6 +478,120 @@ esp_err_t audio_processor_service_aec_probe_once(void)
     ESP_LOGI(TAG, "probe AEC finalizado — err=%s PSRAM apos destroy=%lu KB",
              esp_err_to_name(err),
              (unsigned long)s.status.aec_psram_after_destroy_kb);
+    xSemaphoreGive(s.mutex);
+    return err;
+}
+
+esp_err_t audio_processor_service_opus_probe_once(void)
+{
+    void *encoder = NULL;
+    int in_size = 0;
+    int out_size = 0;
+    esp_err_t err = ESP_FAIL;
+
+    if (s.mutex) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s.status.opus_probe_ran = true;
+        s.status.opus_probe_ok = false;
+        s.status.opus_last_error = ESP_FAIL;
+        s.status.opus_psram_before_kb = psram_free_kb();
+        s.status.opus_psram_after_create_kb = 0;
+        s.status.opus_psram_after_destroy_kb = 0;
+        s.status.opus_frame_in_bytes = 0;
+        s.status.opus_frame_out_bytes = 0;
+        s.status.opus_encoded_bytes = 0;
+        s.status.opus_encode_us = 0;
+        update_heap_status_locked();
+        xSemaphoreGive(s.mutex);
+    }
+
+    ESP_LOGI(TAG, "probe Opus iniciado — PSRAM antes=%lu KB internal=%lu KB",
+             (unsigned long)psram_free_kb(),
+             (unsigned long)internal_free_kb());
+
+    esp_opus_enc_config_t cfg = ESP_OPUS_ENC_CONFIG_DEFAULT();
+    cfg.sample_rate = OPUS_PROBE_SAMPLE_RATE_HZ;
+    cfg.channel = ESP_AUDIO_MONO;
+    cfg.bits_per_sample = ESP_AUDIO_BIT16;
+    cfg.bitrate = ESP_OPUS_BITRATE_AUTO;
+    cfg.frame_duration = ESP_OPUS_ENC_FRAME_DURATION_60_MS;
+    cfg.application_mode = ESP_OPUS_ENC_APPLICATION_VOIP;
+    cfg.complexity = 0;
+    cfg.enable_fec = false;
+    cfg.enable_dtx = false;
+    cfg.enable_vbr = true;
+
+    esp_audio_err_t audio_err = esp_opus_enc_open(&cfg, sizeof(cfg), &encoder);
+    err = audio_err_to_esp_err(audio_err);
+    if (err != ESP_OK || encoder == NULL) {
+        ESP_LOGW(TAG, "probe Opus falhou ao criar encoder err=%d", (int)audio_err);
+        goto done;
+    }
+
+    audio_err = esp_opus_enc_get_frame_size(encoder, &in_size, &out_size);
+    err = audio_err_to_esp_err(audio_err);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "probe Opus falhou ao consultar frame err=%d", (int)audio_err);
+        goto done;
+    }
+    if (in_size != (int)(OPUS_PROBE_SAMPLES * sizeof(int16_t)) ||
+        out_size <= 0 || out_size > (int)OPUS_PROBE_OUT_MAX_BYTES) {
+        ESP_LOGW(TAG, "probe Opus contrato inesperado in=%d out=%d", in_size, out_size);
+        err = ESP_ERR_INVALID_SIZE;
+        goto done;
+    }
+
+    memset(s_opus_probe_pcm, 0, sizeof(s_opus_probe_pcm));
+    memset(s_opus_probe_out, 0, sizeof(s_opus_probe_out));
+
+    esp_audio_enc_in_frame_t in = {
+        .buffer = (uint8_t *)s_opus_probe_pcm,
+        .len = (uint32_t)in_size,
+    };
+    esp_audio_enc_out_frame_t out = {
+        .buffer = s_opus_probe_out,
+        .len = (uint32_t)out_size,
+        .encoded_bytes = 0,
+        .pts = 0,
+    };
+    int64_t t0 = esp_timer_get_time();
+    audio_err = esp_opus_enc_process(encoder, &in, &out);
+    int64_t t1 = esp_timer_get_time();
+    err = audio_err_to_esp_err(audio_err);
+    if (err != ESP_OK || out.encoded_bytes == 0U) {
+        ESP_LOGW(TAG, "probe Opus falhou ao codificar err=%d encoded=%lu",
+                 (int)audio_err, (unsigned long)out.encoded_bytes);
+        if (err == ESP_OK) err = ESP_FAIL;
+        goto done;
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s.status.opus_probe_ok = true;
+    s.status.opus_psram_after_create_kb = psram_free_kb();
+    s.status.opus_frame_in_bytes = in_size;
+    s.status.opus_frame_out_bytes = out_size;
+    s.status.opus_encoded_bytes = out.encoded_bytes;
+    s.status.opus_encode_us = (uint32_t)(t1 - t0);
+    update_heap_status_locked();
+    xSemaphoreGive(s.mutex);
+
+    ESP_LOGI(TAG, "probe Opus OK — in=%d out=%d encoded=%lu encode_us=%lu",
+             in_size, out_size,
+             (unsigned long)out.encoded_bytes,
+             (unsigned long)(uint32_t)(t1 - t0));
+
+done:
+    if (encoder != NULL) {
+        esp_opus_enc_close(encoder);
+    }
+
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s.status.opus_psram_after_destroy_kb = psram_free_kb();
+    update_heap_status_locked();
+    s.status.opus_last_error = err;
+    ESP_LOGI(TAG, "probe Opus finalizado — err=%s PSRAM apos destroy=%lu KB",
+             esp_err_to_name(err),
+             (unsigned long)s.status.opus_psram_after_destroy_kb);
     xSemaphoreGive(s.mutex);
     return err;
 }
