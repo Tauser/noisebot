@@ -427,6 +427,15 @@ Validação atual:
   - `que horas sao`: `ok=true`, `outcome=local_intent`,
     `total_samples=46064`, `packets_drained=48`, `packet_drops=0`;
   - todos com `transcript_quality=good`, `enable_ok=true` e `disable_ok=true`.
+- Firmware real, `codec-ab` curto em 2026-05-29:
+  - PCM16: 3/3 turnos `ok=true`, `transcript_quality=good`, STT medio
+    1049,6 ms;
+  - Opus: 3/3 turnos `ok=true`, `transcript_quality=good`, STT medio
+    1089,0 ms;
+  - Opus drenou 160 pacotes, 23045 bytes e `packet_drops=0`;
+  - duas transcricoes Opus ficaram semanticamente piores que PCM16, apesar de
+    aceitas pelo STT; decisao: Opus segue candidato opt-in e ainda nao vira
+    padrao obrigatorio.
 - Firmware real mantém PCM16 como padrão; Opus só liga por API experimental.
 - Firmware real passou por builds ESP-IDF limpos após os commits:
   - `38eadb6` worker isolado;
@@ -480,6 +489,7 @@ Critérios de aceite:
 - [x] Promover Opus de experimento manual para capability oficial opt-in, com
   status/HELLO/metrics coerentes e fallback PCM16 automático.
 - [x] Criar harness pareado PCM16 vs Opus para A/B maior repetível.
+- [x] Rodar A/B curto PCM16 vs Opus com zero drops e STT `good`.
 - [ ] Rodar A/B maior de latência/CPU e sessão longa antes de considerar Opus
   como padrão obrigatório.
 

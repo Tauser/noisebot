@@ -495,6 +495,41 @@ def test_server_codec_ab_summary_keeps_opus_opt_in_on_drops() -> None:
     assert "Opus permanece opt-in" in summary
 
 
+def test_server_codec_ab_confirms_opus_from_packet_counters() -> None:
+    codec_ab = importlib.import_module("noisebot_server.internal.ops.codec_ab")
+
+    trial = codec_ab._trial_from_payload(
+        codec="opus",
+        phrase="me diga uma curiosidade",
+        previous_turn_id=10,
+        metrics={
+            "last_voice_session": {
+                "turn_id": 11,
+                "outcome": "llm",
+                "transcript_quality": "good",
+                "transcript": "me diga uma curiosidade",
+                "total_samples": 32000,
+            },
+        },
+        worker_before={
+            "opus_packet_drained": 10,
+            "opus_packet_drops": 0,
+            "opus_packet_bytes_total": 1000,
+        },
+        worker_after={
+            "opus_packet_drained": 44,
+            "opus_packet_drops": 0,
+            "opus_packet_bytes_total": 5896,
+        },
+        server_codec_confirmed=False,
+    )
+
+    assert trial.ok
+    assert trial.server_codec_confirmed
+    assert trial.packets_drained == 34
+    assert trial.encoded_bytes == 4896
+
+
 def test_server_ai_status_exposes_firmware_audio_capabilities() -> None:
     schemas = importlib.import_module("noisebot_server.internal.ops.schemas")
 

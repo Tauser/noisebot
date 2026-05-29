@@ -199,6 +199,8 @@ def _run_one_trial(
         timeout_s=timeout_s,
     )
     after_worker = get_json(f"{firmware_url}/api/audio/opus/worker")
+    if codec == "opus" and not server_codec_confirmed:
+        server_codec_confirmed = _wait_for_opus(server_url=server_url, timeout_s=1.0)
     if codec == "opus":
         _disable_opus(firmware_url)
 
@@ -230,12 +232,15 @@ def _trial_from_payload(
     packets_drained = _delta(worker_after, worker_before, "opus_packet_drained")
     packet_drops = _delta(worker_after, worker_before, "opus_packet_drops")
     encoded_bytes = _delta(worker_after, worker_before, "opus_packet_bytes_total")
+    transport_confirmed = codec != "opus" or (
+        server_codec_confirmed or (packets_drained > 0 and packet_drops == 0 and encoded_bytes > 0)
+    )
     ok = (
         turn_id is not None
         and turn_id != previous_turn_id
         and quality.lower() in {"good", "ok"}
         and bool(transcript.strip())
-        and (codec != "opus" or (packets_drained > 0 and packet_drops == 0))
+        and transport_confirmed
     )
     return CodecAbTrial(
         codec=codec,
@@ -252,7 +257,7 @@ def _trial_from_payload(
         packets_drained=packets_drained,
         packet_drops=packet_drops,
         encoded_bytes=encoded_bytes,
-        server_codec_confirmed=server_codec_confirmed,
+        server_codec_confirmed=transport_confirmed,
     )
 
 

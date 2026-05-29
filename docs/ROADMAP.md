@@ -2055,6 +2055,9 @@ Implementação:
   proxy os endpoints Opus do firmware e PCM16 segue como fallback padrão.
 - [x] Harness pareado `noisebot_server debug codec-ab` criado para comparar
   PCM16 vs Opus em frases repetíveis antes de qualquer promoção para padrão.
+- [x] A/B curto PCM16 vs Opus executado em hardware: 3/3 turnos Opus `ok`,
+  zero drops e 160 pacotes drenados; manter Opus como opt-in porque duas
+  transcricoes Opus ficaram semanticamente piores que PCM16.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
   padrão. Ver `docs/VOICE_PIPELINE.md` e `docs/VOICE_AB_PHASE5_8192.md`.
 - [ ] Próximo avanço: executar o A/B maior e sessão longa antes de considerar
