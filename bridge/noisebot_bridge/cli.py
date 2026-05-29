@@ -8,7 +8,7 @@ import time
 from .config import BridgeConfig, load_bridge_env
 from .intent_router import LocalIntentRouter
 from .llm import FallbackLlmProvider, create_llm_provider
-from .replay import run_replay
+from .replay import run_replay, run_replay_batch
 from .runtime import BridgeRuntime
 from .stt import WhisperStt
 from .transport import TcpTransport, UartTransport, discover_mdns, do_handshake
@@ -26,6 +26,7 @@ def parse_args() -> BridgeConfig:
     parser.add_argument("--uart", default=None, metavar="PORT", help="Porta serial USB CDC")
     parser.add_argument("--dry-run", action="store_true", help="Transcreve com Whisper e não chama LLM/Piper")
     parser.add_argument("--replay", default=None, help="Arquivo WAV/PCM int16 16kHz para testar sem hardware")
+    parser.add_argument("--replay-dir", default=None, help="Pasta com WAV/PCM int16 16kHz para replay em lote")
     parser.add_argument("--replay-json", action="store_true", help="Imprime resultado estruturado do replay em JSON")
     parser.add_argument("--local-intents", choices=("on", "off"), default="on")
     parser.add_argument("--llm", choices=("gemini", "openai", "mock", "none"), default=BridgeConfig.llm)
@@ -44,6 +45,7 @@ def parse_args() -> BridgeConfig:
         uart=args.uart,
         dry_run=args.dry_run,
         replay=args.replay,
+        replay_dir=args.replay_dir,
         replay_json=args.replay_json,
         local_intents=args.local_intents == "on",
         llm=args.llm,
@@ -80,6 +82,12 @@ def main():
 
     if cfg.replay:
         result = run_replay(cfg.replay, stt, llm, tts, dry_run=cfg.dry_run, intent_router=intent_router)
+        if cfg.replay_json:
+            print(json.dumps(result.to_dict(), ensure_ascii=False, sort_keys=True))
+        return
+
+    if cfg.replay_dir:
+        result = run_replay_batch(cfg.replay_dir, stt, llm, tts, dry_run=cfg.dry_run, intent_router=intent_router)
         if cfg.replay_json:
             print(json.dumps(result.to_dict(), ensure_ascii=False, sort_keys=True))
         return

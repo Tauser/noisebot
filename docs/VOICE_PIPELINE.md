@@ -422,8 +422,9 @@ crítico do barge-in no firmware é verificado por
 `HELLO`, `VOICE_START`, `AUDIO_CHUNK`, `VOICE_END`, frames corrompidos, áudio
 fora de sessão, sessão vazia seguida de sessão válida, resposta longa em chunks,
 STT rejeitado e falha de TTS. O replay agora usa fixtures reais de
-`voice_samples/` para cobrir amostras boas e ruins sem hardware. A suíte do
-bridge está verde com 145 testes. Isso
+`voice_samples/` para cobrir amostras boas e ruins sem hardware, e o CLI aceita
+`--replay-dir` para rodar uma pasta inteira e emitir resumo JSON de outcomes. A
+suíte do bridge está verde com 147 testes. Isso
 não substitui o checklist físico do robô, mas impede que a camada de protocolo
 volte a aceitar áudio fantasma, responder wake vazio, mascarar falhas de STT/TTS
 ou quebrar novamente o contrato mínimo de barge-in.
@@ -443,6 +444,8 @@ Mudanças:
   - câmera ativa durante fala;
   - bridge reconectando.
 - Colocar esses cenários em checklist antes de release.
+- Rodar lote local de amostras:
+  `noisebot_bridge --dry-run --replay-dir voice_samples --replay-json`.
 
 Critérios de aceite:
 

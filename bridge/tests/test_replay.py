@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from noisebot_bridge.replay import load_audio, run_replay
+from noisebot_bridge.replay import iter_replay_audio_files, load_audio, run_replay, run_replay_batch
 from noisebot_bridge.stt import SttResult
 
 
@@ -161,6 +161,29 @@ class ReplayTests(unittest.TestCase):
                 self.assertEqual(stt.calls, 1)
                 self.assertGreater(data["samples"], 16000)
                 self.assertEqual(data["session"]["outcome"], "stt_rejected")
+
+    def test_iter_replay_audio_files_returns_supported_files_sorted(self):
+        files = iter_replay_audio_files(str(VOICE_SAMPLES))
+
+        names = [p.name for p in files]
+        self.assertIn("bridge_tx_comando_curto_468s.wav", names)
+        self.assertIn("raw_comando_curto_402s.wav", names)
+        self.assertEqual(names, sorted(names))
+
+    def test_run_replay_batch_summarizes_outcomes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write_wav(root / "a_good.wav", np.full(9000, 2000, dtype=np.int16))
+            self.write_wav(root / "b_good.wav", np.full(9000, 2000, dtype=np.int16))
+            stt = FakeStt()
+
+            result = run_replay_batch(str(root), stt, NoneLlm(), FakeTts(), dry_run=True)
+
+        data = result.to_dict()
+        self.assertEqual(stt.calls, 2)
+        self.assertEqual(data["total"], 2)
+        self.assertEqual(data["outcomes"], {"dry_run_ok": 2})
+        self.assertEqual([Path(r["path"]).name for r in data["results"]], ["a_good.wav", "b_good.wav"])
 
 
 if __name__ == "__main__":

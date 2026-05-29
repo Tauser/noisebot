@@ -27,6 +27,22 @@ class ReplayResult:
         return data
 
 
+@dataclass(frozen=True)
+class ReplayBatchResult:
+    root: str
+    total: int
+    outcomes: dict[str, int]
+    results: list[ReplayResult]
+
+    def to_dict(self) -> dict:
+        return {
+            "root": self.root,
+            "total": self.total,
+            "outcomes": dict(sorted(self.outcomes.items())),
+            "results": [r.to_dict() for r in self.results],
+        }
+
+
 def load_audio(path: str) -> np.ndarray:
     p = Path(path)
     if p.suffix.lower() == ".wav":
@@ -75,3 +91,23 @@ def run_replay(path: str, stt, llm, tts, dry_run: bool, intent_router=None) -> R
         session.end_reason,
     )
     return result
+
+
+def iter_replay_audio_files(root: str) -> list[Path]:
+    p = Path(root)
+    if p.is_file():
+        return [p]
+    files = [*p.glob("*.wav"), *p.glob("*.pcm")]
+    return sorted(files)
+
+
+def run_replay_batch(root: str, stt, llm, tts, dry_run: bool, intent_router=None) -> ReplayBatchResult:
+    results = [
+        run_replay(str(path), stt, llm, tts, dry_run=dry_run, intent_router=intent_router)
+        for path in iter_replay_audio_files(root)
+    ]
+    outcomes: dict[str, int] = {}
+    for result in results:
+        outcome = result.session.outcome
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+    return ReplayBatchResult(root=str(Path(root)), total=len(results), outcomes=outcomes, results=results)
