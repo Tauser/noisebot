@@ -481,6 +481,18 @@ Mudanças:
   retornar. O caminho principal não ativa AEC se a margem de heap estiver
   baixa.
 
+Validação atual:
+
+- Firmware real, `barge-live` em 2026-05-29:
+  - `ok=true`;
+  - turno interrompido: `7`;
+  - `interruption_cancel_ms=0.9`;
+  - `discard_reason=barge_in`;
+  - `outcome=interrupted`;
+  - transcript original: `Me conte uma história longa.`;
+  - reply parcial cancelada: `Havia uma vez, numa vila encantada chamada
+    Lumina, um pequeno riu azul que era o lar de milhares de fadas.`
+
 Nota de bancada em 2026-05-27: a tentativa de promover WakeNet `MR + AEC`
 direto para runtime compilou, mas no hardware causou pressão de memória
 observada como `sdmmc_read_sectors: not enough mem`, degradação do SD e queda
@@ -489,8 +501,9 @@ probe passar com margem e sem regressão em SD/WiFi.
 
 Critérios de aceite:
 
-- Usuário consegue interromper o robô falando por cima.
-- `barge-live` retorna `ok=true` com `discard_reason=barge_in`.
+- [x] Usuário consegue interromper o robô falando por cima.
+- [x] `barge-live` retorna `ok=true` com `discard_reason=barge_in`.
+- [x] `interruption_cancel_ms` fica abaixo de 200 ms no teste real.
 - O próprio TTS não reabre escuta falsa.
 - Sem loops de escuta/resposta.
 - Sem regressão de SD/WiFi/bridge durante ou após o probe.
