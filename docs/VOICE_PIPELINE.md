@@ -407,8 +407,12 @@ Validação atual:
   - `opus_packet_drained=138`, `opus_packet_drops=0`;
   - `opus_packet_queue_count=0`;
   - `POST /api/audio/opus/transport/disable` retornou `opus_enabled=false`.
-- Proximo teste real padronizado:
-  `noisebot_server --host 192.168.1.30 debug opus-live "me diga uma curiosidade" --json`.
+- Firmware real, `opus-live` em 2026-05-29:
+  - `ok=true`, `outcome=llm`, `transcript_quality=good`;
+  - transcript: `Me diga uma curiosidade.`;
+  - `total_samples=55664`, `duration_ms=3479.0`, `stt_ms=1088.6`;
+  - `packets_drained=58`, `packet_drops=0`, `encoded_bytes=8357`;
+  - `enable_ok=true`, `disable_ok=true`.
 - Firmware real mantém PCM16 como padrão; Opus só liga por API experimental.
 - Firmware real passou por builds ESP-IDF limpos após os commits:
   - `38eadb6` worker isolado;
@@ -429,7 +433,8 @@ Validação atual:
 - `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém PCM16
   como contrato padrão e exige flag explicita para Opus.
 - `bridge/tests`: 153 testes verdes após a integração.
-- `server/tests`: 91 testes verdes após adicionar o harness `opus-live`.
+- `server/tests`: 92 testes verdes após adicionar o harness `opus-live` e o
+  fallback de decode Opus antes do `HELLO` dinâmico.
 - `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
   packets, `opus_bytes=3043` contra `input_bytes=32000`
   (`compression_ratio=0.0951`) no ambiente local.
@@ -442,8 +447,8 @@ Critérios de aceite:
   drops no teste manual.
 - [x] Filas continuam curtas e previsíveis (`queue_count=0` após envio).
 - [x] Nenhuma mudança de codec quebrou a suíte do bridge.
-- [ ] Rodar uma sessão longa em Opus com logs do server confirmando STT final e
-  resposta LLM/TTS de ponta a ponta antes de promover como padrão.
+- [x] Sessão real em Opus com STT `good` e resposta LLM ponta a ponta.
+- [ ] Rodar sessão longa multi-turn em Opus antes de promover como padrão.
 
 ### Fase 7 — AEC e Modo Realtime
 
