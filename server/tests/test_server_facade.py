@@ -797,6 +797,48 @@ async def test_server_firmware_adapter_decodes_opus_audio_chunk_when_negotiated(
     assert decoded.std() > 100
 
 
+async def test_server_firmware_adapter_decodes_opus_audio_chunk_before_renegotiation() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    adapter_module = importlib.import_module("noisebot_server.internal.transport.adapter")
+    protocol = importlib.import_module("noisebot_server.internal.transport.protocol")
+    opus_codec = importlib.import_module("noisebot_server.internal.transport.opus_codec")
+
+    if not opus_codec.opus_available():
+        pytest.skip("PyAV/libopus indisponivel")
+
+    import numpy as np
+
+    class DummyTransport:
+        is_connected = True
+        description = "dummy"
+
+        async def connect(self) -> None:
+            pass
+
+        async def disconnect(self) -> None:
+            pass
+
+        async def send(self, data: bytes) -> None:
+            pass
+
+        async def recv(self, n: int = 4096) -> bytes:
+            return b""
+
+    bus = runtime.EventBus()
+    queue = bus.subscribe(runtime.AudioChunkIn)
+    adapter = adapter_module.FirmwareAdapter(DummyTransport(), bus)
+    t = np.arange(opus_codec.OPUS_FRAME_SAMPLES, dtype=np.float32) / 16000.0
+    pcm = (np.sin(2.0 * math.pi * 440.0 * t) * 5000.0).astype(np.int16)
+    packet = opus_codec.OpusEncoder().encode_frame(pcm)
+
+    await adapter._dispatch_rx(protocol.MSG_AUDIO_CHUNK, packet)
+
+    event = await asyncio.wait_for(queue.get(), timeout=0.1)
+    decoded = np.frombuffer(event.pcm, dtype=np.int16)
+    assert decoded.size > 0
+    assert decoded.std() > 100
+
+
 async def test_fake_firmware_opus_session_reaches_adapter_as_pcm() -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     adapter_module = importlib.import_module("noisebot_server.internal.transport.adapter")

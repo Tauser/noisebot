@@ -235,6 +235,14 @@ class FirmwareAdapter:
                 )
                 expected_len = chunk_samples * 2
                 if len(payload) != expected_len:
+                    pcm = self._try_decode_opus_audio(payload)
+                    if pcm:
+                        log.info(
+                            "RX: AUDIO_CHUNK Opus aceito por fallback len=%d",
+                            len(payload),
+                        )
+                        await self._bus.publish(AudioChunkIn(pcm=pcm))
+                        return
                     log.warning(
                         "RX: AUDIO_CHUNK invalido len=%d esperado=%d -- descartado",
                         len(payload),
@@ -286,6 +294,16 @@ class FirmwareAdapter:
 
             self._opus_decoder = OpusDecoder()
         return self._opus_decoder.decode_packet(payload)
+
+    def _try_decode_opus_audio(self, payload: bytes) -> bytes:
+        if not _looks_like_opus_packet(payload):
+            return b""
+        try:
+            return self._decode_opus_audio(payload)
+        except Exception:
+            log.debug("RX: fallback Opus falhou len=%d", len(payload), exc_info=True)
+            self._opus_decoder = None
+            return b""
 
     async def _dispatch_event(self, evt_type: int, data: bytes) -> None:
         if evt_type == NB_EVT_VOICE_ACTIVITY_START:
@@ -437,6 +455,12 @@ def _frame_type(frame: bytes) -> int | None:
     if len(frame) < 4 or frame[0] != 0xAB:
         return None
     return frame[3]
+
+
+def _looks_like_opus_packet(payload: bytes) -> bool:
+    # Firmware PCM chunks are 512 bytes. Opus 60 ms packets at our bitrate have
+    # been 140-150 bytes in live tests, but keep this loose for VBR frames.
+    return 8 <= len(payload) <= 400
 
 
 __all__ = ["FirmwareAdapter"]
