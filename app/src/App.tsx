@@ -54,6 +54,7 @@ import {
   observeVision,
   resetMetrics,
   restartServer,
+  runAudioProcessorOpusProbe,
   saveBasicSettings,
   sendDebugTranscript,
   startAudioProcessorBridge,
@@ -428,7 +429,7 @@ export function App() {
     }
   };
 
-  const handleAudioProcessorAction = async (action: "shadow_start" | "shadow_stop" | "bridge_start" | "bridge_stop") => {
+  const handleAudioProcessorAction = async (action: "shadow_start" | "shadow_stop" | "bridge_start" | "bridge_stop" | "opus_probe") => {
     const token = opsToken.trim();
     if (!token) {
       setDevStatus("token local obrigatório para executar esta ação");
@@ -441,6 +442,7 @@ export function App() {
       shadow_stop: "desligando shadow AFE",
       bridge_start: "ligando AFE no bridge",
       bridge_stop: "desligando AFE no bridge",
+      opus_probe: "rodando probe Opus",
     };
     setDevStatus(labels[action]);
     try {
@@ -448,8 +450,9 @@ export function App() {
       if (action === "shadow_stop") await stopAudioProcessorShadow(token);
       if (action === "bridge_start") await startAudioProcessorBridge(token);
       if (action === "bridge_stop") await stopAudioProcessorBridge(token);
+      if (action === "opus_probe") await runAudioProcessorOpusProbe(token);
       setDevData(await safeLoadDevData());
-      setDevStatus("AFE atualizado");
+      setDevStatus(action === "opus_probe" ? "probe Opus concluído" : "AFE atualizado");
     } catch (error) {
       setDevStatus(errorMessage(error));
     }
@@ -1187,7 +1190,7 @@ function DevConsoleView({
   status,
 }: {
   devData: DevData;
-  onAudioProcessorAction: (action: "shadow_start" | "shadow_stop" | "bridge_start" | "bridge_stop") => void;
+  onAudioProcessorAction: (action: "shadow_start" | "shadow_stop" | "bridge_start" | "bridge_stop" | "opus_probe") => void;
   onResetMetrics: () => void;
   onRestartServer: () => void;
   opsToken: string;
@@ -1252,12 +1255,17 @@ function DevConsoleView({
             <Metric label="Fallbacks" value={numberValue(audioProcessor.processed_bridge_fallbacks, "")} />
             <Metric label="Buffer" value={numberValue(audioProcessor.processed_buffer_level, " samples")} />
             <Metric label="Overruns" value={numberValue(audioProcessor.processed_output_overruns, "")} />
+            <Metric label="Opus probe" value={boolValue(audioProcessor.opus_probe_ok)} />
+            <Metric label="Opus frame" value={numberValue(audioProcessor.opus_encoder_frame_bytes, " B")} />
+            <Metric label="Opus pacote" value={numberValue(audioProcessor.opus_encoded_bytes, " B")} />
+            <Metric label="Opus erro" value={textValue(audioProcessor.opus_last_error)} />
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button className={secondaryButtonClass} onClick={() => onAudioProcessorAction("shadow_start")} type="button">Shadow on</button>
             <button className={secondaryButtonClass} onClick={() => onAudioProcessorAction("shadow_stop")} type="button">Shadow off</button>
             <button className={primaryButtonClass} onClick={() => onAudioProcessorAction("bridge_start")} type="button">Bridge AFE</button>
             <button className={secondaryButtonClass} onClick={() => onAudioProcessorAction("bridge_stop")} type="button">Bridge raw</button>
+            <button className={`${secondaryButtonClass} col-span-2`} onClick={() => onAudioProcessorAction("opus_probe")} type="button">Opus probe</button>
           </div>
         </section>
         <section className={cardClass}>

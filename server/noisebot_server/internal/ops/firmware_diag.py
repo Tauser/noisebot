@@ -132,6 +132,9 @@ class FirmwareDiagClient:
     def audio_processor_probe(self) -> dict[str, Any]:
         return self._post_json("api/audio/processor/probe")
 
+    def audio_processor_opus_probe(self) -> dict[str, Any]:
+        return self._post_json("api/audio/processor/opus/probe")
+
     def audio_processor_shadow_start(self) -> dict[str, Any]:
         return self._post_json("api/audio/processor/shadow/start")
 
