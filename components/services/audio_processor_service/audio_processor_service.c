@@ -82,7 +82,11 @@ static SemaphoreHandle_t s_opus_done;
 static TaskHandle_t s_opus_task;
 static volatile bool s_opus_stop_requested;
 static uint32_t s_opus_pending_encode_requests;
+static bool s_opus_pcm_frame_ready;
+static uint16_t s_opus_feed_pos;
 static int16_t s_opus_pcm[OPUS_FRAME_SAMPLES];
+static int16_t s_opus_feed_frame[OPUS_FRAME_SAMPLES];
+static int16_t s_opus_ready_frame[OPUS_FRAME_SAMPLES];
 static uint8_t s_opus_out[2048];
 
 static uint32_t psram_free_kb(void)
@@ -611,9 +615,9 @@ static void opus_worker_task(void *arg)
     vTaskDelete(NULL);
 }
 
-static bool opus_encode_static_frame(void *enc, nb_opus_worker_status_t *st)
+static bool opus_encode_pcm_frame(void *enc, nb_opus_worker_status_t *st, const int16_t *pcm)
 {
-    if (enc == NULL || st == NULL) {
+    if (enc == NULL || st == NULL || pcm == NULL) {
         return false;
     }
 
@@ -633,12 +637,8 @@ static bool opus_encode_static_frame(void *enc, nb_opus_worker_status_t *st)
         return false;
     }
 
-    for (int i = 0; i < st->frame_samples; i++) {
-        s_opus_pcm[i] = (int16_t)((i & 0x3f) * 64 - 2048);
-    }
-
     esp_audio_enc_in_frame_t in = {
-        .buffer = (uint8_t *)s_opus_pcm,
+        .buffer = (uint8_t *)pcm,
         .len = (uint32_t)(st->frame_samples * (int)sizeof(int16_t)),
     };
     esp_audio_enc_out_frame_t out = {
@@ -657,6 +657,18 @@ static bool opus_encode_static_frame(void *enc, nb_opus_worker_status_t *st)
 
     st->last_error = ESP_FAIL;
     return false;
+}
+
+static bool opus_encode_static_frame(void *enc, nb_opus_worker_status_t *st)
+{
+    if (st == NULL) {
+        return false;
+    }
+
+    for (int i = 0; i < OPUS_FRAME_SAMPLES; i++) {
+        s_opus_pcm[i] = (int16_t)((i & 0x3f) * 64 - 2048);
+    }
+    return opus_encode_pcm_frame(enc, st, s_opus_pcm);
 }
 
 static void opus_persistent_task(void *arg)
@@ -700,11 +712,21 @@ static void opus_persistent_task(void *arg)
         (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
 
         uint32_t pending = 0;
+        bool pcm_ready = false;
         xSemaphoreTake(s.mutex, portMAX_DELAY);
         if (s_opus_pending_encode_requests > 0U) {
             s_opus_pending_encode_requests--;
             pending = 1U;
         }
+        if (s_opus_pcm_frame_ready) {
+            memcpy(s_opus_pcm, s_opus_ready_frame, sizeof(s_opus_ready_frame));
+            s_opus_pcm_frame_ready = false;
+            pcm_ready = true;
+        }
+        st.pcm_feed_chunks = s_opus.pcm_feed_chunks;
+        st.pcm_feed_samples = s_opus.pcm_feed_samples;
+        st.pcm_feed_frames = s_opus.pcm_feed_frames;
+        st.pcm_feed_drops = s_opus.pcm_feed_drops;
         xSemaphoreGive(s.mutex);
 
         if (pending > 0U) {
@@ -713,6 +735,16 @@ static void opus_persistent_task(void *arg)
             if (encoded) {
                 st.encode_packets++;
                 st.encoded_bytes_total += (uint32_t)st.encoded_bytes;
+            } else {
+                st.encode_failures++;
+            }
+            opus_worker_set_status(&st);
+        }
+        if (pcm_ready) {
+            bool encoded = opus_encode_pcm_frame(enc, &st, s_opus_pcm);
+            if (encoded) {
+                st.pcm_encode_packets++;
+                st.pcm_encoded_bytes_total += (uint32_t)st.encoded_bytes;
             } else {
                 st.encode_failures++;
             }
@@ -761,6 +793,8 @@ esp_err_t audio_processor_service_opus_worker_probe_once(void)
     }
     memset(&s_opus, 0, sizeof(s_opus));
     s_opus_pending_encode_requests = 0;
+    s_opus_pcm_frame_ready = false;
+    s_opus_feed_pos = 0;
     s_opus.running = true;
     s_opus.last_error = ESP_ERR_TIMEOUT;
     xSemaphoreGive(s.mutex);
@@ -823,6 +857,8 @@ esp_err_t audio_processor_service_opus_worker_start(void)
     }
     memset(&s_opus, 0, sizeof(s_opus));
     s_opus_pending_encode_requests = 0;
+    s_opus_pcm_frame_ready = false;
+    s_opus_feed_pos = 0;
     s_opus.running = true;
     s_opus.persistent = true;
     s_opus.last_error = ESP_ERR_TIMEOUT;
@@ -916,6 +952,47 @@ esp_err_t audio_processor_service_opus_worker_encode_test_once(void)
         vTaskDelay(pdMS_TO_TICKS(10));
     }
     return ESP_ERR_TIMEOUT;
+}
+
+void audio_processor_service_opus_worker_feed_pcm(const int16_t *pcm, uint16_t n)
+{
+    if (pcm == NULL || n == 0U || s.mutex == NULL) {
+        return;
+    }
+
+    TaskHandle_t task = NULL;
+    bool notify = false;
+    uint16_t pos = 0;
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    if (!s_opus.running || !s_opus.persistent || s_opus_task == NULL) {
+        xSemaphoreGive(s.mutex);
+        return;
+    }
+
+    s_opus.pcm_feed_chunks++;
+    s_opus.pcm_feed_samples += n;
+    pos = s_opus_feed_pos;
+    for (uint16_t i = 0; i < n; i++) {
+        s_opus_feed_frame[pos++] = pcm[i];
+        if (pos >= OPUS_FRAME_SAMPLES) {
+            if (!s_opus_pcm_frame_ready) {
+                memcpy(s_opus_ready_frame, s_opus_feed_frame, sizeof(s_opus_ready_frame));
+                s_opus_pcm_frame_ready = true;
+                s_opus.pcm_feed_frames++;
+                task = s_opus_task;
+                notify = true;
+            } else {
+                s_opus.pcm_feed_drops++;
+            }
+            pos = 0;
+        }
+    }
+    s_opus_feed_pos = pos;
+    xSemaphoreGive(s.mutex);
+
+    if (notify && task != NULL) {
+        xTaskNotifyGive(task);
+    }
 }
 
 static void shadow_task(void *arg)

@@ -1502,6 +1502,12 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
              "\"encode_packets\":%lu,"
              "\"encode_failures\":%lu,"
              "\"encoded_bytes_total\":%lu,"
+             "\"pcm_feed_chunks\":%lu,"
+             "\"pcm_feed_samples\":%lu,"
+             "\"pcm_feed_frames\":%lu,"
+             "\"pcm_feed_drops\":%lu,"
+             "\"pcm_encode_packets\":%lu,"
+             "\"pcm_encoded_bytes_total\":%lu,"
              "\"codec_error\":%d,"
              "\"last_error\":\"%s\","
              "\"probe_error\":\"%s\"}",
@@ -1528,6 +1534,12 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.encode_packets,
              (unsigned long)st.encode_failures,
              (unsigned long)st.encoded_bytes_total,
+             (unsigned long)st.pcm_feed_chunks,
+             (unsigned long)st.pcm_feed_samples,
+             (unsigned long)st.pcm_feed_frames,
+             (unsigned long)st.pcm_feed_drops,
+             (unsigned long)st.pcm_encode_packets,
+             (unsigned long)st.pcm_encoded_bytes_total,
              st.codec_error,
              esp_err_to_name(st.last_error),
              esp_err_to_name(err));

@@ -89,6 +89,12 @@ typedef struct {
     uint32_t encode_packets;
     uint32_t encode_failures;
     uint32_t encoded_bytes_total;
+    uint32_t pcm_feed_chunks;
+    uint32_t pcm_feed_samples;
+    uint32_t pcm_feed_frames;
+    uint32_t pcm_feed_drops;
+    uint32_t pcm_encode_packets;
+    uint32_t pcm_encoded_bytes_total;
     int codec_error;
     esp_err_t last_error;
 } nb_opus_worker_status_t;
@@ -141,6 +147,13 @@ esp_err_t audio_processor_service_opus_worker_stop(void);
  * @brief Solicita um encode sintético no worker persistente.
  */
 esp_err_t audio_processor_service_opus_worker_encode_test_once(void);
+
+/**
+ * @brief Espelha PCM real para o worker Opus, se ele estiver ativo.
+ *
+ * Não altera o bridge nem bloqueia a captura quando o worker está desligado.
+ */
+void audio_processor_service_opus_worker_feed_pcm(const int16_t *pcm, uint16_t n);
 
 /**
  * @brief Copia o último status do worker Opus.

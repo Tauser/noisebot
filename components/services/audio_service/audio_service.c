@@ -605,6 +605,8 @@ static bool listen_start_bridge_capture(void)
                                     &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
             if (bridge_service_send_audio_chunk(s_bridge_buf,
                                                 NB_AUDIO_CHUNK_FRAMES) == ESP_OK) {
+                audio_processor_service_opus_worker_feed_pcm(s_bridge_buf,
+                                                             NB_AUDIO_CHUNK_FRAMES);
                 s.bridge_audio_sent = true;
             }
         }
@@ -1109,6 +1111,7 @@ static void audio_task(void *arg)
                                     &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
             esp_err_t tx_rc = bridge_service_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n);
             if (tx_rc == ESP_OK) {
+                audio_processor_service_opus_worker_feed_pcm(s_bridge_buf, (uint16_t)mic_n);
                 s.bridge_audio_sent = true;
                 s.bridge_tx_fail_count = 0;
                 if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
