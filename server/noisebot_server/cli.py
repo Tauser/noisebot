@@ -108,11 +108,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     aec_live.add_argument("--json", action="store_true", help="Emitir JSON")
 
     capture_v2 = debug_sub.add_parser("capture-v2")
-    capture_v2.add_argument("action", choices=["status", "replay", "cancel"], nargs="?", default="status")
+    capture_v2.add_argument(
+        "action",
+        choices=["status", "replay", "cancel", "enable", "disable", "live"],
+        nargs="?",
+        default="status",
+    )
     capture_v2.add_argument("--firmware-url", default="")
     capture_v2.add_argument("--speech-ms", type=int, default=640)
     capture_v2.add_argument("--silence-ms", type=int, default=900)
     capture_v2.add_argument("--source", default="debug")
+    capture_v2.add_argument("--no-prompt", action="store_true", help="Nao aguardar Enter no modo live")
     capture_v2.add_argument("--json", action="store_true", help="Emitir JSON")
 
     parser.add_argument("--host", help="IP do ESP32")
@@ -501,6 +507,12 @@ def run_debug_command(args: argparse.Namespace) -> None:
                 "silence_ms": args.silence_ms,
                 "source": args.source,
             })
+        elif args.action == "enable":
+            payload = client.set_voice_audio_v2_capture_enabled(True)
+        elif args.action == "disable":
+            payload = client.set_voice_audio_v2_capture_enabled(False)
+        elif args.action == "live":
+            payload = _run_capture_v2_live(client, no_prompt=args.no_prompt)
         else:
             payload = client.audio_capture_v2_cancel()
 
@@ -515,6 +527,27 @@ def run_debug_command(args: argparse.Namespace) -> None:
 
 
 def _format_capture_v2_status(payload: dict[str, object]) -> str:
+    if "after" in payload:
+        after = payload.get("after")
+        disabled = payload.get("disabled")
+        if not isinstance(after, dict):
+            after = {}
+        if not isinstance(disabled, dict):
+            disabled = {}
+        return "\n".join([
+            "Capture v2 live:",
+            f"- ok: {payload.get('ok')}",
+            f"- after.real_capture_enabled: {after.get('real_capture_enabled')}",
+            f"- after.real_capture: {after.get('real_capture')}",
+            f"- after.state: {after.get('state')}",
+            f"- after.voice_start_sent: {after.get('voice_start_sent')}",
+            f"- after.voice_audio_sent: {after.get('voice_audio_sent')}",
+            f"- after.voice_end_sent: {after.get('voice_end_sent')}",
+            f"- after.speech_frames: {after.get('speech_frames')}",
+            f"- after.captured_samples: {after.get('captured_samples')}",
+            f"- after.dropped_frames: {after.get('dropped_frames')}",
+            f"- disabled.ok: {disabled.get('ok')}",
+        ])
     return "\n".join([
         "Capture v2:",
         f"- ok: {payload.get('ok')}",
@@ -531,6 +564,30 @@ def _format_capture_v2_status(payload: dict[str, object]) -> str:
         f"- dropped_frames: {payload.get('dropped_frames')}",
         f"- error: {payload.get('error')}",
     ])
+
+
+def _run_capture_v2_live(client, *, no_prompt: bool) -> dict[str, object]:
+    before = client.audio_capture_v2_status()
+    enabled: dict[str, object] = {}
+    after: dict[str, object] = {}
+    disabled: dict[str, object] = {}
+    try:
+        enabled = client.set_voice_audio_v2_capture_enabled(True)
+        if not no_prompt:
+            input(
+                "Flag capture v2 ligada. Acione o wake/fale uma frase real e "
+                "pressione Enter quando o turno terminar: "
+            )
+        after = client.audio_capture_v2_status()
+    finally:
+        disabled = client.set_voice_audio_v2_capture_enabled(False)
+    return {
+        "ok": bool(enabled.get("ok") and after.get("ok") and disabled.get("ok")),
+        "before": before,
+        "enabled": enabled,
+        "after": after,
+        "disabled": disabled,
+    }
 
 
 def _parse_bitrates(raw: str) -> list[int]:

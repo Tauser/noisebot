@@ -713,11 +713,15 @@ def test_server_firmware_diag_client_exposes_capture_v2_endpoints(monkeypatch) -
     assert client.audio_capture_v2_status()["ok"]
     assert client.audio_capture_v2_replay({"speech_ms": 640})["ok"]
     assert client.audio_capture_v2_cancel()["ok"]
+    assert client.set_voice_audio_v2_capture_enabled(True)["ok"]
+    assert client.set_voice_audio_v2_capture_enabled(False)["ok"]
 
     assert get_paths == ["api/audio/capture-v2"]
     assert post_calls == [
         ("api/audio/capture-v2/replay", {"speech_ms": 640}),
         ("api/audio/capture-v2/cancel", None),
+        ("api/config", {"key": "voice_audio_v2_capture_enabled", "value": 1}),
+        ("api/config", {"key": "voice_audio_v2_capture_enabled", "value": 0}),
     ]
 
 
@@ -729,23 +733,25 @@ def test_server_cli_parses_capture_v2_debug_command() -> None:
         "192.168.1.30",
         "debug",
         "capture-v2",
-        "replay",
+        "live",
         "--speech-ms",
         "320",
         "--silence-ms",
         "900",
         "--source",
         "wake",
+        "--no-prompt",
         "--json",
     ])
 
     assert args.command == "debug"
     assert args.debug_command == "capture-v2"
     assert args.host == "192.168.1.30"
-    assert args.action == "replay"
+    assert args.action == "live"
     assert args.speech_ms == 320
     assert args.silence_ms == 900
     assert args.source == "wake"
+    assert args.no_prompt
     assert args.json
 
 
@@ -785,6 +791,52 @@ def test_server_cli_runs_capture_v2_debug_command(monkeypatch, capsys) -> None:
         "silence_ms": 900,
         "source": "debug",
     }
+
+
+def test_server_cli_runs_capture_v2_live_with_rollback(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    toggles: list[bool] = []
+
+    def fake_status(self):
+        return {
+            "ok": True,
+            "real_capture_enabled": bool(toggles and toggles[-1]),
+            "real_capture": bool(toggles and toggles[-1]),
+            "state": "DONE",
+            "voice_start_sent": True,
+            "voice_audio_sent": True,
+            "voice_end_sent": True,
+            "speech_frames": 4,
+            "captured_samples": 1024,
+            "dropped_frames": 0,
+        }
+
+    def fake_set_enabled(self, enabled):
+        toggles.append(enabled)
+        return {"ok": True}
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_capture_v2_status", fake_status)
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "set_voice_audio_v2_capture_enabled",
+        fake_set_enabled,
+    )
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "capture-v2",
+        "live",
+        "--no-prompt",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"ok": true' in captured.out
+    assert '"disabled"' in captured.out
+    assert toggles == [True, False]
 
 
 def test_server_cli_parses_barge_live_debug_command() -> None:
