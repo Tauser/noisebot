@@ -60,6 +60,7 @@ idf_component_register(
         sound_analysis_service
         idle_service
         wake_service
+        audio_io_service_v2
         audio_processor_service
         time_service
         agenda_service

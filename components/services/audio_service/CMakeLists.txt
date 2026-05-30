@@ -12,6 +12,7 @@ idf_component_register(
         synth_service
         wake_service
         audio_processor_service
+        audio_io_service_v2
         infra
         espressif__esp-sr
 )

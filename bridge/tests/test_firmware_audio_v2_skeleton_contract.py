@@ -46,3 +46,21 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "#define NB_VOICE_CAPTURE_V2_END_SILENCE_MS      900U" in capture_h
     assert "#define NB_VOICE_CAPTURE_V2_MAX_SPEECH_MS       9200U" in capture_h
     assert "#define NB_VOICE_CAPTURE_V2_PREROLL_CHUNKS      20U" in capture_h
+
+
+def test_audio_io_v2_probe_is_explicit_and_passive():
+    audio_service = (COMPONENTS / "audio_service" / "audio_service.c").read_text(
+        encoding="utf-8"
+    )
+    web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+    io_h = (COMPONENTS / "audio_io_service_v2" / "audio_io_service_v2.h").read_text(
+        encoding="utf-8"
+    )
+
+    assert "audio_io_service_v2_probe_feed_rx_frame(s_sa_buf, (uint16_t)mic_n);" in audio_service
+    assert "audio_io_service_v2_probe_note_tx_silence(wr);" in audio_service
+    assert '{ .uri = "/api/audio/io-v2"' in web
+    assert '{ .uri = "/api/audio/io-v2/probe"' in web
+    assert "audio_service_is_busy()" in web
+    assert "esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms);" in io_h
+    assert "void audio_io_service_v2_probe_feed_rx_frame(" in io_h

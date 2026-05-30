@@ -31,16 +31,32 @@ typedef struct {
 typedef struct {
     bool initialized;
     bool probe_running;
+    uint32_t probe_duration_ms;
+    uint32_t probe_elapsed_ms;
     uint32_t rx_frames;
     uint32_t tx_frames;
+    uint32_t tx_silence_frames;
     uint32_t i2s_recoveries;
     uint32_t dropped_frames;
+    uint32_t rms_last;
+    uint32_t peak_last;
+    uint32_t rms_max;
+    uint32_t peak_max;
+    uint32_t heap_internal_free_kb;
+    uint32_t heap_dma_free_kb;
+    esp_err_t last_error;
 } nb_audio_io_v2_status_t;
 
 esp_err_t audio_io_service_v2_init(void);
 esp_err_t audio_io_service_v2_deinit(void);
 bool audio_io_service_v2_is_initialized(void);
 void audio_io_service_v2_get_status(nb_audio_io_v2_status_t *out);
+
+esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms);
+esp_err_t audio_io_service_v2_probe_stop(void);
+bool audio_io_service_v2_probe_is_running(void);
+void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sample_count);
+void audio_io_service_v2_probe_note_tx_silence(esp_err_t result);
 
 #ifdef __cplusplus
 }

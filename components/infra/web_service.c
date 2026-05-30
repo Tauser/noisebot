@@ -41,6 +41,7 @@
 #include "bridge_service.h"
 #include "wake_service.h"
 #include "audio_processor_service.h"
+#include "audio_io_service_v2.h"
 #include "audio_service.h"
 #include "touch_service.h"
 #include "time_service.h"
@@ -1559,6 +1560,90 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
     return httpd_resp_sendstr(req, buf);
 }
 
+static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
+{
+    nb_audio_io_v2_status_t st;
+    audio_io_service_v2_get_status(&st);
+
+    char buf[640];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"initialized\":%s,\"probe_running\":%s,"
+             "\"probe_duration_ms\":%lu,\"probe_elapsed_ms\":%lu,"
+             "\"rx_frames\":%lu,\"tx_frames\":%lu,"
+             "\"tx_silence_frames\":%lu,\"i2s_recoveries\":%lu,"
+             "\"dropped_frames\":%lu,\"rms_last\":%lu,\"peak_last\":%lu,"
+             "\"rms_max\":%lu,\"peak_max\":%lu,"
+             "\"heap_internal_free_kb\":%lu,\"heap_dma_free_kb\":%lu,"
+             "\"last_error\":\"%s\",\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             st.initialized ? "true" : "false",
+             st.probe_running ? "true" : "false",
+             (unsigned long)st.probe_duration_ms,
+             (unsigned long)st.probe_elapsed_ms,
+             (unsigned long)st.rx_frames,
+             (unsigned long)st.tx_frames,
+             (unsigned long)st.tx_silence_frames,
+             (unsigned long)st.i2s_recoveries,
+             (unsigned long)st.dropped_frames,
+             (unsigned long)st.rms_last,
+             (unsigned long)st.peak_last,
+             (unsigned long)st.rms_max,
+             (unsigned long)st.peak_max,
+             (unsigned long)st.heap_internal_free_kb,
+             (unsigned long)st.heap_dma_free_kb,
+             esp_err_to_name(st.last_error),
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_audio_io_v2_status(httpd_req_t *req)
+{
+    return send_audio_io_v2_status(req, ESP_OK);
+}
+
+static esp_err_t handle_api_audio_io_v2_probe(httpd_req_t *req)
+{
+    if (audio_service_is_busy()) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "409 Conflict");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
+    }
+
+    uint32_t duration_ms = 1000U;
+    char body[MAX_BODY_LEN];
+    int body_len = 0;
+    if (recv_body(req, body, sizeof(body), &body_len) && body_len > 0U) {
+        cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+        if (!root) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
+            return ESP_OK;
+        }
+        uint32_t requested = get_json_u32(root, "duration_ms");
+        if (requested > 0U) {
+            duration_ms = requested;
+        }
+        cJSON_Delete(root);
+    }
+
+    esp_err_t err = audio_io_service_v2_probe_start(duration_ms);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_ARG
+                                   ? "400 Bad Request"
+                                   : "409 Conflict");
+    }
+    return send_audio_io_v2_status(req, err);
+}
+
+static esp_err_t handle_api_audio_io_v2_probe_stop(httpd_req_t *req)
+{
+    esp_err_t err = audio_io_service_v2_probe_stop();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "409 Conflict");
+    }
+    return send_audio_io_v2_status(req, err);
+}
+
 static esp_err_t handle_api_audio_opus_worker_status(httpd_req_t *req)
 {
     return send_audio_opus_worker_status(req, ESP_OK);
@@ -2747,6 +2832,9 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/gaze",           .method = HTTP_POST,   .handler = handle_api_gaze_post },
     { .uri = "/api/circadian",      .method = HTTP_GET,    .handler = handle_api_circadian },
     { .uri = "/api/audio",          .method = HTTP_GET,    .handler = handle_api_audio },
+    { .uri = "/api/audio/io-v2", .method = HTTP_GET, .handler = handle_api_audio_io_v2_status },
+    { .uri = "/api/audio/io-v2/probe", .method = HTTP_POST, .handler = handle_api_audio_io_v2_probe },
+    { .uri = "/api/audio/io-v2/probe/stop", .method = HTTP_POST, .handler = handle_api_audio_io_v2_probe_stop },
     { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
     { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },
     { .uri = "/api/audio/processor/aec/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_aec_probe },

@@ -19,6 +19,7 @@
 #include "bridge_service.h"
 #include "wake_service.h"
 #include "audio_processor_service.h"
+#include "audio_io_service_v2.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -1083,6 +1084,7 @@ static void audio_task(void *arg)
                 esp_err_t wr = audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES,
                                                            pdMS_TO_TICKS(100));
                 audio_note_spk_result(wr, "silence");
+                audio_io_service_v2_probe_note_tx_silence(wr);
             }
         }
 
@@ -1115,6 +1117,7 @@ static void audio_task(void *arg)
         }
         sound_analysis_tick(s_sa_buf, mic_n);
         audio_processor_service_feed_shadow(s_sa_buf, (uint16_t)mic_n);
+        audio_io_service_v2_probe_feed_rx_frame(s_sa_buf, (uint16_t)mic_n);
 
         /* ── 4. VAD ─────────────────────────────────────────────────────── */
         vad_update(s_mic_proc, s_sa_buf, mic_n, wrote_audio);
