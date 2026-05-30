@@ -14,6 +14,7 @@ idf_component_register(
         audio_playback_service_v2
         audio_processor_service
         audio_io_service_v2
+        voice_capture_session_v2
         infra
         espressif__esp-sr
 )

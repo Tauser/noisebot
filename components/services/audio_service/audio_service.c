@@ -21,6 +21,8 @@
 #include "audio_playback_service_v2.h"
 #include "audio_processor_service.h"
 #include "audio_io_service_v2.h"
+#include "voice_capture_session_v2.h"
+#include "config_manager.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -651,6 +653,38 @@ static bool listen_start_bridge_capture(void)
     s.bridge_tx_active = true;
     ESP_LOGD(TAG, "bridge captura iniciada preroll=%u", (unsigned)pr_count);
     return true;
+}
+
+static nb_voice_capture_v2_source_t capture_v2_source_from_listen(nb_listen_source_t source)
+{
+    switch (source) {
+        case NB_LISTEN_SOURCE_WAKE_WORD:
+            return NB_VOICE_CAPTURE_V2_SOURCE_WAKE_WORD;
+        case NB_LISTEN_SOURCE_FOLLOWUP:
+            return NB_VOICE_CAPTURE_V2_SOURCE_FOLLOWUP;
+        case NB_LISTEN_SOURCE_BARGE_IN:
+            return NB_VOICE_CAPTURE_V2_SOURCE_BARGE_IN;
+        default:
+            return NB_VOICE_CAPTURE_V2_SOURCE_DEBUG;
+    }
+}
+
+static esp_err_t try_begin_capture_v2_if_enabled(nb_listen_source_t source)
+{
+    if (!config_get_voice_audio_v2_capture_enabled()) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    esp_err_t err = voice_capture_session_v2_begin_real_pcm16(
+        capture_v2_source_from_listen(source));
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "capture v2 real iniciado source=%s",
+                 listen_source_name(source));
+    } else {
+        ESP_LOGW(TAG, "capture v2 real indisponivel (%s); usando v1 source=%s",
+                 esp_err_to_name(err), listen_source_name(source));
+    }
+    return err;
 }
 
 static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
@@ -1509,6 +1543,10 @@ esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source
     if (source == NB_LISTEN_SOURCE_TOUCH) {
         ESP_LOGI(TAG, "listen por touch desabilitado — touch reservado para interação");
         return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    if (try_begin_capture_v2_if_enabled(source) == ESP_OK) {
+        return ESP_OK;
     }
 
     s.listen_session_active       = true;

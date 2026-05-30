@@ -151,6 +151,29 @@ esp_err_t voice_capture_session_v2_replay_start(nb_voice_capture_v2_source_t sou
     return ESP_OK;
 }
 
+esp_err_t voice_capture_session_v2_begin_real_pcm16(nb_voice_capture_v2_source_t source)
+{
+    if ((uint32_t)source > (uint32_t)NB_VOICE_CAPTURE_V2_SOURCE_DEBUG) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.initialized) {
+        reset_runtime_locked(false);
+        s_status.initialized = true;
+    }
+    if (s_status.session_active) {
+        taskEXIT_CRITICAL(&s_mux);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    reset_runtime_locked(true);
+    s_status.source = source;
+    s_status.last_error = ESP_ERR_NOT_SUPPORTED;
+    taskEXIT_CRITICAL(&s_mux);
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
 esp_err_t voice_capture_session_v2_cancel(void)
 {
     taskENTER_CRITICAL(&s_mux);
