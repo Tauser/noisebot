@@ -70,7 +70,9 @@ sem worker, sem Opus real e sem mudança no transporte; em hardware retornou
 `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`, `queue_count=0` e
 `pending_samples=64` com `ESP_OK`. O packetizer sintético já acumula chunks
 PCM16 de 256 samples até formar frame de 960 samples, deixando 64 samples
-pendentes quando recebe 4 chunks no teste.
+pendentes quando recebe 4 chunks no teste. A fila sintética do codec v2 aceita
+até 40 pacotes e passa a contar `packet_drops` quando esse limite é excedido,
+ainda sem worker, sem Opus real e sem transporte para o bridge.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
