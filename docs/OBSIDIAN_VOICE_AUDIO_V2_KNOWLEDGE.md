@@ -741,6 +741,13 @@ Validacao:
 
 ### Opus v2
 
+- Inicio seguro da Fase F:
+  - `GET /api/audio/codec-v2` expõe o contrato do codec v2;
+  - PCM16 segue como formato default;
+  - Opus v2 segue opt-in e inativo;
+  - contrato publicado: 16 kHz, mono, 60 ms, 960 samples, 32 kbps,
+    fila curta de 40 pacotes;
+  - nenhum worker/task v2 e criado e o bridge atual nao muda.
 - Packet drops zero em teste curto.
 - Transcript comparavel ao PCM16.
 - `server_codec_confirmed=true`.

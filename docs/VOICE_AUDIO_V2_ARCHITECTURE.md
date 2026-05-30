@@ -645,14 +645,27 @@ Validacao:
 
 ### Fase F - Codec v2 Opus
 
+Status: iniciada como observabilidade/contrato, sem ativar transporte v2.
+
 Objetivo: plugar Opus novo no v2 sem mexer em VAD.
 
 Entregas:
 
-- encoder worker dedicado;
-- fila curta;
-- status HTTP;
+- status HTTP explicito em `GET /api/audio/codec-v2`;
+- contrato publicado: PCM16 default, Opus opt-in, 16 kHz mono, 60 ms,
+  960 samples, 32 kbps e fila curta de ate 40 pacotes;
+- encoder worker dedicado em etapa posterior;
+- fila curta em etapa posterior;
 - HELLO/capabilities coerentes.
+
+Implementacao atual:
+
+- `audio_codec_service_v2` continua inativo e nao e inicializado no boot;
+- `GET /api/audio/codec-v2` retorna constantes do contrato e contadores
+  zerados do skeleton;
+- o endpoint nao liga Opus, nao cria task e nao altera bridge/captura/playback;
+- o Opus operacional existente permanece no caminho opt-in atual
+  `/api/audio/opus/transport/enable`, com PCM16 como fallback padrao.
 
 Aceite:
 
