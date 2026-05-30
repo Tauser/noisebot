@@ -52,6 +52,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '{ .uri = "/api/audio/codec-v2"' in web
     assert '{ .uri = "/api/audio/codec-v2/encode-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/drain"' in web
+    assert '{ .uri = "/api/audio/codec-v2/reset"' in web
     assert '\\"opus_bitrate\\":%u' in web
     assert '\\"max_queue_packets\\":%u' in web
     assert "NB_AUDIO_CODEC_V2_OPUS_BITRATE" in web
@@ -60,6 +61,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "esp_err_t audio_codec_service_v2_feed_pcm16(" in codec_h
     assert "esp_err_t audio_codec_service_v2_encode_test_once(void);" in codec_h
     assert "esp_err_t audio_codec_service_v2_drain_synthetic(" in codec_h
+    assert "esp_err_t audio_codec_service_v2_reset_diagnostics(void);" in codec_h
     codec_c = (
         COMPONENTS / "audio_codec_service_v2" / "audio_codec_service_v2.c"
     ).read_text(encoding="utf-8")
@@ -70,6 +72,9 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "s_status.queue_count++" in codec_c
     assert "*drained_packets = s_status.queue_count;" in codec_c
     assert "s_status.queue_count = 0;" in codec_c
+    assert "was_initialized = s_status.initialized" in codec_c
+    assert "s_status.initialized = was_initialized;" in codec_c
+    assert "s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;" in codec_c
     assert '\\"pending_samples\\":%u' in web
     assert '\\"drained_packets\\":%lu' in web
     assert "audio_codec_service_v2_encode_test_once()" in web

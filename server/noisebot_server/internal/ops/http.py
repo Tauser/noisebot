@@ -145,6 +145,7 @@ class OpsHttpServer:
         wa.router.add_get("/api/device/audio/codec-v2", self._get_device_audio_codec_v2)
         wa.router.add_post("/api/device/audio/codec-v2/encode-test", self._post_device_audio_codec_v2_encode_test)
         wa.router.add_post("/api/device/audio/codec-v2/drain", self._post_device_audio_codec_v2_drain)
+        wa.router.add_post("/api/device/audio/codec-v2/reset", self._post_device_audio_codec_v2_reset)
         wa.router.add_get("/api/vision/status", self._get_vision_status)
         wa.router.add_get("/api/vision/observe", self._get_vision_observe)
         wa.router.add_get("/api/vision/analyze", self._get_vision_analyze)
@@ -525,6 +526,13 @@ class OpsHttpServer:
         self._require_token(request)
         return await self._proxy_firmware_diag_post(
             self._firmware_diag_client.audio_codec_v2_drain
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_codec_v2_reset(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_codec_v2_reset
             if self._firmware_diag_client is not None else None
         )
 

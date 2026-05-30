@@ -112,3 +112,15 @@ esp_err_t audio_codec_service_v2_drain_synthetic(uint32_t *drained_packets)
     s_status.queue_count = 0;
     return ESP_OK;
 }
+
+esp_err_t audio_codec_service_v2_reset_diagnostics(void)
+{
+    bool was_initialized = s_status.initialized;
+
+    memset(&s_status, 0, sizeof(s_status));
+    memset(s_pending_frame, 0, sizeof(s_pending_frame));
+    s_pending_samples = 0;
+    s_status.initialized = was_initialized;
+    s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
+    return ESP_OK;
+}
