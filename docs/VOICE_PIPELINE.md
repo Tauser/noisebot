@@ -53,7 +53,10 @@ Status v2 atual: Audio I/O e playback ja possuem probes explicitos validados.
 `voice_capture_session_v2` entrou em preparacao por replay sintetico via
 `/api/audio/capture-v2`, ainda sem wake real, sem mic real acoplado e sem envio
 de `VOICE_START/AUDIO_CHUNK/VOICE_END` ao bridge. A ligacao real PCM16 por wake
-deve ser feita somente atras de flag e com decisao explicita.
+deve ser feita somente atras da flag `voice_audio_v2_capture_enabled`, que fica
+desligada por padrao. O roteamento opt-in ja existe no `audio_service`, mas faz
+fallback automatico para v1 enquanto o capture v2 real retornar
+`ESP_ERR_NOT_SUPPORTED`.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,

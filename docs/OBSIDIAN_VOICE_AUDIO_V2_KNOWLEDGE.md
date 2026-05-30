@@ -677,9 +677,20 @@ Validacao:
   `voice_audio_sent`, preservando a regra "wake vazio nao envia STT".
 - O componente nao chama `bridge_service` e nao emite `VOICE_START`,
   `AUDIO_CHUNK` ou `VOICE_END`.
+- Flag opt-in:
+  - chave API/config: `voice_audio_v2_capture_enabled`;
+  - chave NVS: `v2cap_en`;
+  - default: `0`, preservando v1 como caminho ativo;
+  - migracao pontual sem subir `NB_CFG_SCHEMA_VERSION`.
+- Hook de roteamento:
+  - `audio_service_begin_listen_session()` consulta a flag;
+  - flag off: v1 inalterado;
+  - flag on: tenta `voice_capture_session_v2_begin_real_pcm16()`;
+  - enquanto a captura real nao existe, retorna `ESP_ERR_NOT_SUPPORTED` e cai
+    automaticamente no v1.
 - Validacao preparatoria:
   - `idf.py build`;
-  - `bridge/tests`: 159 testes.
+  - testes de contrato de audio v2/audio service.
 
 - Wake abre sessao.
 - Silencio apos wake nao envia STT.

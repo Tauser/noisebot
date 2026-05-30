@@ -574,6 +574,14 @@ Implementacao preparatoria:
   `voice_audio_sent`, cobrindo a regra "wake vazio nao envia STT".
 - O componente nao chama `bridge_service`, nao publica `VOICE_START`,
   `AUDIO_CHUNK` ou `VOICE_END`, e nao e inicializado no boot.
+- Flag opt-in persistente:
+  `voice_audio_v2_capture_enabled=false` por padrao (`v2cap_en=0` em NVS).
+- O schema NVS nao foi incrementado para evitar reaplicar defaults existentes;
+  a chave nova e migrada pontualmente com valor `0` quando ausente.
+- `audio_service_begin_listen_session()` possui hook condicional: se a flag
+  estiver desligada, segue v1; se ligada, tenta `voice_capture_session_v2`.
+  Enquanto a captura PCM16 real ainda nao esta implementada, o v2 retorna
+  `ESP_ERR_NOT_SUPPORTED` e o firmware faz fallback automatico para v1.
 
 Aceite:
 
@@ -588,8 +596,12 @@ Validacao preparatoria:
 - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py` garante endpoint
   explicito e ausencia de chamadas ao bridge no capture v2.
 - `bridge/tests` passou com 159 testes.
-- Proxima decisao antes de avancar: escolher a flag/gatilho para ligar uma
-  sessao PCM16 real ao wake sem alterar o caminho v1 por padrao.
+- Flag e hook opt-in criados em commits pequenos:
+  - `Firmware: adicionar flag de captura v2`;
+  - `Firmware: rotear captura v2 como opt-in`.
+- Proxima etapa: implementar a captura PCM16 real dentro do v2, ainda atras da
+  flag, substituindo o retorno `ESP_ERR_NOT_SUPPORTED` somente quando houver
+  envio controlado de `VOICE_START/AUDIO_CHUNK/VOICE_END`.
 
 ### Fase F - Codec v2 Opus
 
