@@ -49,6 +49,10 @@ esta em `docs/VOICE_AUDIO_V2_ARCHITECTURE.md`. Ele separa Audio I/O, playback,
 captura de sessao, VAD/AFE, codec e bridge, com PCM16 como fallback e Opus
 opt-in ate validacao em hardware.
 
+A nota de consulta para Obsidian/IA fica em
+`docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
+comandos, riscos e perguntas obrigatorias antes de mexer no subsistema de voz.
+
 ## Roadmap de Fechamento do Ciclo
 
 O objetivo deste ciclo é transformar voz em uma parte confiável do produto:

@@ -8,6 +8,9 @@ Este documento fixa o mapa de referencia para refazer o subsistema de voz do
 NoiseBot usando Xiaozhi/StackChan como base tecnica, mas sem perder o que ja
 funciona no hardware atual.
 
+Versao para consulta rapida em Obsidian/IA:
+`docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`.
+
 O objetivo nao e "reescrever tudo". O objetivo e retirar do `audio_service.c`
 as responsabilidades que foram acumuladas ao longo da migracao e criar um
 pipeline v2 paralelo, testavel, atras de flag, com rollback imediato para o
