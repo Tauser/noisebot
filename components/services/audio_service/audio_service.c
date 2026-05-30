@@ -18,6 +18,7 @@
 #include "synth_service.h"
 #include "bridge_service.h"
 #include "wake_service.h"
+#include "audio_playback_service_v2.h"
 #include "audio_processor_service.h"
 #include "audio_io_service_v2.h"
 
@@ -1075,7 +1076,13 @@ static void audio_task(void *arg)
 
         /* Synth — só ativo quando não há WAV reproduzindo */
         if (!wrote_audio) {
-            if (synth_fill_chunk(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES)) {
+            if (audio_playback_service_v2_fill_probe_chunk(s_wav_chunk,
+                                                           NB_AUDIO_CHUNK_FRAMES)) {
+                esp_err_t wr = audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
+                                                   pdMS_TO_TICKS(100));
+                audio_note_spk_result(wr, "playback_v2_probe");
+                wrote_audio = true;
+            } else if (synth_fill_chunk(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES)) {
                 esp_err_t wr = audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
                                                    pdMS_TO_TICKS(100));
                 audio_note_spk_result(wr, "synth");
@@ -1409,6 +1416,9 @@ esp_err_t audio_play_pcm_raw(const char *path)
 esp_err_t audio_play_stop(void)
 {
     if (!s.initialized) return ESP_ERR_INVALID_STATE;
+    if (audio_playback_service_v2_is_playing()) {
+        (void)audio_playback_service_v2_probe_stop();
+    }
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     if (s.play_state == PLAY_ACTIVE ||
         s.play_state == PLAY_BRIDGE_SAY ||
@@ -1429,7 +1439,8 @@ bool audio_is_playing(void)
     return s.initialized &&
            (s.play_state == PLAY_ACTIVE ||
             s.play_state == PLAY_BRIDGE_SAY ||
-            s.bridge_say_playing);
+            s.bridge_say_playing ||
+            audio_playback_service_v2_is_playing());
 }
 
 esp_err_t audio_set_volume(uint8_t level)
@@ -1576,7 +1587,8 @@ bool audio_service_is_busy(void)
            (s.listen_session_active ||
             s.play_state == PLAY_ACTIVE ||
             s.play_state == PLAY_BRIDGE_SAY ||
-            s.bridge_say_playing);
+            s.bridge_say_playing ||
+            audio_playback_service_v2_is_playing());
 }
 
 /* ── Bridge SAY (Etapa 12.2) ─────────────────────────────────────────────── */

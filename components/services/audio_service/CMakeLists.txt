@@ -11,6 +11,7 @@ idf_component_register(
         sound_analysis_service
         synth_service
         wake_service
+        audio_playback_service_v2
         audio_processor_service
         audio_io_service_v2
         infra

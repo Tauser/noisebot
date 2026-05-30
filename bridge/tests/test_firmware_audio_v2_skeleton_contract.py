@@ -64,3 +64,26 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "audio_service_is_busy()" in web
     assert "esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms);" in io_h
     assert "void audio_io_service_v2_probe_feed_rx_frame(" in io_h
+
+
+def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
+    audio_service = (COMPONENTS / "audio_service" / "audio_service.c").read_text(
+        encoding="utf-8"
+    )
+    web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+    playback_c = (
+        COMPONENTS / "audio_playback_service_v2" / "audio_playback_service_v2.c"
+    ).read_text(encoding="utf-8")
+    playback_h = (
+        COMPONENTS / "audio_playback_service_v2" / "audio_playback_service_v2.h"
+    ).read_text(encoding="utf-8")
+
+    assert "audio_playback_service_v2_fill_probe_chunk(" in audio_service
+    assert 'audio_note_spk_result(wr, "playback_v2_probe");' in audio_service
+    assert '{ .uri = "/api/audio/playback-v2"' in web
+    assert '{ .uri = "/api/audio/playback-v2/probe"' in web
+    assert '{ .uri = "/api/audio/playback-v2/stop"' in web
+    assert "audio_service_is_busy()" in web
+    assert "esp_err_t audio_playback_service_v2_probe_start(" in playback_h
+    assert "bool audio_playback_service_v2_fill_probe_chunk(" in playback_h
+    assert "audio_hal_" not in playback_c
