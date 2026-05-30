@@ -715,6 +715,12 @@ Validacao:
 - Validacao:
   - `idf.py build`;
   - testes de contrato de audio v2/audio service.
+  - firmware real com `noisebot_server debug capture-v2 live --json`:
+    `real_capture_enabled=true`, `real_capture=true`, `state=DONE`,
+    `voice_start_sent=true`, `voice_audio_sent=true`,
+    `voice_end_sent=true`, `speech_frames=260`,
+    `captured_samples=66560`, `dropped_frames=0`,
+    `last_error=ESP_OK`, rollback `disabled.ok=true`.
 
 - Wake abre sessao.
 - Silencio apos wake nao envia STT.

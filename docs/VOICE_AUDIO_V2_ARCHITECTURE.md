@@ -614,10 +614,17 @@ Validacao:
 - Flag e hook opt-in criados em commits pequenos:
   - `Firmware: adicionar flag de captura v2`;
   - `Firmware: rotear captura v2 como opt-in`.
-- Proxima etapa: validar em hardware com a flag ligada e bridge conectado,
-  conferindo `real_capture=true`, contadores de fala reais e caminho v1 sem
-  regressao quando a flag esta desligada. O comando recomendado e
-  `noisebot_server debug capture-v2 live --json`.
+- Firmware real via `noisebot_server debug capture-v2 live --json`:
+  - antes: `real_capture_enabled=false`, `initialized=false`;
+  - depois do turno real: `real_capture_enabled=true`,
+    `real_capture=true`, `state=DONE`, `source=WAKE_WORD`;
+  - `voice_start_sent=true`, `voice_audio_sent=true`,
+    `voice_end_sent=true`;
+  - `speech_frames=260`, `captured_samples=66560`,
+    `dropped_frames=0`, `last_error=ESP_OK`;
+  - rollback: `disabled.ok=true`.
+- Proxima etapa: rodar `barge-live`, `no-echo-live` e um turno PCM16 normal
+  com a flag v2 desligada para confirmar ausencia de regressao operacional.
 
 ### Fase F - Codec v2 Opus
 
