@@ -744,8 +744,9 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
 
     assert client.audio_codec_v2_status()["ok"]
     assert client.audio_codec_v2_encode_test()["ok"]
+    assert client.audio_codec_v2_drain()["ok"]
     assert get_paths == ["api/audio/codec-v2"]
-    assert post_paths == ["api/audio/codec-v2/encode-test"]
+    assert post_paths == ["api/audio/codec-v2/encode-test", "api/audio/codec-v2/drain"]
 
 
 def test_server_cli_parses_capture_v2_debug_command() -> None:
@@ -881,6 +882,25 @@ def test_server_cli_parses_codec_v2_debug_command() -> None:
     assert args.json
 
 
+def test_server_cli_parses_codec_v2_drain_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "drain",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "codec-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "drain"
+    assert args.json
+
+
 def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
     cli = importlib.import_module("noisebot_server.cli")
     firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
@@ -919,6 +939,42 @@ def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
     assert '"packets_out": 1' in captured.out
     assert '"queue_count": 1' in captured.out
     assert '"opus_bitrate": 32000' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
+
+
+def test_server_cli_runs_codec_v2_drain_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+
+    def fake_drain(self):
+        calls["base_url"] = self.base_url
+        return {
+            "ok": True,
+            "initialized": False,
+            "format": "pcm16",
+            "queue_count": 0,
+            "packets_out": 1,
+            "packet_drops": 0,
+            "pending_samples": 64,
+            "drained_packets": 1,
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_codec_v2_drain", fake_drain)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "drain",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"queue_count": 0' in captured.out
+    assert '"drained_packets": 1' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
 
 

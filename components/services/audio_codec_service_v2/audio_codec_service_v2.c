@@ -101,3 +101,14 @@ esp_err_t audio_codec_service_v2_encode_test_once(void)
 
     return ESP_OK;
 }
+
+esp_err_t audio_codec_service_v2_drain_synthetic(uint32_t *drained_packets)
+{
+    if (drained_packets == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    *drained_packets = s_status.queue_count;
+    s_status.queue_count = 0;
+    return ESP_OK;
+}

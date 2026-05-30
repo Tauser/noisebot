@@ -124,7 +124,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     codec_v2 = debug_sub.add_parser("codec-v2")
     codec_v2.add_argument(
         "action",
-        choices=["status", "encode-test"],
+        choices=["status", "encode-test", "drain"],
         nargs="?",
         default="status",
     )
@@ -547,6 +547,8 @@ def run_debug_command(args: argparse.Namespace) -> None:
         client = FirmwareDiagClient(firmware_url.rstrip("/") + "/")
         if args.action == "encode-test":
             payload = client.audio_codec_v2_encode_test()
+        elif args.action == "drain":
+            payload = client.audio_codec_v2_drain()
         else:
             payload = client.audio_codec_v2_status()
         if args.json:
@@ -575,6 +577,7 @@ def _format_codec_v2_status(payload: dict[str, object]) -> str:
             f"- Pacotes/drop: {payload.get('packets_out', '')}/"
             f"{payload.get('packet_drops', '')}",
             f"- Samples pendentes: {payload.get('pending_samples', '')}",
+            f"- Pacotes drenados: {payload.get('drained_packets', '')}",
             f"- Erro: {payload.get('error', '')}",
         ]
     )

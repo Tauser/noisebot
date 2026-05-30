@@ -192,6 +192,9 @@ class FirmwareDiagClient:
     def audio_codec_v2_encode_test(self) -> dict[str, Any]:
         return self._post_json("api/audio/codec-v2/encode-test")
 
+    def audio_codec_v2_drain(self) -> dict[str, Any]:
+        return self._post_json("api/audio/codec-v2/drain")
+
     def set_voice_audio_v2_capture_enabled(self, enabled: bool) -> dict[str, Any]:
         return self._post_json(
             "api/config",
