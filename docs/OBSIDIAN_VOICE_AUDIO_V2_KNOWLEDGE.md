@@ -609,11 +609,25 @@ Validacao:
 
 ### Audio I/O probe
 
-- Le mic.
-- Alimenta speaker com silencio.
+Status: iniciado em `563fd3c`.
+
+- Probe HTTP explicito:
+  - `GET /api/audio/io-v2`;
+  - `POST /api/audio/io-v2/probe`;
+  - `POST /api/audio/io-v2/probe/stop`.
+- Le mic de forma passiva, por espelhamento do PCM16 ja lido pelo
+  `audio_service`.
+- Alimenta/contabiliza speaker com silencio somente quando o loop v1 ja esta
+  escrevendo silencio.
 - Nao toca wake.
 - Nao toca bridge.
-- Exibe metricas.
+- Nao disputa `audio_hal` nem cria task v2.
+- Exibe metricas de RX, TX silencio, drops, RMS/peak e heap.
+
+Validacao:
+
+- `idf.py build`.
+- `bridge/tests`: 157 testes.
 
 ### Playback v2 probe
 

@@ -463,19 +463,39 @@ Validacao:
 
 ### Fase C - Audio I/O v2 em Probe
 
+Status: iniciada em `563fd3c` (`Firmware: adicionar probe passivo de audio io v2`).
+
 Objetivo: validar leitura/escrita sem conversa.
 
 Entregas:
 
-- probe HTTP ou CLI que le mic e alimenta silencio no speaker;
-- metricas de chunks, falhas I2S, RMS/peak, heap.
+- `GET /api/audio/io-v2` com status do probe;
+- `POST /api/audio/io-v2/probe` para armar janela curta de probe;
+- `POST /api/audio/io-v2/probe/stop` para encerrar manualmente;
+- metricas de chunks RX, TX silencio, drops, RMS/peak e heap.
+
+Implementacao atual:
+
+- O probe e passivo: `audio_service` continua dono unico do `audio_hal`.
+- O v2 recebe copia do PCM16 ja condicionado (`s_sa_buf`) somente enquanto o
+  probe esta ativo.
+- O v2 contabiliza TX de silencio quando o loop v1 ja esta alimentando o
+  speaker com silencio.
+- Nao ha task v2, disputa de I2S, bridge, wake, VAD, Opus ou playback v2.
 
 Aceite:
 
-- Nao toca bridge.
-- Nao toca wake.
-- Nao altera playback atual.
-- Build limpo.
+- [x] Nao toca bridge.
+- [x] Nao toca wake.
+- [x] Nao altera playback atual.
+- [x] Build limpo.
+
+Validacao:
+
+- `idf.py build` concluido sem warnings.
+- `bridge/tests/test_firmware_audio_v2_skeleton_contract.py` garante endpoint
+  explicito e feed passivo.
+- `bridge/tests` passou com 157 testes.
 
 ### Fase D - Playback v2 em Probe
 
