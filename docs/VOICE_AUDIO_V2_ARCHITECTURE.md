@@ -549,6 +549,8 @@ Validacao:
 
 ### Fase E - Capture Session v2 com PCM16
 
+Status: preparacao iniciada em replay interno.
+
 Objetivo: uma sessao real por wake usando PCM16, atras de flag.
 
 Entregas:
@@ -558,12 +560,36 @@ Entregas:
 - VAD start/end;
 - `VOICE_START/AUDIO_CHUNK/VOICE_END` PCM16.
 
+Implementacao preparatoria:
+
+- `voice_capture_session_v2` agora possui maquina de estado exercitavel por
+  replay sintetico, sem mic real e sem wake real.
+- Endpoints HTTP explicitos:
+  - `GET /api/audio/capture-v2`;
+  - `POST /api/audio/capture-v2/replay`;
+  - `POST /api/audio/capture-v2/cancel`.
+- O replay simula fala/silencio e contabiliza `voice_start_sent`,
+  `voice_audio_sent`, `voice_end_sent`, frames, amostras e source.
+- Replay silencio-only termina sem `voice_start_sent` e sem
+  `voice_audio_sent`, cobrindo a regra "wake vazio nao envia STT".
+- O componente nao chama `bridge_service`, nao publica `VOICE_START`,
+  `AUDIO_CHUNK` ou `VOICE_END`, e nao e inicializado no boot.
+
 Aceite:
 
 - `codec-ab` PCM16 ok.
 - `barge-live` ok.
 - `no-echo-live` ok.
 - TV/ambiente sem wake nao abre sessao.
+
+Validacao preparatoria:
+
+- `idf.py build` concluido sem warnings.
+- `bridge/tests/test_firmware_audio_v2_skeleton_contract.py` garante endpoint
+  explicito e ausencia de chamadas ao bridge no capture v2.
+- `bridge/tests` passou com 159 testes.
+- Proxima decisao antes de avancar: escolher a flag/gatilho para ligar uma
+  sessao PCM16 real ao wake sem alterar o caminho v1 por padrao.
 
 ### Fase F - Codec v2 Opus
 

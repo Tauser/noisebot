@@ -667,6 +667,20 @@ Validacao:
 
 ### Capture session v2 PCM16
 
+- Preparacao iniciada em replay interno:
+  - `GET /api/audio/capture-v2`;
+  - `POST /api/audio/capture-v2/replay`;
+  - `POST /api/audio/capture-v2/cancel`.
+- O replay sintetico exercita a maquina de estados de
+  `voice_capture_session_v2` sem mic real, sem wake real e sem bridge real.
+- Replay com `speech_ms=0` termina sem `voice_start_sent` e sem
+  `voice_audio_sent`, preservando a regra "wake vazio nao envia STT".
+- O componente nao chama `bridge_service` e nao emite `VOICE_START`,
+  `AUDIO_CHUNK` ou `VOICE_END`.
+- Validacao preparatoria:
+  - `idf.py build`;
+  - `bridge/tests`: 159 testes.
+
 - Wake abre sessao.
 - Silencio apos wake nao envia STT.
 - Fala normal gera STT good.

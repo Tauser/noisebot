@@ -49,6 +49,12 @@ esta em `docs/VOICE_AUDIO_V2_ARCHITECTURE.md`. Ele separa Audio I/O, playback,
 captura de sessao, VAD/AFE, codec e bridge, com PCM16 como fallback e Opus
 opt-in ate validacao em hardware.
 
+Status v2 atual: Audio I/O e playback ja possuem probes explicitos validados.
+`voice_capture_session_v2` entrou em preparacao por replay sintetico via
+`/api/audio/capture-v2`, ainda sem wake real, sem mic real acoplado e sem envio
+de `VOICE_START/AUDIO_CHUNK/VOICE_END` ao bridge. A ligacao real PCM16 por wake
+deve ser feita somente atras de flag e com decisao explicita.
+
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
 comandos, riscos e perguntas obrigatorias antes de mexer no subsistema de voz.
