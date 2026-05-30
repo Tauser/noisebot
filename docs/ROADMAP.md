@@ -2065,6 +2065,10 @@ Implementação:
   Opus 16 kHz mono, frame de 60 ms e 32 kbps fixo. Isso mantém o contrato
   Xiaozhi/StackChan de frame/codec, mas privilegia robustez no ambiente real
   do NoiseBot antes de qualquer promoção para padrão.
+- [x] Arquitetura `Voice Audio v2` documentada para refazer captura,
+  reproducao, sessao, codec e processamento de voz de forma paralela,
+  preservando PCM16/wake/barge-in atuais. Ver
+  `docs/VOICE_AUDIO_V2_ARCHITECTURE.md`.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
   padrão. Ver `docs/VOICE_PIPELINE.md` e `docs/VOICE_AB_PHASE5_8192.md`.
 - [ ] Próximo avanço: repetir A/B live curto no perfil Opus 32 kbps antes de

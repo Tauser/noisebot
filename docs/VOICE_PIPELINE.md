@@ -44,6 +44,11 @@ do NoiseBot. O que absorvemos agora é: Opus como codec negociado, capacidades
 explícitas no protocolo e AEC como modo condicionado a referência limpa, não
 como feature universal do ESP32-S3.
 
+O plano completo para refazer o subsistema de voz de forma paralela e segura
+esta em `docs/VOICE_AUDIO_V2_ARCHITECTURE.md`. Ele separa Audio I/O, playback,
+captura de sessao, VAD/AFE, codec e bridge, com PCM16 como fallback e Opus
+opt-in ate validacao em hardware.
+
 ## Roadmap de Fechamento do Ciclo
 
 O objetivo deste ciclo é transformar voz em uma parte confiável do produto:
