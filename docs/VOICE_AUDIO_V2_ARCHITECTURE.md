@@ -667,6 +667,18 @@ Implementacao atual:
 - o Opus operacional existente permanece no caminho opt-in atual
   `/api/audio/opus/transport/enable`, com PCM16 como fallback padrao.
 
+Validacao em hardware:
+
+- apos flash em 2026-05-30, `GET /api/audio/codec-v2` retornou:
+  `ok=true`, `initialized=false`, `format=pcm16`,
+  `sample_rate_hz=16000`, `channels=1`, `opus_frame_ms=60`,
+  `opus_frame_samples=960`, `opus_bitrate=32000`,
+  `max_queue_packets=40`, `pcm_frames_in=0`, `packets_out=0`,
+  `packet_drops=0`, `queue_count=0`, `error=ESP_OK`;
+- `capture-v2 status` apos flash confirmou fallback seguro:
+  `real_capture_enabled=false`, `session_active=false`,
+  `state=IDLE_SESSION`, `last_error=ESP_OK`.
+
 Aceite:
 
 - `opus-live` ok.

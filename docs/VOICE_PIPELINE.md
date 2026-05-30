@@ -60,7 +60,9 @@ contabiliza start/chunks/fim/cancelamento, enquanto o envio
 flag e `real_capture` para diferenciar replay de uma sessao PCM16 real.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
-60 ms/960 samples, 32 kbps e fila curta de 40 pacotes.
+60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após
+flash, o endpoint retornou `initialized=false`, `format=pcm16`, contadores
+zerados e `error=ESP_OK`; a captura v2 permaneceu desligada.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
