@@ -87,3 +87,24 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "esp_err_t audio_playback_service_v2_probe_start(" in playback_h
     assert "bool audio_playback_service_v2_fill_probe_chunk(" in playback_h
     assert "audio_hal_" not in playback_c
+
+
+def test_voice_capture_v2_replay_is_explicit_and_does_not_touch_bridge():
+    web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+    capture_c = (
+        COMPONENTS / "voice_capture_session_v2" / "voice_capture_session_v2.c"
+    ).read_text(encoding="utf-8")
+    capture_h = (
+        COMPONENTS / "voice_capture_session_v2" / "voice_capture_session_v2.h"
+    ).read_text(encoding="utf-8")
+
+    assert '{ .uri = "/api/audio/capture-v2"' in web
+    assert '{ .uri = "/api/audio/capture-v2/replay"' in web
+    assert '{ .uri = "/api/audio/capture-v2/cancel"' in web
+    assert "audio_service_is_busy()" in web
+    assert "esp_err_t voice_capture_session_v2_replay_start(" in capture_h
+    assert "esp_err_t voice_capture_session_v2_cancel(void);" in capture_h
+    assert "bridge_service" not in capture_c
+    assert "VOICE_START" not in capture_c
+    assert "AUDIO_CHUNK" not in capture_c
+    assert "VOICE_END" not in capture_c

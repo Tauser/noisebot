@@ -43,6 +43,7 @@
 #include "audio_processor_service.h"
 #include "audio_io_service_v2.h"
 #include "audio_playback_service_v2.h"
+#include "voice_capture_session_v2.h"
 #include "audio_service.h"
 #include "touch_service.h"
 #include "time_service.h"
@@ -203,6 +204,47 @@ static const char *touch_event_name(nb_event_type_t event)
         case NB_EVT_TOUCH_WARM_PULSE:   return "WARM_PULSE";
         default:                        return "NONE";
     }
+}
+
+static const char *capture_v2_state_name(nb_voice_capture_v2_state_t state)
+{
+    switch (state) {
+        case NB_VOICE_CAPTURE_V2_IDLE_SESSION:       return "IDLE_SESSION";
+        case NB_VOICE_CAPTURE_V2_WAITING_FOR_SPEECH: return "WAITING_FOR_SPEECH";
+        case NB_VOICE_CAPTURE_V2_CAPTURING:          return "CAPTURING";
+        case NB_VOICE_CAPTURE_V2_ENDING_ON_SILENCE:  return "ENDING_ON_SILENCE";
+        case NB_VOICE_CAPTURE_V2_CANCELLED:          return "CANCELLED";
+        case NB_VOICE_CAPTURE_V2_DONE:               return "DONE";
+        default:                                     return "UNKNOWN";
+    }
+}
+
+static const char *capture_v2_source_name(nb_voice_capture_v2_source_t source)
+{
+    switch (source) {
+        case NB_VOICE_CAPTURE_V2_SOURCE_WAKE_WORD: return "WAKE_WORD";
+        case NB_VOICE_CAPTURE_V2_SOURCE_BARGE_IN:  return "BARGE_IN";
+        case NB_VOICE_CAPTURE_V2_SOURCE_FOLLOWUP:  return "FOLLOWUP";
+        case NB_VOICE_CAPTURE_V2_SOURCE_DEBUG:     return "DEBUG";
+        default:                                   return "UNKNOWN";
+    }
+}
+
+static nb_voice_capture_v2_source_t capture_v2_source_from_str(const char *value)
+{
+    if (value == NULL) {
+        return NB_VOICE_CAPTURE_V2_SOURCE_DEBUG;
+    }
+    if (strcmp(value, "wake") == 0 || strcmp(value, "WAKE_WORD") == 0) {
+        return NB_VOICE_CAPTURE_V2_SOURCE_WAKE_WORD;
+    }
+    if (strcmp(value, "barge") == 0 || strcmp(value, "BARGE_IN") == 0) {
+        return NB_VOICE_CAPTURE_V2_SOURCE_BARGE_IN;
+    }
+    if (strcmp(value, "followup") == 0 || strcmp(value, "FOLLOWUP") == 0) {
+        return NB_VOICE_CAPTURE_V2_SOURCE_FOLLOWUP;
+    }
+    return NB_VOICE_CAPTURE_V2_SOURCE_DEBUG;
 }
 
 static void copy_json_string(cJSON *root, const char *key, char *dst, size_t dst_len)
@@ -1727,6 +1769,104 @@ static esp_err_t handle_api_audio_playback_v2_stop(httpd_req_t *req)
     return send_audio_playback_v2_status(req, err);
 }
 
+static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
+{
+    nb_voice_capture_v2_status_t st;
+    voice_capture_session_v2_get_status(&st);
+
+    char buf[768];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
+             "\"state\":\"%s\",\"source\":\"%s\",\"session_id\":%lu,"
+             "\"voice_start_sent\":%s,\"voice_audio_sent\":%s,"
+             "\"voice_end_sent\":%s,\"replay_duration_ms\":%lu,"
+             "\"replay_elapsed_ms\":%lu,\"speech_elapsed_ms\":%lu,"
+             "\"silence_elapsed_ms\":%lu,\"speech_frames\":%lu,"
+             "\"silence_frames\":%lu,\"captured_samples\":%lu,"
+             "\"dropped_frames\":%lu,\"last_error\":\"%s\","
+             "\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             st.initialized ? "true" : "false",
+             st.session_active ? "true" : "false",
+             capture_v2_state_name(st.state),
+             capture_v2_source_name(st.source),
+             (unsigned long)st.session_id,
+             st.voice_start_sent ? "true" : "false",
+             st.voice_audio_sent ? "true" : "false",
+             st.voice_end_sent ? "true" : "false",
+             (unsigned long)st.replay_duration_ms,
+             (unsigned long)st.replay_elapsed_ms,
+             (unsigned long)st.speech_elapsed_ms,
+             (unsigned long)st.silence_elapsed_ms,
+             (unsigned long)st.speech_frames,
+             (unsigned long)st.silence_frames,
+             (unsigned long)st.captured_samples,
+             (unsigned long)st.dropped_frames,
+             esp_err_to_name(st.last_error),
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_voice_capture_v2_status(httpd_req_t *req)
+{
+    return send_voice_capture_v2_status(req, ESP_OK);
+}
+
+static esp_err_t handle_api_voice_capture_v2_replay(httpd_req_t *req)
+{
+    if (audio_service_is_busy()) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_status(req, "409 Conflict");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
+    }
+
+    uint32_t speech_ms = 640U;
+    uint32_t silence_ms = NB_VOICE_CAPTURE_V2_END_SILENCE_MS;
+    nb_voice_capture_v2_source_t source = NB_VOICE_CAPTURE_V2_SOURCE_DEBUG;
+    char body[MAX_BODY_LEN];
+    int body_len = 0;
+    if (recv_body(req, body, sizeof(body), &body_len) && body_len > 0) {
+        cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+        if (!root) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
+            return ESP_OK;
+        }
+        uint32_t requested_speech = get_json_u32(root, "speech_ms");
+        uint32_t requested_silence = get_json_u32(root, "silence_ms");
+        const cJSON *speech_j = cJSON_GetObjectItemCaseSensitive(root, "speech_ms");
+        const cJSON *silence_j = cJSON_GetObjectItemCaseSensitive(root, "silence_ms");
+        const cJSON *source_j = cJSON_GetObjectItemCaseSensitive(root, "source");
+        if (speech_j != NULL) {
+            speech_ms = requested_speech;
+        }
+        if (silence_j != NULL) {
+            silence_ms = requested_silence;
+        }
+        if (cJSON_IsString(source_j)) {
+            source = capture_v2_source_from_str(source_j->valuestring);
+        }
+        cJSON_Delete(root);
+    }
+
+    esp_err_t err = voice_capture_session_v2_replay_start(source, speech_ms, silence_ms);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_ARG
+                                   ? "400 Bad Request"
+                                   : "409 Conflict");
+    }
+    return send_voice_capture_v2_status(req, err);
+}
+
+static esp_err_t handle_api_voice_capture_v2_cancel(httpd_req_t *req)
+{
+    esp_err_t err = voice_capture_session_v2_cancel();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "409 Conflict");
+    }
+    return send_voice_capture_v2_status(req, err);
+}
+
 static esp_err_t handle_api_audio_opus_worker_status(httpd_req_t *req)
 {
     return send_audio_opus_worker_status(req, ESP_OK);
@@ -2921,6 +3061,9 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/playback-v2", .method = HTTP_GET, .handler = handle_api_audio_playback_v2_status },
     { .uri = "/api/audio/playback-v2/probe", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_probe },
     { .uri = "/api/audio/playback-v2/stop", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_stop },
+    { .uri = "/api/audio/capture-v2", .method = HTTP_GET, .handler = handle_api_voice_capture_v2_status },
+    { .uri = "/api/audio/capture-v2/replay", .method = HTTP_POST, .handler = handle_api_voice_capture_v2_replay },
+    { .uri = "/api/audio/capture-v2/cancel", .method = HTTP_POST, .handler = handle_api_voice_capture_v2_cancel },
     { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
     { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },
     { .uri = "/api/audio/processor/aec/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_aec_probe },
