@@ -229,6 +229,7 @@ static struct {
     uint32_t             listen_speech_elapsed_ms;    /* teto desde fala iniciar   */
     bool                 listen_voice_detected;       /* VAD ativou na sessão    */
     bool                 listen_skip_preroll;         /* barge-in nao envia TTS antigo */
+    bool                 listen_capture_v2_active;    /* contrato v2 opt-in ativo */
 } s;
 
 /* ── Fila estática de SAY chunks (sem malloc) ─────────────────────────────── */
@@ -636,6 +637,9 @@ static bool listen_start_bridge_capture(void)
                                                              NB_AUDIO_CHUNK_FRAMES);
                 if (bridge_drain_opus_packets_if_enabled()) {
                     s.bridge_audio_sent = true;
+                    if (s.listen_capture_v2_active) {
+                        voice_capture_session_v2_note_audio_chunk(NB_AUDIO_CHUNK_FRAMES, true);
+                    }
                 }
             } else {
                 if (bridge_service_send_audio_chunk(s_bridge_buf,
@@ -643,6 +647,11 @@ static bool listen_start_bridge_capture(void)
                     audio_processor_service_opus_worker_feed_pcm(s_bridge_buf,
                                                                  NB_AUDIO_CHUNK_FRAMES);
                     s.bridge_audio_sent = true;
+                    if (s.listen_capture_v2_active) {
+                        voice_capture_session_v2_note_audio_chunk(NB_AUDIO_CHUNK_FRAMES, true);
+                    }
+                } else if (s.listen_capture_v2_active) {
+                    voice_capture_session_v2_note_audio_chunk(NB_AUDIO_CHUNK_FRAMES, false);
                 }
             }
         }
@@ -651,6 +660,9 @@ static bool listen_start_bridge_capture(void)
     }
 
     s.bridge_tx_active = true;
+    if (s.listen_capture_v2_active) {
+        voice_capture_session_v2_note_voice_start();
+    }
     ESP_LOGD(TAG, "bridge captura iniciada preroll=%u", (unsigned)pr_count);
     return true;
 }
@@ -669,10 +681,10 @@ static nb_voice_capture_v2_source_t capture_v2_source_from_listen(nb_listen_sour
     }
 }
 
-static esp_err_t try_begin_capture_v2_if_enabled(nb_listen_source_t source)
+static bool begin_capture_v2_if_enabled(nb_listen_source_t source)
 {
     if (!config_get_voice_audio_v2_capture_enabled()) {
-        return ESP_ERR_NOT_SUPPORTED;
+        return false;
     }
 
     esp_err_t err = voice_capture_session_v2_begin_real_pcm16(
@@ -684,7 +696,7 @@ static esp_err_t try_begin_capture_v2_if_enabled(nb_listen_source_t source)
         ESP_LOGW(TAG, "capture v2 real indisponivel (%s); usando v1 source=%s",
                  esp_err_to_name(err), listen_source_name(source));
     }
-    return err;
+    return err == ESP_OK;
 }
 
 static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
@@ -706,6 +718,10 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
     s.vad_enter_count          = 0;
     s.vad_silence_start_us     = 0;
     audio_processor_service_bridge_capture_end();
+    if (s.listen_capture_v2_active) {
+        voice_capture_session_v2_finish(reason == NB_LISTEN_END_CANCELLED);
+        s.listen_capture_v2_active = false;
+    }
 
     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END,
                                NB_AUDIO_EVT_DATA_SESSION);
@@ -1189,6 +1205,9 @@ static void audio_task(void *arg)
                 audio_processor_service_opus_worker_feed_pcm(s_bridge_buf, (uint16_t)mic_n);
                 if (bridge_drain_opus_packets_if_enabled()) {
                     s.bridge_audio_sent = true;
+                    if (s.listen_capture_v2_active) {
+                        voice_capture_session_v2_note_audio_chunk((uint16_t)mic_n, true);
+                    }
                     s.bridge_tx_fail_count = 0;
                     if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
                         ESP_LOGI(TAG,
@@ -1206,6 +1225,9 @@ static void audio_task(void *arg)
                 if (tx_rc == ESP_OK) {
                     audio_processor_service_opus_worker_feed_pcm(s_bridge_buf, (uint16_t)mic_n);
                     s.bridge_audio_sent = true;
+                    if (s.listen_capture_v2_active) {
+                        voice_capture_session_v2_note_audio_chunk((uint16_t)mic_n, true);
+                    }
                     s.bridge_tx_fail_count = 0;
                     if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
                         ESP_LOGI(TAG,
@@ -1219,6 +1241,9 @@ static void audio_task(void *arg)
                                  (unsigned)mic_n);
                     }
                 } else {
+                    if (s.listen_capture_v2_active) {
+                        voice_capture_session_v2_note_audio_chunk((uint16_t)mic_n, false);
+                    }
                     if (tx_rc == ESP_ERR_INVALID_STATE) {
                         ESP_LOGW(TAG, "bridge desconectou durante sessao — encerrando escuta");
                         s.bridge_flush_before_end = false;
@@ -1545,9 +1570,7 @@ esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source
         return ESP_ERR_NOT_SUPPORTED;
     }
 
-    if (try_begin_capture_v2_if_enabled(source) == ESP_OK) {
-        return ESP_OK;
-    }
+    bool capture_v2_active = begin_capture_v2_if_enabled(source);
 
     s.listen_session_active       = true;
     s.listen_mode                 = mode;
@@ -1560,6 +1583,7 @@ esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source
     s.listen_speech_elapsed_ms    = 0;
     s.listen_voice_detected       = false;
     s.listen_skip_preroll         = (source == NB_LISTEN_SOURCE_BARGE_IN);
+    s.listen_capture_v2_active    = capture_v2_active;
     s.bridge_tx_active            = false;  /* liga apenas quando o VAD detectar fala */
     wake_service_suspend();
     esp_vad_reset();

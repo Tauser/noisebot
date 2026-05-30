@@ -64,6 +64,9 @@ esp_err_t voice_capture_session_v2_replay_start(nb_voice_capture_v2_source_t sou
                                                 uint32_t speech_ms,
                                                 uint32_t trailing_silence_ms);
 esp_err_t voice_capture_session_v2_begin_real_pcm16(nb_voice_capture_v2_source_t source);
+void voice_capture_session_v2_note_voice_start(void);
+void voice_capture_session_v2_note_audio_chunk(uint16_t sample_count, bool accepted);
+void voice_capture_session_v2_finish(bool cancelled);
 esp_err_t voice_capture_session_v2_cancel(void);
 bool voice_capture_session_v2_is_active(void);
 

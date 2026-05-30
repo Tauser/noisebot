@@ -169,9 +169,66 @@ esp_err_t voice_capture_session_v2_begin_real_pcm16(nb_voice_capture_v2_source_t
 
     reset_runtime_locked(true);
     s_status.source = source;
-    s_status.last_error = ESP_ERR_NOT_SUPPORTED;
+    s_status.session_active = true;
+    s_status.state = NB_VOICE_CAPTURE_V2_WAITING_FOR_SPEECH;
+    s_status.session_id = s_next_session_id++;
+    if (s_next_session_id == 0U) {
+        s_next_session_id = 1U;
+    }
+    s_status.last_error = ESP_OK;
     taskEXIT_CRITICAL(&s_mux);
-    return ESP_ERR_NOT_SUPPORTED;
+    return ESP_OK;
+}
+
+void voice_capture_session_v2_note_voice_start(void)
+{
+    taskENTER_CRITICAL(&s_mux);
+    if (s_status.session_active && !s_status.voice_start_sent) {
+        s_status.voice_start_sent = true;
+        s_status.state = NB_VOICE_CAPTURE_V2_CAPTURING;
+    }
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+void voice_capture_session_v2_note_audio_chunk(uint16_t sample_count, bool accepted)
+{
+    if (sample_count == 0U) {
+        return;
+    }
+
+    taskENTER_CRITICAL(&s_mux);
+    if (s_status.session_active) {
+        if (accepted) {
+            s_status.voice_audio_sent = true;
+            s_status.captured_samples += sample_count;
+            s_status.speech_frames++;
+            s_status.speech_elapsed_ms += CAPTURE_REPLAY_FRAME_MS;
+            s_status.replay_elapsed_ms += CAPTURE_REPLAY_FRAME_MS;
+        } else {
+            s_status.dropped_frames++;
+        }
+    }
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+void voice_capture_session_v2_finish(bool cancelled)
+{
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.session_active) {
+        taskEXIT_CRITICAL(&s_mux);
+        return;
+    }
+
+    s_status.session_active = false;
+    if (cancelled) {
+        s_status.state = NB_VOICE_CAPTURE_V2_CANCELLED;
+        s_status.voice_end_sent = false;
+    } else {
+        s_status.state = NB_VOICE_CAPTURE_V2_DONE;
+        s_status.voice_end_sent = s_status.voice_start_sent && s_status.voice_audio_sent;
+    }
+    s_status.last_error = ESP_OK;
+    taskEXIT_CRITICAL(&s_mux);
 }
 
 esp_err_t voice_capture_session_v2_cancel(void)

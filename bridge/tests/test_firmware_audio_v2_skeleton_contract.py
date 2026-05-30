@@ -132,4 +132,6 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
     assert '\\"real_capture_enabled\\":%s,' in web
     assert "config_get_voice_audio_v2_capture_enabled()" in audio_service
     assert "voice_capture_session_v2_begin_real_pcm16(" in audio_service
-    assert "capture v2 real indisponivel" in audio_service
+    assert "voice_capture_session_v2_note_voice_start();" in audio_service
+    assert "voice_capture_session_v2_note_audio_chunk(" in audio_service
+    assert "voice_capture_session_v2_finish(" in audio_service
