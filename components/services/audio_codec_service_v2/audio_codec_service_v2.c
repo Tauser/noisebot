@@ -11,6 +11,17 @@ static nb_audio_codec_v2_status_t s_status = {
 static int16_t s_pending_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
 static uint16_t s_pending_samples;
 
+static void enqueue_synthetic_packet(void)
+{
+    if (s_status.queue_count >= NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS) {
+        s_status.packet_drops++;
+        return;
+    }
+
+    s_status.queue_count++;
+    s_status.packets_out++;
+}
+
 esp_err_t audio_codec_service_v2_init(void)
 {
     if (s_status.initialized) {
@@ -60,13 +71,12 @@ esp_err_t audio_codec_service_v2_feed_pcm16(const int16_t *samples, uint16_t sam
     }
 
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
-    s_status.queue_count = 0;
 
     for (uint16_t i = 0; i < sample_count; i++) {
         s_pending_frame[s_pending_samples++] = samples[i];
         if (s_pending_samples >= NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES) {
             s_status.pcm_frames_in++;
-            s_status.packets_out++;
+            enqueue_synthetic_packet();
             s_pending_samples = 0;
         }
     }

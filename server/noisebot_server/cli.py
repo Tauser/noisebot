@@ -571,6 +571,7 @@ def _format_codec_v2_status(payload: dict[str, object]) -> str:
             f"{payload.get('opus_frame_samples', '')} samples / "
             f"{payload.get('opus_bitrate', '')} bps",
             f"- Fila max: {payload.get('max_queue_packets', '')}",
+            f"- Fila atual: {payload.get('queue_count', '')}",
             f"- Pacotes/drop: {payload.get('packets_out', '')}/"
             f"{payload.get('packet_drops', '')}",
             f"- Samples pendentes: {payload.get('pending_samples', '')}",

@@ -896,6 +896,7 @@ def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
             "opus_frame_samples": 960,
             "opus_bitrate": 32000,
             "max_queue_packets": 40,
+            "queue_count": 1,
             "packets_out": 1,
             "packet_drops": 0,
             "pending_samples": 64,
@@ -916,6 +917,7 @@ def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
     captured = capsys.readouterr()
     assert '"format": "pcm16"' in captured.out
     assert '"packets_out": 1' in captured.out
+    assert '"queue_count": 1' in captured.out
     assert '"opus_bitrate": 32000' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
 
