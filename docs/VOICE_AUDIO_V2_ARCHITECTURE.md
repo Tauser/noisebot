@@ -663,6 +663,8 @@ Implementacao atual:
 - `audio_codec_service_v2` continua inativo e nao e inicializado no boot;
 - `GET /api/audio/codec-v2` retorna constantes do contrato e contadores
   zerados do skeleton;
+- o server expoe proxy diagnostico em `/api/device/audio/codec-v2`;
+- CLI `noisebot_server debug codec-v2 status` consulta o endpoint do firmware;
 - o endpoint nao liga Opus, nao cria task e nao altera bridge/captura/playback;
 - o Opus operacional existente permanece no caminho opt-in atual
   `/api/audio/opus/transport/enable`, com PCM16 como fallback padrao.
@@ -678,6 +680,8 @@ Validacao em hardware:
 - `capture-v2 status` apos flash confirmou fallback seguro:
   `real_capture_enabled=false`, `session_active=false`,
   `state=IDLE_SESSION`, `last_error=ESP_OK`.
+- CLI real `noisebot_server --host 192.168.1.30 debug codec-v2 status --json`
+  retornou o mesmo contrato com `error=ESP_OK`.
 
 Aceite:
 

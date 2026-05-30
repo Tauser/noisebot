@@ -748,12 +748,15 @@ Validacao:
   - contrato publicado: 16 kHz, mono, 60 ms, 960 samples, 32 kbps,
     fila curta de 40 pacotes;
   - nenhum worker/task v2 e criado e o bridge atual nao muda.
+  - server proxy: `/api/device/audio/codec-v2`;
+  - CLI: `noisebot_server debug codec-v2 status`;
   - validado em hardware apos flash:
     `initialized=false`, `format=pcm16`, `opus_frame_ms=60`,
     `opus_frame_samples=960`, `opus_bitrate=32000`,
     `max_queue_packets=40`, contadores zerados, `error=ESP_OK`;
     `capture-v2 status` seguiu com `real_capture_enabled=false` e
     `session_active=false`.
+  - CLI real com `--host 192.168.1.30` retornou o mesmo contrato.
 - Packet drops zero em teste curto.
 - Transcript comparavel ao PCM16.
 - `server_codec_confirmed=true`.
