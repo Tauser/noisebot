@@ -121,6 +121,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     capture_v2.add_argument("--no-prompt", action="store_true", help="Nao aguardar Enter no modo live")
     capture_v2.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    codec_v2 = debug_sub.add_parser("codec-v2")
+    codec_v2.add_argument(
+        "action",
+        choices=["status"],
+        nargs="?",
+        default="status",
+    )
+    codec_v2.add_argument("--firmware-url", default="")
+    codec_v2.add_argument("--json", action="store_true", help="Emitir JSON")
+
     parser.add_argument("--host", help="IP do ESP32")
     parser.add_argument("--port", type=int, help="Porta TCP")
     parser.add_argument("--uart", help="Porta UART")
@@ -523,7 +533,46 @@ def run_debug_command(args: argparse.Namespace) -> None:
         if not payload.get("ok", False):
             raise SystemExit(1)
         return
+    if args.debug_command == "codec-v2":
+        from .internal.ops.firmware_diag import FirmwareDiagClient
+
+        firmware_url = args.firmware_url or os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "")
+        if not firmware_url:
+            host = args.host or os.environ.get("NOISEBOT_HOST", "")
+            if host:
+                firmware_url = f"http://{host}"
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+
+        client = FirmwareDiagClient(firmware_url.rstrip("/") + "/")
+        payload = client.audio_codec_v2_status()
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(_format_codec_v2_status(payload))
+        if not payload.get("ok", False):
+            raise SystemExit(1)
+        return
     raise SystemExit(2)
+
+
+def _format_codec_v2_status(payload: dict[str, object]) -> str:
+    return "\n".join(
+        [
+            "# Codec v2",
+            "",
+            f"- OK: {payload.get('ok', False)}",
+            f"- Inicializado: {payload.get('initialized', '')}",
+            f"- Formato: {payload.get('format', '')}",
+            f"- Opus: {payload.get('opus_frame_ms', '')} ms / "
+            f"{payload.get('opus_frame_samples', '')} samples / "
+            f"{payload.get('opus_bitrate', '')} bps",
+            f"- Fila max: {payload.get('max_queue_packets', '')}",
+            f"- Pacotes/drop: {payload.get('packets_out', '')}/"
+            f"{payload.get('packet_drops', '')}",
+            f"- Erro: {payload.get('error', '')}",
+        ]
+    )
 
 
 def _format_capture_v2_status(payload: dict[str, object]) -> str:

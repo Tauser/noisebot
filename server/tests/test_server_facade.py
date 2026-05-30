@@ -725,6 +725,21 @@ def test_server_firmware_diag_client_exposes_capture_v2_endpoints(monkeypatch) -
     ]
 
 
+def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> None:
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    client = firmware_diag.FirmwareDiagClient("http://robot.local/")
+    get_paths: list[str] = []
+
+    def fake_get_json(self, path):
+        get_paths.append(path)
+        return {"ok": True, "format": "pcm16"}
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "_get_json", fake_get_json)
+
+    assert client.audio_codec_v2_status()["ok"]
+    assert get_paths == ["api/audio/codec-v2"]
+
+
 def test_server_cli_parses_capture_v2_debug_command() -> None:
     cli = importlib.import_module("noisebot_server.cli")
 
@@ -837,6 +852,62 @@ def test_server_cli_runs_capture_v2_live_with_rollback(monkeypatch, capsys) -> N
     assert '"ok": true' in captured.out
     assert '"disabled"' in captured.out
     assert toggles == [True, False]
+
+
+def test_server_cli_parses_codec_v2_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "status",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "codec-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "status"
+    assert args.json
+
+
+def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+
+    def fake_status(self):
+        calls["base_url"] = self.base_url
+        return {
+            "ok": True,
+            "initialized": False,
+            "format": "pcm16",
+            "opus_frame_ms": 60,
+            "opus_frame_samples": 960,
+            "opus_bitrate": 32000,
+            "max_queue_packets": 40,
+            "packets_out": 0,
+            "packet_drops": 0,
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_codec_v2_status", fake_status)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "status",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"format": "pcm16"' in captured.out
+    assert '"opus_bitrate": 32000' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
 
 
 def test_server_cli_parses_barge_live_debug_command() -> None:
