@@ -685,9 +685,10 @@ Validacao:
 - Hook de roteamento:
   - `audio_service_begin_listen_session()` consulta a flag;
   - flag off: v1 inalterado;
-  - flag on: tenta `voice_capture_session_v2_begin_real_pcm16()`;
-  - enquanto a captura real nao existe, retorna `ESP_ERR_NOT_SUPPORTED` e cai
-    automaticamente no v1.
+  - flag on: inicia `voice_capture_session_v2_begin_real_pcm16()`;
+  - `audio_service` continua enviando PCM16 ao bridge;
+  - `voice_capture_session_v2` apenas acompanha estado/contadores v2 e nao
+    chama `bridge_service` diretamente.
 - Validacao preparatoria:
   - `idf.py build`;
   - testes de contrato de audio v2/audio service.

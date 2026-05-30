@@ -580,8 +580,11 @@ Implementacao preparatoria:
   a chave nova e migrada pontualmente com valor `0` quando ausente.
 - `audio_service_begin_listen_session()` possui hook condicional: se a flag
   estiver desligada, segue v1; se ligada, tenta `voice_capture_session_v2`.
-  Enquanto a captura PCM16 real ainda nao esta implementada, o v2 retorna
-  `ESP_ERR_NOT_SUPPORTED` e o firmware faz fallback automatico para v1.
+- A captura PCM16 real v2 agora inicia estado de sessao atras da flag, mas o
+  envio de PCM16 segue passando pelo `audio_service`, que continua dono do
+  bridge/audio ja validado.
+- `voice_capture_session_v2` acompanha `VOICE_START`, chunks aceitos/drops e
+  fim/cancelamento da sessao sem chamar `bridge_service` diretamente.
 
 Aceite:
 
@@ -599,9 +602,9 @@ Validacao preparatoria:
 - Flag e hook opt-in criados em commits pequenos:
   - `Firmware: adicionar flag de captura v2`;
   - `Firmware: rotear captura v2 como opt-in`.
-- Proxima etapa: implementar a captura PCM16 real dentro do v2, ainda atras da
-  flag, substituindo o retorno `ESP_ERR_NOT_SUPPORTED` somente quando houver
-  envio controlado de `VOICE_START/AUDIO_CHUNK/VOICE_END`.
+- Proxima etapa: validar em hardware com a flag ligada e bridge conectado,
+  conferindo que status v2 reflete fala real sem regredir o caminho v1 quando
+  a flag esta desligada.
 
 ### Fase F - Codec v2 Opus
 
