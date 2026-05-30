@@ -667,6 +667,9 @@ static esp_err_t handle_api_config_post(httpd_req_t *req)
     esp_err_t   err = ESP_ERR_NOT_FOUND;
 
     if      (strcmp(key, "volume")       == 0) err = config_set_volume((uint8_t)val);
+    else if (strcmp(key, "voice_audio_v2_capture_enabled") == 0) {
+        err = config_set_voice_audio_v2_capture_enabled(val != 0.0);
+    }
     else if (strcmp(key, "brightness")   == 0) err = config_set_brightness((uint8_t)val);
     else if (strcmp(key, "touch_sens")   == 0) err = config_set_touch_sensitivity((uint8_t)val);
     else if (strcmp(key, "idle_timeout") == 0) err = config_set_idle_timeout_s((uint32_t)val);
@@ -1777,6 +1780,7 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
     char buf[768];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
+             "\"real_capture_enabled\":%s,"
              "\"state\":\"%s\",\"source\":\"%s\",\"session_id\":%lu,"
              "\"voice_start_sent\":%s,\"voice_audio_sent\":%s,"
              "\"voice_end_sent\":%s,\"replay_duration_ms\":%lu,"
@@ -1788,6 +1792,7 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
              (err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
              st.session_active ? "true" : "false",
+             config_get_voice_audio_v2_capture_enabled() ? "true" : "false",
              capture_v2_state_name(st.state),
              capture_v2_source_name(st.source),
              (unsigned long)st.session_id,
@@ -2306,7 +2311,7 @@ static esp_err_t handle_api_config_all(httpd_req_t *req)
     char buf[512];
     snprintf(buf, sizeof(buf),
         "{\"volume\":%u,\"brightness\":%u,\"touch_sens\":%u,"
-        "\"idle_timeout\":%lu,"
+        "\"idle_timeout\":%lu,\"voice_audio_v2_capture_enabled\":%s,"
         "\"srv1_min\":%d,\"srv1_max\":%d,\"srv1_ctr\":%d,"
         "\"srv2_min\":%d,\"srv2_max\":%d,\"srv2_ctr\":%d,"
         "\"last_emotion\":%u,\"persona_seed\":%lu}",
@@ -2314,6 +2319,7 @@ static esp_err_t handle_api_config_all(httpd_req_t *req)
         (unsigned)config_get_brightness(),
         (unsigned)config_get_touch_sensitivity(),
         (unsigned long)config_get_idle_timeout_s(),
+        config_get_voice_audio_v2_capture_enabled() ? "true" : "false",
         (int)config_get_servo_limit_min(1),
         (int)config_get_servo_limit_max(1),
         (int)config_get_servo_center(1),

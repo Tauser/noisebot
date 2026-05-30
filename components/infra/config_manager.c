@@ -62,6 +62,7 @@ static esp_err_t write_cfg_defaults(void)
 
     /* Áudio, display, touch, comportamento */
     if ((err = nvs_hal_set_u8 (s_h_cfg, NB_CFG_KEY_VOLUME,    NB_CFG_DEFAULT_VOLUME))    != ESP_OK) return err;
+    if ((err = nvs_hal_set_u8 (s_h_cfg, NB_CFG_KEY_V2_CAP_EN, NB_CFG_DEFAULT_V2_CAP_EN)) != ESP_OK) return err;
     if ((err = nvs_hal_set_u8 (s_h_cfg, NB_CFG_KEY_BRIGHTNESS, NB_CFG_DEFAULT_BRIGHTNESS)) != ESP_OK) return err;
     if ((err = nvs_hal_set_u8 (s_h_cfg, NB_CFG_KEY_TOUCH_SENS, NB_CFG_DEFAULT_TOUCH_SENS)) != ESP_OK) return err;
     if ((err = nvs_hal_set_u32(s_h_cfg, NB_CFG_KEY_IDLE_TMO,   NB_CFG_DEFAULT_IDLE_TIMEOUT_S)) != ESP_OK) return err;
@@ -131,6 +132,21 @@ static esp_err_t restore_idle_timeout_if_legacy(void)
     return err;
 }
 
+static esp_err_t ensure_voice_audio_v2_defaults(void)
+{
+    if (nvs_hal_key_exists(s_h_cfg, NB_CFG_KEY_V2_CAP_EN)) {
+        return ESP_OK;
+    }
+
+    esp_err_t err = nvs_hal_set_u8(s_h_cfg,
+                                   NB_CFG_KEY_V2_CAP_EN,
+                                   NB_CFG_DEFAULT_V2_CAP_EN);
+    if (err == ESP_OK) {
+        nvs_hal_commit(s_h_cfg);
+    }
+    return err;
+}
+
 /* ── API pública ─────────────────────────────────────────────────────────── */
 
 esp_err_t config_manager_init(void)
@@ -174,6 +190,13 @@ esp_err_t config_manager_init(void)
 
     if ((err = restore_idle_timeout_if_legacy()) != ESP_OK) {
         NB_LOGE(TAG, "restore_idle_timeout_if_legacy falhou: %s", esp_err_to_name(err));
+        nvs_hal_close(s_h_cfg);
+        nvs_hal_close(s_h_svc);
+        return err;
+    }
+
+    if ((err = ensure_voice_audio_v2_defaults()) != ESP_OK) {
+        NB_LOGE(TAG, "ensure_voice_audio_v2_defaults falhou: %s", esp_err_to_name(err));
         nvs_hal_close(s_h_cfg);
         nvs_hal_close(s_h_svc);
         return err;
@@ -252,6 +275,22 @@ esp_err_t config_set_volume(uint8_t level)
 {
     if (level > NB_CFG_VOLUME_MAX) return ESP_ERR_INVALID_ARG;
     esp_err_t err = nvs_hal_set_u8(s_h_cfg, NB_CFG_KEY_VOLUME, level);
+    if (err == ESP_OK) nvs_hal_commit(s_h_cfg);
+    return err;
+}
+
+bool config_get_voice_audio_v2_capture_enabled(void)
+{
+    return nvs_hal_get_u8(s_h_cfg,
+                          NB_CFG_KEY_V2_CAP_EN,
+                          NB_CFG_DEFAULT_V2_CAP_EN) != 0U;
+}
+
+esp_err_t config_set_voice_audio_v2_capture_enabled(bool enabled)
+{
+    esp_err_t err = nvs_hal_set_u8(s_h_cfg,
+                                   NB_CFG_KEY_V2_CAP_EN,
+                                   enabled ? 1U : 0U);
     if (err == ESP_OK) nvs_hal_commit(s_h_cfg);
     return err;
 }

@@ -4,6 +4,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 COMPONENTS = ROOT / "components" / "services"
 BOOT_MANAGER = ROOT / "components" / "infra" / "boot_manager.c"
+CONFIG_H = ROOT / "components" / "infra" / "config_manager.h"
+CONFIG_C = ROOT / "components" / "infra" / "config_manager.c"
+CONFIG_KEYS = ROOT / "components" / "infra" / "nb_config_keys.h"
 
 V2_COMPONENTS = [
     "audio_io_service_v2",
@@ -108,3 +111,19 @@ def test_voice_capture_v2_replay_is_explicit_and_does_not_touch_bridge():
     assert "VOICE_START" not in capture_c
     assert "AUDIO_CHUNK" not in capture_c
     assert "VOICE_END" not in capture_c
+
+
+def test_voice_capture_v2_real_path_is_opt_in_config_flag():
+    web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+    config_h = CONFIG_H.read_text(encoding="utf-8")
+    config_c = CONFIG_C.read_text(encoding="utf-8")
+    config_keys = CONFIG_KEYS.read_text(encoding="utf-8")
+
+    assert '#define NB_CFG_KEY_V2_CAP_EN  "v2cap_en"' in config_keys
+    assert "#define NB_CFG_DEFAULT_V2_CAP_EN          0" in config_keys
+    assert "NB_CFG_SCHEMA_VERSION  3U" in config_keys
+    assert "bool      config_get_voice_audio_v2_capture_enabled(void);" in config_h
+    assert "esp_err_t config_set_voice_audio_v2_capture_enabled(bool enabled);" in config_h
+    assert "ensure_voice_audio_v2_defaults" in config_c
+    assert "voice_audio_v2_capture_enabled" in web
+    assert '\\"real_capture_enabled\\":%s,' in web
