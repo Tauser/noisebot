@@ -754,6 +754,8 @@ Validacao:
   - CLI: `noisebot_server debug codec-v2 encode-test`;
   - `encode-test` e sintetico PCM16 passthrough: incrementa contadores de
     frame/pacote sem worker, sem Opus real, sem bridge e sem captura;
+  - packetizer sintetico acumula chunks PCM16 de 256 samples ate frame de
+    960 samples; 4 chunks geram 1 pacote e `pending_samples=64`;
   - validado em hardware apos flash:
     `initialized=false`, `format=pcm16`, `opus_frame_ms=60`,
     `opus_frame_samples=960`, `opus_bitrate=32000`,
@@ -763,6 +765,8 @@ Validacao:
   - CLI real com `--host 192.168.1.30` retornou o mesmo contrato.
   - validacao local do `encode-test`: `bridge/tests` 160, `server/tests` 120 e
     `idf.py build`.
+  - validacao local do packetizer: teste focado bridge 6, teste focado server
+    105, bridge completo 160, server completo 120 e `idf.py build`.
   - validacao em hardware do `encode-test` apos flash:
     `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`,
     `queue_count=0`, `error=ESP_OK`.

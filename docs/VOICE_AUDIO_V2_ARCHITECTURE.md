@@ -666,6 +666,9 @@ Implementacao atual:
 - `POST /api/audio/codec-v2/encode-test` executa um teste sintetico PCM16
   passthrough: incrementa `pcm_frames_in` e `packets_out`, mantendo
   `packet_drops=0` e sem fila pendente;
+- o packetizer sintetico acumula chunks PCM16 de 256 samples ate formar um
+  frame de 960 samples; o `encode-test` alimenta 4 chunks, gerando 1 pacote e
+  deixando `pending_samples=64`;
 - o server expoe proxy diagnostico em `/api/device/audio/codec-v2`;
 - o server tambem expoe `/api/device/audio/codec-v2/encode-test`;
 - CLI `noisebot_server debug codec-v2 status` consulta o endpoint do firmware;
@@ -688,6 +691,12 @@ Validacao em hardware:
 - CLI real `noisebot_server --host 192.168.1.30 debug codec-v2 status --json`
   retornou o mesmo contrato com `error=ESP_OK`.
 - Validacao local do encode-test sintetico:
+  - `bridge/tests`: 160 testes;
+  - `server/tests`: 120 testes;
+  - `idf.py build` limpo.
+- Validacao local do packetizer PCM16 -> 960 samples:
+  - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
+  - `server/tests/test_server_facade.py`: 105 testes;
   - `bridge/tests`: 160 testes;
   - `server/tests`: 120 testes;
   - `idf.py build` limpo.
