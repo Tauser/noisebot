@@ -462,6 +462,11 @@ Validação atual:
     24/32 kbps; a perda semântica vista no A/B live provavelmente está mais
     ligada a janela de captura/VAD/tempo de fala ou volume do teste do que a
     corrupção básica do Opus.
+- Perfil adotado para o próximo teste live: manter a estrutura Xiaozhi/StackChan
+  de Opus 16 kHz mono com frame de 60 ms, mas fixar o encoder do firmware em
+  32 kbps (`OPUS_TARGET_BITRATE=32000`) porque foi o melhor resultado offline
+  nas amostras reais do NoiseBot. PCM16 continua sendo o padrão seguro; Opus
+  continua opt-in por API.
 - Firmware real mantém PCM16 como padrão; Opus só liga por API experimental.
 - Firmware real passou por builds ESP-IDF limpos após os commits:
   - `38eadb6` worker isolado;
@@ -524,7 +529,9 @@ Critérios de aceite:
 - [x] Rodar A/B curto PCM16 vs Opus com zero drops e STT `good`.
 - [x] Rodar A/B maior PCM16 vs Opus com zero drops e STT `good`.
 - [x] Criar diagnóstico offline de qualidade Opus em cima dos WAVs reais.
-- [ ] Repetir A/B live curto em bitrate maior antes de considerar Opus como
+- [x] Fixar perfil live inicial em Opus 16 kHz mono, 60 ms, 32 kbps, mantendo
+  PCM16 como padrão.
+- [ ] Repetir A/B live curto em 32 kbps antes de considerar Opus como
   padrão obrigatório.
 
 ### Fase 7 — AEC e Modo Realtime

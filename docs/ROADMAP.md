@@ -2061,10 +2061,14 @@ Implementação:
 - [x] A/B maior PCM16 vs Opus executado em hardware: 10/10 turnos Opus
   `ok`, zero drops, 897 pacotes drenados e STT medio equivalente; manter Opus
   opt-in porque o match semantico estimado ficou abaixo de PCM16.
+- [x] Diagnóstico offline sobre WAVs reais escolheu o próximo perfil live:
+  Opus 16 kHz mono, frame de 60 ms e 32 kbps fixo. Isso mantém o contrato
+  Xiaozhi/StackChan de frame/codec, mas privilegia robustez no ambiente real
+  do NoiseBot antes de qualquer promoção para padrão.
 - [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
   padrão. Ver `docs/VOICE_PIPELINE.md` e `docs/VOICE_AB_PHASE5_8192.md`.
-- [ ] Próximo avanço: investigar perda semantica em Opus antes de considerar
-  Opus como padrão obrigatório, sem alterar wake word, VAD,
+- [ ] Próximo avanço: repetir A/B live curto no perfil Opus 32 kbps antes de
+  considerar Opus como padrão obrigatório, sem alterar wake word, VAD,
   follow-up, realtime ou AEC.
 
 ---

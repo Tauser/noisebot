@@ -1480,7 +1480,7 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
     nb_opus_worker_status_t st;
     audio_processor_service_get_opus_worker_status(&st);
 
-    char buf[1024];
+    char buf[1280];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"ran\":%s,\"running\":%s,\"task_created\":%s,"
              "\"worker_ok\":%s,"
@@ -1496,6 +1496,7 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
              "\"psram_after_open_kb\":%lu,"
              "\"psram_after_close_kb\":%lu,"
              "\"frame_samples\":%d,"
+             "\"bitrate\":%d,"
              "\"outbuf_bytes\":%d,"
              "\"encoded_bytes\":%d,"
              "\"encode_requests\":%lu,"
@@ -1533,6 +1534,7 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.psram_after_open_kb,
              (unsigned long)st.psram_after_close_kb,
              st.frame_samples,
+             st.bitrate,
              st.outbuf_bytes,
              st.encoded_bytes,
              (unsigned long)st.encode_requests,

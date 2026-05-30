@@ -66,7 +66,8 @@ static const char BRIDGE_HELLO_V2[] =
 static const char BRIDGE_HELLO_V2_OPUS[] =
     "{\"protocol\":\"noisebot-bridge\",\"version\":2,\"role\":\"firmware\","
     "\"audio\":{\"format\":\"opus\",\"sample_rate\":16000,\"channels\":1,"
-    "\"chunk_samples\":960},\"codecs\":{\"pcm16\":false,\"opus\":true},"
+    "\"chunk_samples\":960,\"frame_duration\":60},"
+    "\"codecs\":{\"pcm16\":false,\"opus\":true},"
     "\"listen\":{\"mode\":\"auto\",\"max_speech_ms\":9200,"
     "\"min_utterance_samples\":8000,\"max_utterance_samples\":192000,"
     "\"end_silence_ms\":900},\"rx\":[\"say\",\"expr\",\"action\","

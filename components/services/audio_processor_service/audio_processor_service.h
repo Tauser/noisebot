@@ -83,6 +83,7 @@ typedef struct {
     uint32_t psram_after_open_kb;
     uint32_t psram_after_close_kb;
     int frame_samples;
+    int bitrate;
     int outbuf_bytes;
     int encoded_bytes;
     uint32_t encode_requests;

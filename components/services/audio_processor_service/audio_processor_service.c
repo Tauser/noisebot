@@ -47,12 +47,13 @@
 
 #define OPUS_FRAME_DURATION_MS   60
 #define OPUS_FRAME_SAMPLES       ((16000 * OPUS_FRAME_DURATION_MS) / 1000)
+#define OPUS_TARGET_BITRATE      32000
 
 #define OPUS_ENC_CONFIG() {                                       \
         .sample_rate        = ESP_AUDIO_SAMPLE_RATE_16K,          \
         .channel            = ESP_AUDIO_MONO,                     \
         .bits_per_sample    = ESP_AUDIO_BIT16,                    \
-        .bitrate            = ESP_OPUS_BITRATE_AUTO,              \
+        .bitrate            = OPUS_TARGET_BITRATE,                \
         .frame_duration     = ESP_OPUS_ENC_FRAME_DURATION_60_MS,  \
         .application_mode   = ESP_OPUS_ENC_APPLICATION_AUDIO,     \
         .complexity         = 0,                                  \
@@ -557,6 +558,7 @@ static void opus_worker_task(void *arg)
     st.psram_before_kb = psram_free_kb();
     st.last_error = ESP_FAIL;
     st.codec_error = -1;
+    st.bitrate = OPUS_TARGET_BITRATE;
     opus_worker_set_status(&st);
 
     ESP_LOGI(TAG,
@@ -749,6 +751,7 @@ static void opus_persistent_task(void *arg)
     st.psram_before_kb = psram_free_kb();
     st.last_error = ESP_FAIL;
     st.codec_error = -1;
+    st.bitrate = OPUS_TARGET_BITRATE;
     opus_worker_set_status(&st);
 
     void *enc = NULL;
