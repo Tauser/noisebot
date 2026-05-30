@@ -39,6 +39,7 @@ typedef enum {
 typedef struct {
     bool initialized;
     bool session_active;
+    bool real_capture;
     bool voice_start_sent;
     bool voice_audio_sent;
     bool voice_end_sent;

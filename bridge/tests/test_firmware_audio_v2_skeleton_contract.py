@@ -107,6 +107,8 @@ def test_voice_capture_v2_replay_is_explicit_and_does_not_touch_bridge():
     assert "audio_service_is_busy()" in web
     assert "esp_err_t voice_capture_session_v2_replay_start(" in capture_h
     assert "esp_err_t voice_capture_session_v2_cancel(void);" in capture_h
+    assert "bool real_capture;" in capture_h
+    assert '\\"real_capture\\":%s,' in web
     assert "bridge_service" not in capture_c
     assert "VOICE_START" not in capture_c
     assert "AUDIO_CHUNK" not in capture_c
@@ -118,6 +120,9 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
     audio_service = (COMPONENTS / "audio_service" / "audio_service.c").read_text(
         encoding="utf-8"
     )
+    capture_c = (
+        COMPONENTS / "voice_capture_session_v2" / "voice_capture_session_v2.c"
+    ).read_text(encoding="utf-8")
     config_h = CONFIG_H.read_text(encoding="utf-8")
     config_c = CONFIG_C.read_text(encoding="utf-8")
     config_keys = CONFIG_KEYS.read_text(encoding="utf-8")
@@ -134,6 +139,7 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
     assert "audio_service_end_listen_session(NB_LISTEN_END_CANCELLED)" in web
     assert "config_get_voice_audio_v2_capture_enabled()" in audio_service
     assert "voice_capture_session_v2_begin_real_pcm16(" in audio_service
+    assert "s_status.real_capture = true;" in capture_c
     assert "voice_capture_session_v2_note_voice_start();" in audio_service
     assert "voice_capture_session_v2_note_audio_chunk(" in audio_service
     assert "voice_capture_session_v2_finish(" in audio_service

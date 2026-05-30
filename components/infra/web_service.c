@@ -1780,7 +1780,7 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
     char buf[768];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
-             "\"real_capture_enabled\":%s,"
+             "\"real_capture_enabled\":%s,\"real_capture\":%s,"
              "\"state\":\"%s\",\"source\":\"%s\",\"session_id\":%lu,"
              "\"voice_start_sent\":%s,\"voice_audio_sent\":%s,"
              "\"voice_end_sent\":%s,\"replay_duration_ms\":%lu,"
@@ -1793,6 +1793,7 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
              st.initialized ? "true" : "false",
              st.session_active ? "true" : "false",
              config_get_voice_audio_v2_capture_enabled() ? "true" : "false",
+             st.real_capture ? "true" : "false",
              capture_v2_state_name(st.state),
              capture_v2_source_name(st.source),
              (unsigned long)st.session_id,

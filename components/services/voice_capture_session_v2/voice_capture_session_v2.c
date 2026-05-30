@@ -110,6 +110,7 @@ esp_err_t voice_capture_session_v2_replay_start(nb_voice_capture_v2_source_t sou
 
     reset_runtime_locked(true);
     s_status.session_active = true;
+    s_status.real_capture = false;
     s_status.state = NB_VOICE_CAPTURE_V2_WAITING_FOR_SPEECH;
     s_status.source = source;
     s_status.session_id = s_next_session_id++;
@@ -170,6 +171,7 @@ esp_err_t voice_capture_session_v2_begin_real_pcm16(nb_voice_capture_v2_source_t
     reset_runtime_locked(true);
     s_status.source = source;
     s_status.session_active = true;
+    s_status.real_capture = true;
     s_status.state = NB_VOICE_CAPTURE_V2_WAITING_FOR_SPEECH;
     s_status.session_id = s_next_session_id++;
     if (s_next_session_id == 0U) {
