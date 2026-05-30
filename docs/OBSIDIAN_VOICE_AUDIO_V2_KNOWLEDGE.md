@@ -725,6 +725,9 @@ Validacao:
     `ok=true`, `interrupted_turn_id=85`,
     `interruption_cancel_ms=1.4`, `discard_reason=barge_in`,
     `outcome=interrupted`.
+  - regressao `no-echo-live` com flag v2 desligada:
+    `ok=true`, `response_turn_id=87`, `unexpected_turn_id=null`,
+    `quiet_window_s=10.0`, `outcome=llm`.
 
 - Wake abre sessao.
 - Silencio apos wake nao envia STT.

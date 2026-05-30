@@ -630,8 +630,11 @@ Validacao:
   - segunda execucao: `ok=true`, `interrupted_turn_id=85`,
     `interruption_cancel_ms=1.4`, `discard_reason=barge_in`,
     `outcome=interrupted`.
-- Proxima etapa: rodar `no-echo-live` e um turno PCM16 normal com a flag v2
-  desligada para confirmar ausencia de regressao operacional.
+- Regressao `no-echo-live` com flag v2 desligada:
+  - `ok=true`, `response_turn_id=87`, `unexpected_turn_id=null`,
+    `quiet_window_s=10.0`, `outcome=llm`, sem reabertura de escuta por eco.
+- Proxima etapa: rodar um turno PCM16 normal com a flag v2 desligada para
+  confirmar ausencia de regressao operacional antes de promover a proxima fase.
 
 ### Fase F - Codec v2 Opus
 
