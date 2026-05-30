@@ -717,6 +717,19 @@ Validacao em hardware:
   - `bridge/tests`: 160 testes;
   - `server/tests`: 122 testes;
   - `idf.py build` limpo.
+- Validacao em hardware do drain sintetico apos flash:
+  - status inicial: `pcm_frames_in=0`, `packets_out=0`, `packet_drops=0`,
+    `queue_count=0`, `pending_samples=0`, `error=ESP_OK`;
+  - apos `encode-test`: `pcm_frames_in=1`, `packets_out=1`,
+    `packet_drops=0`, `queue_count=1`, `pending_samples=64`,
+    `error=ESP_OK`;
+  - apos `drain`: `drained_packets=1`, `queue_count=0`,
+    `pending_samples=64`, `packet_drops=0`, `error=ESP_OK`;
+  - status final preservou `queue_count=0`, `pending_samples=64` e
+    `error=ESP_OK`;
+  - `capture-v2 status` confirmou fallback seguro:
+    `real_capture_enabled=false`, `session_active=false`,
+    `state=IDLE_SESSION`, `last_error=ESP_OK`.
 - Validacao em hardware do `encode-test` apos flash:
   - `noisebot_server --host 192.168.1.30 debug codec-v2 encode-test --json`;
   - `ok=true`, `initialized=false`, `format=pcm16`,

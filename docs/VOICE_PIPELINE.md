@@ -74,7 +74,10 @@ pendentes quando recebe 4 chunks no teste. A fila sintética do codec v2 aceita
 até 40 pacotes e passa a contar `packet_drops` quando esse limite é excedido,
 ainda sem worker, sem Opus real e sem transporte para o bridge. O drain
 sintetico em `codec-v2 drain` zera apenas a fila pronta e retorna
-`drained_packets`, preservando amostras pendentes e contadores acumulados.
+`drained_packets`, preservando amostras pendentes e contadores acumulados. Em
+hardware, após flash, a sequência `status -> encode-test -> drain -> status`
+confirmou `drained_packets=1`, `queue_count=0`, `pending_samples=64`,
+`packet_drops=0` e `ESP_OK`; `capture-v2` permaneceu desligado.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
