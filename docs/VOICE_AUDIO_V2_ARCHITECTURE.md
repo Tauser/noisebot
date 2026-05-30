@@ -585,6 +585,8 @@ Implementacao:
   bridge/audio ja validado.
 - `voice_capture_session_v2` acompanha `VOICE_START`, chunks aceitos/drops e
   fim/cancelamento da sessao sem chamar `bridge_service` diretamente.
+- O status HTTP inclui `real_capture` para diferenciar replay sintetico de
+  sessao PCM16 real, facilitando validacao em hardware sem mudar o caminho v1.
 - `POST /api/audio/capture-v2/cancel` encerra a sessao real via
   `audio_service_end_listen_session(NB_LISTEN_END_CANCELLED)` quando a captura
   v2 e o audio_service estao ativos, mantendo os estados sincronizados.
@@ -607,8 +609,8 @@ Validacao:
   - `Firmware: adicionar flag de captura v2`;
   - `Firmware: rotear captura v2 como opt-in`.
 - Proxima etapa: validar em hardware com a flag ligada e bridge conectado,
-  conferindo que status v2 reflete fala real sem regredir o caminho v1 quando
-  a flag esta desligada.
+  conferindo `real_capture=true`, contadores de fala reais e caminho v1 sem
+  regressao quando a flag esta desligada.
 
 ### Fase F - Codec v2 Opus
 

@@ -56,7 +56,8 @@ Status v2 atual: Audio I/O e playback ja possuem probes explicitos validados.
 caminho v1 segue ativo. Com a flag ligada, o wake abre estado de sessao v2 e
 contabiliza start/chunks/fim/cancelamento, enquanto o envio
 `VOICE_START/AUDIO_CHUNK/VOICE_END` ao bridge permanece no caminho validado do
-`audio_service`.
+`audio_service`. O status HTTP de captura expõe `real_capture_enabled` para a
+flag e `real_capture` para diferenciar replay de uma sessao PCM16 real.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,

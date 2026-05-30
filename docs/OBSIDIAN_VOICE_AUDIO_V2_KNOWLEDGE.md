@@ -689,6 +689,10 @@ Validacao:
   - `audio_service` continua enviando PCM16 ao bridge;
   - `voice_capture_session_v2` apenas acompanha estado/contadores v2 e nao
     chama `bridge_service` diretamente.
+- Status HTTP:
+  - `real_capture_enabled`: flag/config atual;
+  - `real_capture`: diferencia replay sintetico (`false`) de sessao PCM16 real
+    acompanhada pelo v2 (`true`).
 - Cancelamento:
   - `POST /api/audio/capture-v2/cancel` encerra a sessao real via
     `audio_service_end_listen_session(NB_LISTEN_END_CANCELLED)` quando a
