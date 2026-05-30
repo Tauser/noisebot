@@ -592,6 +592,7 @@ Capture v2 status/replay:
 ```powershell
 python -m noisebot_server --host 192.168.1.30 debug capture-v2 status --json
 python -m noisebot_server --host 192.168.1.30 debug capture-v2 replay --speech-ms 640 --silence-ms 900 --json
+python -m noisebot_server --host 192.168.1.30 debug capture-v2 live --json
 ```
 
 ## Criterios de Aceite por Etapa
@@ -704,7 +705,9 @@ Validacao:
   - proxy diagnostico em `/api/device/audio/capture-v2`,
     `/api/device/audio/capture-v2/replay` e
     `/api/device/audio/capture-v2/cancel`;
-  - CLI `noisebot_server debug capture-v2` para status/replay/cancel.
+  - CLI `noisebot_server debug capture-v2` para status/replay/cancel;
+  - acao `live` liga `voice_audio_v2_capture_enabled`, aguarda um turno real e
+    desliga a flag no final para rollback.
 - Cancelamento:
   - `POST /api/audio/capture-v2/cancel` encerra a sessao real via
     `audio_service_end_listen_session(NB_LISTEN_END_CANCELLED)` quando a

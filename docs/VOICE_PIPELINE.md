@@ -524,7 +524,8 @@ Validação atual:
   `/api/device/audio/capture-v2/replay` e
   `/api/device/audio/capture-v2/cancel`.
 - `noisebot_server debug capture-v2`: ferramenta manual para consultar status,
-  executar replay sintetico e cancelar a captura v2 durante validacao.
+  executar replay sintetico, cancelar a captura v2 e rodar validacao `live`
+  com rollback automatico da flag.
 - `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém PCM16
   como contrato padrão e exige flag explicita para Opus.
 - `bridge/tests`: 153 testes verdes após a integração.

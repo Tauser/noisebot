@@ -594,7 +594,8 @@ Implementacao:
   `/api/device/audio/capture-v2`,
   `/api/device/audio/capture-v2/replay`,
   `/api/device/audio/capture-v2/cancel`, alem do comando
-  `noisebot_server debug capture-v2` para status/replay/cancel.
+  `noisebot_server debug capture-v2` para status/replay/cancel e validacao
+  `live` com rollback automatico da flag.
 
 Aceite:
 
@@ -615,7 +616,8 @@ Validacao:
   - `Firmware: rotear captura v2 como opt-in`.
 - Proxima etapa: validar em hardware com a flag ligada e bridge conectado,
   conferindo `real_capture=true`, contadores de fala reais e caminho v1 sem
-  regressao quando a flag esta desligada.
+  regressao quando a flag esta desligada. O comando recomendado e
+  `noisebot_server debug capture-v2 live --json`.
 
 ### Fase F - Codec v2 Opus
 
