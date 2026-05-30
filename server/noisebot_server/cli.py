@@ -124,7 +124,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     codec_v2 = debug_sub.add_parser("codec-v2")
     codec_v2.add_argument(
         "action",
-        choices=["status"],
+        choices=["status", "encode-test"],
         nargs="?",
         default="status",
     )
@@ -545,7 +545,10 @@ def run_debug_command(args: argparse.Namespace) -> None:
             raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
 
         client = FirmwareDiagClient(firmware_url.rstrip("/") + "/")
-        payload = client.audio_codec_v2_status()
+        if args.action == "encode-test":
+            payload = client.audio_codec_v2_encode_test()
+        else:
+            payload = client.audio_codec_v2_status()
         if args.json:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         else:

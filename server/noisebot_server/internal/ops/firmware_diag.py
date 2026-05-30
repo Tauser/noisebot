@@ -189,6 +189,9 @@ class FirmwareDiagClient:
             raise FirmwareDiagError("api/audio/codec-v2: resposta invalida")
         return payload
 
+    def audio_codec_v2_encode_test(self) -> dict[str, Any]:
+        return self._post_json("api/audio/codec-v2/encode-test")
+
     def set_voice_audio_v2_capture_enabled(self, enabled: bool) -> dict[str, Any]:
         return self._post_json(
             "api/config",

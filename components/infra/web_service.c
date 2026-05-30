@@ -1698,6 +1698,15 @@ static esp_err_t handle_api_audio_codec_v2_status(httpd_req_t *req)
     return send_audio_codec_v2_status(req, ESP_OK);
 }
 
+static esp_err_t handle_api_audio_codec_v2_encode_test(httpd_req_t *req)
+{
+    esp_err_t err = audio_codec_service_v2_encode_test_once();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+    return send_audio_codec_v2_status(req, err);
+}
+
 static esp_err_t handle_api_audio_io_v2_probe(httpd_req_t *req)
 {
     if (audio_service_is_busy()) {
@@ -3130,6 +3139,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/capture-v2/replay", .method = HTTP_POST, .handler = handle_api_voice_capture_v2_replay },
     { .uri = "/api/audio/capture-v2/cancel", .method = HTTP_POST, .handler = handle_api_voice_capture_v2_cancel },
     { .uri = "/api/audio/codec-v2", .method = HTTP_GET, .handler = handle_api_audio_codec_v2_status },
+    { .uri = "/api/audio/codec-v2/encode-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_encode_test },
     { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
     { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },
     { .uri = "/api/audio/processor/aec/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_aec_probe },

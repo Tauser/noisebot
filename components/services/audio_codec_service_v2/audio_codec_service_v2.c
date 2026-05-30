@@ -45,3 +45,12 @@ void audio_codec_service_v2_get_status(nb_audio_codec_v2_status_t *out)
 
     *out = s_status;
 }
+
+esp_err_t audio_codec_service_v2_encode_test_once(void)
+{
+    s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
+    s_status.pcm_frames_in++;
+    s_status.packets_out++;
+    s_status.queue_count = 0;
+    return ESP_OK;
+}

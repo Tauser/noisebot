@@ -50,10 +50,13 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "#define NB_AUDIO_CODEC_V2_OPUS_BITRATE       32000U" in codec_h
     assert "NB_AUDIO_CODEC_V2_FORMAT_PCM16 = 0" in codec_h
     assert '{ .uri = "/api/audio/codec-v2"' in web
+    assert '{ .uri = "/api/audio/codec-v2/encode-test"' in web
     assert '\\"opus_bitrate\\":%u' in web
     assert '\\"max_queue_packets\\":%u' in web
     assert "NB_AUDIO_CODEC_V2_OPUS_BITRATE" in web
     assert "NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS" in web
+    assert "esp_err_t audio_codec_service_v2_encode_test_once(void);" in codec_h
+    assert "audio_codec_service_v2_encode_test_once()" in web
     assert "audio_codec_service_v2_init()" not in web
     assert "audio_codec_service_v2" in infra_cmake
     assert "#define NB_VOICE_CAPTURE_V2_WAIT_FOR_SPEECH_MS  8000U" in capture_h

@@ -41,6 +41,7 @@ esp_err_t audio_codec_service_v2_init(void);
 esp_err_t audio_codec_service_v2_deinit(void);
 bool audio_codec_service_v2_is_initialized(void);
 void audio_codec_service_v2_get_status(nb_audio_codec_v2_status_t *out);
+esp_err_t audio_codec_service_v2_encode_test_once(void);
 
 #ifdef __cplusplus
 }
