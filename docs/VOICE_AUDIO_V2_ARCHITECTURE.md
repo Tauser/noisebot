@@ -674,12 +674,16 @@ Implementacao atual:
   bridge;
 - `POST /api/audio/codec-v2/drain` drena a fila sintetica pronta e retorna
   `drained_packets`, preservando `pending_samples` e os contadores acumulados;
+- `POST /api/audio/codec-v2/reset` zera contadores, fila e amostras pendentes,
+  preservando o contrato fixo e `format=pcm16`;
 - o server expoe proxy diagnostico em `/api/device/audio/codec-v2`;
 - o server tambem expoe `/api/device/audio/codec-v2/encode-test`;
 - o server tambem expoe `/api/device/audio/codec-v2/drain`;
+- o server tambem expoe `/api/device/audio/codec-v2/reset`;
 - CLI `noisebot_server debug codec-v2 status` consulta o endpoint do firmware;
 - CLI `noisebot_server debug codec-v2 encode-test` aciona o teste sintetico;
 - CLI `noisebot_server debug codec-v2 drain` drena a fila sintetica;
+- CLI `noisebot_server debug codec-v2 reset` limpa o estado diagnostico;
 - o endpoint nao liga Opus, nao cria task e nao altera bridge/captura/playback;
 - o Opus operacional existente permanece no caminho opt-in atual
   `/api/audio/opus/transport/enable`, com PCM16 como fallback padrao.
@@ -716,6 +720,12 @@ Validacao em hardware:
   - `server/tests/test_server_facade.py`: 107 testes;
   - `bridge/tests`: 160 testes;
   - `server/tests`: 122 testes;
+  - `idf.py build` limpo.
+- Validacao local do reset diagnostico:
+  - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
+  - `server/tests/test_server_facade.py`: 109 testes;
+  - `bridge/tests`: 160 testes;
+  - `server/tests`: 124 testes;
   - `idf.py build` limpo.
 - Validacao em hardware do drain sintetico apos flash:
   - status inicial: `pcm_frames_in=0`, `packets_out=0`, `packet_drops=0`,

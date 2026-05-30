@@ -751,9 +751,11 @@ Validacao:
   - server proxy: `/api/device/audio/codec-v2`;
   - server proxy: `/api/device/audio/codec-v2/encode-test`;
   - server proxy: `/api/device/audio/codec-v2/drain`;
+  - server proxy: `/api/device/audio/codec-v2/reset`;
   - CLI: `noisebot_server debug codec-v2 status`;
   - CLI: `noisebot_server debug codec-v2 encode-test`;
   - CLI: `noisebot_server debug codec-v2 drain`;
+  - CLI: `noisebot_server debug codec-v2 reset`;
   - `encode-test` e sintetico PCM16 passthrough: incrementa contadores de
     frame/pacote sem worker, sem Opus real, sem bridge e sem captura;
   - packetizer sintetico acumula chunks PCM16 de 256 samples ate frame de
@@ -762,6 +764,9 @@ Validacao:
     `packet_drops`, sem worker, sem Opus real e sem bridge;
   - drain sintetico limpa apenas a fila pronta e retorna `drained_packets`,
     preservando `pending_samples` e contadores acumulados;
+  - reset diagnostico zera `pcm_frames_in`, `packets_out`, `packet_drops`,
+    `queue_count` e `pending_samples`, preservando `format=pcm16` e contrato
+    fixo do codec;
   - validado em hardware apos flash:
     `initialized=false`, `format=pcm16`, `opus_frame_ms=60`,
     `opus_frame_samples=960`, `opus_bitrate=32000`,
@@ -777,6 +782,8 @@ Validacao:
     server 105 e `idf.py build`.
   - validacao local do drain sintetico: teste focado bridge 6, teste focado
     server 107, bridge completo 160, server completo 122 e `idf.py build`.
+  - validacao local do reset diagnostico: teste focado bridge 6, teste focado
+    server 109, bridge completo 160, server completo 124 e `idf.py build`.
   - validacao em hardware do drain sintetico apos flash:
     status inicial zerado, `encode-test` gerou `queue_count=1` e
     `pending_samples=64`, `drain` retornou `drained_packets=1` e zerou
