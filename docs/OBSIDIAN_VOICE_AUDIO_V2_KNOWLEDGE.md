@@ -721,6 +721,10 @@ Validacao:
     `voice_end_sent=true`, `speech_frames=260`,
     `captured_samples=66560`, `dropped_frames=0`,
     `last_error=ESP_OK`, rollback `disabled.ok=true`.
+  - regressao `barge-live` com flag v2 desligada:
+    `ok=true`, `interrupted_turn_id=85`,
+    `interruption_cancel_ms=1.4`, `discard_reason=barge_in`,
+    `outcome=interrupted`.
 
 - Wake abre sessao.
 - Silencio apos wake nao envia STT.

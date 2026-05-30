@@ -623,8 +623,15 @@ Validacao:
   - `speech_frames=260`, `captured_samples=66560`,
     `dropped_frames=0`, `last_error=ESP_OK`;
   - rollback: `disabled.ok=true`.
-- Proxima etapa: rodar `barge-live`, `no-echo-live` e um turno PCM16 normal
-  com a flag v2 desligada para confirmar ausencia de regressao operacional.
+- Regressao `barge-live` com flag v2 desligada:
+  - primeira execucao mostrou sucesso operacional nas metricas, mas falso
+    negativo do harness; o harness foi ajustado para aceitar contadores
+    agregados `interruption_cancel`/`turns.interrupted`;
+  - segunda execucao: `ok=true`, `interrupted_turn_id=85`,
+    `interruption_cancel_ms=1.4`, `discard_reason=barge_in`,
+    `outcome=interrupted`.
+- Proxima etapa: rodar `no-echo-live` e um turno PCM16 normal com a flag v2
+  desligada para confirmar ausencia de regressao operacional.
 
 ### Fase F - Codec v2 Opus
 
