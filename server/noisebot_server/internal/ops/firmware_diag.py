@@ -171,6 +171,18 @@ class FirmwareDiagClient:
     def audio_opus_transport_disable(self) -> dict[str, Any]:
         return self._post_json("api/audio/opus/transport/disable")
 
+    def audio_capture_v2_status(self) -> dict[str, Any]:
+        payload = self._get_json("api/audio/capture-v2")
+        if not isinstance(payload, dict):
+            raise FirmwareDiagError("api/audio/capture-v2: resposta invalida")
+        return payload
+
+    def audio_capture_v2_replay(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._post_json("api/audio/capture-v2/replay", payload)
+
+    def audio_capture_v2_cancel(self) -> dict[str, Any]:
+        return self._post_json("api/audio/capture-v2/cancel")
+
 
 def _env_float(key: str, default: float) -> float:
     try:

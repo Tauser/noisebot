@@ -693,6 +693,100 @@ def test_server_firmware_diag_client_exposes_opus_endpoints(monkeypatch) -> None
     ]
 
 
+def test_server_firmware_diag_client_exposes_capture_v2_endpoints(monkeypatch) -> None:
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    client = firmware_diag.FirmwareDiagClient("http://robot.local/")
+    get_paths: list[str] = []
+    post_calls: list[tuple[str, dict | None]] = []
+
+    def fake_get_json(self, path):
+        get_paths.append(path)
+        return {"ok": True, "real_capture": False}
+
+    def fake_post_json(self, path, payload=None):
+        post_calls.append((path, payload))
+        return {"ok": True, "real_capture": False}
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "_get_json", fake_get_json)
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "_post_json", fake_post_json)
+
+    assert client.audio_capture_v2_status()["ok"]
+    assert client.audio_capture_v2_replay({"speech_ms": 640})["ok"]
+    assert client.audio_capture_v2_cancel()["ok"]
+
+    assert get_paths == ["api/audio/capture-v2"]
+    assert post_calls == [
+        ("api/audio/capture-v2/replay", {"speech_ms": 640}),
+        ("api/audio/capture-v2/cancel", None),
+    ]
+
+
+def test_server_cli_parses_capture_v2_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "capture-v2",
+        "replay",
+        "--speech-ms",
+        "320",
+        "--silence-ms",
+        "900",
+        "--source",
+        "wake",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "capture-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "replay"
+    assert args.speech_ms == 320
+    assert args.silence_ms == 900
+    assert args.source == "wake"
+    assert args.json
+
+
+def test_server_cli_runs_capture_v2_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+
+    def fake_replay(self, payload=None):
+        calls["base_url"] = self.base_url
+        calls["payload"] = payload
+        return {
+            "ok": True,
+            "real_capture_enabled": False,
+            "real_capture": False,
+            "state": "DONE",
+        }
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_capture_v2_replay", fake_replay)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "capture-v2",
+        "replay",
+        "--speech-ms",
+        "320",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"real_capture": false' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
+    assert calls["payload"] == {
+        "speech_ms": 320,
+        "silence_ms": 900,
+        "source": "debug",
+    }
+
+
 def test_server_cli_parses_barge_live_debug_command() -> None:
     cli = importlib.import_module("noisebot_server.cli")
 

@@ -107,6 +107,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     aec_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     aec_live.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    capture_v2 = debug_sub.add_parser("capture-v2")
+    capture_v2.add_argument("action", choices=["status", "replay", "cancel"], nargs="?", default="status")
+    capture_v2.add_argument("--firmware-url", default="")
+    capture_v2.add_argument("--speech-ms", type=int, default=640)
+    capture_v2.add_argument("--silence-ms", type=int, default=900)
+    capture_v2.add_argument("--source", default="debug")
+    capture_v2.add_argument("--json", action="store_true", help="Emitir JSON")
+
     parser.add_argument("--host", help="IP do ESP32")
     parser.add_argument("--port", type=int, help="Porta TCP")
     parser.add_argument("--uart", help="Porta UART")
@@ -473,7 +481,56 @@ def run_debug_command(args: argparse.Namespace) -> None:
         if not trial.ok:
             raise SystemExit(1)
         return
+    if args.debug_command == "capture-v2":
+        from .internal.ops.firmware_diag import FirmwareDiagClient
+
+        firmware_url = args.firmware_url or os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "")
+        if not firmware_url:
+            host = args.host or os.environ.get("NOISEBOT_HOST", "")
+            if host:
+                firmware_url = f"http://{host}"
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+
+        client = FirmwareDiagClient(firmware_url.rstrip("/") + "/")
+        if args.action == "status":
+            payload = client.audio_capture_v2_status()
+        elif args.action == "replay":
+            payload = client.audio_capture_v2_replay({
+                "speech_ms": args.speech_ms,
+                "silence_ms": args.silence_ms,
+                "source": args.source,
+            })
+        else:
+            payload = client.audio_capture_v2_cancel()
+
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(_format_capture_v2_status(payload))
+        if not payload.get("ok", False):
+            raise SystemExit(1)
+        return
     raise SystemExit(2)
+
+
+def _format_capture_v2_status(payload: dict[str, object]) -> str:
+    return "\n".join([
+        "Capture v2:",
+        f"- ok: {payload.get('ok')}",
+        f"- real_capture_enabled: {payload.get('real_capture_enabled')}",
+        f"- real_capture: {payload.get('real_capture')}",
+        f"- session_active: {payload.get('session_active')}",
+        f"- state: {payload.get('state')}",
+        f"- source: {payload.get('source')}",
+        f"- voice_start_sent: {payload.get('voice_start_sent')}",
+        f"- voice_audio_sent: {payload.get('voice_audio_sent')}",
+        f"- voice_end_sent: {payload.get('voice_end_sent')}",
+        f"- speech_frames: {payload.get('speech_frames')}",
+        f"- captured_samples: {payload.get('captured_samples')}",
+        f"- dropped_frames: {payload.get('dropped_frames')}",
+        f"- error: {payload.get('error')}",
+    ])
 
 
 def _parse_bitrates(raw: str) -> list[int]:

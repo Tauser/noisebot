@@ -139,6 +139,9 @@ class OpsHttpServer:
         wa.router.add_post("/api/device/audio/opus/worker/drain-packets", self._post_device_audio_opus_worker_drain_packets)
         wa.router.add_post("/api/device/audio/opus/transport/enable", self._post_device_audio_opus_transport_enable)
         wa.router.add_post("/api/device/audio/opus/transport/disable", self._post_device_audio_opus_transport_disable)
+        wa.router.add_get("/api/device/audio/capture-v2", self._get_device_audio_capture_v2)
+        wa.router.add_post("/api/device/audio/capture-v2/replay", self._post_device_audio_capture_v2_replay)
+        wa.router.add_post("/api/device/audio/capture-v2/cancel", self._post_device_audio_capture_v2_cancel)
         wa.router.add_get("/api/vision/status", self._get_vision_status)
         wa.router.add_get("/api/vision/observe", self._get_vision_observe)
         wa.router.add_get("/api/vision/analyze", self._get_vision_analyze)
@@ -466,6 +469,39 @@ class OpsHttpServer:
         self._require_token(request)
         return await self._proxy_firmware_diag_post(
             self._firmware_diag_client.audio_opus_transport_disable
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _get_device_audio_capture_v2(self, request: web.Request) -> web.Response:
+        return await self._proxy_firmware_diag_get(
+            self._firmware_diag_client.audio_capture_v2_status
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_capture_v2_replay(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        if self._firmware_diag_client is None:
+            return _json(error_response("firmware HTTP não configurado"), status=503)
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            body = {}
+        if not isinstance(body, dict):
+            return _json(error_response("corpo JSON invalido"), status=400)
+        try:
+            payload = await asyncio.to_thread(
+                self._firmware_diag_client.audio_capture_v2_replay,
+                body,
+            )
+        except FirmwareDiagError as exc:
+            return _json(error_response(str(exc)), status=503)
+        status = 200 if payload.get("ok", False) else 500
+        return _json({"source": "firmware_http", **payload}, status=status)
+
+    async def _post_device_audio_capture_v2_cancel(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_capture_v2_cancel
             if self._firmware_diag_client is not None else None
         )
 
