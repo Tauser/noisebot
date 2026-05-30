@@ -628,6 +628,15 @@ Validacao:
 
 - `idf.py build`.
 - `bridge/tests`: 157 testes.
+- Firmware real em 2026-05-30:
+  - OTA aplicado com build `abc9400`;
+  - `duration_ms=1000`;
+  - `rx_frames=63`;
+  - `tx_silence_frames=63`;
+  - `probe_elapsed_ms=1008`;
+  - `dropped_frames=0`;
+  - `i2s_recoveries=0`;
+  - pos-probe: `health=100`, SD montado.
 
 ### Playback v2 probe
 
@@ -648,6 +657,13 @@ Validacao:
 
 - `idf.py build`.
 - `bridge/tests`: 158 testes.
+- Firmware real em 2026-05-30:
+  - probe curto `duration_ms=320`, `amplitude=1200`;
+  - `played_chunks=20`, `queued_chunks=0`, `dropped_chunks=0`;
+  - cancelamento de probe `1000 ms` por endpoint stop:
+    `playing=false`, `queued_chunks=0`, `cancel_count=1`,
+    `dropped_chunks=0`;
+  - pos-probe: robo em `IDLE`, `health=100`.
 
 ### Capture session v2 PCM16
 

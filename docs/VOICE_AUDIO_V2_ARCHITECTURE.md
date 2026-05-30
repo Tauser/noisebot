@@ -496,6 +496,12 @@ Validacao:
 - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py` garante endpoint
   explicito e feed passivo.
 - `bridge/tests` passou com 157 testes.
+- Firmware real via OTA em 2026-05-30:
+  - `POST /api/audio/io-v2/probe` com `duration_ms=1000`;
+  - resultado: `rx_frames=63`, `tx_silence_frames=63`,
+    `probe_elapsed_ms=1008`, `dropped_frames=0`, `i2s_recoveries=0`;
+  - audio/heap pos-probe saudavel: `health=100`, SD montado,
+    `heap_internal_free=31655`, `heap_dma_free=31651`.
 
 ### Fase D - Playback v2 em Probe
 
@@ -533,6 +539,13 @@ Validacao:
 - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py` garante endpoint
   explicito, escrita via `audio_service` e ausencia de chamada HAL no v2.
 - `bridge/tests` passou com 158 testes.
+- Firmware real via OTA em 2026-05-30:
+  - probe curto: `duration_ms=320`, `amplitude=1200`,
+    `played_chunks=20`, `queued_chunks=0`, `dropped_chunks=0`;
+  - cancelamento: probe de `1000 ms` interrompido por
+    `POST /api/audio/playback-v2/stop`, resultado `playing=false`,
+    `queued_chunks=0`, `cancel_count=1`, `dropped_chunks=0`;
+  - pos-probe: robo voltou a `IDLE`, `health=100`.
 
 ### Fase E - Capture Session v2 com PCM16
 
