@@ -591,10 +591,21 @@ python -m noisebot_server --host 192.168.1.30 debug no-echo-live "me conte uma h
 
 ### Esqueleto v2 inativo
 
+Status: concluido em `e7dfea2`.
+
 - Build limpo.
 - Nenhum comportamento alterado.
 - Nenhum componente v2 inicializado no boot.
 - Teste confirma v1 ativo.
+- Componentes criados:
+  `audio_io_service_v2`, `audio_playback_service_v2`,
+  `voice_activity_service_v2`, `voice_capture_session_v2` e
+  `audio_codec_service_v2`.
+
+Validacao:
+
+- `idf.py build`.
+- `bridge/tests`: 156 testes.
 
 ### Audio I/O probe
 

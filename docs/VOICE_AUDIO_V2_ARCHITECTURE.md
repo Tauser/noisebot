@@ -436,6 +436,8 @@ Aceite:
 
 ### Fase B - Esqueleto v2 Inativo
 
+Status: concluida em `e7dfea2` (`Firmware: iniciar esqueleto de audio v2`).
+
 Objetivo: criar componentes vazios/contratos sem ativar.
 
 Entregas:
@@ -448,9 +450,16 @@ Entregas:
 
 Aceite:
 
-- Compila com `-Wall -Wextra -Werror`.
-- Nenhum componente v2 inicializado no boot.
-- Teste de contrato confirma que v1 ainda e o caminho ativo.
+- [x] Compila com `-Wall -Wextra -Werror`.
+- [x] Nenhum componente v2 inicializado no boot.
+- [x] Teste de contrato confirma que v1 ainda e o caminho ativo.
+
+Validacao:
+
+- `idf.py build` concluido sem warnings.
+- `bridge/tests/test_firmware_audio_v2_skeleton_contract.py` confirma que os
+  componentes existem e que o `boot_manager` nao inclui nem inicializa v2.
+- `bridge/tests` passou com 156 testes.
 
 ### Fase C - Audio I/O v2 em Probe
 
@@ -604,14 +613,16 @@ Metricas obrigatorias:
 - Nao copiar WebSocket Xiaozhi inteiro agora.
 - Nao copiar C++/std::vector para firmware C17 do NoiseBot.
 
-## Primeira Implementacao Permitida Depois Deste Documento
+## Proxima Implementacao Permitida
 
-O primeiro commit de codigo deve ser somente a Fase B:
+A Fase B ja criou apenas headers, CMake e fontes inativas dos novos
+componentes. A proxima mudanca de codigo deve ser a Fase C:
 
-- criar headers e CMake dos novos componentes;
-- nenhuma chamada no boot;
-- nenhum comportamento alterado;
-- testes de contrato garantindo que v1 continua ativo.
+- ativar `audio_io_service_v2` somente como probe explicito;
+- ler mic e alimentar speaker com silencio sem tocar wake, bridge ou playback
+  atual;
+- expor metricas de chunks, falhas I2S, RMS/peak e heap;
+- manter rollback imediato para o pipeline v1.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.
