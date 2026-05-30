@@ -898,6 +898,7 @@ def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
             "max_queue_packets": 40,
             "packets_out": 1,
             "packet_drops": 0,
+            "pending_samples": 64,
             "error": "ESP_OK",
         }
 

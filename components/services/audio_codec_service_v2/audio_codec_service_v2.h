@@ -35,12 +35,14 @@ typedef struct {
     uint32_t packets_out;
     uint32_t packet_drops;
     uint32_t queue_count;
+    uint16_t pending_samples;
 } nb_audio_codec_v2_status_t;
 
 esp_err_t audio_codec_service_v2_init(void);
 esp_err_t audio_codec_service_v2_deinit(void);
 bool audio_codec_service_v2_is_initialized(void);
 void audio_codec_service_v2_get_status(nb_audio_codec_v2_status_t *out);
+esp_err_t audio_codec_service_v2_feed_pcm16(const int16_t *samples, uint16_t sample_count);
 esp_err_t audio_codec_service_v2_encode_test_once(void);
 
 #ifdef __cplusplus

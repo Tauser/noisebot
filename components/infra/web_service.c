@@ -1674,6 +1674,7 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              "\"opus_bitrate\":%u,\"max_queue_packets\":%u,"
              "\"pcm_frames_in\":%lu,\"packets_out\":%lu,"
              "\"packet_drops\":%lu,\"queue_count\":%lu,"
+             "\"pending_samples\":%u,"
              "\"error\":\"%s\"}",
              (err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
@@ -1688,6 +1689,7 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.packets_out,
              (unsigned long)st.packet_drops,
              (unsigned long)st.queue_count,
+             (unsigned)st.pending_samples,
              esp_err_to_name(err));
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);

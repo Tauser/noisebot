@@ -573,6 +573,7 @@ def _format_codec_v2_status(payload: dict[str, object]) -> str:
             f"- Fila max: {payload.get('max_queue_packets', '')}",
             f"- Pacotes/drop: {payload.get('packets_out', '')}/"
             f"{payload.get('packet_drops', '')}",
+            f"- Samples pendentes: {payload.get('pending_samples', '')}",
             f"- Erro: {payload.get('error', '')}",
         ]
     )

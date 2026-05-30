@@ -55,7 +55,13 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"max_queue_packets\\":%u' in web
     assert "NB_AUDIO_CODEC_V2_OPUS_BITRATE" in web
     assert "NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS" in web
+    assert "uint16_t pending_samples;" in codec_h
+    assert "esp_err_t audio_codec_service_v2_feed_pcm16(" in codec_h
     assert "esp_err_t audio_codec_service_v2_encode_test_once(void);" in codec_h
+    assert "NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES" in (
+        COMPONENTS / "audio_codec_service_v2" / "audio_codec_service_v2.c"
+    ).read_text(encoding="utf-8")
+    assert '\\"pending_samples\\":%u' in web
     assert "audio_codec_service_v2_encode_test_once()" in web
     assert "audio_codec_service_v2_init()" not in web
     assert "audio_codec_service_v2" in infra_cmake
