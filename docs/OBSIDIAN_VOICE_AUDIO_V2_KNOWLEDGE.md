@@ -762,7 +762,10 @@ Validacao:
     `session_active=false`.
   - CLI real com `--host 192.168.1.30` retornou o mesmo contrato.
   - validacao local do `encode-test`: `bridge/tests` 160, `server/tests` 120 e
-    `idf.py build`; validacao em hardware exige novo flash.
+    `idf.py build`.
+  - validacao em hardware do `encode-test` apos flash:
+    `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`,
+    `queue_count=0`, `error=ESP_OK`.
 - Packet drops zero em teste curto.
 - Transcript comparavel ao PCM16.
 - `server_codec_confirmed=true`.

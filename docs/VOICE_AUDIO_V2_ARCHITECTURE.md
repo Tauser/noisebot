@@ -691,8 +691,11 @@ Validacao em hardware:
   - `bridge/tests`: 160 testes;
   - `server/tests`: 120 testes;
   - `idf.py build` limpo.
-- Validacao em hardware do `encode-test` exige flash do firmware contendo o
-  novo endpoint.
+- Validacao em hardware do `encode-test` apos flash:
+  - `noisebot_server --host 192.168.1.30 debug codec-v2 encode-test --json`;
+  - `ok=true`, `initialized=false`, `format=pcm16`,
+    `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`,
+    `queue_count=0`, `error=ESP_OK`.
 
 Aceite:
 
