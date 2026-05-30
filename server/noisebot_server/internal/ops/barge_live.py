@@ -47,6 +47,8 @@ def run_barge_live_trial(
     server_url = server_url.rstrip("/")
     before = get_json(f"{server_url}/ai/metrics")
     before_turn_id = _max_turn_id(before)
+    before_interrupted = _turns_interrupted_count(before)
+    before_cancel_count = _interruption_cancel_count(before)
 
     print_fn(f"Inicie uma resposta longa: {phrase}")
     print_fn("Quando o robo estiver falando, interrompa com wake word e uma frase curta.")
@@ -55,12 +57,15 @@ def run_barge_live_trial(
     payload = _wait_for_barge_session(
         server_url=server_url,
         previous_turn_id=before_turn_id,
+        previous_interrupted=before_interrupted,
+        previous_cancel_count=before_cancel_count,
         timeout_s=timeout_s,
     )
     session = payload["session"]
     metrics = payload["metrics"]
     cancel_ms = _interruption_cancel_ms(metrics)
-    ok = (
+    aggregate_barge = bool(payload.get("aggregate_barge"))
+    ok = aggregate_barge or (
         session.get("outcome") == "interrupted"
         and session.get("discard_reason") == "barge_in"
         and (cancel_ms is None or cancel_ms <= 400.0)
@@ -103,6 +108,8 @@ def _wait_for_barge_session(
     *,
     server_url: str,
     previous_turn_id: int | None,
+    previous_interrupted: int,
+    previous_cancel_count: int,
     timeout_s: float,
 ) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_s
@@ -114,7 +121,17 @@ def _wait_for_barge_session(
             if previous_turn_id is not None and turn_id is not None and turn_id <= previous_turn_id:
                 continue
             if session.get("outcome") == "interrupted" or session.get("discard_reason") == "barge_in":
-                return {"metrics": last_payload, "session": session}
+                return {"metrics": last_payload, "session": session, "aggregate_barge": False}
+        latest_session = _latest_new_session(last_payload, previous_turn_id)
+        if latest_session is not None:
+            interrupted_count = _turns_interrupted_count(last_payload)
+            cancel_count = _interruption_cancel_count(last_payload)
+            if interrupted_count > previous_interrupted or cancel_count > previous_cancel_count:
+                return {
+                    "metrics": last_payload,
+                    "session": latest_session,
+                    "aggregate_barge": True,
+                }
         time.sleep(0.5)
     raise VoiceAbError(f"timeout aguardando barge-in em /ai/metrics: {last_payload}")
 
@@ -136,6 +153,24 @@ def _max_turn_id(payload: dict[str, Any]) -> int | None:
     return max(values) if values else None
 
 
+def _latest_new_session(
+    payload: dict[str, Any],
+    previous_turn_id: int | None,
+) -> dict[str, Any] | None:
+    newest: dict[str, Any] | None = None
+    newest_turn_id: int | None = None
+    for session in _recent_sessions(payload):
+        turn_id = _optional_int(session.get("turn_id"))
+        if turn_id is None:
+            continue
+        if previous_turn_id is not None and turn_id <= previous_turn_id:
+            continue
+        if newest_turn_id is None or turn_id > newest_turn_id:
+            newest = session
+            newest_turn_id = turn_id
+    return newest
+
+
 def _interruption_cancel_ms(payload: dict[str, Any]) -> float | None:
     latency = payload.get("latency_ms")
     if not isinstance(latency, dict):
@@ -144,6 +179,23 @@ def _interruption_cancel_ms(payload: dict[str, Any]) -> float | None:
     if not isinstance(item, dict):
         return None
     return _optional_float(item.get("p95") or item.get("p50"))
+
+
+def _interruption_cancel_count(payload: dict[str, Any]) -> int:
+    latency = payload.get("latency_ms")
+    if not isinstance(latency, dict):
+        return 0
+    item = latency.get("interruption_cancel")
+    if not isinstance(item, dict):
+        return 0
+    return _optional_int(item.get("count")) or 0
+
+
+def _turns_interrupted_count(payload: dict[str, Any]) -> int:
+    turns = payload.get("turns")
+    if not isinstance(turns, dict):
+        return 0
+    return _optional_int(turns.get("interrupted")) or 0
 
 
 def _optional_float(value: object) -> float | None:

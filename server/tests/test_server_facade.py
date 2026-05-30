@@ -894,6 +894,50 @@ def test_server_cli_runs_barge_live_debug_command(monkeypatch, capsys) -> None:
     assert calls["phrase"] == "me conte uma historia longa"
 
 
+def test_server_barge_live_accepts_aggregate_interruption(monkeypatch) -> None:
+    barge_live = importlib.import_module("noisebot_server.internal.ops.barge_live")
+
+    payloads = [
+        {
+            "turns": {"interrupted": 1},
+            "latency_ms": {"interruption_cancel": {"count": 1, "p95": 1.0}},
+            "recent_voice_sessions": [{"turn_id": 81, "outcome": "llm"}],
+        },
+        {
+            "turns": {"interrupted": 2},
+            "latency_ms": {"interruption_cancel": {"count": 2, "p95": 1.0}},
+            "recent_voice_sessions": [
+                {
+                    "turn_id": 82,
+                    "outcome": "local_intent",
+                    "transcript": "Que horas são?",
+                    "reply": "Agora sao 17 horas.",
+                    "discard_reason": None,
+                },
+                {"turn_id": 81, "outcome": "llm"},
+            ],
+        },
+    ]
+
+    def fake_get_json(url):
+        return payloads.pop(0) if payloads else payloads[-1]
+
+    monkeypatch.setattr(barge_live, "get_json", fake_get_json)
+
+    trial = barge_live.run_barge_live_trial(
+        phrase="me conte uma historia longa",
+        server_url="http://127.0.0.1:8765",
+        timeout_s=1.0,
+        input_fn=lambda _prompt: "",
+        print_fn=lambda _text: None,
+    )
+
+    assert trial.ok is True
+    assert trial.interrupted_turn_id == 82
+    assert trial.interruption_cancel_ms == 1.0
+    assert trial.transcript == "Que horas são?"
+
+
 def test_server_cli_parses_no_echo_live_debug_command() -> None:
     cli = importlib.import_module("noisebot_server.cli")
 
