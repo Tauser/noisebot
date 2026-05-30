@@ -63,6 +63,7 @@ idf_component_register(
         audio_io_service_v2
         audio_playback_service_v2
         voice_capture_session_v2
+        audio_codec_service_v2
         audio_processor_service
         time_service
         agenda_service

@@ -44,6 +44,7 @@
 #include "audio_io_service_v2.h"
 #include "audio_playback_service_v2.h"
 #include "voice_capture_session_v2.h"
+#include "audio_codec_service_v2.h"
 #include "audio_service.h"
 #include "touch_service.h"
 #include "time_service.h"
@@ -1648,6 +1649,55 @@ static esp_err_t handle_api_audio_io_v2_status(httpd_req_t *req)
     return send_audio_io_v2_status(req, ESP_OK);
 }
 
+static const char *audio_codec_v2_format_name(nb_audio_codec_v2_format_t format)
+{
+    switch (format) {
+    case NB_AUDIO_CODEC_V2_FORMAT_PCM16:
+        return "pcm16";
+    case NB_AUDIO_CODEC_V2_FORMAT_OPUS:
+        return "opus";
+    default:
+        return "unknown";
+    }
+}
+
+static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
+{
+    nb_audio_codec_v2_status_t st;
+    audio_codec_service_v2_get_status(&st);
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"initialized\":%s,\"format\":\"%s\","
+             "\"sample_rate_hz\":%u,\"channels\":%u,"
+             "\"opus_frame_ms\":%u,\"opus_frame_samples\":%u,"
+             "\"opus_bitrate\":%u,\"max_queue_packets\":%u,"
+             "\"pcm_frames_in\":%lu,\"packets_out\":%lu,"
+             "\"packet_drops\":%lu,\"queue_count\":%lu,"
+             "\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             st.initialized ? "true" : "false",
+             audio_codec_v2_format_name(st.format),
+             (unsigned)NB_AUDIO_CODEC_V2_SAMPLE_RATE_HZ,
+             (unsigned)NB_AUDIO_CODEC_V2_CHANNELS,
+             (unsigned)NB_AUDIO_CODEC_V2_OPUS_FRAME_MS,
+             (unsigned)NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES,
+             (unsigned)NB_AUDIO_CODEC_V2_OPUS_BITRATE,
+             (unsigned)NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS,
+             (unsigned long)st.pcm_frames_in,
+             (unsigned long)st.packets_out,
+             (unsigned long)st.packet_drops,
+             (unsigned long)st.queue_count,
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_audio_codec_v2_status(httpd_req_t *req)
+{
+    return send_audio_codec_v2_status(req, ESP_OK);
+}
+
 static esp_err_t handle_api_audio_io_v2_probe(httpd_req_t *req)
 {
     if (audio_service_is_busy()) {
@@ -3079,6 +3129,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/capture-v2", .method = HTTP_GET, .handler = handle_api_voice_capture_v2_status },
     { .uri = "/api/audio/capture-v2/replay", .method = HTTP_POST, .handler = handle_api_voice_capture_v2_replay },
     { .uri = "/api/audio/capture-v2/cancel", .method = HTTP_POST, .handler = handle_api_voice_capture_v2_cancel },
+    { .uri = "/api/audio/codec-v2", .method = HTTP_GET, .handler = handle_api_audio_codec_v2_status },
     { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
     { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },
     { .uri = "/api/audio/processor/aec/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_aec_probe },

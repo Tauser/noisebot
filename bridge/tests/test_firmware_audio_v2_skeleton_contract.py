@@ -33,6 +33,10 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     codec_h = (COMPONENTS / "audio_codec_service_v2" / "audio_codec_service_v2.h").read_text(
         encoding="utf-8"
     )
+    web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+    infra_cmake = (ROOT / "components" / "infra" / "CMakeLists.txt").read_text(
+        encoding="utf-8"
+    )
     capture_h = (
         COMPONENTS / "voice_capture_session_v2" / "voice_capture_session_v2.h"
     ).read_text(encoding="utf-8")
@@ -45,6 +49,13 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "#define NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES 960U" in codec_h
     assert "#define NB_AUDIO_CODEC_V2_OPUS_BITRATE       32000U" in codec_h
     assert "NB_AUDIO_CODEC_V2_FORMAT_PCM16 = 0" in codec_h
+    assert '{ .uri = "/api/audio/codec-v2"' in web
+    assert '\\"opus_bitrate\\":%u' in web
+    assert '\\"max_queue_packets\\":%u' in web
+    assert "NB_AUDIO_CODEC_V2_OPUS_BITRATE" in web
+    assert "NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS" in web
+    assert "audio_codec_service_v2_init()" not in web
+    assert "audio_codec_service_v2" in infra_cmake
     assert "#define NB_VOICE_CAPTURE_V2_WAIT_FOR_SPEECH_MS  8000U" in capture_h
     assert "#define NB_VOICE_CAPTURE_V2_END_SILENCE_MS      900U" in capture_h
     assert "#define NB_VOICE_CAPTURE_V2_MAX_SPEECH_MS       9200U" in capture_h
