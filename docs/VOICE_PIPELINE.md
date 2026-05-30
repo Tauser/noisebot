@@ -50,13 +50,13 @@ captura de sessao, VAD/AFE, codec e bridge, com PCM16 como fallback e Opus
 opt-in ate validacao em hardware.
 
 Status v2 atual: Audio I/O e playback ja possuem probes explicitos validados.
-`voice_capture_session_v2` entrou em preparacao por replay sintetico via
-`/api/audio/capture-v2`, ainda sem wake real, sem mic real acoplado e sem envio
-de `VOICE_START/AUDIO_CHUNK/VOICE_END` ao bridge. A ligacao real PCM16 por wake
-deve ser feita somente atras da flag `voice_audio_v2_capture_enabled`, que fica
-desligada por padrao. O roteamento opt-in existe no `audio_service`; quando a
-flag liga, `voice_capture_session_v2` acompanha a sessao PCM16 real, enquanto o
-envio ao bridge permanece no caminho validado do `audio_service`.
+`voice_capture_session_v2` possui replay/status/cancel via
+`/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
+`voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o
+caminho v1 segue ativo. Com a flag ligada, o wake abre estado de sessao v2 e
+contabiliza start/chunks/fim/cancelamento, enquanto o envio
+`VOICE_START/AUDIO_CHUNK/VOICE_END` ao bridge permanece no caminho validado do
+`audio_service`.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,

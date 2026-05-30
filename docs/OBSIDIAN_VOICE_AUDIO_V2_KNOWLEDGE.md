@@ -656,7 +656,7 @@ Status: iniciado em `99a3a17`.
 Validacao:
 
 - `idf.py build`.
-- `bridge/tests`: 158 testes.
+- `bridge/tests`: 160 testes.
 - Firmware real em 2026-05-30:
   - probe curto `duration_ms=320`, `amplitude=1200`;
   - `played_chunks=20`, `queued_chunks=0`, `dropped_chunks=0`;
@@ -667,12 +667,12 @@ Validacao:
 
 ### Capture session v2 PCM16
 
-- Preparacao iniciada em replay interno:
+- Captura PCM16 real acompanhada por v2 atras de flag opt-in:
   - `GET /api/audio/capture-v2`;
   - `POST /api/audio/capture-v2/replay`;
   - `POST /api/audio/capture-v2/cancel`.
 - O replay sintetico exercita a maquina de estados de
-  `voice_capture_session_v2` sem mic real, sem wake real e sem bridge real.
+  `voice_capture_session_v2` sem bridge real.
 - Replay com `speech_ms=0` termina sem `voice_start_sent` e sem
   `voice_audio_sent`, preservando a regra "wake vazio nao envia STT".
 - O componente nao chama `bridge_service` e nao emite `VOICE_START`,
@@ -689,7 +689,11 @@ Validacao:
   - `audio_service` continua enviando PCM16 ao bridge;
   - `voice_capture_session_v2` apenas acompanha estado/contadores v2 e nao
     chama `bridge_service` diretamente.
-- Validacao preparatoria:
+- Cancelamento:
+  - `POST /api/audio/capture-v2/cancel` encerra a sessao real via
+    `audio_service_end_listen_session(NB_LISTEN_END_CANCELLED)` quando a
+    captura v2 e o audio_service estao ativos.
+- Validacao:
   - `idf.py build`;
   - testes de contrato de audio v2/audio service.
 

@@ -538,7 +538,7 @@ Validacao:
 - `idf.py build` concluido sem warnings.
 - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py` garante endpoint
   explicito, escrita via `audio_service` e ausencia de chamada HAL no v2.
-- `bridge/tests` passou com 158 testes.
+- `bridge/tests` passou com 160 testes.
 - Firmware real via OTA em 2026-05-30:
   - probe curto: `duration_ms=320`, `amplitude=1200`,
     `played_chunks=20`, `queued_chunks=0`, `dropped_chunks=0`;
@@ -549,7 +549,7 @@ Validacao:
 
 ### Fase E - Capture Session v2 com PCM16
 
-Status: preparacao iniciada em replay interno.
+Status: captura PCM16 real acompanhada por v2 atras de flag opt-in.
 
 Objetivo: uma sessao real por wake usando PCM16, atras de flag.
 
@@ -560,10 +560,10 @@ Entregas:
 - VAD start/end;
 - `VOICE_START/AUDIO_CHUNK/VOICE_END` PCM16.
 
-Implementacao preparatoria:
+Implementacao:
 
 - `voice_capture_session_v2` agora possui maquina de estado exercitavel por
-  replay sintetico, sem mic real e sem wake real.
+  replay sintetico.
 - Endpoints HTTP explicitos:
   - `GET /api/audio/capture-v2`;
   - `POST /api/audio/capture-v2/replay`;
@@ -585,6 +585,9 @@ Implementacao preparatoria:
   bridge/audio ja validado.
 - `voice_capture_session_v2` acompanha `VOICE_START`, chunks aceitos/drops e
   fim/cancelamento da sessao sem chamar `bridge_service` diretamente.
+- `POST /api/audio/capture-v2/cancel` encerra a sessao real via
+  `audio_service_end_listen_session(NB_LISTEN_END_CANCELLED)` quando a captura
+  v2 e o audio_service estao ativos, mantendo os estados sincronizados.
 
 Aceite:
 
@@ -593,12 +596,13 @@ Aceite:
 - `no-echo-live` ok.
 - TV/ambiente sem wake nao abre sessao.
 
-Validacao preparatoria:
+Validacao:
 
 - `idf.py build` concluido sem warnings.
 - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py` garante endpoint
-  explicito e ausencia de chamadas ao bridge no capture v2.
-- `bridge/tests` passou com 159 testes.
+  explicito, ausencia de chamadas ao bridge no capture v2 e cancelamento da
+  sessao real pelo `audio_service`.
+- `bridge/tests` passou com 160 testes.
 - Flag e hook opt-in criados em commits pequenos:
   - `Firmware: adicionar flag de captura v2`;
   - `Firmware: rotear captura v2 como opt-in`.
