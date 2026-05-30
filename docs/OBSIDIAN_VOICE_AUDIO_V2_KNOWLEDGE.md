@@ -769,7 +769,7 @@ Validacao:
     105, bridge completo 160, server completo 120 e `idf.py build`.
   - validacao em hardware do `encode-test` apos flash:
     `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`,
-    `queue_count=0`, `error=ESP_OK`.
+    `queue_count=0`, `pending_samples=64`, `error=ESP_OK`.
 - Packet drops zero em teste curto.
 - Transcript comparavel ao PCM16.
 - `server_codec_confirmed=true`.

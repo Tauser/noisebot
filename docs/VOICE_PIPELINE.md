@@ -68,9 +68,9 @@ expõe proxy em `/api/device/audio/codec-v2` e CLI
 `codec-v2 encode-test` exercita apenas PCM16 passthrough e contadores internos,
 sem worker, sem Opus real e sem mudança no transporte; em hardware retornou
 `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`, `queue_count=0` e
-`ESP_OK`. O packetizer sintético já acumula chunks PCM16 de 256 samples até
-formar frame de 960 samples, deixando 64 samples pendentes quando recebe 4
-chunks no teste.
+`pending_samples=64` com `ESP_OK`. O packetizer sintético já acumula chunks
+PCM16 de 256 samples até formar frame de 960 samples, deixando 64 samples
+pendentes quando recebe 4 chunks no teste.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,

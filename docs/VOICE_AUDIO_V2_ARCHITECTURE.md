@@ -704,7 +704,7 @@ Validacao em hardware:
   - `noisebot_server --host 192.168.1.30 debug codec-v2 encode-test --json`;
   - `ok=true`, `initialized=false`, `format=pcm16`,
     `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`,
-    `queue_count=0`, `error=ESP_OK`.
+    `queue_count=0`, `pending_samples=64`, `error=ESP_OK`.
 
 Aceite:
 
