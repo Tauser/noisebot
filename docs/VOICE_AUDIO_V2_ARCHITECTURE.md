@@ -672,10 +672,14 @@ Implementacao atual:
 - a fila sintética do codec v2 aceita até 40 pacotes; pacotes completos acima
   desse limite incrementam `packet_drops`, sem alocar memoria e sem enviar ao
   bridge;
+- `POST /api/audio/codec-v2/drain` drena a fila sintetica pronta e retorna
+  `drained_packets`, preservando `pending_samples` e os contadores acumulados;
 - o server expoe proxy diagnostico em `/api/device/audio/codec-v2`;
 - o server tambem expoe `/api/device/audio/codec-v2/encode-test`;
+- o server tambem expoe `/api/device/audio/codec-v2/drain`;
 - CLI `noisebot_server debug codec-v2 status` consulta o endpoint do firmware;
 - CLI `noisebot_server debug codec-v2 encode-test` aciona o teste sintetico;
+- CLI `noisebot_server debug codec-v2 drain` drena a fila sintetica;
 - o endpoint nao liga Opus, nao cria task e nao altera bridge/captura/playback;
 - o Opus operacional existente permanece no caminho opt-in atual
   `/api/audio/opus/transport/enable`, com PCM16 como fallback padrao.
@@ -706,6 +710,12 @@ Validacao em hardware:
 - Validacao local da fila sintetica limitada:
   - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
   - `server/tests/test_server_facade.py`: 105 testes;
+  - `idf.py build` limpo.
+- Validacao local do drain sintetico:
+  - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
+  - `server/tests/test_server_facade.py`: 107 testes;
+  - `bridge/tests`: 160 testes;
+  - `server/tests`: 122 testes;
   - `idf.py build` limpo.
 - Validacao em hardware do `encode-test` apos flash:
   - `noisebot_server --host 192.168.1.30 debug codec-v2 encode-test --json`;

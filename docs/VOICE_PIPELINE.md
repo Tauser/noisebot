@@ -72,7 +72,9 @@ sem worker, sem Opus real e sem mudança no transporte; em hardware retornou
 PCM16 de 256 samples até formar frame de 960 samples, deixando 64 samples
 pendentes quando recebe 4 chunks no teste. A fila sintética do codec v2 aceita
 até 40 pacotes e passa a contar `packet_drops` quando esse limite é excedido,
-ainda sem worker, sem Opus real e sem transporte para o bridge.
+ainda sem worker, sem Opus real e sem transporte para o bridge. O drain
+sintetico em `codec-v2 drain` zera apenas a fila pronta e retorna
+`drained_packets`, preservando amostras pendentes e contadores acumulados.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,

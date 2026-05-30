@@ -750,14 +750,18 @@ Validacao:
   - nenhum worker/task v2 e criado e o bridge atual nao muda.
   - server proxy: `/api/device/audio/codec-v2`;
   - server proxy: `/api/device/audio/codec-v2/encode-test`;
+  - server proxy: `/api/device/audio/codec-v2/drain`;
   - CLI: `noisebot_server debug codec-v2 status`;
   - CLI: `noisebot_server debug codec-v2 encode-test`;
+  - CLI: `noisebot_server debug codec-v2 drain`;
   - `encode-test` e sintetico PCM16 passthrough: incrementa contadores de
     frame/pacote sem worker, sem Opus real, sem bridge e sem captura;
   - packetizer sintetico acumula chunks PCM16 de 256 samples ate frame de
     960 samples; 4 chunks geram 1 pacote e `pending_samples=64`;
   - fila sintetica limitada a 40 pacotes: quando cheia, novo pacote incrementa
     `packet_drops`, sem worker, sem Opus real e sem bridge;
+  - drain sintetico limpa apenas a fila pronta e retorna `drained_packets`,
+    preservando `pending_samples` e contadores acumulados;
   - validado em hardware apos flash:
     `initialized=false`, `format=pcm16`, `opus_frame_ms=60`,
     `opus_frame_samples=960`, `opus_bitrate=32000`,
@@ -771,6 +775,8 @@ Validacao:
     105, bridge completo 160, server completo 120 e `idf.py build`.
   - validacao local da fila sintetica: teste focado bridge 6, teste focado
     server 105 e `idf.py build`.
+  - validacao local do drain sintetico: teste focado bridge 6, teste focado
+    server 107, bridge completo 160, server completo 122 e `idf.py build`.
   - validacao em hardware do `encode-test` apos flash:
     `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`,
     `queue_count=0`, `pending_samples=64`, `error=ESP_OK`.
