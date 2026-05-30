@@ -1,9 +1,10 @@
 /*
  * audio_service.c — Serviço de áudio do NoiseBot (Layer 4)
  *
- * Não depende de infra (sem event_bus, sem config_manager) para evitar
- * dependência circular. Eventos são emitidos via callback (nb_audio_event_cb_t)
- * registrado pelo boot_manager, que faz a ponte para o event bus.
+ * Mantém ownership do HAL/I2S. Eventos são emitidos via callback
+ * (nb_audio_event_cb_t) registrado pelo boot_manager, que faz a ponte para o
+ * event bus. Integrações de infra ficam restritas aos contratos de bridge e
+ * config já existentes, sem event_bus direto no caminho crítico.
  *
  * Loop da task (~16ms por iteração):
  *   1. Preparar e escrever chunk TX (áudio WAV ou silêncio) — manter DMA alimentado.

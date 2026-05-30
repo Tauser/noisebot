@@ -1865,7 +1865,15 @@ static esp_err_t handle_api_voice_capture_v2_replay(httpd_req_t *req)
 
 static esp_err_t handle_api_voice_capture_v2_cancel(httpd_req_t *req)
 {
-    esp_err_t err = voice_capture_session_v2_cancel();
+    esp_err_t err;
+    if (voice_capture_session_v2_is_active() && audio_service_is_listening()) {
+        err = audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
+        if (err != ESP_OK) {
+            err = voice_capture_session_v2_cancel();
+        }
+    } else {
+        err = voice_capture_session_v2_cancel();
+    }
     if (err != ESP_OK) {
         httpd_resp_set_status(req, "409 Conflict");
     }
