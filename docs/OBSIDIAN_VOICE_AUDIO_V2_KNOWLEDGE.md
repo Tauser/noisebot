@@ -631,10 +631,23 @@ Validacao:
 
 ### Playback v2 probe
 
-- Toca WAV ou chunk sintetico.
-- Stop limpa fila.
+Status: iniciado em `99a3a17`.
+
+- Probe HTTP explicito:
+  - `GET /api/audio/playback-v2`;
+  - `POST /api/audio/playback-v2/probe`;
+  - `POST /api/audio/playback-v2/stop`.
+- Toca chunk sintetico PCM16 curto gerado pelo `audio_playback_service_v2`.
+- O v2 nao chama `audio_hal` e nao cria task propria.
+- O `audio_service` atual segue como unico escritor do speaker.
+- Stop limpa chunks pendentes e `audio_play_stop()` tambem cancela probe v2.
 - Sem audio velho depois do cancel.
 - Sem afetar captura v1.
+
+Validacao:
+
+- `idf.py build`.
+- `bridge/tests`: 158 testes.
 
 ### Capture session v2 PCM16
 

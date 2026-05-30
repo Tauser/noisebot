@@ -499,19 +499,40 @@ Validacao:
 
 ### Fase D - Playback v2 em Probe
 
+Status: iniciada em `99a3a17` (`Firmware: adicionar probe de playback v2`).
+
 Objetivo: tocar WAV/SAY sintetico pelo novo caminho sem usar conversa real.
 
 Entregas:
 
-- fila SAY v2;
-- stop/cancel v2;
-- teste de "cancel limpa fila".
+- `GET /api/audio/playback-v2` com status do probe;
+- `POST /api/audio/playback-v2/probe` para tocar chunk sintetico curto;
+- `POST /api/audio/playback-v2/stop` para cancelamento explicito;
+- stop/cancel v2 limpa chunks pendentes;
+- teste de contrato garante que playback v2 nao chama `audio_hal`.
+
+Implementacao atual:
+
+- `audio_playback_service_v2` gera tom sintetico PCM16 de bancada.
+- O servico v2 nao cria task e nao possui o I2S.
+- O `audio_service` atual continua sendo o unico escritor do speaker e puxa o
+  chunk v2 somente quando o probe explicito esta ativo.
+- `audio_play_stop()` tambem cancela o probe v2 se ele estiver tocando.
+- O endpoint de probe recusa iniciar se `audio_service_is_busy()` indicar
+  escuta, WAV, SAY ou outro playback ativo.
 
 Aceite:
 
-- Sem audio velho apos cancel.
-- Sem crash por fila cheia.
-- Pipeline v1 segue ativo por padrao.
+- [x] Sem audio velho apos cancel.
+- [x] Sem crash por fila cheia.
+- [x] Pipeline v1 segue ativo por padrao.
+
+Validacao:
+
+- `idf.py build` concluido sem warnings.
+- `bridge/tests/test_firmware_audio_v2_skeleton_contract.py` garante endpoint
+  explicito, escrita via `audio_service` e ausencia de chamada HAL no v2.
+- `bridge/tests` passou com 158 testes.
 
 ### Fase E - Capture Session v2 com PCM16
 
