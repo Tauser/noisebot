@@ -451,6 +451,17 @@ Validação atual:
     `packets_drained=63`, `packet_drops=0`;
   - o problema de resposta em ingles para curiosidade ficou coberto por intent
     local e fallback pt-BR especifico.
+- Diagnóstico offline em 2026-05-30 sobre 17 WAVs de `voice_samples`:
+  - 16000 bps: compressão média `0.0519`, SNR médio `10.97 dB`,
+    correlação média `0.9587`;
+  - 24000 bps: compressão média `0.0804`, SNR médio `14.73 dB`,
+    correlação média `0.9835`;
+  - 32000 bps: compressão média `0.1080`, SNR médio `17.57 dB`,
+    correlação média `0.9915`;
+  - leitura: o codec em si preserva bem o sinal capturado, principalmente em
+    24/32 kbps; a perda semântica vista no A/B live provavelmente está mais
+    ligada a janela de captura/VAD/tempo de fala ou volume do teste do que a
+    corrupção básica do Opus.
 - Firmware real mantém PCM16 como padrão; Opus só liga por API experimental.
 - Firmware real passou por builds ESP-IDF limpos após os commits:
   - `38eadb6` worker isolado;
@@ -471,6 +482,10 @@ Validação atual:
 - `noisebot_server debug codec-ab`: harness pareado para rodar PCM16 e Opus
   nas mesmas frases, com relatório Markdown/JSON de STT, duração, samples,
   pacotes, bytes, drops e similaridade semantica contra a frase alvo.
+- `noisebot_server debug opus-quality`: diagnóstico offline para WAVs
+  capturados, comparando PCM16 original contra round-trip PCM16 -> Opus ->
+  PCM16 em múltiplos bitrates. O relatório atual fica em
+  `docs/VOICE_OPUS_QUALITY.md`.
 - Server Ops API proxy para os endpoints Opus do firmware:
   `/api/device/audio/opus/worker`,
   `/api/device/audio/opus/worker/probe`,
@@ -485,6 +500,7 @@ Validação atual:
 - `bridge/tests`: 153 testes verdes após a integração.
 - `server/tests`: 107 testes verdes após adicionar match semantico ao
   `codec-ab`.
+- `server/tests`: 112 testes verdes após adicionar `opus-quality`.
 - Build ESP-IDF concluído após a promoção de status/API.
 - `noisebot_server debug opus-selftest --json`: 1s PCM16 16 kHz gerou 17
   packets, `opus_bytes=3043` contra `input_bytes=32000`
@@ -507,8 +523,9 @@ Critérios de aceite:
 - [x] Criar harness pareado PCM16 vs Opus para A/B maior repetível.
 - [x] Rodar A/B curto PCM16 vs Opus com zero drops e STT `good`.
 - [x] Rodar A/B maior PCM16 vs Opus com zero drops e STT `good`.
-- [ ] Investigar perda semantica em Opus antes de considerar Opus
-  como padrão obrigatório.
+- [x] Criar diagnóstico offline de qualidade Opus em cima dos WAVs reais.
+- [ ] Repetir A/B live curto em bitrate maior antes de considerar Opus como
+  padrão obrigatório.
 
 ### Fase 7 — AEC e Modo Realtime
 

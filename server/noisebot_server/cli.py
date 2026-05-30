@@ -60,6 +60,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     opus_test.add_argument("--bitrate", type=int, default=24000)
     opus_test.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    opus_quality = debug_sub.add_parser("opus-quality")
+    opus_quality.add_argument("path", help="Pasta ou WAV para medir roundtrip Opus")
+    opus_quality.add_argument("--bitrates", default="16000,24000,32000")
+    opus_quality.add_argument("--output", help="Arquivo Markdown/JSON de saida")
+    opus_quality.add_argument("--json", action="store_true", help="Emitir JSON")
+
     opus_live = debug_sub.add_parser("opus-live")
     opus_live.add_argument("phrase", nargs="?", default="fale algo curto")
     opus_live.add_argument("--server-url", default="http://127.0.0.1:8765")
@@ -318,6 +324,26 @@ def run_debug_command(args: argparse.Namespace) -> None:
                 f"decoded={payload['decoded_bytes']} bytes"
             )
         return
+    if args.debug_command == "opus-quality":
+        from .internal.ops.opus_quality import (
+            analyze_opus_quality,
+            format_opus_quality_json,
+            format_opus_quality_markdown,
+        )
+
+        bitrates = _parse_bitrates(args.bitrates)
+        results = analyze_opus_quality(args.path, bitrates=bitrates)
+        text = (
+            format_opus_quality_json(results)
+            if args.json
+            else format_opus_quality_markdown(results)
+        )
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        return
     if args.debug_command == "opus-live":
         from .internal.ops.opus_live import (
             format_opus_live_json,
@@ -448,6 +474,17 @@ def run_debug_command(args: argparse.Namespace) -> None:
             raise SystemExit(1)
         return
     raise SystemExit(2)
+
+
+def _parse_bitrates(raw: str) -> list[int]:
+    bitrates: list[int] = []
+    for item in raw.split(","):
+        value = item.strip()
+        if value:
+            bitrates.append(int(value))
+    if not bitrates:
+        raise SystemExit("--bitrates precisa ter pelo menos um valor")
+    return bitrates
 
 
 def run_service_command(args: argparse.Namespace) -> None:

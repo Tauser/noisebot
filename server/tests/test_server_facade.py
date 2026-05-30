@@ -328,6 +328,26 @@ def test_server_cli_parses_opus_live_debug_command() -> None:
     assert args.json
 
 
+def test_server_cli_parses_opus_quality_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "debug",
+        "opus-quality",
+        "voice_samples",
+        "--bitrates",
+        "16000,24000",
+        "--output",
+        "opus.md",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "opus-quality"
+    assert args.path == "voice_samples"
+    assert args.bitrates == "16000,24000"
+    assert args.output == "opus.md"
+
+
 def test_server_cli_runs_opus_live_debug_command(monkeypatch, capsys) -> None:
     cli = importlib.import_module("noisebot_server.cli")
     opus_live = importlib.import_module("noisebot_server.internal.ops.opus_live")
