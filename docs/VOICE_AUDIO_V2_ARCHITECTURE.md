@@ -633,8 +633,15 @@ Validacao:
 - Regressao `no-echo-live` com flag v2 desligada:
   - `ok=true`, `response_turn_id=87`, `unexpected_turn_id=null`,
     `quiet_window_s=10.0`, `outcome=llm`, sem reabertura de escuta por eco.
-- Proxima etapa: rodar um turno PCM16 normal com a flag v2 desligada para
-  confirmar ausencia de regressao operacional antes de promover a proxima fase.
+- Turno normal com flag v2 desligada:
+  - firmware status antes/depois: `real_capture_enabled=false`,
+    `session_active=false`;
+  - servidor: novo `turn_id=88`, `outcome=local_intent`,
+    `intent_name=local_time`, `transcript_quality=good`,
+    `discard_reason=null`, `error_stage=null`;
+  - transcript: `Que horas são?`; resposta: horario local retornado.
+- Proxima etapa: decidir promocao controlada da proxima fase mantendo a captura
+  v2 atras da flag e v1 como padrao.
 
 ### Fase F - Codec v2 Opus
 
