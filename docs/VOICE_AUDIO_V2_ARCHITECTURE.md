@@ -663,8 +663,13 @@ Implementacao atual:
 - `audio_codec_service_v2` continua inativo e nao e inicializado no boot;
 - `GET /api/audio/codec-v2` retorna constantes do contrato e contadores
   zerados do skeleton;
+- `POST /api/audio/codec-v2/encode-test` executa um teste sintetico PCM16
+  passthrough: incrementa `pcm_frames_in` e `packets_out`, mantendo
+  `packet_drops=0` e sem fila pendente;
 - o server expoe proxy diagnostico em `/api/device/audio/codec-v2`;
+- o server tambem expoe `/api/device/audio/codec-v2/encode-test`;
 - CLI `noisebot_server debug codec-v2 status` consulta o endpoint do firmware;
+- CLI `noisebot_server debug codec-v2 encode-test` aciona o teste sintetico;
 - o endpoint nao liga Opus, nao cria task e nao altera bridge/captura/playback;
 - o Opus operacional existente permanece no caminho opt-in atual
   `/api/audio/opus/transport/enable`, com PCM16 como fallback padrao.
@@ -682,6 +687,12 @@ Validacao em hardware:
   `state=IDLE_SESSION`, `last_error=ESP_OK`.
 - CLI real `noisebot_server --host 192.168.1.30 debug codec-v2 status --json`
   retornou o mesmo contrato com `error=ESP_OK`.
+- Validacao local do encode-test sintetico:
+  - `bridge/tests`: 160 testes;
+  - `server/tests`: 120 testes;
+  - `idf.py build` limpo.
+- Validacao em hardware do `encode-test` exige flash do firmware contendo o
+  novo endpoint.
 
 Aceite:
 

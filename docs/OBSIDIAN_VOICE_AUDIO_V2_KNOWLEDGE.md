@@ -749,7 +749,11 @@ Validacao:
     fila curta de 40 pacotes;
   - nenhum worker/task v2 e criado e o bridge atual nao muda.
   - server proxy: `/api/device/audio/codec-v2`;
+  - server proxy: `/api/device/audio/codec-v2/encode-test`;
   - CLI: `noisebot_server debug codec-v2 status`;
+  - CLI: `noisebot_server debug codec-v2 encode-test`;
+  - `encode-test` e sintetico PCM16 passthrough: incrementa contadores de
+    frame/pacote sem worker, sem Opus real, sem bridge e sem captura;
   - validado em hardware apos flash:
     `initialized=false`, `format=pcm16`, `opus_frame_ms=60`,
     `opus_frame_samples=960`, `opus_bitrate=32000`,
@@ -757,6 +761,8 @@ Validacao:
     `capture-v2 status` seguiu com `real_capture_enabled=false` e
     `session_active=false`.
   - CLI real com `--host 192.168.1.30` retornou o mesmo contrato.
+  - validacao local do `encode-test`: `bridge/tests` 160, `server/tests` 120 e
+    `idf.py build`; validacao em hardware exige novo flash.
 - Packet drops zero em teste curto.
 - Transcript comparavel ao PCM16.
 - `server_codec_confirmed=true`.

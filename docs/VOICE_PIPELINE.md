@@ -64,7 +64,9 @@ bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 flash, o endpoint retornou `initialized=false`, `format=pcm16`, contadores
 zerados e `error=ESP_OK`; a captura v2 permaneceu desligada. O server também
 expõe proxy em `/api/device/audio/codec-v2` e CLI
-`noisebot_server debug codec-v2 status`.
+`noisebot_server debug codec-v2 status`. O teste sintético
+`codec-v2 encode-test` exercita apenas PCM16 passthrough e contadores internos,
+sem worker, sem Opus real e sem mudança no transporte.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
