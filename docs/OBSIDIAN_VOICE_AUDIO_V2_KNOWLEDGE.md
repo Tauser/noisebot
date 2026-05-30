@@ -587,6 +587,13 @@ No echo:
 python -m noisebot_server --host 192.168.1.30 debug no-echo-live "me conte uma historia longa" --json
 ```
 
+Capture v2 status/replay:
+
+```powershell
+python -m noisebot_server --host 192.168.1.30 debug capture-v2 status --json
+python -m noisebot_server --host 192.168.1.30 debug capture-v2 replay --speech-ms 640 --silence-ms 900 --json
+```
+
 ## Criterios de Aceite por Etapa
 
 ### Esqueleto v2 inativo
@@ -693,6 +700,11 @@ Validacao:
   - `real_capture_enabled`: flag/config atual;
   - `real_capture`: diferencia replay sintetico (`false`) de sessao PCM16 real
     acompanhada pelo v2 (`true`).
+- Server/ops:
+  - proxy diagnostico em `/api/device/audio/capture-v2`,
+    `/api/device/audio/capture-v2/replay` e
+    `/api/device/audio/capture-v2/cancel`;
+  - CLI `noisebot_server debug capture-v2` para status/replay/cancel.
 - Cancelamento:
   - `POST /api/audio/capture-v2/cancel` encerra a sessao real via
     `audio_service_end_listen_session(NB_LISTEN_END_CANCELLED)` quando a

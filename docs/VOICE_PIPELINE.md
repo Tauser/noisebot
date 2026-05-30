@@ -519,6 +519,12 @@ Validação atual:
   `/api/device/audio/opus/worker/drain-packets`,
   `/api/device/audio/opus/transport/enable` e
   `/api/device/audio/opus/transport/disable`.
+- Server Ops API proxy para os endpoints Capture v2 do firmware:
+  `/api/device/audio/capture-v2`,
+  `/api/device/audio/capture-v2/replay` e
+  `/api/device/audio/capture-v2/cancel`.
+- `noisebot_server debug capture-v2`: ferramenta manual para consultar status,
+  executar replay sintetico e cancelar a captura v2 durante validacao.
 - `bridge/tests/test_firmware_bridge_contract.py`: firmware real mantém PCM16
   como contrato padrão e exige flag explicita para Opus.
 - `bridge/tests`: 153 testes verdes após a integração.

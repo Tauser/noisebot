@@ -590,6 +590,11 @@ Implementacao:
 - `POST /api/audio/capture-v2/cancel` encerra a sessao real via
   `audio_service_end_listen_session(NB_LISTEN_END_CANCELLED)` quando a captura
   v2 e o audio_service estao ativos, mantendo os estados sincronizados.
+- O server possui cliente/proxy diagnostico para captura v2:
+  `/api/device/audio/capture-v2`,
+  `/api/device/audio/capture-v2/replay`,
+  `/api/device/audio/capture-v2/cancel`, alem do comando
+  `noisebot_server debug capture-v2` para status/replay/cancel.
 
 Aceite:
 
@@ -675,6 +680,7 @@ Hardware/manual assistido:
 
 - `noisebot_server debug codec-ab`;
 - `noisebot_server debug opus-live`;
+- `noisebot_server debug capture-v2`;
 - `noisebot_server debug barge-live`;
 - `noisebot_server debug no-echo-live`;
 - `noisebot_server debug opus-quality`;
