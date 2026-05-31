@@ -794,10 +794,15 @@ Validacao em hardware:
   - a primeira tentativa com stack persistente igual ao teste temporario
     (`2048 * 12`) falhou em `worker-start` com HTTP 409 e
     `worker_state=error`, sem derrubar HTTP e sem tocar captura;
-  - inferencia: stack persistente de 24 KB ficou pesada para criar a task;
-  - correcao local: `CODEC_WORKER_TASK_STACK` reduzido para `2048 * 6`;
-  - validacao local apos correcao: teste focado bridge 6, server facade 115 e
-    `idf.py build` limpo; falta flash para nova validacao em hardware.
+  - a tentativa seguinte com stack interna menor (`2048 * 6`) criou a task,
+    mas o encode no worker tornou o HTTP indisponivel;
+  - conclusao: o worker Opus precisa stack grande, mas ela nao deve consumir
+    heap interno persistente;
+  - correcao local: worker voltou para `2048 * 12`, agora criado com
+    `xTaskCreatePinnedToCoreWithCaps(..., MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)`
+    e encerrado com `vTaskDeleteWithCaps`;
+  - validacao local apos correcao PSRAM: teste focado bridge 6, server facade
+    115 e `idf.py build` limpo; falta flash para nova validacao em hardware.
 - Observacao de hardware: a primeira versao sincronamente no handler HTTP
   causou timeout e indisponibilidade HTTP apos o teste. A correcao moveu o
   encode para task temporaria `nb_codec_v2_opus_test` com stack proprio e
