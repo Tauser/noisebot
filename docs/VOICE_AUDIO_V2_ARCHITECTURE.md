@@ -1226,7 +1226,13 @@ anuncia suporte a `opus_tx`, `opus_default=false`, 16 kHz mono, 60 ms/960
 samples e 32 kbps. O server tambem espelha `codec_options` em `/api/ai/status`.
 O proximo avanco seguro e flashar essa mudanca de contrato e validar no
 hardware que HELLO/status continuam PCM16 por padrao, anunciam a capability
-Opus v2 opt-in e mantem rollback limpo.
+Opus v2 opt-in e mantem rollback limpo. Validacao apos flash passou: o server
+foi reiniciado com `qwen3.5:9b`, `/ai/status` mostrou `audio.format=pcm16`,
+`codecs={"pcm16":true,"opus":false}` e `codec_options.opus_tx=true` com
+`opus_default=false`; `codec-v2 transport-enable` alternou o status para Opus
+ativo, `transport-disable` voltou para PCM16 e o status final confirmou worker
+parado, fila egress zero, zero drops, `opus_codec_error=0` e `capture-v2`
+desligado.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

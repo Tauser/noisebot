@@ -928,7 +928,11 @@ Pendências:
    e 32 kbps. `BRIDGE_HELLO_V2_OPUS` continua reservado para transporte Opus
    ativo apos enable explicito.
 3. Validar em hardware o HELLO/status novo apos flash e confirmar que
-   `/api/ai/status` espelha `codec_options`.
+   `/api/ai/status` espelha `codec_options`. Feito apos flash: `/ai/status`
+   confirmou PCM16 default, `codec_options.opus_tx=true` e
+   `opus_default=false`; enable/disable de Opus alternou o transporte ativo e
+   rollback voltou para PCM16 com worker parado, fila zero e `capture-v2`
+   desligado.
 4. Ampliar regressão automática de protocolo, incluindo reconexão e
    cancelamento explícito.
 5. Só depois avaliar se Opus deve virar padrão obrigatório.

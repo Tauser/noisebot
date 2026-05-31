@@ -984,6 +984,14 @@ Validacao:
     Validacao local: contratos bridge focados passaram, `bridge/tests` completo
     passou com 160 testes, `server/tests` completo passou com 138 testes e
     `idf.py build` passou.
+  - validacao em hardware da capability Opus v2 opt-in apos flash:
+    server reiniciado com `qwen3.5:9b`; `/ai/status` confirmou
+    `audio.format=pcm16`, `codecs.pcm16=true`, `codecs.opus=false`,
+    `codec_options.opus_tx=true` e `opus_default=false`; `codec-v2
+    transport-enable` alternou o contrato ativo para Opus, `transport-disable`
+    voltou para PCM16, e o status final confirmou `worker_state=stopped`,
+    `opus_egress_queue_count=0`, zero drops, `opus_codec_error=0` e
+    `capture-v2` desligado.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o
