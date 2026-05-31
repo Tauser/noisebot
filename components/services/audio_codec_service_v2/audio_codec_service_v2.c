@@ -17,7 +17,7 @@
 #define OPUS_TEST_TASK_PRIORITY 2U
 #define OPUS_TEST_TASK_CORE 0
 #define OPUS_TEST_TIMEOUT_MS 8000U
-#define CODEC_WORKER_TASK_STACK 4096U
+#define CODEC_WORKER_TASK_STACK OPUS_TEST_TASK_STACK
 #define CODEC_WORKER_TASK_PRIORITY 2U
 #define CODEC_WORKER_TASK_CORE 0
 #define CODEC_WORKER_STOP_TIMEOUT_MS 2000U
@@ -45,6 +45,8 @@ static int16_t s_pending_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
 static uint16_t s_pending_samples;
 static int16_t s_opus_test_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
 static uint8_t s_opus_test_out[OPUS_TEST_MAX_BYTES];
+static int16_t s_worker_opus_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
+static uint8_t s_worker_opus_out[OPUS_TEST_MAX_BYTES];
 static StaticSemaphore_t s_opus_test_done_buf;
 static SemaphoreHandle_t s_opus_test_done;
 static TaskHandle_t s_opus_test_task;
@@ -67,11 +69,53 @@ static void reset_worker_status(void)
     s_status.worker_active = false;
 }
 
-static void fill_opus_test_frame(void)
+static void fill_synthetic_opus_frame(int16_t *frame)
 {
     for (uint16_t i = 0; i < NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES; i++) {
-        s_opus_test_frame[i] = (int16_t)(((int32_t)(i & 0x3fU) * 64) - 2048);
+        frame[i] = (int16_t)(((int32_t)(i & 0x3fU) * 64) - 2048);
     }
+}
+
+static esp_err_t encode_synthetic_opus_frame(
+    void *enc,
+    int16_t *frame,
+    uint8_t *out_buf,
+    uint16_t *encoded_bytes)
+{
+    if (enc == NULL || frame == NULL || out_buf == NULL || encoded_bytes == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    int frame_bytes = 0;
+    int out_bytes = 0;
+    esp_audio_err_t codec_err = esp_opus_enc_get_frame_size(enc, &frame_bytes, &out_bytes);
+    s_status.opus_codec_error = (int)codec_err;
+    if (codec_err != ESP_AUDIO_ERR_OK ||
+        frame_bytes != (int)(NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES * sizeof(int16_t)) ||
+        out_bytes <= 0 ||
+        out_bytes > OPUS_TEST_MAX_BYTES) {
+        return ESP_FAIL;
+    }
+
+    fill_synthetic_opus_frame(frame);
+    esp_audio_enc_in_frame_t in = {
+        .buffer = (uint8_t *)frame,
+        .len = (uint32_t)frame_bytes,
+    };
+    esp_audio_enc_out_frame_t encoded = {
+        .buffer = out_buf,
+        .len = (uint32_t)out_bytes,
+        .encoded_bytes = 0,
+    };
+
+    codec_err = esp_opus_enc_process(enc, &in, &encoded);
+    s_status.opus_codec_error = (int)codec_err;
+    if (codec_err != ESP_AUDIO_ERR_OK || encoded.encoded_bytes == 0U) {
+        return ESP_FAIL;
+    }
+
+    *encoded_bytes = (uint16_t)encoded.encoded_bytes;
+    return ESP_OK;
 }
 
 static esp_err_t opus_encode_test_inline(nb_audio_codec_v2_opus_test_result_t *out)
@@ -116,20 +160,15 @@ static esp_err_t opus_encode_test_inline(nb_audio_codec_v2_opus_test_result_t *o
         out->frame_samples == NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES &&
         out_bytes > 0 &&
         out_bytes <= (int)sizeof(s_opus_test_out)) {
-        fill_opus_test_frame();
-        esp_audio_enc_in_frame_t in = {
-            .buffer = (uint8_t *)s_opus_test_frame,
-            .len = (uint32_t)frame_bytes,
-        };
-        esp_audio_enc_out_frame_t encoded = {
-            .buffer = s_opus_test_out,
-            .len = (uint32_t)out_bytes,
-            .encoded_bytes = 0,
-        };
-
-        codec_err = esp_opus_enc_process(enc, &in, &encoded);
+        uint16_t encoded_bytes = 0;
+        esp_err_t encode_err = encode_synthetic_opus_frame(
+            enc,
+            s_opus_test_frame,
+            s_opus_test_out,
+            &encoded_bytes);
+        codec_err = (encode_err == ESP_OK) ? ESP_AUDIO_ERR_OK : (esp_audio_err_t)s_status.opus_codec_error;
         out->codec_error = (int)codec_err;
-        out->encoded_bytes = (uint16_t)encoded.encoded_bytes;
+        out->encoded_bytes = encoded_bytes;
     }
 
     esp_opus_enc_close(enc);
@@ -166,24 +205,75 @@ static void opus_encode_test_task(void *arg)
 static void codec_worker_task(void *arg)
 {
     (void)arg;
+    void *enc = NULL;
+    esp_opus_enc_config_t cfg = OPUS_ENC_CONFIG();
+    esp_audio_err_t codec_err = esp_opus_enc_open(&cfg, sizeof(cfg), &enc);
+    s_status.opus_codec_error = (int)codec_err;
+    if (codec_err != ESP_AUDIO_ERR_OK || enc == NULL) {
+        if (enc != NULL) {
+            esp_opus_enc_close(enc);
+        }
+        s_status.worker_active = false;
+        s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR;
+        s_worker_task = NULL;
+        if (s_worker_done != NULL) {
+            xSemaphoreGive(s_worker_done);
+        }
+        vTaskDelete(NULL);
+        return;
+    }
+
     s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_RUNNING;
     s_status.worker_active = true;
 
     while (!s_worker_stop_requested) {
-        if (s_status.queue_count > 0U) {
-            s_status.worker_drained_packets += s_status.queue_count;
-            s_status.queue_count = 0;
+        while (s_status.queue_count > 0U && !s_worker_stop_requested) {
+            uint16_t encoded_bytes = 0;
+            esp_err_t encode_err = encode_synthetic_opus_frame(
+                enc,
+                s_worker_opus_frame,
+                s_worker_opus_out,
+                &encoded_bytes);
+            if (encode_err != ESP_OK) {
+                s_status.packet_drops++;
+                s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR;
+                s_worker_stop_requested = true;
+                break;
+            }
+            s_status.queue_count--;
+            s_status.worker_drained_packets++;
+            s_status.worker_opus_packets++;
+            s_status.worker_opus_last_packet_bytes = encoded_bytes;
+            s_status.worker_opus_encoded_bytes_total += encoded_bytes;
         }
         vTaskDelay(pdMS_TO_TICKS(CODEC_WORKER_POLL_MS));
     }
 
-    if (s_status.queue_count > 0U) {
-        s_status.worker_drained_packets += s_status.queue_count;
-        s_status.queue_count = 0;
+    while (s_status.queue_count > 0U && s_status.worker_state != NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR) {
+        uint16_t encoded_bytes = 0;
+        esp_err_t encode_err = encode_synthetic_opus_frame(
+            enc,
+            s_worker_opus_frame,
+            s_worker_opus_out,
+            &encoded_bytes);
+        if (encode_err != ESP_OK) {
+            s_status.packet_drops += s_status.queue_count;
+            s_status.queue_count = 0;
+            s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR;
+            break;
+        }
+        s_status.queue_count--;
+        s_status.worker_drained_packets++;
+        s_status.worker_opus_packets++;
+        s_status.worker_opus_last_packet_bytes = encoded_bytes;
+        s_status.worker_opus_encoded_bytes_total += encoded_bytes;
     }
 
+    esp_opus_enc_close(enc);
     s_status.worker_active = false;
-    s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPED;
+    if (s_status.worker_state != NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR) {
+        s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPED;
+    }
     s_worker_task = NULL;
     if (s_worker_done != NULL) {
         xSemaphoreGive(s_worker_done);

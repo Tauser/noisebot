@@ -1666,7 +1666,7 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_codec_v2_status_t st;
     audio_codec_service_v2_get_status(&st);
 
-    char buf[900];
+    char buf[1040];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"format\":\"%s\","
              "\"worker_supported\":%s,\"worker_active\":%s,"
@@ -1677,6 +1677,9 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              "\"pcm_frames_in\":%lu,\"packets_out\":%lu,"
              "\"packet_drops\":%lu,\"queue_count\":%lu,"
              "\"worker_drained_packets\":%lu,"
+             "\"worker_opus_packets\":%lu,"
+             "\"worker_opus_encoded_bytes_total\":%lu,"
+             "\"worker_opus_last_packet_bytes\":%u,"
              "\"opus_encode_tests\":%lu,\"opus_encoded_bytes_total\":%lu,"
              "\"opus_last_packet_bytes\":%u,\"opus_codec_error\":%d,"
              "\"pending_samples\":%u,"
@@ -1698,6 +1701,9 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.packet_drops,
              (unsigned long)st.queue_count,
              (unsigned long)st.worker_drained_packets,
+             (unsigned long)st.worker_opus_packets,
+             (unsigned long)st.worker_opus_encoded_bytes_total,
+             (unsigned)st.worker_opus_last_packet_bytes,
              (unsigned long)st.opus_encode_tests,
              (unsigned long)st.opus_encoded_bytes_total,
              (unsigned)st.opus_last_packet_bytes,
@@ -1733,7 +1739,7 @@ static esp_err_t handle_api_audio_codec_v2_drain(httpd_req_t *req)
         httpd_resp_set_status(req, "500 Internal Server Error");
     }
 
-    char buf[960];
+    char buf[1100];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"format\":\"%s\","
              "\"worker_supported\":%s,\"worker_active\":%s,"
@@ -1744,6 +1750,9 @@ static esp_err_t handle_api_audio_codec_v2_drain(httpd_req_t *req)
              "\"pcm_frames_in\":%lu,\"packets_out\":%lu,"
              "\"packet_drops\":%lu,\"queue_count\":%lu,"
              "\"worker_drained_packets\":%lu,"
+             "\"worker_opus_packets\":%lu,"
+             "\"worker_opus_encoded_bytes_total\":%lu,"
+             "\"worker_opus_last_packet_bytes\":%u,"
              "\"opus_encode_tests\":%lu,\"opus_encoded_bytes_total\":%lu,"
              "\"opus_last_packet_bytes\":%u,\"opus_codec_error\":%d,"
              "\"pending_samples\":%u,\"drained_packets\":%lu,"
@@ -1765,6 +1774,9 @@ static esp_err_t handle_api_audio_codec_v2_drain(httpd_req_t *req)
              (unsigned long)st.packet_drops,
              (unsigned long)st.queue_count,
              (unsigned long)st.worker_drained_packets,
+             (unsigned long)st.worker_opus_packets,
+             (unsigned long)st.worker_opus_encoded_bytes_total,
+             (unsigned)st.worker_opus_last_packet_bytes,
              (unsigned long)st.opus_encode_tests,
              (unsigned long)st.opus_encoded_bytes_total,
              (unsigned)st.opus_last_packet_bytes,

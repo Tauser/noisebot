@@ -49,6 +49,9 @@ typedef struct {
     uint32_t packet_drops;
     uint32_t queue_count;
     uint32_t worker_drained_packets;
+    uint32_t worker_opus_packets;
+    uint32_t worker_opus_encoded_bytes_total;
+    uint16_t worker_opus_last_packet_bytes;
     uint32_t opus_encode_tests;
     uint32_t opus_encoded_bytes_total;
     uint16_t opus_last_packet_bytes;

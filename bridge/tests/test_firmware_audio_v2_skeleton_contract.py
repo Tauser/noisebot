@@ -56,6 +56,9 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "bool worker_supported;" in codec_h
     assert "bool worker_active;" in codec_h
     assert "uint32_t worker_drained_packets;" in codec_h
+    assert "uint32_t worker_opus_packets;" in codec_h
+    assert "uint32_t worker_opus_encoded_bytes_total;" in codec_h
+    assert "uint16_t worker_opus_last_packet_bytes;" in codec_h
     assert "uint32_t opus_encode_tests;" in codec_h
     assert "uint32_t opus_encoded_bytes_total;" in codec_h
     assert "uint16_t opus_last_packet_bytes;" in codec_h
@@ -106,9 +109,12 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "audio_codec_service_v2_worker_start(" in codec_c
     assert "audio_codec_service_v2_worker_stop(" in codec_c
     assert '"nb_codec_v2_worker"' in codec_c
-    assert "CODEC_WORKER_TASK_STACK" in codec_c
+    assert "#define CODEC_WORKER_TASK_STACK OPUS_TEST_TASK_STACK" in codec_c
     assert "CODEC_WORKER_STOP_TIMEOUT_MS" in codec_c
-    assert "s_status.worker_drained_packets += s_status.queue_count;" in codec_c
+    assert "s_status.worker_drained_packets++;" in codec_c
+    assert "s_status.worker_opus_packets++;" in codec_c
+    assert "s_status.worker_opus_encoded_bytes_total += encoded_bytes;" in codec_c
+    assert "s_status.worker_opus_last_packet_bytes = encoded_bytes;" in codec_c
     assert "esp_opus_enc_open" in codec_c
     assert "esp_opus_enc_process" in codec_c
     assert "esp_opus_enc_close" in codec_c
@@ -123,6 +129,9 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"worker_active\\":%s' in web
     assert '\\"worker_state\\":\\"%s\\"' in web
     assert '\\"worker_drained_packets\\":%lu' in web
+    assert '\\"worker_opus_packets\\":%lu' in web
+    assert '\\"worker_opus_encoded_bytes_total\\":%lu' in web
+    assert '\\"worker_opus_last_packet_bytes\\":%u' in web
     assert '\\"opus_encode_tests\\":%lu' in web
     assert '\\"opus_encoded_bytes_total\\":%lu' in web
     assert '\\"opus_last_packet_bytes\\":%u' in web
