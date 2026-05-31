@@ -1559,7 +1559,8 @@ def test_server_cli_runs_codec_v2_transport_debug_commands(monkeypatch, capsys) 
             "ok": True,
             "codec_v2_transport": True,
             "live_bridge_transport": True,
-            "compat_worker": "audio_processor_service",
+            "transport_worker": "audio_codec_service_v2",
+            "compat_worker": "audio_codec_service_v2",
             "pcm16_fallback": True,
             "opus_enabled": True,
             "error": "ESP_OK",
@@ -1571,7 +1572,8 @@ def test_server_cli_runs_codec_v2_transport_debug_commands(monkeypatch, capsys) 
             "ok": True,
             "codec_v2_transport": True,
             "live_bridge_transport": False,
-            "compat_worker": "audio_processor_service",
+            "transport_worker": "audio_codec_service_v2",
+            "compat_worker": "audio_codec_service_v2",
             "pcm16_fallback": True,
             "opus_enabled": False,
             "error": "ESP_OK",
@@ -1609,7 +1611,8 @@ def test_server_cli_runs_codec_v2_transport_debug_commands(monkeypatch, capsys) 
     assert '"codec_v2_transport": true' in captured.out
     assert '"live_bridge_transport": true' in captured.out
     assert '"live_bridge_transport": false' in captured.out
-    assert '"compat_worker": "audio_processor_service"' in captured.out
+    assert '"transport_worker": "audio_codec_service_v2"' in captured.out
+    assert '"compat_worker": "audio_codec_service_v2"' in captured.out
     assert '"pcm16_fallback": true' in captured.out
     assert calls == [
         "enable:http://192.168.1.30/",

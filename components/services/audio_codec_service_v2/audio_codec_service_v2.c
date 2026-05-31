@@ -13,7 +13,7 @@
 #include "freertos/task.h"
 #include <string.h>
 
-#define OPUS_TEST_MAX_BYTES 1024U
+#define OPUS_TEST_MAX_BYTES NB_AUDIO_CODEC_V2_OPUS_PACKET_MAX_BYTES
 #define OPUS_TEST_TASK_STACK (2048U * 12U)
 #define OPUS_TEST_TASK_PRIORITY 2U
 #define OPUS_TEST_TASK_CORE 0
@@ -45,6 +45,15 @@ static nb_audio_codec_v2_status_t s_status = {
 };
 static int16_t s_pending_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
 static uint16_t s_pending_samples;
+static int16_t (*s_pcm_queue)[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
+static uint8_t (*s_opus_egress_packets)[NB_AUDIO_CODEC_V2_OPUS_PACKET_MAX_BYTES];
+static uint16_t s_opus_egress_lengths[NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS];
+static uint8_t s_pcm_queue_read;
+static uint8_t s_pcm_queue_write;
+static uint8_t s_pcm_queue_count;
+static uint8_t s_opus_egress_read;
+static uint8_t s_opus_egress_write;
+static uint8_t s_opus_egress_count;
 static int16_t s_opus_test_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
 static uint8_t s_opus_test_out[OPUS_TEST_MAX_BYTES];
 static int16_t s_worker_opus_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
@@ -64,6 +73,33 @@ static uint32_t heap_free_kb(uint32_t caps)
     return (uint32_t)(heap_caps_get_free_size(caps) / 1024U);
 }
 
+static esp_err_t ensure_packet_storage(void)
+{
+    if (s_pcm_queue == NULL) {
+        s_pcm_queue = heap_caps_calloc(
+            NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS,
+            sizeof(*s_pcm_queue),
+            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (s_pcm_queue == NULL) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    if (s_opus_egress_packets == NULL) {
+        s_opus_egress_packets = heap_caps_calloc(
+            NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS,
+            sizeof(*s_opus_egress_packets),
+            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (s_opus_egress_packets == NULL) {
+            heap_caps_free(s_pcm_queue);
+            s_pcm_queue = NULL;
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    return ESP_OK;
+}
+
 static void reset_worker_status(void)
 {
     s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED;
@@ -76,6 +112,64 @@ static void fill_synthetic_opus_frame(int16_t *frame)
     for (uint16_t i = 0; i < NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES; i++) {
         frame[i] = (int16_t)(((int32_t)(i & 0x3fU) * 64) - 2048);
     }
+}
+
+static void clear_pcm_queue(void)
+{
+    s_pcm_queue_read = 0;
+    s_pcm_queue_write = 0;
+    s_pcm_queue_count = 0;
+    s_status.queue_count = 0;
+}
+
+static void clear_opus_egress_queue(void)
+{
+    s_opus_egress_read = 0;
+    s_opus_egress_write = 0;
+    s_opus_egress_count = 0;
+    memset(s_opus_egress_lengths, 0, sizeof(s_opus_egress_lengths));
+    s_status.opus_egress_queue_count = 0;
+}
+
+static esp_err_t enqueue_pcm_frame(const int16_t *frame)
+{
+    if (frame == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = ensure_packet_storage();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (s_pcm_queue_count >= NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS) {
+        s_status.packet_drops++;
+        return ESP_OK;
+    }
+
+    memcpy(s_pcm_queue[s_pcm_queue_write],
+           frame,
+           NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES * sizeof(int16_t));
+    s_pcm_queue_write = (uint8_t)((s_pcm_queue_write + 1U) % NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS);
+    s_pcm_queue_count++;
+    s_status.queue_count = s_pcm_queue_count;
+    s_status.packets_out++;
+    return ESP_OK;
+}
+
+static bool pop_pcm_frame(int16_t *frame)
+{
+    if (frame == NULL || s_pcm_queue == NULL || s_pcm_queue_count == 0U) {
+        return false;
+    }
+
+    memcpy(frame,
+           s_pcm_queue[s_pcm_queue_read],
+           NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES * sizeof(int16_t));
+    s_pcm_queue_read = (uint8_t)((s_pcm_queue_read + 1U) % NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS);
+    s_pcm_queue_count--;
+    s_status.queue_count = s_pcm_queue_count;
+    return true;
 }
 
 static uint32_t checksum_payload(const uint8_t *payload, uint16_t payload_bytes)
@@ -113,12 +207,27 @@ static void enqueue_opus_egress_packet(const uint8_t *payload, uint16_t payload_
         return;
     }
 
-    if (s_status.opus_egress_queue_count >= NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS) {
+    esp_err_t err = ensure_packet_storage();
+    if (err != ESP_OK) {
         s_status.opus_egress_packet_drops++;
         return;
     }
 
-    s_status.opus_egress_queue_count++;
+    if (payload_bytes > NB_AUDIO_CODEC_V2_OPUS_PACKET_MAX_BYTES) {
+        s_status.opus_egress_packet_drops++;
+        return;
+    }
+
+    if (s_opus_egress_count >= NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS) {
+        s_status.opus_egress_packet_drops++;
+        return;
+    }
+
+    memcpy(s_opus_egress_packets[s_opus_egress_write], payload, payload_bytes);
+    s_opus_egress_lengths[s_opus_egress_write] = payload_bytes;
+    s_opus_egress_write = (uint8_t)((s_opus_egress_write + 1U) % NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS);
+    s_opus_egress_count++;
+    s_status.opus_egress_queue_count = s_opus_egress_count;
     s_status.opus_egress_packets_in++;
     s_status.opus_egress_bytes_total += payload_bytes;
     s_status.opus_egress_last_sequence++;
@@ -130,7 +239,7 @@ static void enqueue_opus_egress_packet(const uint8_t *payload, uint16_t payload_
     memcpy(s_status.opus_egress_preview, payload, s_status.opus_egress_preview_len);
 }
 
-static esp_err_t encode_synthetic_opus_frame(
+static esp_err_t encode_opus_frame(
     void *enc,
     int16_t *frame,
     uint8_t *out_buf,
@@ -151,7 +260,6 @@ static esp_err_t encode_synthetic_opus_frame(
         return ESP_FAIL;
     }
 
-    fill_synthetic_opus_frame(frame);
     esp_audio_enc_in_frame_t in = {
         .buffer = (uint8_t *)frame,
         .len = (uint32_t)frame_bytes,
@@ -170,6 +278,20 @@ static esp_err_t encode_synthetic_opus_frame(
 
     *encoded_bytes = (uint16_t)encoded.encoded_bytes;
     return ESP_OK;
+}
+
+static esp_err_t encode_synthetic_opus_frame(
+    void *enc,
+    int16_t *frame,
+    uint8_t *out_buf,
+    uint16_t *encoded_bytes)
+{
+    if (frame == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    fill_synthetic_opus_frame(frame);
+    return encode_opus_frame(enc, frame, out_buf, encoded_bytes);
 }
 
 static esp_err_t opus_encode_test_inline(nb_audio_codec_v2_opus_test_result_t *out)
@@ -285,9 +407,12 @@ static void codec_worker_task(void *arg)
     s_status.worker_active = true;
 
     while (!s_worker_stop_requested) {
-        while (s_status.queue_count > 0U && !s_worker_stop_requested) {
+        while (s_pcm_queue_count > 0U && !s_worker_stop_requested) {
+            if (!pop_pcm_frame(s_worker_opus_frame)) {
+                break;
+            }
             uint16_t encoded_bytes = 0;
-            esp_err_t encode_err = encode_synthetic_opus_frame(
+            esp_err_t encode_err = encode_opus_frame(
                 enc,
                 s_worker_opus_frame,
                 s_worker_opus_out,
@@ -298,7 +423,6 @@ static void codec_worker_task(void *arg)
                 s_worker_stop_requested = true;
                 break;
             }
-            s_status.queue_count--;
             s_status.worker_drained_packets++;
             s_status.worker_opus_packets++;
             s_status.worker_opus_last_packet_bytes = encoded_bytes;
@@ -309,20 +433,22 @@ static void codec_worker_task(void *arg)
         vTaskDelay(pdMS_TO_TICKS(CODEC_WORKER_POLL_MS));
     }
 
-    while (s_status.queue_count > 0U && s_status.worker_state != NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR) {
+    while (s_pcm_queue_count > 0U && s_status.worker_state != NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR) {
+        if (!pop_pcm_frame(s_worker_opus_frame)) {
+            break;
+        }
         uint16_t encoded_bytes = 0;
-        esp_err_t encode_err = encode_synthetic_opus_frame(
+        esp_err_t encode_err = encode_opus_frame(
             enc,
             s_worker_opus_frame,
             s_worker_opus_out,
             &encoded_bytes);
         if (encode_err != ESP_OK) {
-            s_status.packet_drops += s_status.queue_count;
-            s_status.queue_count = 0;
+            s_status.packet_drops += s_pcm_queue_count + 1U;
+            clear_pcm_queue();
             s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR;
             break;
         }
-        s_status.queue_count--;
         s_status.worker_drained_packets++;
         s_status.worker_opus_packets++;
         s_status.worker_opus_last_packet_bytes = encoded_bytes;
@@ -349,13 +475,8 @@ static void codec_worker_task(void *arg)
 
 static void enqueue_synthetic_packet(void)
 {
-    if (s_status.queue_count >= NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS) {
-        s_status.packet_drops++;
-        return;
-    }
-
-    s_status.queue_count++;
-    s_status.packets_out++;
+    fill_synthetic_opus_frame(s_opus_test_frame);
+    (void)enqueue_pcm_frame(s_opus_test_frame);
 }
 
 esp_err_t audio_codec_service_v2_init(void)
@@ -367,6 +488,8 @@ esp_err_t audio_codec_service_v2_init(void)
     memset(&s_status, 0, sizeof(s_status));
     memset(s_pending_frame, 0, sizeof(s_pending_frame));
     s_pending_samples = 0;
+    clear_pcm_queue();
+    clear_opus_egress_queue();
     s_status.initialized = true;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
     s_status.opus_codec_error = -1;
@@ -387,6 +510,16 @@ esp_err_t audio_codec_service_v2_deinit(void)
     memset(&s_status, 0, sizeof(s_status));
     memset(s_pending_frame, 0, sizeof(s_pending_frame));
     s_pending_samples = 0;
+    clear_pcm_queue();
+    clear_opus_egress_queue();
+    if (s_pcm_queue != NULL) {
+        heap_caps_free(s_pcm_queue);
+        s_pcm_queue = NULL;
+    }
+    if (s_opus_egress_packets != NULL) {
+        heap_caps_free(s_opus_egress_packets);
+        s_opus_egress_packets = NULL;
+    }
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
     s_status.opus_codec_error = -1;
     s_status.bridge_handoff_supported = true;
@@ -441,11 +574,51 @@ esp_err_t audio_codec_service_v2_feed_pcm16(const int16_t *samples, uint16_t sam
         s_pending_frame[s_pending_samples++] = samples[i];
         if (s_pending_samples >= NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES) {
             s_status.pcm_frames_in++;
-            enqueue_synthetic_packet();
+            esp_err_t err = enqueue_pcm_frame(s_pending_frame);
+            if (err != ESP_OK) {
+                s_pending_samples = 0;
+                return err;
+            }
             s_pending_samples = 0;
         }
     }
 
+    return ESP_OK;
+}
+
+esp_err_t audio_codec_service_v2_read_opus_packet(
+    uint8_t *out,
+    uint16_t max_len,
+    uint16_t *out_len)
+{
+    if (out == NULL || out_len == NULL || max_len == 0U) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (s_opus_egress_packets == NULL || s_opus_egress_count == 0U) {
+        *out_len = 0;
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    uint16_t packet_len = s_opus_egress_lengths[s_opus_egress_read];
+    if (packet_len == 0U || packet_len > NB_AUDIO_CODEC_V2_OPUS_PACKET_MAX_BYTES) {
+        s_status.opus_egress_packet_drops++;
+        s_opus_egress_read = (uint8_t)((s_opus_egress_read + 1U) % NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS);
+        s_opus_egress_count--;
+        s_status.opus_egress_queue_count = s_opus_egress_count;
+        *out_len = 0;
+        return ESP_FAIL;
+    }
+    if (packet_len > max_len) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    memcpy(out, s_opus_egress_packets[s_opus_egress_read], packet_len);
+    s_opus_egress_lengths[s_opus_egress_read] = 0;
+    s_opus_egress_read = (uint8_t)((s_opus_egress_read + 1U) % NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS);
+    s_opus_egress_count--;
+    s_status.opus_egress_queue_count = s_opus_egress_count;
+    s_status.opus_egress_packets_drained++;
+    *out_len = packet_len;
     return ESP_OK;
 }
 
@@ -474,7 +647,7 @@ esp_err_t audio_codec_service_v2_drain_synthetic(uint32_t *drained_packets)
     }
 
     *drained_packets = s_status.queue_count;
-    s_status.queue_count = 0;
+    clear_pcm_queue();
     return ESP_OK;
 }
 
@@ -484,9 +657,9 @@ esp_err_t audio_codec_service_v2_drain_opus_egress(uint32_t *drained_packets)
         return ESP_ERR_INVALID_ARG;
     }
 
-    *drained_packets = s_status.opus_egress_queue_count;
-    s_status.opus_egress_packets_drained += s_status.opus_egress_queue_count;
-    s_status.opus_egress_queue_count = 0;
+    *drained_packets = s_opus_egress_count;
+    s_status.opus_egress_packets_drained += s_opus_egress_count;
+    clear_opus_egress_queue();
     return ESP_OK;
 }
 
@@ -500,6 +673,8 @@ esp_err_t audio_codec_service_v2_reset_diagnostics(void)
     memset(&s_status, 0, sizeof(s_status));
     memset(s_pending_frame, 0, sizeof(s_pending_frame));
     s_pending_samples = 0;
+    clear_pcm_queue();
+    clear_opus_egress_queue();
     s_status.initialized = was_initialized;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
     s_status.opus_codec_error = -1;
@@ -588,6 +763,12 @@ esp_err_t audio_codec_service_v2_worker_start(void)
 {
     if (s_worker_task != NULL || s_status.worker_active) {
         return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t storage_err = ensure_packet_storage();
+    if (storage_err != ESP_OK) {
+        s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR;
+        return storage_err;
     }
 
     if (s_worker_done == NULL) {

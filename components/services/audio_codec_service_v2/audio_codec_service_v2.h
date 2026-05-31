@@ -23,6 +23,7 @@ extern "C" {
 #define NB_AUDIO_CODEC_V2_OPUS_BITRATE       32000U
 #define NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS  40U
 #define NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS 40U
+#define NB_AUDIO_CODEC_V2_OPUS_PACKET_MAX_BYTES 1024U
 #define NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES 16U
 #define NB_AUDIO_CODEC_V2_OVERFLOW_TEST_MAX_PACKETS 200U
 #define NB_AUDIO_CODEC_V2_WORKER_STRESS_MAX_PACKETS NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS
@@ -182,6 +183,10 @@ bool audio_codec_service_v2_is_initialized(void);
 const char *audio_codec_service_v2_worker_state_name(nb_audio_codec_v2_worker_state_t state);
 void audio_codec_service_v2_get_status(nb_audio_codec_v2_status_t *out);
 esp_err_t audio_codec_service_v2_feed_pcm16(const int16_t *samples, uint16_t sample_count);
+esp_err_t audio_codec_service_v2_read_opus_packet(
+    uint8_t *out,
+    uint16_t max_len,
+    uint16_t *out_len);
 esp_err_t audio_codec_service_v2_encode_test_once(void);
 esp_err_t audio_codec_service_v2_drain_synthetic(uint32_t *drained_packets);
 esp_err_t audio_codec_service_v2_drain_opus_egress(uint32_t *drained_packets);

@@ -2211,7 +2211,7 @@ static esp_err_t handle_api_audio_codec_v2_bridge_handoff_test(httpd_req_t *req)
 
 static esp_err_t handle_api_audio_codec_v2_transport_enable(httpd_req_t *req)
 {
-    esp_err_t err = audio_processor_service_opus_worker_start();
+    esp_err_t err = audio_codec_service_v2_worker_start();
     if (err == ESP_ERR_INVALID_STATE) {
         err = ESP_OK;
     }
@@ -2226,7 +2226,8 @@ static esp_err_t handle_api_audio_codec_v2_transport_enable(httpd_req_t *req)
              "{\"ok\":%s,\"diagnostic\":false,"
              "\"codec_v2_transport\":true,"
              "\"live_bridge_transport\":%s,"
-             "\"compat_worker\":\"audio_processor_service\","
+             "\"transport_worker\":\"audio_codec_service_v2\","
+             "\"compat_worker\":\"audio_codec_service_v2\","
              "\"pcm16_fallback\":true,"
              "\"opus_enabled\":%s,\"error\":\"%s\"}",
              (err == ESP_OK) ? "true" : "false",
@@ -2240,7 +2241,7 @@ static esp_err_t handle_api_audio_codec_v2_transport_enable(httpd_req_t *req)
 static esp_err_t handle_api_audio_codec_v2_transport_disable(httpd_req_t *req)
 {
     bridge_service_set_opus_enabled(false);
-    esp_err_t err = audio_processor_service_opus_worker_stop();
+    esp_err_t err = audio_codec_service_v2_worker_stop();
     if (err == ESP_ERR_INVALID_STATE) {
         err = ESP_OK;
     }
@@ -2250,7 +2251,8 @@ static esp_err_t handle_api_audio_codec_v2_transport_disable(httpd_req_t *req)
              "{\"ok\":%s,\"diagnostic\":false,"
              "\"codec_v2_transport\":true,"
              "\"live_bridge_transport\":false,"
-             "\"compat_worker\":\"audio_processor_service\","
+             "\"transport_worker\":\"audio_codec_service_v2\","
+             "\"compat_worker\":\"audio_codec_service_v2\","
              "\"pcm16_fallback\":true,"
              "\"opus_enabled\":%s,\"error\":\"%s\"}",
              (err == ESP_OK) ? "true" : "false",

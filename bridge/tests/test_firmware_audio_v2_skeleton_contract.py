@@ -111,11 +111,12 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     ).read_text(encoding="utf-8")
     assert "NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES" in codec_c
     assert "enqueue_synthetic_packet" in codec_c
-    assert "s_status.queue_count >= NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS" in codec_c
+    assert "s_pcm_queue_count >= NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS" in codec_c
+    assert "s_status.queue_count = s_pcm_queue_count;" in codec_c
     assert "s_status.packet_drops++" in codec_c
-    assert "s_status.queue_count++" in codec_c
+    assert "s_pcm_queue_count++" in codec_c
     assert "*drained_packets = s_status.queue_count;" in codec_c
-    assert "s_status.queue_count = 0;" in codec_c
+    assert "clear_pcm_queue();" in codec_c
     assert "was_initialized = s_status.initialized" in codec_c
     assert "worker_active = s_status.worker_active" in codec_c
     assert "worker_state = s_status.worker_state" in codec_c
@@ -148,8 +149,9 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "observe_worker_payload(s_worker_opus_out, encoded_bytes);" in codec_c
     assert "enqueue_opus_egress_packet(s_worker_opus_out, encoded_bytes);" in codec_c
     assert "audio_codec_service_v2_drain_opus_egress(" in codec_c
-    assert "s_status.opus_egress_queue_count >= NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS" in codec_c
-    assert "s_status.opus_egress_packets_drained += s_status.opus_egress_queue_count;" in codec_c
+    assert "s_opus_egress_count >= NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS" in codec_c
+    assert "s_status.opus_egress_packets_drained += s_opus_egress_count;" in codec_c
+    assert "audio_codec_service_v2_read_opus_packet(" in codec_c
     assert "checksum_payload(" in codec_c
     assert "esp_opus_enc_open" in codec_c
     assert "esp_opus_enc_process" in codec_c
@@ -202,7 +204,8 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"codec_v2_transport\\":true' in web
     assert '\\"live_bridge_transport\\":%s' in web
     assert '\\"pcm16_fallback\\":true' in web
-    assert '\\"compat_worker\\":\\"audio_processor_service\\"' in web
+    assert '\\"transport_worker\\":\\"audio_codec_service_v2\\"' in web
+    assert '\\"compat_worker\\":\\"audio_codec_service_v2\\"' in web
     assert '\\"worker_payload_packets_delta\\":%lu' in web
     assert '\\"worker_payload_preview_hex\\":\\"%s\\"' in web
     assert '\\"pcm_frames_in_delta\\":%lu' in web
