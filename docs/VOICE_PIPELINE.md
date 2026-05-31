@@ -974,6 +974,14 @@ Pendências:
    porque frases medias podem caber em 128 bytes e ainda assim depender do
    scroll horizontal lento do overlay. Esse ajuste e server-only, preserva o
    protocolo e foi validado com `server/tests` verde.
+8. Manter um guardrail operacional para Opus v2 ativo. O server agora expoe
+   `codec-v2 health` no CLI e `/api/device/audio/codec-v2/health` no proxy,
+   classificando o status do firmware em `ok`, `warn` ou `degraded` com base
+   em drops, erro do codec, worker, fila pronta e fila egress. Validacao local:
+   `server/tests` com 154 testes verdes. Validacao live: uma fila egress
+   pendente de 1 pacote foi detectada como warning, drenada com
+   `codec-v2 egress-drain`, e o health voltou limpo com zero drops e
+   `opus_codec_error=0`.
 
 Essa ordem evita a armadilha de trocar codec, VAD, AEC e STT ao mesmo tempo. O
 fim desejado é ambicioso, mas cada fase precisa ter medição própria para o robô

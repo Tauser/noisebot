@@ -130,6 +130,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "action",
         choices=[
             "status",
+            "health",
             "encode-test",
             "drain",
             "egress-drain",
@@ -586,7 +587,9 @@ def run_debug_command(args: argparse.Namespace) -> None:
             "bridge-handoff-test",
         ) else 1.5
         client = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=timeout_s)
-        if args.action == "encode-test":
+        if args.action == "health":
+            payload = client.audio_codec_v2_health()
+        elif args.action == "encode-test":
             payload = client.audio_codec_v2_encode_test()
         elif args.action == "drain":
             payload = client.audio_codec_v2_drain()
@@ -617,7 +620,10 @@ def run_debug_command(args: argparse.Namespace) -> None:
         if args.json:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
-            print(_format_codec_v2_status(payload))
+            if args.action == "health":
+                print(_format_codec_v2_health(payload))
+            else:
+                print(_format_codec_v2_status(payload))
         if not payload.get("ok", False):
             raise SystemExit(1)
         return
@@ -648,6 +654,33 @@ def _format_codec_v2_status(payload: dict[str, object]) -> str:
             f"- Samples pendentes: {payload.get('pending_samples', '')}",
             f"- Pacotes drenados: {payload.get('drained_packets', '')}",
             f"- Erro: {payload.get('error', '')}",
+        ]
+    )
+
+
+def _format_codec_v2_health(payload: dict[str, object]) -> str:
+    issues = payload.get("issues")
+    warnings = payload.get("warnings")
+    if not isinstance(issues, list):
+        issues = []
+    if not isinstance(warnings, list):
+        warnings = []
+    return "\n".join(
+        [
+            "# Codec v2 health",
+            "",
+            f"- Saudavel: {payload.get('healthy', False)}",
+            f"- Status: {payload.get('status', '')}",
+            f"- Formato: {payload.get('format', '')}",
+            f"- Worker: {payload.get('worker_state', '')} "
+            f"(active={payload.get('worker_active', '')})",
+            f"- Drops: packets={payload.get('packet_drops', '')}, "
+            f"egress={payload.get('opus_egress_packet_drops', '')}",
+            f"- Fila egress: {payload.get('opus_egress_queue_count', '')}",
+            f"- Erro Opus: {payload.get('opus_codec_error', '')}",
+            f"- Issues: {', '.join(str(item) for item in issues) if issues else 'nenhuma'}",
+            f"- Warnings: {', '.join(str(item) for item in warnings) if warnings else 'nenhum'}",
+            f"- Rollback: {payload.get('rollback_hint', '')}",
         ]
     )
 

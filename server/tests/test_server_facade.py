@@ -778,6 +778,7 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "_post_json", fake_post_json)
 
     assert client.audio_codec_v2_status()["ok"]
+    assert client.audio_codec_v2_health()["ok"]
     assert client.audio_codec_v2_encode_test()["ok"]
     assert client.audio_codec_v2_drain()["ok"]
     assert client.audio_codec_v2_egress_drain()["ok"]
@@ -791,7 +792,7 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     assert client.audio_codec_v2_transport_enable()["ok"]
     assert client.audio_codec_v2_transport_disable()["ok"]
     assert client.audio_codec_v2_overflow_test(45)["ok"]
-    assert get_paths == ["api/audio/codec-v2"]
+    assert get_paths == ["api/audio/codec-v2", "api/audio/codec-v2"]
     assert post_paths == [
         "api/audio/codec-v2/encode-test",
         "api/audio/codec-v2/drain",
@@ -807,6 +808,53 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
         "api/audio/codec-v2/transport/disable",
         "api/audio/codec-v2/overflow-test",
     ]
+
+
+def test_server_codec_v2_health_flags_transport_issues() -> None:
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+
+    health = firmware_diag.codec_v2_health_from_status({
+        "ok": True,
+        "format": "opus",
+        "worker_active": False,
+        "worker_state": "stopped",
+        "packet_drops": 2,
+        "opus_egress_packet_drops": 1,
+        "opus_egress_queue_count": 3,
+        "opus_codec_error": -1,
+        "error": "ESP_OK",
+    })
+
+    assert health["ok"] is True
+    assert health["healthy"] is False
+    assert health["status"] == "degraded"
+    assert "transporte Opus ativo sem worker ativo" in health["issues"]
+    assert "packet_drops=2" in health["issues"]
+    assert "opus_egress_packet_drops=1" in health["issues"]
+    assert "opus_codec_error=-1" in health["issues"]
+    assert health["warnings"] == ["opus_egress_queue_count=3"]
+    assert "NOISEBOT_AUDIO_DEFAULT_CODEC=pcm16" in health["rollback_hint"]
+
+
+def test_server_codec_v2_health_accepts_clean_opus_status() -> None:
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+
+    health = firmware_diag.codec_v2_health_from_status({
+        "ok": True,
+        "format": "opus",
+        "worker_active": True,
+        "worker_state": "running",
+        "packet_drops": 0,
+        "opus_egress_packet_drops": 0,
+        "opus_egress_queue_count": 0,
+        "opus_codec_error": 0,
+        "error": "ESP_OK",
+    })
+
+    assert health["healthy"] is True
+    assert health["status"] == "ok"
+    assert health["issues"] == []
+    assert health["warnings"] == []
 
 
 def test_server_cli_parses_capture_v2_debug_command() -> None:
@@ -939,6 +987,25 @@ def test_server_cli_parses_codec_v2_debug_command() -> None:
     assert args.debug_command == "codec-v2"
     assert args.host == "192.168.1.30"
     assert args.action == "encode-test"
+    assert args.json
+
+
+def test_server_cli_parses_codec_v2_health_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "health",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "codec-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "health"
     assert args.json
 
 
@@ -1182,6 +1249,45 @@ def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
     assert '"queue_count": 1' in captured.out
     assert '"opus_bitrate": 32000' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
+
+
+def test_server_cli_runs_codec_v2_health_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+
+    def fake_health(self):
+        return {
+            "ok": True,
+            "diagnostic": True,
+            "healthy": False,
+            "status": "degraded",
+            "format": "opus",
+            "worker_active": False,
+            "worker_state": "stopped",
+            "packet_drops": 1,
+            "opus_egress_packet_drops": 0,
+            "opus_egress_queue_count": 0,
+            "opus_codec_error": 0,
+            "issues": ["transporte Opus ativo sem worker ativo"],
+            "warnings": [],
+            "rollback_hint": "codec-v2 transport-disable ou NOISEBOT_AUDIO_DEFAULT_CODEC=pcm16",
+        }
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_codec_v2_health", fake_health)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "health",
+    ])
+
+    captured = capsys.readouterr()
+    assert "Codec v2 health" in captured.out
+    assert "Saudavel: False" in captured.out
+    assert "transporte Opus ativo sem worker ativo" in captured.out
+    assert "NOISEBOT_AUDIO_DEFAULT_CODEC=pcm16" in captured.out
 
 
 def test_server_cli_runs_codec_v2_drain_debug_command(monkeypatch, capsys) -> None:

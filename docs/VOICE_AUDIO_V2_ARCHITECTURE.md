@@ -1300,5 +1300,19 @@ opcode `TEXT_SCROLL`. Isso e server-only, nao exige flash, nao altera TTS,
 Opus, PCM16 nem sincronismo de audio. Validacao local: teste focado de
 paginacao e `server/tests` com 150 testes verdes.
 
+Guardrail operacional do Codec v2: o server agora tem diagnostico
+`codec-v2 health`, tambem exposto em `/api/device/audio/codec-v2/health`, que
+le o status do firmware e classifica `ok`, `warn` ou `degraded` a partir de
+drops, `opus_codec_error`, worker ativo/estado, fila pronta e fila egress. O
+retorno inclui `issues`, `warnings` e hint de rollback para
+`codec-v2 transport-disable` ou `NOISEBOT_AUDIO_DEFAULT_CODEC=pcm16`. Isso nao
+altera firmware, protocolo, captura, playback, TTS, Opus nem PCM16; e apenas
+observabilidade para evitar confundir fila/drops de codec com STT/LLM/TTS.
+Validacao local: teste focado de health/CLI e `server/tests` com 154 testes
+verdes. Validacao live: health primeiro apontou `opus_egress_queue_count=1`
+sem drops/erro; `codec-v2 egress-drain` drenou 1 pacote e health voltou
+`status=ok`, `healthy=true`, zero drops, fila egress zero e
+`opus_codec_error=0`.
+
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

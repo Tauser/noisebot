@@ -1056,6 +1056,15 @@ Validacao:
     caracteres, mantendo UTF-8 seguro e sem novo opcode. Isso e server-only,
     nao altera TTS, Opus, PCM16, captura nem playback. Validacao local: teste
     focado de paginacao e `server/tests` passaram com 150 testes.
+  - guardrail operacional do Codec v2: o server agora oferece `codec-v2 health`
+    no CLI e `/api/device/audio/codec-v2/health` no proxy. Ele le o status do
+    firmware e classifica `ok`, `warn` ou `degraded` por drops,
+    `opus_codec_error`, worker, fila pronta e fila egress, retornando
+    `issues`, `warnings` e hint de rollback. Nao muda firmware/protocolo nem
+    audio. Validacao local: teste focado de health/CLI e `server/tests`
+    passaram com 154 testes. Validacao live: detectou `opus_egress_queue_count=1`,
+    `egress-drain` drenou 1 pacote, e o health voltou `status=ok`,
+    `healthy=true`, zero drops e `opus_codec_error=0`.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

@@ -189,6 +189,9 @@ class FirmwareDiagClient:
             raise FirmwareDiagError("api/audio/codec-v2: resposta invalida")
         return payload
 
+    def audio_codec_v2_health(self) -> dict[str, Any]:
+        return codec_v2_health_from_status(self.audio_codec_v2_status())
+
     def audio_codec_v2_encode_test(self) -> dict[str, Any]:
         return self._post_json("api/audio/codec-v2/encode-test")
 
@@ -252,4 +255,61 @@ def _valid_audio_filename(name: str) -> bool:
     return all(ch in allowed for ch in name)
 
 
-__all__ = ["FirmwareDiagClient", "FirmwareDiagError"]
+def codec_v2_health_from_status(status: dict[str, Any]) -> dict[str, Any]:
+    issues: list[str] = []
+    warnings: list[str] = []
+    codec_error = _int_field(status, "opus_codec_error")
+    packet_drops = _int_field(status, "packet_drops")
+    egress_drops = _int_field(status, "opus_egress_packet_drops")
+    egress_queue = _int_field(status, "opus_egress_queue_count")
+    queue_count = _int_field(status, "queue_count")
+    fmt = str(status.get("format") or "")
+    worker_state = str(status.get("worker_state") or "")
+    worker_active = bool(status.get("worker_active"))
+
+    if not status.get("ok", False):
+        issues.append("codec-v2 status retornou ok=false")
+    if str(status.get("error") or "ESP_OK") != "ESP_OK":
+        issues.append(f"firmware reportou {status.get('error')}")
+    if codec_error:
+        issues.append(f"opus_codec_error={codec_error}")
+    if packet_drops:
+        issues.append(f"packet_drops={packet_drops}")
+    if egress_drops:
+        issues.append(f"opus_egress_packet_drops={egress_drops}")
+    if fmt == "opus" and not worker_active:
+        issues.append("transporte Opus ativo sem worker ativo")
+    if worker_active and worker_state not in {"running", "stopping"}:
+        issues.append(f"worker ativo em estado inesperado: {worker_state or 'vazio'}")
+    if egress_queue:
+        warnings.append(f"opus_egress_queue_count={egress_queue}")
+    if queue_count and not worker_active:
+        warnings.append(f"queue_count={queue_count} com worker inativo")
+
+    health_status = "degraded" if issues else "warn" if warnings else "ok"
+    return {
+        "ok": True,
+        "diagnostic": True,
+        "healthy": not issues,
+        "status": health_status,
+        "issues": issues,
+        "warnings": warnings,
+        "format": fmt,
+        "worker_active": worker_active,
+        "worker_state": worker_state,
+        "packet_drops": packet_drops,
+        "opus_egress_packet_drops": egress_drops,
+        "opus_egress_queue_count": egress_queue,
+        "opus_codec_error": codec_error,
+        "rollback_hint": "codec-v2 transport-disable ou NOISEBOT_AUDIO_DEFAULT_CODEC=pcm16",
+    }
+
+
+def _int_field(payload: dict[str, Any], key: str) -> int:
+    try:
+        return int(payload.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+__all__ = ["FirmwareDiagClient", "FirmwareDiagError", "codec_v2_health_from_status"]
