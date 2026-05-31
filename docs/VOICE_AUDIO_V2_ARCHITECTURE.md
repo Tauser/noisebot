@@ -1268,5 +1268,12 @@ chunks SAY enviados, bytes PCM recebidos/enviados, padding, `SAY_BEGIN`,
 separar corte real de audio, limite visual de texto e falha de envio ao
 firmware. Validacao local: `server/tests` com 143 testes verdes.
 
+O diagnostico foi promovido para analise automatica em `/ai/metrics`: se
+`tts_completed=false`, `voice_alert` marca "Fala possivelmente incompleta" e
+orienta checar chunks SAY, `SAY_BEGIN/SAY_END` e cancelamentos; se apenas
+`text_scroll_truncated=true`, `voice_diagnosis` indica limite visual de
+`TEXT_SCROLL`, sem tratar isso como corte de audio. Validacao local:
+`server/tests` com 145 testes verdes.
+
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

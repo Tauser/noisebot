@@ -1031,6 +1031,12 @@ Validacao:
     corte de audio, corte visual de `TEXT_SCROLL` de 128 bytes e falha de envio
     SAY sem mexer em firmware/protocolo. Validacao local: `server/tests` passou
     com 143 testes.
+  - analise automatica do corte de resposta em `/ai/metrics`: quando
+    `tts_completed=false`, `voice_alert` retorna "Fala possivelmente
+    incompleta" e recomenda checar chunks SAY, `SAY_BEGIN/SAY_END` e
+    cancelamentos; quando `text_scroll_truncated=true` mas TTS completou,
+    `voice_diagnosis` identifica limite visual de `TEXT_SCROLL`, sem marcar
+    alerta de audio. Validacao local: `server/tests` passou com 145 testes.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

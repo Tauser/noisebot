@@ -3001,6 +3001,62 @@ def test_server_metrics_replaces_duplicate_voice_session_turn() -> None:
     assert reset_payload["recent_voice_sessions"] == []
 
 
+def test_server_metrics_warns_when_tts_did_not_complete() -> None:
+    metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
+    api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    store = status_module.StatusStore()
+    store.record_voice_session({
+        "turn_id": 9,
+        "outcome": "llm",
+        "reply_chars": 220,
+        "tts_chunks_sent": 12,
+        "tts_say_begin_sent": True,
+        "tts_say_end_sent": False,
+        "tts_completed": False,
+    })
+
+    payload = api_module.MetricsApi(metrics_module.MetricsRegistry(), store).get_metrics()
+
+    assert payload["voice_alert"] == {
+        "level": "warn",
+        "title": "Fala possivelmente incompleta",
+        "detail": "TTS/playback não confirmou SAY_END",
+    }
+    assert payload["voice_diagnosis"] == {
+        "title": "Fala possivelmente incompleta",
+        "detail": "TTS/playback não confirmou envio completo de fala",
+        "next_check": "Checar chunks SAY, SAY_BEGIN/SAY_END e cancelamentos durante playback.",
+    }
+
+
+def test_server_metrics_distinguishes_visual_text_scroll_truncation() -> None:
+    metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
+    api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    store = status_module.StatusStore()
+    store.record_voice_session({
+        "turn_id": 10,
+        "outcome": "llm",
+        "reply_chars": 260,
+        "tts_completed": True,
+        "text_scroll_bytes": 260,
+        "text_scroll_payload_bytes": 128,
+        "text_scroll_truncated": True,
+    })
+
+    payload = api_module.MetricsApi(metrics_module.MetricsRegistry(), store).get_metrics()
+
+    assert payload["voice_alert"] is None
+    assert payload["voice_diagnosis"] == {
+        "title": "Turno de voz concluído",
+        "detail": "texto visual foi truncado pelo limite de TEXT_SCROLL; áudio pode estar completo",
+        "next_check": "Comparar reply_chars com tts_completed e duração esperada de fala.",
+    }
+
+
 def test_server_metrics_accepts_good_transcript_quality() -> None:
     metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
     api_module = importlib.import_module("noisebot_server.internal.ops.metrics")

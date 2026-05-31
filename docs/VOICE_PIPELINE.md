@@ -925,6 +925,10 @@ Pendências:
   `tts_say_begin_sent`, `tts_say_end_sent`, `tts_expected_duration_ms`,
   `tts_completed`, `text_scroll_truncated`) para o proximo teste real dizer se
   o corte esta no audio, no `TEXT_SCROLL` visual de 128 bytes ou no envio SAY.
+  O `/ai/metrics` agora tambem transforma esses campos em `voice_alert` e
+  `voice_diagnosis`: `tts_completed=false` vira alerta de fala possivelmente
+  incompleta; truncamento apenas visual do `TEXT_SCROLL` vira diagnostico sem
+  alerta.
 
 ## Ordem Recomendada
 
@@ -959,7 +963,8 @@ Pendências:
    playback ou server-side AEC validado.
 7. Usar os novos campos de completude TTS/playback em `/ai/metrics` para
    investigar o corte de texto/voz depois de confirmar a migração Opus em uso
-   diário.
+   diário. O endpoint ja diferencia `tts_completed=false` de
+   `text_scroll_truncated=true`.
 
 Essa ordem evita a armadilha de trocar codec, VAD, AEC e STT ao mesmo tempo. O
 fim desejado é ambicioso, mas cada fase precisa ter medição própria para o robô

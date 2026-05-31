@@ -117,6 +117,12 @@ def _voice_alert(session: dict) -> dict | None:
             "title": "Transcrição com baixa confiança",
             "detail": str(quality),
         }
+    if session.get("tts_completed") is False:
+        return {
+            "level": "warn",
+            "title": "Fala possivelmente incompleta",
+            "detail": "TTS/playback não confirmou SAY_END",
+        }
     return None
 
 
@@ -153,6 +159,15 @@ def _voice_diagnosis(session: dict, alert: dict | None) -> dict | None:
     elif "barge" in lower_reason or session.get("outcome") == "interrupted":
         detail = "turno interrompido por barge-in"
         next_check = "Confirmar que SPEECH_CANCEL drenou áudio antigo e abriu turno limpo."
+    elif session.get("tts_completed") is False:
+        detail = "TTS/playback não confirmou envio completo de fala"
+        next_check = "Checar chunks SAY, SAY_BEGIN/SAY_END e cancelamentos durante playback."
+    elif session.get("text_scroll_truncated") is True:
+        detail = "texto visual foi truncado pelo limite de TEXT_SCROLL; áudio pode estar completo"
+        next_check = "Comparar reply_chars com tts_completed e duração esperada de fala."
+    elif session.get("tts_completed") is True:
+        detail = "TTS/playback confirmou SAY_END para o turno"
+        next_check = "Se o áudio pareceu cortar, investigar fila/playback no firmware ou alto-falante."
     elif session.get("outcome") == "failed" or session.get("error_stage"):
         detail = detail or "erro no pipeline de voz"
         next_check = "Abrir eventos de sessão e checar o estágio indicado."
