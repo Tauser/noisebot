@@ -1009,6 +1009,12 @@ Validacao:
     `opus_codec_error=0`; rollback via `transport-disable` e restart normal
     voltou para `audio.format=pcm16`, worker `stopped`, fila zero e
     `capture-v2` desligado.
+  - soak real com startup Opus v2: usuario fez varios testes com intents locais
+    e LLM. Status pos-uso confirmou server conectado, Opus ativo, ultimo turno
+    `outcome=llm` sem erro, `pcm_frames_in=579`, `packets_out=579`,
+    `worker_opus_packets=579`, `opus_egress_packets_drained=579`,
+    `worker_opus_encoded_bytes_total=140756`, zero drops, egress queue zero,
+    worker `running`, `opus_codec_error=0` e `capture-v2` desligado.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

@@ -1244,5 +1244,13 @@ faz o HELLO/status mudarem para Opus ativo e preserva rollback por
 server em `qwen3.5:9b`, e rollback final para PCM16 com worker parado, fila
 zero e `capture-v2` desligado.
 
+Soak real com `--audio-codec opus-v2`: usuario executou varios testes com
+intents locais e LLM. Estado pos-uso confirmou server conectado, Opus ativo,
+ultimo turno LLM sem erro, `pcm_frames_in=579`, `packets_out=579`,
+`worker_opus_packets=579`, `opus_egress_packets_drained=579`,
+`worker_opus_encoded_bytes_total=140756`, `packet_drops=0`,
+`opus_egress_packet_drops=0`, `opus_egress_queue_count=0`, worker `running`,
+`opus_codec_error=0` e `capture-v2` desligado.
+
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

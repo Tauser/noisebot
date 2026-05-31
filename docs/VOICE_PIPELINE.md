@@ -944,7 +944,8 @@ Pendências:
    `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2` ou `--audio-codec opus-v2` para subir
    ja habilitando `codec-v2 transport-enable`, mantendo `pcm16` como default de
    fabrica e rollback simples. Validacao live confirmou startup em Opus e volta
-   limpa para PCM16.
+   limpa para PCM16. Soak real com intents locais e LLM em Opus v2 confirmou
+   579 pacotes processados/drenados, zero drops, fila zero e codec sem erro.
 6. AEC/realtime/follow-up continuam standby até existir referência limpa de
    playback ou server-side AEC validado.
 
