@@ -1202,8 +1202,10 @@ Metricas obrigatorias:
 
 ## Decisoes Ja Tomadas
 
-- PCM16 continua padrao.
-- Opus continua opt-in.
+- PCM16 continua fallback obrigatorio e rollback operacional.
+- Opus v2 continua capability opt-in no contrato do firmware, mas esta
+  promovido como default local do server em `server/.env` por
+  `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`.
 - Opus upstream usa 16 kHz mono, 60 ms, 32 kbps.
 - AEC device-side nao e promovivel no hardware atual sem referencia de playback.
 - Follow-up automatico fica em standby ate a base de audio v2 estar estavel.
@@ -1211,7 +1213,9 @@ Metricas obrigatorias:
 - Nao copiar WebSocket Xiaozhi inteiro agora.
 - Nao copiar C++/std::vector para firmware C17 do NoiseBot.
 
-## Proxima Implementacao Permitida
+## Fechamento da Migracao Opus v2
+
+Status: concluida como default local, com rollback PCM16 preservado.
 
 O worker live do proprio `audio_codec_service_v2` ja assumiu o transporte Opus
 opt-in no lugar do worker de compatibilidade, mantendo PCM16 como padrao e
@@ -1313,6 +1317,28 @@ verdes. Validacao live: health primeiro apontou `opus_egress_queue_count=1`
 sem drops/erro; `codec-v2 egress-drain` drenou 1 pacote e health voltou
 `status=ok`, `healthy=true`, zero drops, fila egress zero e
 `opus_codec_error=0`.
+
+Validacao de fechamento:
+
+- `codec-v2 health` retornou `healthy=true`, `status=ok`, `issues=[]`,
+  `warnings=[]`, `packet_drops=0`, `opus_egress_packet_drops=0`,
+  `opus_egress_queue_count=0`, `opus_codec_error=0` e worker `running`.
+- `/ai/status` confirmou server conectado, modelo `qwen3.5:9b` e audio ativo
+  em Opus 16 kHz mono, 60 ms.
+- Server local continua com `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`.
+- Rollback documentado: mudar env para `pcm16`, reiniciar server, ou chamar
+  `codec-v2 transport-disable` para voltar o transporte ativo para PCM16.
+
+Fora do fechamento:
+
+- AEC device-side continua bloqueado no hardware atual sem referencia limpa de
+  playback.
+- Follow-up automatico permanece desligado.
+- Barge-in sem wake por VAD permanece fora ate AFE/AEC/no-echo terem criterio
+  proprio.
+- Refatorar completamente `audio_service` para separar Audio I/O, playback,
+  VAD e capture session ainda e fase futura; o fechamento aqui e da migracao
+  de transporte Opus v2.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

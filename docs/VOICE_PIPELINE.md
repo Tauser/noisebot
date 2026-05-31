@@ -916,10 +916,12 @@ Pendências:
 
 - Só reabrir follow-up automático ou barge-in por VAD sem wake word depois de
   AEC/AFE validado.
-- Investigar apos fechar a migracao Opus: algumas respostas faladas parecem
-  cortar o texto antes do fim. Tratar como pendencia separada de TTS/streaming,
-  chunking, fila de playback ou criterio de fim de fala; nao misturar com a
-  troca PCM16/Opus sem evidencia. Avanco: o server passou a registrar
+- O corte observado durante a migracao foi investigado sem atribuir ao Opus por
+  suposicao. A evidencia mostrou TTS/playback completo e problema visual no
+  `TEXT_SCROLL`, corrigido com paginacao server-side por limite UTF-8 e largura
+  visual aproximada. Se surgir corte real de audio no futuro, tratar como
+  pendencia separada de TTS/streaming, chunking, fila de playback ou criterio
+  de fim de fala. Avanco: o server passou a registrar
   diagnostico de completude TTS/playback por turno (`tts_chunks_sent`,
   `tts_pcm_bytes_in`, `tts_pcm_bytes_sent`, `tts_padding_bytes`,
   `tts_say_begin_sent`, `tts_say_end_sent`, `tts_expected_duration_ms`,
@@ -931,6 +933,11 @@ Pendências:
   alerta.
 
 ## Ordem Recomendada
+
+Status de fechamento: a migracao Opus v2 esta concluida como default local do
+server, com PCM16 preservado como rollback operacional. O contrato do firmware
+continua anunciando Opus como capability opt-in, enquanto o server local liga o
+transporte Opus no startup via `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`.
 
 1. Preservar wake/VAD/turn-taking atual: sem ajuste novo sem regressão
    comprovada e teste.
@@ -982,6 +989,12 @@ Pendências:
    pendente de 1 pacote foi detectada como warning, drenada com
    `codec-v2 egress-drain`, e o health voltou limpo com zero drops e
    `opus_codec_error=0`.
+9. Fechamento concluido: `codec-v2 health` retornou `healthy=true`,
+   `status=ok`, sem issues/warnings, zero drops, fila egress zero,
+   `opus_codec_error=0` e worker `running`. `/ai/status` confirmou server
+   conectado em `qwen3.5:9b` e audio ativo em Opus 16 kHz mono, 60 ms.
+   Rollback segue por `NOISEBOT_AUDIO_DEFAULT_CODEC=pcm16` + restart ou
+   `codec-v2 transport-disable`.
 
 Essa ordem evita a armadilha de trocar codec, VAD, AEC e STT ao mesmo tempo. O
 fim desejado é ambicioso, mas cada fase precisa ter medição própria para o robô

@@ -75,13 +75,16 @@ Regra principal:
 
 ### PCM16
 
-- Continua sendo o caminho padrao.
-- Continua sendo fallback obrigatorio.
-- Nao remover ate audio v2 provar estabilidade em hardware real.
+- Continua sendo fallback obrigatorio e rollback operacional.
+- Nao remover.
+- O default local do server agora e Opus v2 via
+  `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`, mas PCM16 continua disponivel por
+  env `pcm16` ou `codec-v2 transport-disable`.
 
 ### Opus
 
-- Continua opt-in por API.
+- Continua capability opt-in no contrato do firmware, mas esta concluido como
+  default local do server.
 - Perfil upstream adotado:
   - sample rate: 16000 Hz;
   - mono;
@@ -1065,6 +1068,13 @@ Validacao:
     passaram com 154 testes. Validacao live: detectou `opus_egress_queue_count=1`,
     `egress-drain` drenou 1 pacote, e o health voltou `status=ok`,
     `healthy=true`, zero drops e `opus_codec_error=0`.
+  - fechamento da migracao Opus v2: default local do server confirmado com
+    `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`; `/ai/status` confirmou server
+    conectado com `qwen3.5:9b` e audio ativo em Opus 16 kHz mono, 60 ms;
+    `codec-v2 health` retornou `healthy=true`, `status=ok`, sem
+    issues/warnings, zero drops, fila egress zero, `opus_codec_error=0` e
+    worker `running`. Rollback PCM16 segue documentado por env `pcm16`,
+    reinicio do server ou `codec-v2 transport-disable`.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o
