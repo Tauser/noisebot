@@ -168,6 +168,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--model", help="Modelo LLM")
     parser.add_argument(
+        "--audio-codec",
+        choices=["pcm16", "opus-v2"],
+        help="Codec de audio ativo no startup do server",
+    )
+    parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Nivel de log",
@@ -201,6 +206,8 @@ def apply_env_overrides(args: argparse.Namespace) -> None:
         os.environ["NOISEBOT_LLM_PROVIDER"] = args.llm
     if args.model:
         os.environ["NOISEBOT_LLM_MODEL"] = args.model
+    if args.audio_codec:
+        os.environ["NOISEBOT_AUDIO_DEFAULT_CODEC"] = args.audio_codec
     if args.log_level:
         os.environ["NOISEBOT_LOG_LEVEL"] = args.log_level
 

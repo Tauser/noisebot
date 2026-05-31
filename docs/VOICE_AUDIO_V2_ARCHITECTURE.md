@@ -1234,5 +1234,15 @@ ativo, `transport-disable` voltou para PCM16 e o status final confirmou worker
 parado, fila egress zero, zero drops, `opus_codec_error=0` e `capture-v2`
 desligado.
 
+Avanco de promocao configuravel: o server agora aceita
+`NOISEBOT_AUDIO_DEFAULT_CODEC=pcm16|opus-v2` e o CLI `--audio-codec
+pcm16|opus-v2`. O default continua `pcm16`, mas quando iniciado com
+`--audio-codec opus-v2` o server chama `codec-v2 transport-enable` no startup,
+faz o HELLO/status mudarem para Opus ativo e preserva rollback por
+`transport-disable` ou por reinicio sem a flag. Validacao local passou com
+`server/tests`; validacao live confirmou startup em Opus v2, worker rodando,
+server em `qwen3.5:9b`, e rollback final para PCM16 com worker parado, fila
+zero e `capture-v2` desligado.
+
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

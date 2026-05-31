@@ -20,6 +20,7 @@ from .internal.agent import (
     WhisperLocalSTT,
 )
 from .internal.ops import OpsHttpServer, StatusStore
+from .internal.ops.firmware_diag import FirmwareDiagClient
 from .internal.service import healthcheck_loop
 from .internal.transport import ConnectionSupervisor, create_transport_factory
 
@@ -184,6 +185,8 @@ class NoiseBotServer:
         except Exception:
             log.exception("Ops API: falha ao iniciar - pipeline continua sem dashboard.")
 
+        await self._apply_default_audio_codec()
+
         if self._supervisor is not None:
             self._tasks.append(
                 asyncio.create_task(self._supervisor.run(), name="nb_supervisor")
@@ -218,6 +221,33 @@ class NoiseBotServer:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
         log.info("NoiseBotServer: encerrado.")
+
+    async def _apply_default_audio_codec(self) -> None:
+        codec = self._config.audio.default_codec
+        if codec == "pcm16":
+            log.info("Audio codec default: pcm16")
+            return
+
+        if codec != "opus-v2":
+            log.warning("Audio codec default desconhecido: %s", codec)
+            return
+
+        client = FirmwareDiagClient.from_config(self._config)
+        if client is None:
+            log.warning("Audio codec default opus-v2 ignorado: firmware HTTP indisponivel")
+            return
+
+        try:
+            payload = await asyncio.to_thread(client.audio_codec_v2_transport_enable)
+        except Exception:
+            log.exception("Audio codec default opus-v2 falhou ao habilitar transporte")
+            return
+
+        if not payload.get("ok") or not payload.get("opus_enabled"):
+            log.warning("Audio codec default opus-v2 nao confirmou enable: %s", payload)
+            return
+
+        log.info("Audio codec default opus-v2 habilitado via Codec v2")
 
 
 def _tts_cache_dir() -> Path | None:

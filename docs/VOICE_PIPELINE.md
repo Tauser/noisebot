@@ -940,6 +940,11 @@ Pendências:
 4. Ampliar regressão automática de protocolo, incluindo reconexão e
    cancelamento explícito.
 5. Só depois avaliar se Opus deve virar padrão obrigatório.
+   Etapa intermediaria feita: o server aceita
+   `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2` ou `--audio-codec opus-v2` para subir
+   ja habilitando `codec-v2 transport-enable`, mantendo `pcm16` como default de
+   fabrica e rollback simples. Validacao live confirmou startup em Opus e volta
+   limpa para PCM16.
 6. AEC/realtime/follow-up continuam standby até existir referência limpa de
    playback ou server-side AEC validado.
 

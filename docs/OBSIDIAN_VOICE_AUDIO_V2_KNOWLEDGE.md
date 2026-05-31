@@ -1000,6 +1000,15 @@ Validacao:
     voltou para PCM16, e o status final confirmou `worker_state=stopped`,
     `opus_egress_queue_count=0`, zero drops, `opus_codec_error=0` e
     `capture-v2` desligado.
+  - promocao configuravel no server: `NOISEBOT_AUDIO_DEFAULT_CODEC` e
+    `--audio-codec` aceitam `pcm16|opus-v2`; o default de fabrica continua
+    `pcm16`, mas `opus-v2` chama `codec-v2 transport-enable` no startup do
+    server. Validacao local: `server/tests` passou com 142 testes. Validacao
+    live: server subiu com `--audio-codec opus-v2`, `/ai/status` confirmou
+    `audio.format=opus`, `codecs.opus=true`, worker v2 `running` e
+    `opus_codec_error=0`; rollback via `transport-disable` e restart normal
+    voltou para `audio.format=pcm16`, worker `stopped`, fila zero e
+    `capture-v2` desligado.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

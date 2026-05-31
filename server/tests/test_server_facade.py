@@ -30,6 +30,7 @@ def _make_server_config(
     dry_run: bool = True,
     piper_model: str = "",
     max_utterance_samples: int = 160000,
+    default_codec: str = "pcm16",
 ):
     config_module = importlib.import_module("noisebot_server.config")
 
@@ -69,6 +70,7 @@ def _make_server_config(
         audio=config_module.AudioConfig(
             chunk_samples=256,
             sample_rate=16000,
+            default_codec=default_codec,
             min_transcribe_rms=140.0,
             min_transcribe_peak=1600,
             min_utterance_samples=8000,
@@ -180,6 +182,7 @@ def test_server_cli_parses_runtime_flags() -> None:
         "--pipeline", "local_only",
         "--llm", "ollama",
         "--model", "qwen2.5:7b",
+        "--audio-codec", "opus-v2",
         "--log-file", "stderr",
     ])
 
@@ -189,6 +192,7 @@ def test_server_cli_parses_runtime_flags() -> None:
     assert args.pipeline == "local_only"
     assert args.llm == "ollama"
     assert args.model == "qwen2.5:7b"
+    assert args.audio_codec == "opus-v2"
     assert args.log_file == "stderr"
 
 
@@ -202,6 +206,7 @@ def test_server_cli_applies_env_overrides(monkeypatch) -> None:
         "NOISEBOT_PIPELINE_MODE",
         "NOISEBOT_LLM_PROVIDER",
         "NOISEBOT_LLM_MODEL",
+        "NOISEBOT_AUDIO_DEFAULT_CODEC",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -212,6 +217,7 @@ def test_server_cli_applies_env_overrides(monkeypatch) -> None:
         "--pipeline", "local_only",
         "--llm", "none",
         "--model", "none",
+        "--audio-codec", "opus-v2",
     ])
 
     cli.apply_env_overrides(args)
@@ -224,6 +230,7 @@ def test_server_cli_applies_env_overrides(monkeypatch) -> None:
     assert os.environ["NOISEBOT_PIPELINE_MODE"] == "local_only"
     assert os.environ["NOISEBOT_LLM_PROVIDER"] == "none"
     assert os.environ["NOISEBOT_LLM_MODEL"] == "none"
+    assert os.environ["NOISEBOT_AUDIO_DEFAULT_CODEC"] == "opus-v2"
 
 
 def test_server_config_is_server_owned() -> None:
@@ -238,6 +245,27 @@ def test_server_config_is_server_owned() -> None:
     assert server_config.PipelineMode.LOCAL_ONLY.value == (
         bridge_config.PipelineMode.LOCAL_ONLY.value
     )
+
+
+def test_server_config_loads_audio_default_codec(monkeypatch) -> None:
+    config_module = importlib.import_module("noisebot_server.config")
+
+    monkeypatch.setenv("NOISEBOT_AUDIO_DEFAULT_CODEC", "opus-v2")
+
+    config = config_module.load_config()
+
+    assert config.audio.default_codec == "opus-v2"
+    assert config.safe_dict()["audio"]["default_codec"] == "opus-v2"
+
+
+def test_server_config_invalid_audio_default_codec_falls_back(monkeypatch) -> None:
+    config_module = importlib.import_module("noisebot_server.config")
+
+    monkeypatch.setenv("NOISEBOT_AUDIO_DEFAULT_CODEC", "banana")
+
+    config = config_module.load_config()
+
+    assert config.audio.default_codec == "pcm16"
 
 
 def test_server_cli_runs_debug_transcript_without_bridge_entrypoint(monkeypatch) -> None:
@@ -2245,6 +2273,54 @@ def test_server_app_tcp_config_creates_supervisor() -> None:
     assert app._get_adapter() is None
 
 
+@pytest.mark.asyncio
+async def test_server_app_keeps_pcm16_default_without_firmware_call(monkeypatch) -> None:
+    app_module = importlib.import_module("noisebot_server.app")
+    calls: list[str] = []
+
+    class FakeFirmwareDiagClient:
+        @classmethod
+        def from_config(cls, config):
+            calls.append("from_config")
+            return cls()
+
+    monkeypatch.setattr(app_module, "FirmwareDiagClient", FakeFirmwareDiagClient)
+
+    app = app_module.NoiseBotServer(
+        _make_server_config(host="127.0.0.1", dry_run=False, default_codec="pcm16")
+    )
+
+    await app._apply_default_audio_codec()
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_server_app_can_enable_opus_v2_default_codec(monkeypatch) -> None:
+    app_module = importlib.import_module("noisebot_server.app")
+    calls: list[str] = []
+
+    class FakeFirmwareDiagClient:
+        @classmethod
+        def from_config(cls, config):
+            calls.append("from_config")
+            return cls()
+
+        def audio_codec_v2_transport_enable(self):
+            calls.append("transport_enable")
+            return {"ok": True, "opus_enabled": True}
+
+    monkeypatch.setattr(app_module, "FirmwareDiagClient", FakeFirmwareDiagClient)
+
+    app = app_module.NoiseBotServer(
+        _make_server_config(host="127.0.0.1", dry_run=False, default_codec="opus-v2")
+    )
+
+    await app._apply_default_audio_codec()
+
+    assert calls == ["from_config", "transport_enable"]
+
+
 def test_server_transport_exports_bridge_compatible_protocol() -> None:
     _ensure_bridgev2_path()
 
@@ -2342,6 +2418,7 @@ def test_server_transport_factory_creates_tcp_transport() -> None:
         audio=config_module.AudioConfig(
             chunk_samples=256,
             sample_rate=16000,
+            default_codec="pcm16",
             min_transcribe_rms=140.0,
             min_transcribe_peak=1600,
             min_utterance_samples=8000,

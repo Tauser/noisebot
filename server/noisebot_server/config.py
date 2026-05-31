@@ -89,6 +89,7 @@ class TtsConfig:
 class AudioConfig:
     chunk_samples: int
     sample_rate: int
+    default_codec: str
     min_transcribe_rms: float
     min_transcribe_peak: int
     min_utterance_samples: int
@@ -163,6 +164,7 @@ class NoiseBotServerConfig:
             "audio": {
                 "chunk_samples": self.audio.chunk_samples,
                 "sample_rate": self.audio.sample_rate,
+                "default_codec": self.audio.default_codec,
                 "min_transcribe_rms": self.audio.min_transcribe_rms,
                 "min_transcribe_peak": self.audio.min_transcribe_peak,
                 "min_utterance_samples": self.audio.min_utterance_samples,
@@ -251,6 +253,14 @@ def _env_bool(key: str, default: bool = False) -> bool:
     return value in ("1", "true", "yes", "on")
 
 
+def _env_audio_default_codec() -> str:
+    value = _env("NOISEBOT_AUDIO_DEFAULT_CODEC", "pcm16").strip().lower()
+    if value in {"pcm16", "opus-v2"}:
+        return value
+    log.warning("NOISEBOT_AUDIO_DEFAULT_CODEC invalido, usando 'pcm16'")
+    return "pcm16"
+
+
 def load_config(env_path: str | os.PathLike[str] | None = None) -> NoiseBotServerConfig:
     load_env_file(env_path)
 
@@ -308,6 +318,7 @@ def load_config(env_path: str | os.PathLike[str] | None = None) -> NoiseBotServe
         audio=AudioConfig(
             chunk_samples=256,
             sample_rate=16000,
+            default_codec=_env_audio_default_codec(),
             min_transcribe_rms=_env_float("NOISEBOT_MIN_TRANSCRIBE_RMS", 140.0),
             min_transcribe_peak=_env_int("NOISEBOT_MIN_TRANSCRIBE_PEAK", 1600),
             min_utterance_samples=8000,
