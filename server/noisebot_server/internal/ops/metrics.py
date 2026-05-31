@@ -163,8 +163,14 @@ def _voice_diagnosis(session: dict, alert: dict | None) -> dict | None:
         detail = "TTS/playback não confirmou envio completo de fala"
         next_check = "Checar chunks SAY, SAY_BEGIN/SAY_END e cancelamentos durante playback."
     elif session.get("text_scroll_truncated") is True:
-        detail = "texto visual foi truncado pelo limite de TEXT_SCROLL; áudio pode estar completo"
-        next_check = "Comparar reply_chars com tts_completed e duração esperada de fala."
+        pages = session.get("text_scroll_pages")
+        pages_sent = session.get("text_scroll_pages_sent")
+        if isinstance(pages, int) and isinstance(pages_sent, int) and pages_sent >= pages > 1:
+            detail = "texto visual longo foi paginado em TEXT_SCROLL; áudio pode estar completo"
+            next_check = "Confirmar no display se as páginas apareceram durante a fala."
+        else:
+            detail = "texto visual foi truncado pelo limite de TEXT_SCROLL; áudio pode estar completo"
+            next_check = "Comparar reply_chars com tts_completed e duração esperada de fala."
     elif session.get("tts_completed") is True:
         detail = "TTS/playback confirmou SAY_END para o turno"
         next_check = "Se o áudio pareceu cortar, investigar fila/playback no firmware ou alto-falante."

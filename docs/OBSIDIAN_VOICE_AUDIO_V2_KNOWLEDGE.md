@@ -1044,6 +1044,12 @@ Validacao:
     `TEXT_SCROLL`. O `last_voice_session.reply` agora preserva ate 1200 chars
     para diagnostico, evitando falso corte no proprio endpoint de metricas.
     Validacao local: `server/tests` passou com 146 testes.
+  - paginacao visual server-side para respostas longas: o server divide a
+    resposta em paginas UTF-8 seguras de ate 128 bytes e envia multiplos
+    `TEXT_SCROLL` espacados durante a fala. Nao cria novo opcode, nao exige
+    firmware novo e nao altera audio/Opus/PCM16. `/ai/metrics` passa a expor
+    `text_scroll_pages` e `text_scroll_pages_sent`; diagnostico reconhece
+    paginacao concluida. Validacao local: `server/tests` passou com 149 testes.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

@@ -80,6 +80,7 @@ LLM_CONFIG_FALLBACK_REPLY = (
 TTS_FAST_FRAGMENT_MAX_CHARS = 96
 TTS_FAST_FRAGMENT_MIN_CHARS = 24
 TEXT_SCROLL_MAX_BYTES = 128
+TEXT_SCROLL_PAGE_INTERVAL_S = 2.2
 
 
 def _sentences_for_tts(text: str) -> list[str]:
@@ -1086,12 +1087,19 @@ class Orchestrator:
         if adapter is None or not text:
             return
         encoded = text.encode("utf-8")
+        pages = _split_text_scroll_pages(text)
         session.meta["text_scroll_chars"] = len(text)
         session.meta["text_scroll_bytes"] = len(encoded)
         session.meta["text_scroll_payload_bytes"] = min(len(encoded), TEXT_SCROLL_MAX_BYTES)
         session.meta["text_scroll_truncated"] = len(encoded) > TEXT_SCROLL_MAX_BYTES
+        session.meta["text_scroll_pages"] = len(pages)
+        session.meta["text_scroll_pages_sent"] = 0
         try:
-            await adapter.send_text_scroll(text)
+            for index, page in enumerate(pages):
+                if index > 0:
+                    await asyncio.sleep(TEXT_SCROLL_PAGE_INTERVAL_S)
+                await adapter.send_text_scroll(page)
+                session.meta["text_scroll_pages_sent"] = index + 1
         except Exception as exc:
             log.warning("Text scroll de resposta falhou sem bloquear TTS: %s", exc)
 
@@ -1456,6 +1464,8 @@ class Orchestrator:
             "text_scroll_bytes": session.meta.get("text_scroll_bytes"),
             "text_scroll_payload_bytes": session.meta.get("text_scroll_payload_bytes"),
             "text_scroll_truncated": session.meta.get("text_scroll_truncated"),
+            "text_scroll_pages": session.meta.get("text_scroll_pages"),
+            "text_scroll_pages_sent": session.meta.get("text_scroll_pages_sent"),
             "voice_end_to_stt_start_ms": delta_ms("voice_end", "stt_start"),
             "stt_ms": delta_ms("stt_start", "stt_end"),
             "end_of_turn_ms": since_start_ms("stt_end"),
@@ -1466,3 +1476,42 @@ class Orchestrator:
             "error_stage": session.meta.get("error_stage"),
             "error_reason": session.meta.get("error_reason"),
         })
+
+
+def _split_text_scroll_pages(text: str, *, max_bytes: int = TEXT_SCROLL_MAX_BYTES) -> list[str]:
+    """Split visible reply text into UTF-8-safe TEXT_SCROLL pages."""
+    words = " ".join(str(text or "").split()).split(" ")
+    pages: list[str] = []
+    current = ""
+
+    for word in words:
+        if not word:
+            continue
+        candidate = f"{current} {word}".strip() if current else word
+        if len(candidate.encode("utf-8")) <= max_bytes:
+            current = candidate
+            continue
+        if current:
+            pages.append(current)
+            current = ""
+        while len(word.encode("utf-8")) > max_bytes:
+            prefix = _utf8_prefix(word, max_bytes)
+            if not prefix:
+                break
+            pages.append(prefix)
+            word = word[len(prefix) :]
+        current = word
+
+    if current:
+        pages.append(current)
+    return pages or []
+
+
+def _utf8_prefix(text: str, max_bytes: int) -> str:
+    out = ""
+    for char in text:
+        candidate = out + char
+        if len(candidate.encode("utf-8")) > max_bytes:
+            break
+        out = candidate
+    return out

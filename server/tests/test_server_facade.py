@@ -2935,11 +2935,12 @@ def test_server_metrics_preserves_full_reply_for_tts_diagnostics() -> None:
 
 
 @pytest.mark.asyncio
-async def test_server_tts_records_playback_completion_diagnostics() -> None:
+async def test_server_tts_records_playback_completion_diagnostics(monkeypatch) -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     orchestrator_module = importlib.import_module(
         "noisebot_server.internal.agent.orchestrator"
     )
+    monkeypatch.setattr(orchestrator_module, "TEXT_SCROLL_PAGE_INTERVAL_S", 0)
 
     class DummyTts:
         async def synthesize_stream(self, sentences):
@@ -2976,11 +2977,13 @@ async def test_server_tts_records_playback_completion_diagnostics() -> None:
     session.reply_text = "Resposta longa " + ("x" * 180)
 
     await orchestrator._run_tts_and_speak(77, ["primeira frase"], session)
-    await asyncio.sleep(0)
+    for _ in range(5):
+        await asyncio.sleep(0)
 
     assert len(adapter.say_chunks) == 2
     assert adapter.say_end == [77]
-    assert adapter.texts == [session.reply_text]
+    assert adapter.texts
+    assert len(adapter.texts[0].encode("utf-8")) <= 128
     assert session.meta["tts_sentence_count"] == 1
     assert session.meta["tts_chunks_sent"] == 2
     assert session.meta["tts_pcm_bytes_in"] == 600
@@ -2988,6 +2991,53 @@ async def test_server_tts_records_playback_completion_diagnostics() -> None:
     assert session.meta["tts_padding_bytes"] == 424
     assert session.meta["tts_completed"] is True
     assert session.meta["text_scroll_truncated"] is True
+
+
+def test_server_text_scroll_pages_are_utf8_safe() -> None:
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    text = "Olá mundo. " + ("texto comprido " * 20) + "fim"
+    pages = orchestrator_module._split_text_scroll_pages(text)
+
+    assert len(pages) > 1
+    assert " ".join(pages).replace(" .", ".") != ""
+    assert all(len(page.encode("utf-8")) <= 128 for page in pages)
+    assert "Olá" in pages[0]
+
+
+@pytest.mark.asyncio
+async def test_server_reply_text_scroll_sends_paginated_pages(monkeypatch) -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class DummyAdapter:
+        def __init__(self) -> None:
+            self.texts: list[str] = []
+
+        async def send_text_scroll(self, text: str) -> None:
+            self.texts.append(text)
+
+    adapter = DummyAdapter()
+    orchestrator = orchestrator_module.Orchestrator(
+        runtime.EventBus(),
+        _make_server_config(),
+        get_adapter=lambda: adapter,
+    )
+    monkeypatch.setattr(orchestrator_module, "TEXT_SCROLL_PAGE_INTERVAL_S", 0)
+    session = runtime.SessionContext(turn_id=78)
+    session.reply_text = "Resposta longa. " + ("texto completo " * 20)
+
+    await orchestrator._send_reply_text_scroll(session)
+
+    assert len(adapter.texts) > 1
+    assert all(len(page.encode("utf-8")) <= 128 for page in adapter.texts)
+    assert session.meta["text_scroll_truncated"] is True
+    assert session.meta["text_scroll_pages"] == len(adapter.texts)
+    assert session.meta["text_scroll_pages_sent"] == len(adapter.texts)
 
 
 def test_server_dashboard_renders_voice_diagnostics_panel() -> None:
@@ -3077,6 +3127,32 @@ def test_server_metrics_distinguishes_visual_text_scroll_truncation() -> None:
         "title": "Turno de voz concluído",
         "detail": "texto visual foi truncado pelo limite de TEXT_SCROLL; áudio pode estar completo",
         "next_check": "Comparar reply_chars com tts_completed e duração esperada de fala.",
+    }
+
+
+def test_server_metrics_reports_paginated_text_scroll() -> None:
+    metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
+    api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    store = status_module.StatusStore()
+    store.record_voice_session({
+        "turn_id": 11,
+        "outcome": "llm",
+        "reply_chars": 260,
+        "tts_completed": True,
+        "text_scroll_truncated": True,
+        "text_scroll_pages": 3,
+        "text_scroll_pages_sent": 3,
+    })
+
+    payload = api_module.MetricsApi(metrics_module.MetricsRegistry(), store).get_metrics()
+
+    assert payload["voice_alert"] is None
+    assert payload["voice_diagnosis"] == {
+        "title": "Turno de voz concluído",
+        "detail": "texto visual longo foi paginado em TEXT_SCROLL; áudio pode estar completo",
+        "next_check": "Confirmar no display se as páginas apareceram durante a fala.",
     }
 
 

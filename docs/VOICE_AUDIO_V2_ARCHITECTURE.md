@@ -1283,5 +1283,14 @@ Validacao real apos resposta longa confirmou `tts_completed=true`,
 enquanto `transcript` preserva ate 500. Validacao local: `server/tests` com
 146 testes verdes.
 
+Texto visual longo agora e paginado no server sem novo opcode: a resposta e
+dividida em paginas UTF-8 seguras de ate 128 bytes e enviada como multiplos
+`TEXT_SCROLL` espacados durante a fala. O firmware atual continua recebendo
+frames `TEXT_SCROLL` compatíveis; portanto esta mudanca nao exige novo
+protocolo binario e nao altera audio/Opus/PCM16. As metricas registram
+`text_scroll_pages` e `text_scroll_pages_sent`, e o diagnostico de
+`/ai/metrics` diferencia truncamento antigo de paginacao concluida. Validacao
+local: `server/tests` com 149 testes verdes.
+
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.
