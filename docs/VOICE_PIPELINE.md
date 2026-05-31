@@ -106,7 +106,10 @@ do Opus no worker, a sequencia
 confirmou `worker_supported=true`, worker rodando, `queue_count=0` apos drain
 pela task, `worker_drained_packets=1`, `worker_state=stopped` no stop,
 `packet_drops=0` e `capture-v2` desligado. Falta flash para validar os
-contadores `worker_opus_*` em hardware.
+contadores `worker_opus_*` em hardware. A primeira tentativa em hardware com
+stack persistente de 24 KB falhou no `worker-start` com HTTP 409 e
+`worker_state=error`, sem derrubar HTTP; a correcao local reduziu a stack do
+worker para 12 KB e passou em teste focado/build.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

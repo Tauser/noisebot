@@ -790,6 +790,14 @@ Validacao em hardware:
   - `bridge/tests`: 160 testes;
   - `server/tests`: 130 testes;
   - `idf.py build` limpo.
+- Observacao de hardware do Opus dentro do worker opt-in:
+  - a primeira tentativa com stack persistente igual ao teste temporario
+    (`2048 * 12`) falhou em `worker-start` com HTTP 409 e
+    `worker_state=error`, sem derrubar HTTP e sem tocar captura;
+  - inferencia: stack persistente de 24 KB ficou pesada para criar a task;
+  - correcao local: `CODEC_WORKER_TASK_STACK` reduzido para `2048 * 6`;
+  - validacao local apos correcao: teste focado bridge 6, server facade 115 e
+    `idf.py build` limpo; falta flash para nova validacao em hardware.
 - Observacao de hardware: a primeira versao sincronamente no handler HTTP
   causou timeout e indisponibilidade HTTP apos o teste. A correcao moveu o
   encode para task temporaria `nb_codec_v2_opus_test` com stack proprio e

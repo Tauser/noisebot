@@ -829,6 +829,11 @@ Validacao:
   - validacao local do Opus dentro do worker opt-in: teste focado bridge 6,
     teste focado server 115, bridge completo 160, server completo 130 e
     `idf.py build`.
+  - observacao de hardware do Opus dentro do worker opt-in: a primeira
+    tentativa com stack persistente de 24 KB falhou em `worker-start` com HTTP
+    409 e `worker_state=error`, sem derrubar HTTP nem tocar captura; a
+    correcao local reduziu `CODEC_WORKER_TASK_STACK` para 12 KB e passou em
+    teste focado/build. Falta novo flash.
   - observacao de hardware: a tentativa inicial de rodar o encode Opus
     sincronamente no handler HTTP causou timeout e indisponibilidade HTTP; a
     correcao moveu o encode para task temporaria com stack proprio.
