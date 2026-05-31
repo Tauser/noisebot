@@ -752,11 +752,13 @@ Validacao:
   - server proxy: `/api/device/audio/codec-v2/encode-test`;
   - server proxy: `/api/device/audio/codec-v2/drain`;
   - server proxy: `/api/device/audio/codec-v2/reset`;
+  - server proxy: `/api/device/audio/codec-v2/opus-encode-test`;
   - server proxy: `/api/device/audio/codec-v2/overflow-test`;
   - CLI: `noisebot_server debug codec-v2 status`;
   - CLI: `noisebot_server debug codec-v2 encode-test`;
   - CLI: `noisebot_server debug codec-v2 drain`;
   - CLI: `noisebot_server debug codec-v2 reset`;
+  - CLI: `noisebot_server debug codec-v2 opus-encode-test`;
   - CLI: `noisebot_server debug codec-v2 overflow-test --packets N`;
   - status atual tambem publica o contrato do worker futuro como inativo:
     `worker_supported=false`, `worker_active=false` e
@@ -777,6 +779,10 @@ Validacao:
     `attempted_packets`, `accepted_packets`, `dropped_packets`,
     `peak_queue_count`, `queue_count_after_cleanup` e
     `status_packet_drops_after_cleanup`, sem poluir status global;
+  - `opus-encode-test` e o primeiro Opus real no `audio_codec_service_v2`:
+    abre o encoder Espressif, codifica um frame sintetico de 960 samples,
+    fecha o encoder e reporta `encoded_bytes`, heap e `codec_error`, sem task,
+    sem bridge, sem captura/playback e sem mudar o PCM16 como padrao;
   - validado em hardware apos flash:
     `initialized=false`, `format=pcm16`, `opus_frame_ms=60`,
     `opus_frame_samples=960`, `opus_bitrate=32000`,
@@ -799,6 +805,9 @@ Validacao:
     `idf.py build`.
   - validacao local do stub de worker inativo: teste focado bridge 6, teste
     focado server 111, bridge completo 160, server completo 126 e
+    `idf.py build`.
+  - validacao local do encode Opus real diagnostico: teste focado bridge 6,
+    teste focado server 113, bridge completo 160, server completo 128 e
     `idf.py build`.
   - validacao em hardware do stub de worker inativo apos flash:
     `codec-v2 status` retornou `worker_supported=false`,

@@ -680,6 +680,11 @@ Implementacao atual:
   `drained_packets`, preservando `pending_samples` e os contadores acumulados;
 - `POST /api/audio/codec-v2/reset` zera contadores, fila e amostras pendentes,
   preservando o contrato fixo e `format=pcm16`;
+- `POST /api/audio/codec-v2/opus-encode-test` executa o primeiro encode Opus
+  real dentro do `audio_codec_service_v2`: abre o encoder Espressif, codifica
+  um frame sintetico de 960 samples, fecha o encoder e retorna bytes/heap/erro;
+  nao cria task, nao envia ao bridge, nao altera captura/playback e nao muda o
+  formato padrao PCM16;
 - `POST /api/audio/codec-v2/overflow-test` executa teste diagnostico
   autocontido: limpa estado no inicio, tenta enfileirar N pacotes completos,
   reporta aceitos/drops/pico de fila e limpa estado ao final;
@@ -687,11 +692,14 @@ Implementacao atual:
 - o server tambem expoe `/api/device/audio/codec-v2/encode-test`;
 - o server tambem expoe `/api/device/audio/codec-v2/drain`;
 - o server tambem expoe `/api/device/audio/codec-v2/reset`;
+- o server tambem expoe `/api/device/audio/codec-v2/opus-encode-test`;
 - o server tambem expoe `/api/device/audio/codec-v2/overflow-test`;
 - CLI `noisebot_server debug codec-v2 status` consulta o endpoint do firmware;
 - CLI `noisebot_server debug codec-v2 encode-test` aciona o teste sintetico;
 - CLI `noisebot_server debug codec-v2 drain` drena a fila sintetica;
 - CLI `noisebot_server debug codec-v2 reset` limpa o estado diagnostico;
+- CLI `noisebot_server debug codec-v2 opus-encode-test` executa o encode Opus
+  real diagnostico e isolado;
 - CLI `noisebot_server debug codec-v2 overflow-test --packets N` executa o
   teste de overflow autocontido;
 - o endpoint nao liga Opus, nao cria task e nao altera bridge/captura/playback;
@@ -748,6 +756,12 @@ Validacao em hardware:
   - `server/tests/test_server_facade.py`: 111 testes;
   - `bridge/tests`: 160 testes;
   - `server/tests`: 126 testes;
+  - `idf.py build` limpo.
+- Validacao local do encode Opus real diagnostico:
+  - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
+  - `server/tests/test_server_facade.py`: 113 testes;
+  - `bridge/tests`: 160 testes;
+  - `server/tests`: 128 testes;
   - `idf.py build` limpo.
 - Validacao em hardware do stub de worker inativo apos flash:
   - `GET /api/audio/codec-v2`: `initialized=false`, `format=pcm16`,

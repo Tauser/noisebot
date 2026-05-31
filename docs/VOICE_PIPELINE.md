@@ -97,6 +97,13 @@ com teste focado de contrato, `server/tests`, `bridge/tests` e `idf.py build`.
 Em hardware apos flash, `codec-v2 status` confirmou o worker inativo,
 contadores zerados, `format=pcm16` e `ESP_OK`; `capture-v2 status` confirmou
 `real_capture_enabled=false`, `session_active=false` e `IDLE_SESSION`.
+O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
+`codec-v2 opus-encode-test`: o firmware abre o encoder Opus da Espressif,
+codifica um frame sintético de 960 samples, fecha o encoder e retorna
+`encoded_bytes`, heap e `codec_error`. Ele não cria task, não envia ao bridge,
+não toca captura/playback e não muda o padrão PCM16. A validação local passou
+com contrato bridge focado, server facade, `bridge/tests`, `server/tests` e
+`idf.py build`.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
