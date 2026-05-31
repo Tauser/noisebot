@@ -26,6 +26,7 @@ esp_err_t audio_playback_service_v2_init(void)
 
     memset(&s_status, 0, sizeof(s_status));
     s_status.initialized = true;
+    s_status.bridge_say_observer = true;
     s_status.last_error = ESP_OK;
     taskEXIT_CRITICAL(&s_mux);
     return ESP_OK;
@@ -81,6 +82,7 @@ esp_err_t audio_playback_service_v2_probe_start(uint32_t duration_ms, uint16_t a
     if (!s_status.initialized) {
         memset(&s_status, 0, sizeof(s_status));
         s_status.initialized = true;
+        s_status.bridge_say_observer = true;
     }
     if (s_status.playing) {
         taskEXIT_CRITICAL(&s_mux);
@@ -173,4 +175,63 @@ bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_co
     }
     taskEXIT_CRITICAL(&s_mux);
     return true;
+}
+
+void audio_playback_service_v2_note_say_queue_depth(uint32_t depth)
+{
+    taskENTER_CRITICAL(&s_mux);
+    s_status.bridge_say_observer = true;
+    s_status.say_queue_depth = depth;
+    if (s_status.say_queue_count > depth) {
+        s_status.say_queue_count = depth;
+    }
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+void audio_playback_service_v2_note_say_enqueued(uint32_t queue_count)
+{
+    taskENTER_CRITICAL(&s_mux);
+    s_status.bridge_say_observer = true;
+    s_status.say_chunks_received++;
+    s_status.say_queue_count = queue_count;
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+void audio_playback_service_v2_note_say_played(uint32_t queue_count)
+{
+    taskENTER_CRITICAL(&s_mux);
+    s_status.bridge_say_observer = true;
+    s_status.say_chunks_played++;
+    s_status.say_queue_count = queue_count;
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+void audio_playback_service_v2_note_say_dropped(uint32_t queue_count, bool during_listen)
+{
+    taskENTER_CRITICAL(&s_mux);
+    s_status.bridge_say_observer = true;
+    s_status.say_chunks_dropped++;
+    if (during_listen) {
+        s_status.say_chunks_dropped_listening++;
+    }
+    s_status.say_queue_count = queue_count;
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+void audio_playback_service_v2_note_say_cancelled(uint32_t pending_chunks)
+{
+    taskENTER_CRITICAL(&s_mux);
+    s_status.bridge_say_observer = true;
+    s_status.say_chunks_cancelled += pending_chunks;
+    s_status.say_cancel_count++;
+    s_status.say_queue_count = 0;
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+void audio_playback_service_v2_note_say_idle(void)
+{
+    taskENTER_CRITICAL(&s_mux);
+    s_status.bridge_say_observer = true;
+    s_status.say_queue_count = 0;
+    taskEXIT_CRITICAL(&s_mux);
 }

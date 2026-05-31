@@ -1021,6 +1021,8 @@ static void audio_task(void *arg)
                 wav_file = NULL;
             }
             if (s.bridge_say_q) {
+                audio_playback_service_v2_note_say_cancelled(
+                    (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q));
                 xQueueReset(s.bridge_say_q);
             }
             (void)audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES, 0);
@@ -1112,6 +1114,8 @@ static void audio_task(void *arg)
         else if (play_state == PLAY_BRIDGE_SAY) {
             if (xQueueReceive(s.bridge_say_q, &s_bridge_say_chunk, 0) == pdTRUE) {
                 s.bridge_say_empty_ms = 0;
+                audio_playback_service_v2_note_say_played(
+                    (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q));
                 uint16_t n = s_bridge_say_chunk.count;
                 if (n > NB_BRIDGE_AUDIO_CHUNK_SAMPLES) n = NB_BRIDGE_AUDIO_CHUNK_SAMPLES;
                 uint32_t mult = ((uint32_t)s.volume * 256U) / 100U;
@@ -1138,6 +1142,7 @@ static void audio_task(void *arg)
                     s.bridge_say_playing = false;
                     s.bridge_say_empty_ms = 0;
                     xSemaphoreGive(s.mutex);
+                    audio_playback_service_v2_note_say_idle();
                     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
                 } else {
                     s.bridge_say_empty_ms += CHUNK_DURATION_MS;
@@ -1428,6 +1433,7 @@ esp_err_t audio_service_init(void)
                                          sizeof(bridge_say_item_t),
                                          s_bridge_say_q_storage,
                                          &s_bridge_say_q_static);
+    audio_playback_service_v2_note_say_queue_depth(BRIDGE_SAY_QUEUE_DEPTH);
     if (!s.bridge_say_q) {
         if (s.esp_vad) {
             vad_destroy(s.esp_vad);
@@ -1507,6 +1513,8 @@ esp_err_t audio_play_stop(void)
         s.bridge_say_playing = false;
         s.bridge_say_empty_ms = 0;
         if (s.bridge_say_q) {
+            audio_playback_service_v2_note_say_cancelled(
+                (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q));
             xQueueReset(s.bridge_say_q);
         }
     }
@@ -1688,6 +1696,8 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         s.bridge_say_playing = false;
         s.bridge_say_empty_ms = 0;
         if (s.bridge_say_q) {
+            audio_playback_service_v2_note_say_cancelled(
+                (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q));
             xQueueReset(s.bridge_say_q);
         }
     }
@@ -1695,6 +1705,7 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
 
     if (listening) {
         s_bridge_say_drop_count++;
+        audio_playback_service_v2_note_say_dropped(0, true);
         if ((s_bridge_say_drop_count % 32U) == 1U) {
             ESP_LOGW(TAG, "Bridge SAY descartado durante escuta drops=%lu",
                      (unsigned long)s_bridge_say_drop_count);
@@ -1717,6 +1728,8 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         ESP_LOGI(TAG, "Bridge SAY iniciado");
     }
     if (xQueueSend(s.bridge_say_q, &item, 0) == pdTRUE) {
+        audio_playback_service_v2_note_say_enqueued(
+            (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q));
         if ((++s_bridge_say_rx_count % 64U) == 1U) {
             ESP_LOGI(TAG, "Bridge SAY recebido chunks=%lu q=%u",
                      (unsigned long)s_bridge_say_rx_count,
@@ -1725,6 +1738,8 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         s.bridge_say_empty_ms = 0;
     } else {
         s_bridge_say_drop_count++;
+        audio_playback_service_v2_note_say_dropped(
+            (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q), false);
         if ((s_bridge_say_drop_count % 32U) == 1U) {
             ESP_LOGW(TAG, "Bridge SAY dropado: fila cheia drops=%lu",
                      (unsigned long)s_bridge_say_drop_count);

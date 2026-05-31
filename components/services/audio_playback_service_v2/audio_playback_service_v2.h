@@ -25,6 +25,7 @@ typedef struct {
     bool initialized;
     bool playing;
     bool stop_requested;
+    bool bridge_say_observer;
     uint32_t probe_duration_ms;
     uint32_t probe_elapsed_ms;
     uint32_t queued_chunks;
@@ -32,6 +33,14 @@ typedef struct {
     uint32_t dropped_chunks;
     uint32_t cancel_count;
     uint32_t amplitude;
+    uint32_t say_queue_depth;
+    uint32_t say_queue_count;
+    uint32_t say_chunks_received;
+    uint32_t say_chunks_played;
+    uint32_t say_chunks_dropped;
+    uint32_t say_chunks_dropped_listening;
+    uint32_t say_chunks_cancelled;
+    uint32_t say_cancel_count;
     esp_err_t last_error;
 } nb_audio_playback_v2_status_t;
 
@@ -44,6 +53,13 @@ esp_err_t audio_playback_service_v2_probe_start(uint32_t duration_ms, uint16_t a
 esp_err_t audio_playback_service_v2_probe_stop(void);
 bool audio_playback_service_v2_is_playing(void);
 bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_count);
+
+void audio_playback_service_v2_note_say_queue_depth(uint32_t depth);
+void audio_playback_service_v2_note_say_enqueued(uint32_t queue_count);
+void audio_playback_service_v2_note_say_played(uint32_t queue_count);
+void audio_playback_service_v2_note_say_dropped(uint32_t queue_count, bool during_listen);
+void audio_playback_service_v2_note_say_cancelled(uint32_t pending_chunks);
+void audio_playback_service_v2_note_say_idle(void);
 
 #ifdef __cplusplus
 }

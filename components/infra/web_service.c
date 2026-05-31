@@ -2360,18 +2360,25 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_playback_v2_status_t st;
     audio_playback_service_v2_get_status(&st);
 
-    char buf[512];
+    char buf[1024];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
-             "\"stop_requested\":%s,\"probe_duration_ms\":%lu,"
+             "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
+             "\"probe_duration_ms\":%lu,"
              "\"probe_elapsed_ms\":%lu,\"queued_chunks\":%lu,"
              "\"played_chunks\":%lu,\"dropped_chunks\":%lu,"
              "\"cancel_count\":%lu,\"amplitude\":%lu,"
+             "\"say_queue_depth\":%lu,\"say_queue_count\":%lu,"
+             "\"say_chunks_received\":%lu,\"say_chunks_played\":%lu,"
+             "\"say_chunks_dropped\":%lu,"
+             "\"say_chunks_dropped_listening\":%lu,"
+             "\"say_chunks_cancelled\":%lu,\"say_cancel_count\":%lu,"
              "\"last_error\":\"%s\",\"error\":\"%s\"}",
              (err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
              st.playing ? "true" : "false",
              st.stop_requested ? "true" : "false",
+             st.bridge_say_observer ? "true" : "false",
              (unsigned long)st.probe_duration_ms,
              (unsigned long)st.probe_elapsed_ms,
              (unsigned long)st.queued_chunks,
@@ -2379,6 +2386,14 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.dropped_chunks,
              (unsigned long)st.cancel_count,
              (unsigned long)st.amplitude,
+             (unsigned long)st.say_queue_depth,
+             (unsigned long)st.say_queue_count,
+             (unsigned long)st.say_chunks_received,
+             (unsigned long)st.say_chunks_played,
+             (unsigned long)st.say_chunks_dropped,
+             (unsigned long)st.say_chunks_dropped_listening,
+             (unsigned long)st.say_chunks_cancelled,
+             (unsigned long)st.say_cancel_count,
              esp_err_to_name(st.last_error),
              esp_err_to_name(err));
     httpd_resp_set_type(req, "application/json");
