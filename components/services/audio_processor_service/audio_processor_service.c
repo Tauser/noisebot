@@ -19,6 +19,7 @@
 #include "esp_opus_enc.h"
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
@@ -641,7 +642,11 @@ static void opus_worker_task(void *arg)
         xSemaphoreGive(s_opus_done);
     }
     s_opus_task = NULL;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+    vTaskDeleteWithCaps(NULL);
+#else
     vTaskDelete(NULL);
+#endif
 }
 
 static bool opus_encode_pcm_frame(void *enc, nb_opus_worker_status_t *st, const int16_t *pcm)
@@ -870,7 +875,11 @@ static void opus_persistent_task(void *arg)
         xSemaphoreGive(s_opus_done);
     }
     s_opus_task = NULL;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+    vTaskDeleteWithCaps(NULL);
+#else
     vTaskDelete(NULL);
+#endif
 }
 
 esp_err_t audio_processor_service_opus_worker_probe_once(void)
@@ -907,7 +916,19 @@ esp_err_t audio_processor_service_opus_worker_probe_once(void)
     s_opus.last_error = ESP_ERR_TIMEOUT;
     xSemaphoreGive(s.mutex);
 
-    BaseType_t rc = xTaskCreatePinnedToCore(
+    BaseType_t rc;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+    rc = xTaskCreatePinnedToCoreWithCaps(
+        opus_worker_task,
+        "nb_opus_probe",
+        OPUS_WORKER_TASK_STACK,
+        NULL,
+        OPUS_WORKER_TASK_PRIORITY,
+        &s_opus_task,
+        OPUS_WORKER_TASK_CORE,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    rc = xTaskCreatePinnedToCore(
         opus_worker_task,
         "nb_opus_probe",
         OPUS_WORKER_TASK_STACK,
@@ -916,6 +937,7 @@ esp_err_t audio_processor_service_opus_worker_probe_once(void)
         &s_opus_task,
         OPUS_WORKER_TASK_CORE
     );
+#endif
     if (rc != pdPASS) {
         xSemaphoreTake(s.mutex, portMAX_DELAY);
         s_opus.ran = true;
@@ -1016,7 +1038,19 @@ esp_err_t audio_processor_service_opus_worker_start(void)
     s_opus_stop_requested = false;
     xSemaphoreGive(s.mutex);
 
-    BaseType_t rc = xTaskCreatePinnedToCore(
+    BaseType_t rc;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+    rc = xTaskCreatePinnedToCoreWithCaps(
+        opus_persistent_task,
+        "nb_opus_work",
+        OPUS_WORKER_TASK_STACK,
+        NULL,
+        OPUS_WORKER_TASK_PRIORITY,
+        &s_opus_task,
+        OPUS_WORKER_TASK_CORE,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    rc = xTaskCreatePinnedToCore(
         opus_persistent_task,
         "nb_opus_work",
         OPUS_WORKER_TASK_STACK,
@@ -1025,6 +1059,7 @@ esp_err_t audio_processor_service_opus_worker_start(void)
         &s_opus_task,
         OPUS_WORKER_TASK_CORE
     );
+#endif
     if (rc != pdPASS) {
         xSemaphoreTake(s.mutex, portMAX_DELAY);
         s_opus.ran = true;
