@@ -906,13 +906,17 @@ Validacao:
     `worker_state_after=stopped`; status final confirmou `format=pcm16`,
     `bridge_handoff_packets_ready=10`, fila egress zerada, `error=ESP_OK` e
     `capture-v2` desligado.
-  - validacao local do controle de transporte Opus live pelo namespace v2:
-    teste focado bridge, teste focado server 121 e `idf.py build`; validacao
-    em hardware pendente apos flash com
-    `codec-v2 transport-enable --json` seguido de
-    `codec-v2 transport-disable --json`, esperando `ESP_OK`,
-    `pcm16_fallback=true`, `live_bridge_transport=true` no enable e
-    `live_bridge_transport=false` no disable.
+  - validacao local e em hardware do controle de transporte Opus live pelo
+    namespace v2: teste focado bridge 9, teste focado server 121 e
+    `idf.py build`; apos flash, `codec-v2 transport-enable --json` retornou
+    `ok=true`, `codec_v2_transport=true`, `live_bridge_transport=true`,
+    `compat_worker="audio_processor_service"`, `pcm16_fallback=true` e
+    `ESP_OK`; o status do worker confirmou task criada, worker rodando,
+    Opus 16 kHz/60 ms/32 kbps, `codec_error=0`, stack em PSRAM e
+    `last_error=ESP_OK`; `transport-disable --json` retornou
+    `live_bridge_transport=false`, `opus_enabled=false` e `ESP_OK`; status
+    final confirmou worker parado, `capture-v2` desligado e Codec v2 limpo em
+    `format=pcm16`.
   - validacao em hardware do caminho feed PCM16 -> worker Opus:
     `worker-feed-test --frames 10` retornou `attempted_frames=10`,
     `attempted_samples=9600`, `pcm_frames_in_delta=10`,

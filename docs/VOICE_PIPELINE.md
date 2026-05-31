@@ -183,6 +183,13 @@ compatibilidade para colocar o liga/desliga do transporte sob o namespace v2.
 O retorno marca `codec_v2_transport=true`, `compat_worker` como
 `audio_processor_service` e `pcm16_fallback=true`. O caminho PCM16 continua
 padrao, e `transport-disable` e o rollback imediato para desligar Opus live.
+Em hardware apos flash, `transport-enable` retornou `ok=true`,
+`live_bridge_transport=true`, `opus_enabled=true`, `pcm16_fallback=true` e
+`ESP_OK`. O status do worker Opus de compatibilidade confirmou task criada,
+worker rodando, Opus 16 kHz/60 ms/32 kbps aberto com `codec_error=0` e stack
+em PSRAM. `transport-disable` retornou `live_bridge_transport=false`,
+`opus_enabled=false` e `ESP_OK`; os status finais confirmaram worker parado,
+`capture-v2` desligado e Codec v2 limpo em `format=pcm16`.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960
