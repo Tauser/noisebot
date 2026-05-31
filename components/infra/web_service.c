@@ -2245,6 +2245,11 @@ static esp_err_t handle_api_audio_codec_v2_transport_disable(httpd_req_t *req)
     if (err == ESP_ERR_INVALID_STATE) {
         err = ESP_OK;
     }
+    uint32_t egress_drained_packets = 0;
+    esp_err_t drain_err = audio_codec_service_v2_drain_opus_egress(&egress_drained_packets);
+    if (err == ESP_OK && drain_err != ESP_OK) {
+        err = drain_err;
+    }
 
     char buf[320];
     snprintf(buf, sizeof(buf),
@@ -2254,8 +2259,10 @@ static esp_err_t handle_api_audio_codec_v2_transport_disable(httpd_req_t *req)
              "\"transport_worker\":\"audio_codec_service_v2\","
              "\"compat_worker\":\"audio_codec_service_v2\","
              "\"pcm16_fallback\":true,"
+             "\"egress_drained_packets\":%lu,"
              "\"opus_enabled\":%s,\"error\":\"%s\"}",
              (err == ESP_OK) ? "true" : "false",
+             (unsigned long)egress_drained_packets,
              bridge_service_opus_is_enabled() ? "true" : "false",
              esp_err_to_name(err));
     httpd_resp_set_type(req, "application/json");

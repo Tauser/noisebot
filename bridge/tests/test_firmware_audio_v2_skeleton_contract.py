@@ -206,6 +206,8 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"pcm16_fallback\\":true' in web
     assert '\\"transport_worker\\":\\"audio_codec_service_v2\\"' in web
     assert '\\"compat_worker\\":\\"audio_codec_service_v2\\"' in web
+    assert '\\"egress_drained_packets\\":%lu' in web
+    assert "audio_codec_service_v2_drain_opus_egress(&egress_drained_packets)" in web
     assert '\\"worker_payload_packets_delta\\":%lu' in web
     assert '\\"worker_payload_preview_hex\\":\\"%s\\"' in web
     assert '\\"pcm_frames_in_delta\\":%lu' in web

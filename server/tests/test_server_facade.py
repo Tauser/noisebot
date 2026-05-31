@@ -554,14 +554,16 @@ def test_server_codec_ab_confirms_opus_from_packet_counters() -> None:
             },
         },
         worker_before={
-            "opus_packet_drained": 10,
-            "opus_packet_drops": 0,
-            "opus_packet_bytes_total": 1000,
+            "opus_egress_packets_drained": 10,
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "opus_egress_bytes_total": 1000,
         },
         worker_after={
-            "opus_packet_drained": 44,
-            "opus_packet_drops": 0,
-            "opus_packet_bytes_total": 5896,
+            "opus_egress_packets_drained": 44,
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "opus_egress_bytes_total": 5896,
         },
         server_codec_confirmed=False,
     )
@@ -588,14 +590,16 @@ def test_server_codec_ab_rejects_semantic_transcript_mismatch() -> None:
             },
         },
         worker_before={
-            "opus_packet_drained": 0,
-            "opus_packet_drops": 0,
-            "opus_packet_bytes_total": 0,
+            "opus_egress_packets_drained": 0,
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "opus_egress_bytes_total": 0,
         },
         worker_after={
-            "opus_packet_drained": 52,
-            "opus_packet_drops": 0,
-            "opus_packet_bytes_total": 7502,
+            "opus_egress_packets_drained": 52,
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "opus_egress_bytes_total": 7502,
         },
         server_codec_confirmed=True,
     )
@@ -1575,6 +1579,7 @@ def test_server_cli_runs_codec_v2_transport_debug_commands(monkeypatch, capsys) 
             "transport_worker": "audio_codec_service_v2",
             "compat_worker": "audio_codec_service_v2",
             "pcm16_fallback": True,
+            "egress_drained_packets": 1,
             "opus_enabled": False,
             "error": "ESP_OK",
         }
@@ -1613,6 +1618,7 @@ def test_server_cli_runs_codec_v2_transport_debug_commands(monkeypatch, capsys) 
     assert '"live_bridge_transport": false' in captured.out
     assert '"transport_worker": "audio_codec_service_v2"' in captured.out
     assert '"compat_worker": "audio_codec_service_v2"' in captured.out
+    assert '"egress_drained_packets": 1' in captured.out
     assert '"pcm16_fallback": true' in captured.out
     assert calls == [
         "enable:http://192.168.1.30/",

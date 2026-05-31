@@ -195,7 +195,7 @@ def _run_one_trial(
     previous_turn_id = _optional_int(before_session.get("turn_id"))
 
     if codec == "opus":
-        enable_payload = post_json(f"{firmware_url}/api/audio/opus/transport/enable")
+        enable_payload = post_json(f"{firmware_url}/api/audio/codec-v2/transport/enable")
         if not enable_payload.get("ok") or not enable_payload.get("opus_enabled"):
             raise VoiceAbError(f"falha ao ligar Opus: {enable_payload}")
         server_codec_confirmed = _wait_for_opus(server_url=server_url, timeout_s=5.0)
@@ -203,7 +203,7 @@ def _run_one_trial(
         _disable_opus(firmware_url)
         server_codec_confirmed = _wait_for_pcm16(server_url=server_url, timeout_s=5.0)
 
-    worker_baseline = get_json(f"{firmware_url}/api/audio/opus/worker")
+    worker_baseline = get_json(f"{firmware_url}/api/audio/codec-v2")
     print_fn(f"[{codec}] Fale depois do wake word: {phrase}")
     input_fn("Pressione Enter quando o robo terminar a resposta: ")
 
@@ -212,7 +212,7 @@ def _run_one_trial(
         previous_turn_id=previous_turn_id,
         timeout_s=timeout_s,
     )
-    after_worker = get_json(f"{firmware_url}/api/audio/opus/worker")
+    after_worker = get_json(f"{firmware_url}/api/audio/codec-v2")
     if codec == "opus" and not server_codec_confirmed:
         server_codec_confirmed = _wait_for_opus(server_url=server_url, timeout_s=1.0)
     if codec == "opus":
@@ -245,9 +245,9 @@ def _trial_from_payload(
     transcript = str(session.get("transcript") or "")
     similarity = _transcript_similarity(phrase, transcript)
     transcript_match = similarity >= 0.72
-    packets_drained = _delta(worker_after, worker_before, "opus_packet_drained")
-    packet_drops = _delta(worker_after, worker_before, "opus_packet_drops")
-    encoded_bytes = _delta(worker_after, worker_before, "opus_packet_bytes_total")
+    packets_drained = _opus_packet_delta(worker_after, worker_before)
+    packet_drops = _opus_drop_delta(worker_after, worker_before)
+    encoded_bytes = _opus_bytes_delta(worker_after, worker_before)
     transport_confirmed = codec != "opus" or (
         server_codec_confirmed or (packets_drained > 0 and packet_drops == 0 and encoded_bytes > 0)
     )
@@ -282,7 +282,8 @@ def _trial_from_payload(
 
 def _disable_opus(firmware_url: str) -> None:
     try:
-        post_json(f"{firmware_url}/api/audio/opus/transport/disable")
+        post_json(f"{firmware_url}/api/audio/codec-v2/transport/disable")
+        post_json(f"{firmware_url}/api/audio/codec-v2/egress/drain")
     except VoiceAbError:
         pass
 
@@ -308,6 +309,28 @@ def _wait_for_pcm16(*, server_url: str, timeout_s: float) -> bool:
 
 def _delta(after: dict[str, Any], before: dict[str, Any], key: str) -> int:
     return max(0, _required_int(after.get(key)) - _required_int(before.get(key)))
+
+
+def _opus_packet_delta(after: dict[str, Any], before: dict[str, Any]) -> int:
+    v2_packets = _delta(after, before, "opus_egress_packets_drained")
+    if v2_packets > 0:
+        return v2_packets
+    return _delta(after, before, "opus_packet_drained")
+
+
+def _opus_drop_delta(after: dict[str, Any], before: dict[str, Any]) -> int:
+    return (
+        _delta(after, before, "packet_drops")
+        + _delta(after, before, "opus_egress_packet_drops")
+        + _delta(after, before, "opus_packet_drops")
+    )
+
+
+def _opus_bytes_delta(after: dict[str, Any], before: dict[str, Any]) -> int:
+    v2_bytes = _delta(after, before, "opus_egress_bytes_total")
+    if v2_bytes > 0:
+        return v2_bytes
+    return _delta(after, before, "opus_packet_bytes_total")
 
 
 def _as_dict(value: object) -> dict[str, Any]:
