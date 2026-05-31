@@ -149,6 +149,7 @@ class OpsHttpServer:
         wa.router.add_post("/api/device/audio/codec-v2/opus-encode-test", self._post_device_audio_codec_v2_opus_encode_test)
         wa.router.add_post("/api/device/audio/codec-v2/worker/start", self._post_device_audio_codec_v2_worker_start)
         wa.router.add_post("/api/device/audio/codec-v2/worker/stop", self._post_device_audio_codec_v2_worker_stop)
+        wa.router.add_post("/api/device/audio/codec-v2/worker/stress-test", self._post_device_audio_codec_v2_worker_stress_test)
         wa.router.add_post("/api/device/audio/codec-v2/overflow-test", self._post_device_audio_codec_v2_overflow_test)
         wa.router.add_get("/api/vision/status", self._get_vision_status)
         wa.router.add_get("/api/vision/observe", self._get_vision_observe)
@@ -558,6 +559,15 @@ class OpsHttpServer:
         self._require_token(request)
         return await self._proxy_firmware_diag_post(
             self._firmware_diag_client.audio_codec_v2_worker_stop
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_codec_v2_worker_stress_test(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        data = await _read_json_object(request)
+        packets = int(data.get("packets", 10)) if data is not None else 10
+        return await self._proxy_firmware_diag_post(
+            (lambda: self._firmware_diag_client.audio_codec_v2_worker_stress_test(packets))
             if self._firmware_diag_client is not None else None
         )
 

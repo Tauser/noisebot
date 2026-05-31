@@ -83,7 +83,9 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "esp_err_t audio_codec_service_v2_drain_synthetic(" in codec_h
     assert "esp_err_t audio_codec_service_v2_reset_diagnostics(void);" in codec_h
     assert "NB_AUDIO_CODEC_V2_OVERFLOW_TEST_MAX_PACKETS 200U" in codec_h
+    assert "NB_AUDIO_CODEC_V2_WORKER_STRESS_MAX_PACKETS" in codec_h
     assert "nb_audio_codec_v2_overflow_test_result_t" in codec_h
+    assert "nb_audio_codec_v2_worker_stress_result_t" in codec_h
     codec_c = (
         COMPONENTS / "audio_codec_service_v2" / "audio_codec_service_v2.c"
     ).read_text(encoding="utf-8")
@@ -108,6 +110,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "audio_codec_service_v2_opus_encode_test(" in codec_c
     assert "audio_codec_service_v2_worker_start(" in codec_c
     assert "audio_codec_service_v2_worker_stop(" in codec_c
+    assert "audio_codec_service_v2_worker_stress_test(" in codec_c
     assert '"nb_codec_v2_worker"' in codec_c
     assert "#define CODEC_WORKER_TASK_STACK OPUS_TEST_TASK_STACK" in codec_c
     assert "xTaskCreatePinnedToCoreWithCaps(" in codec_c
@@ -127,6 +130,10 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert ".enable_vbr         = true" in codec_c
     assert "out->attempted_packets = packets;" in codec_c
     assert "out->status_packet_drops_after_cleanup = s_status.packet_drops;" in codec_c
+    assert "CODEC_WORKER_STRESS_TIMEOUT_MS" in codec_c
+    assert "out->worker_opus_packets_delta" in codec_c
+    assert "out->worker_opus_encoded_bytes_delta" in codec_c
+    assert '{ .uri = "/api/audio/codec-v2/worker/stress-test"' in web
     assert '\\"pending_samples\\":%u' in web
     assert '\\"worker_supported\\":%s' in web
     assert '\\"worker_active\\":%s' in web
@@ -142,6 +149,9 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"encoded_bytes\\":%u' in web
     assert '\\"drained_packets\\":%lu' in web
     assert '\\"intentional_overflow\\":true' in web
+    assert '\\"worker_stress\\":true' in web
+    assert '\\"worker_opus_packets_delta\\":%lu' in web
+    assert '\\"worker_opus_encoded_bytes_delta\\":%lu' in web
     assert '\\"queue_count_after_cleanup\\":%lu' in web
     assert "audio_codec_service_v2_encode_test_once()" in web
     assert "audio_codec_service_v2_init()" not in web

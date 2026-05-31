@@ -749,6 +749,7 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     assert client.audio_codec_v2_opus_encode_test()["ok"]
     assert client.audio_codec_v2_worker_start()["ok"]
     assert client.audio_codec_v2_worker_stop()["ok"]
+    assert client.audio_codec_v2_worker_stress_test(10)["ok"]
     assert client.audio_codec_v2_overflow_test(45)["ok"]
     assert get_paths == ["api/audio/codec-v2"]
     assert post_paths == [
@@ -758,6 +759,7 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
         "api/audio/codec-v2/opus-encode-test",
         "api/audio/codec-v2/worker/start",
         "api/audio/codec-v2/worker/stop",
+        "api/audio/codec-v2/worker/stress-test",
         "api/audio/codec-v2/overflow-test",
     ]
 
@@ -993,6 +995,16 @@ def test_server_cli_parses_codec_v2_worker_debug_commands() -> None:
         "worker-stop",
         "--json",
     ])
+    stress_args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "worker-stress-test",
+        "--packets",
+        "10",
+        "--json",
+    ])
 
     assert start_args.command == "debug"
     assert start_args.debug_command == "codec-v2"
@@ -1002,6 +1014,11 @@ def test_server_cli_parses_codec_v2_worker_debug_commands() -> None:
     assert stop_args.debug_command == "codec-v2"
     assert stop_args.action == "worker-stop"
     assert stop_args.json
+    assert stress_args.command == "debug"
+    assert stress_args.debug_command == "codec-v2"
+    assert stress_args.action == "worker-stress-test"
+    assert stress_args.packets == 10
+    assert stress_args.json
 
 
 def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
@@ -1222,6 +1239,56 @@ def test_server_cli_runs_codec_v2_opus_encode_test_debug_command(monkeypatch, ca
     assert '"encoded_bytes": 180' in captured.out
     assert '"worker_state": "not_started"' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
+
+
+def test_server_cli_runs_codec_v2_worker_stress_test_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+
+    def fake_worker_stress_test(self, packets=10):
+        calls["base_url"] = self.base_url
+        calls["packets"] = packets
+        return {
+            "ok": True,
+            "diagnostic": True,
+            "test_format": "opus",
+            "worker_stress": True,
+            "attempted_packets": packets,
+            "accepted_packets": packets,
+            "worker_drained_packets_delta": packets,
+            "worker_opus_packets_delta": packets,
+            "worker_opus_encoded_bytes_delta": packets * 248,
+            "worker_opus_last_packet_bytes": 248,
+            "packet_drops_delta": 0,
+            "queue_count_after": 0,
+            "worker_state_after": "stopped",
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "audio_codec_v2_worker_stress_test",
+        fake_worker_stress_test,
+    )
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "worker-stress-test",
+        "--packets",
+        "10",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"worker_stress": true' in captured.out
+    assert '"worker_opus_packets_delta": 10' in captured.out
+    assert '"queue_count_after": 0' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
+    assert calls["packets"] == 10
 
 
 def test_server_cli_runs_codec_v2_worker_debug_commands(monkeypatch, capsys) -> None:

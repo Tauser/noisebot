@@ -697,6 +697,11 @@ Implementacao atual:
   contadores `worker_opus_*`; nao toca captura, bridge ou playback;
 - `POST /api/audio/codec-v2/worker/stop` solicita parada, drena a fila
   restante, aguarda confirmacao e deixa `worker_state=stopped`;
+- `POST /api/audio/codec-v2/worker/stress-test` executa teste diagnostico
+  autocontido do worker Opus: limpa estado, inicia o worker opt-in, enfileira
+  ate 40 pacotes sinteticos completos, espera drenar/codificar, para o worker
+  e retorna deltas de pacotes, bytes Opus, drops, fila final e estado final;
+  nao toca captura, bridge ou playback;
 - `reset` preserva o estado do worker quando ele esta ativo, evitando status
   incoerente ou segunda task acidental;
 - o server expoe proxy diagnostico em `/api/device/audio/codec-v2`;
@@ -707,6 +712,7 @@ Implementacao atual:
 - o server tambem expoe `/api/device/audio/codec-v2/overflow-test`;
 - o server tambem expoe `/api/device/audio/codec-v2/worker/start`;
 - o server tambem expoe `/api/device/audio/codec-v2/worker/stop`;
+- o server tambem expoe `/api/device/audio/codec-v2/worker/stress-test`;
 - CLI `noisebot_server debug codec-v2 status` consulta o endpoint do firmware;
 - CLI `noisebot_server debug codec-v2 encode-test` aciona o teste sintetico;
 - CLI `noisebot_server debug codec-v2 drain` drena a fila sintetica;
@@ -717,6 +723,8 @@ Implementacao atual:
   teste de overflow autocontido;
 - CLI `noisebot_server debug codec-v2 worker-start` inicia o worker opt-in;
 - CLI `noisebot_server debug codec-v2 worker-stop` para o worker opt-in;
+- CLI `noisebot_server debug codec-v2 worker-stress-test --packets N` executa
+  o teste multi-pacote autocontido do worker Opus;
 - os endpoints nao ligam Opus persistente e nao alteram bridge/captura/playback;
 - o Opus operacional existente permanece no caminho opt-in atual
   `/api/audio/opus/transport/enable`, com PCM16 como fallback padrao.
@@ -790,6 +798,16 @@ Validacao em hardware:
   - `bridge/tests`: 160 testes;
   - `server/tests`: 130 testes;
   - `idf.py build` limpo.
+- Validacao local do worker Opus multi-pacote sintetico:
+  - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
+  - `server/tests/test_server_facade.py`: 116 testes;
+  - `idf.py build` limpo.
+  - precisa flash para validacao em hardware com
+    `noisebot_server --host 192.168.1.30 debug codec-v2 worker-stress-test --packets 10 --json`;
+    esperado: `worker_opus_packets_delta=10`,
+    `worker_opus_encoded_bytes_delta>0`, `packet_drops_delta=0`,
+    `queue_count_after=0`, `worker_state_after=stopped` e `capture-v2`
+    desligado.
 - Observacao de hardware do Opus dentro do worker opt-in:
   - a primeira tentativa com stack persistente igual ao teste temporario
     (`2048 * 12`) falhou em `worker-start` com HTTP 409 e

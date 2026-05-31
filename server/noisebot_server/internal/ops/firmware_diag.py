@@ -207,6 +207,9 @@ class FirmwareDiagClient:
     def audio_codec_v2_worker_stop(self) -> dict[str, Any]:
         return self._post_json("api/audio/codec-v2/worker/stop")
 
+    def audio_codec_v2_worker_stress_test(self, packets: int = 10) -> dict[str, Any]:
+        return self._post_json("api/audio/codec-v2/worker/stress-test", {"packets": packets})
+
     def audio_codec_v2_overflow_test(self, packets: int = 45) -> dict[str, Any]:
         return self._post_json("api/audio/codec-v2/overflow-test", {"packets": packets})
 

@@ -23,6 +23,7 @@ extern "C" {
 #define NB_AUDIO_CODEC_V2_OPUS_BITRATE       32000U
 #define NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS  40U
 #define NB_AUDIO_CODEC_V2_OVERFLOW_TEST_MAX_PACKETS 200U
+#define NB_AUDIO_CODEC_V2_WORKER_STRESS_MAX_PACKETS NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS
 
 typedef enum {
     NB_AUDIO_CODEC_V2_FORMAT_PCM16 = 0,
@@ -84,6 +85,18 @@ typedef struct {
     int codec_error;
 } nb_audio_codec_v2_opus_test_result_t;
 
+typedef struct {
+    uint32_t attempted_packets;
+    uint32_t accepted_packets;
+    uint32_t worker_drained_packets_delta;
+    uint32_t worker_opus_packets_delta;
+    uint32_t worker_opus_encoded_bytes_delta;
+    uint16_t worker_opus_last_packet_bytes;
+    uint32_t packet_drops_delta;
+    uint32_t queue_count_after;
+    nb_audio_codec_v2_worker_state_t worker_state_after;
+} nb_audio_codec_v2_worker_stress_result_t;
+
 esp_err_t audio_codec_service_v2_init(void);
 esp_err_t audio_codec_service_v2_deinit(void);
 bool audio_codec_service_v2_is_initialized(void);
@@ -100,6 +113,9 @@ esp_err_t audio_codec_service_v2_opus_encode_test(
     nb_audio_codec_v2_opus_test_result_t *out);
 esp_err_t audio_codec_service_v2_worker_start(void);
 esp_err_t audio_codec_service_v2_worker_stop(void);
+esp_err_t audio_codec_service_v2_worker_stress_test(
+    uint32_t packets,
+    nb_audio_codec_v2_worker_stress_result_t *out);
 
 #ifdef __cplusplus
 }

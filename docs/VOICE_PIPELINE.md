@@ -116,6 +116,12 @@ criou a task, mas o encode deixou o HTTP indisponivel. A correcao local voltou
 o worker para 24 KB, agora com stack em PSRAM via
 `xTaskCreatePinnedToCoreWithCaps` e delecao por `vTaskDeleteWithCaps`;
 teste focado/build passaram e a validacao em hardware fechou o contrato.
+O novo `codec-v2 worker-stress-test --packets N` amplia esse passo sem ligar
+captura real nem bridge: ele inicia o worker opt-in, enfileira ate 40 pacotes
+sinteticos completos, espera a task codificar/drenar, para o worker e retorna
+deltas de pacotes Opus, bytes, drops, fila final e estado final. A validacao
+local passou com contrato bridge focado, server facade e `idf.py build`; falta
+flash para validar em hardware com `--packets 10`.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

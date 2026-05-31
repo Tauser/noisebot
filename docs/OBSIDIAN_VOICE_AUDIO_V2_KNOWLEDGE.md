@@ -756,6 +756,7 @@ Validacao:
   - server proxy: `/api/device/audio/codec-v2/overflow-test`;
   - server proxy: `/api/device/audio/codec-v2/worker/start`;
   - server proxy: `/api/device/audio/codec-v2/worker/stop`;
+  - server proxy: `/api/device/audio/codec-v2/worker/stress-test`;
   - CLI: `noisebot_server debug codec-v2 status`;
   - CLI: `noisebot_server debug codec-v2 encode-test`;
   - CLI: `noisebot_server debug codec-v2 drain`;
@@ -764,6 +765,7 @@ Validacao:
   - CLI: `noisebot_server debug codec-v2 overflow-test --packets N`;
   - CLI: `noisebot_server debug codec-v2 worker-start`;
   - CLI: `noisebot_server debug codec-v2 worker-stop`;
+  - CLI: `noisebot_server debug codec-v2 worker-stress-test --packets N`;
   - status atual publica o worker opt-in:
     `worker_supported=true`, `worker_active=false`,
     `worker_state=not_started`, `worker_drained_packets` e contadores
@@ -796,6 +798,12 @@ Validacao:
     `worker_opus_last_packet_bytes`; nao toca captura, bridge ou playback;
     `worker-stop` solicita parada, drena o restante e retorna
     `worker_state=stopped`;
+  - worker-stress-test diagnostico: limpa estado, inicia o worker opt-in,
+    enfileira ate 40 pacotes sinteticos completos, espera a task drenar e
+    codificar, para o worker e retorna `worker_opus_packets_delta`,
+    `worker_opus_encoded_bytes_delta`, `packet_drops_delta`,
+    `queue_count_after` e `worker_state_after`, sem captura, bridge ou
+    playback;
   - reset diagnostico preserva o estado do worker quando ele esta ativo, para
     evitar status incoerente ou uma segunda task acidental;
   - validado em hardware apos flash:
@@ -829,6 +837,9 @@ Validacao:
   - validacao local do Opus dentro do worker opt-in: teste focado bridge 6,
     teste focado server 115, bridge completo 160, server completo 130 e
     `idf.py build`.
+  - validacao local do worker Opus multi-pacote sintetico: teste focado bridge
+    6, teste focado server 116 e `idf.py build`; precisa flash para validar em
+    hardware com `codec-v2 worker-stress-test --packets 10`.
   - observacao de hardware do Opus dentro do worker opt-in: a primeira
     tentativa com stack persistente de 24 KB falhou em `worker-start` com HTTP
     409 e `worker_state=error`, sem derrubar HTTP nem tocar captura; a
