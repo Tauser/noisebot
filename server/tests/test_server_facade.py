@@ -746,12 +746,14 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     assert client.audio_codec_v2_encode_test()["ok"]
     assert client.audio_codec_v2_drain()["ok"]
     assert client.audio_codec_v2_reset()["ok"]
+    assert client.audio_codec_v2_opus_encode_test()["ok"]
     assert client.audio_codec_v2_overflow_test(45)["ok"]
     assert get_paths == ["api/audio/codec-v2"]
     assert post_paths == [
         "api/audio/codec-v2/encode-test",
         "api/audio/codec-v2/drain",
         "api/audio/codec-v2/reset",
+        "api/audio/codec-v2/opus-encode-test",
         "api/audio/codec-v2/overflow-test",
     ]
 
@@ -949,6 +951,25 @@ def test_server_cli_parses_codec_v2_overflow_test_debug_command() -> None:
     assert args.json
 
 
+def test_server_cli_parses_codec_v2_opus_encode_test_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "opus-encode-test",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "codec-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "opus-encode-test"
+    assert args.json
+
+
 def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
     cli = importlib.import_module("noisebot_server.cli")
     firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
@@ -1118,6 +1139,55 @@ def test_server_cli_runs_codec_v2_overflow_test_debug_command(monkeypatch, capsy
     assert '"queue_count_after_cleanup": 0' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
     assert calls["packets"] == 45
+
+
+def test_server_cli_runs_codec_v2_opus_encode_test_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+
+    def fake_opus_encode_test(self):
+        calls["base_url"] = self.base_url
+        return {
+            "ok": True,
+            "diagnostic": True,
+            "test_format": "opus",
+            "initialized": False,
+            "format": "pcm16",
+            "frame_samples": 960,
+            "outbuf_bytes": 1024,
+            "encoded_bytes": 180,
+            "codec_error": 0,
+            "opus_encode_tests": 1,
+            "opus_encoded_bytes_total": 180,
+            "opus_last_packet_bytes": 180,
+            "worker_active": False,
+            "worker_state": "not_started",
+            "queue_count": 0,
+            "packet_drops": 0,
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "audio_codec_v2_opus_encode_test",
+        fake_opus_encode_test,
+    )
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "opus-encode-test",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"test_format": "opus"' in captured.out
+    assert '"encoded_bytes": 180' in captured.out
+    assert '"worker_state": "not_started"' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
 
 
 def test_server_cli_parses_barge_live_debug_command() -> None:

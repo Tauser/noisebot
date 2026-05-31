@@ -198,6 +198,9 @@ class FirmwareDiagClient:
     def audio_codec_v2_reset(self) -> dict[str, Any]:
         return self._post_json("api/audio/codec-v2/reset")
 
+    def audio_codec_v2_opus_encode_test(self) -> dict[str, Any]:
+        return self._post_json("api/audio/codec-v2/opus-encode-test")
+
     def audio_codec_v2_overflow_test(self, packets: int = 45) -> dict[str, Any]:
         return self._post_json("api/audio/codec-v2/overflow-test", {"packets": packets})
 

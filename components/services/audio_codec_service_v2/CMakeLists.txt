@@ -4,4 +4,6 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES
         esp_common
+        espressif__esp_audio_codec
+        heap
 )

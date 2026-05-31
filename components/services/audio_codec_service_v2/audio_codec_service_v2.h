@@ -43,6 +43,10 @@ typedef struct {
     uint32_t packets_out;
     uint32_t packet_drops;
     uint32_t queue_count;
+    uint32_t opus_encode_tests;
+    uint32_t opus_encoded_bytes_total;
+    uint16_t opus_last_packet_bytes;
+    int opus_codec_error;
     uint16_t pending_samples;
 } nb_audio_codec_v2_status_t;
 
@@ -54,6 +58,22 @@ typedef struct {
     uint32_t queue_count_after_cleanup;
     uint32_t status_packet_drops_after_cleanup;
 } nb_audio_codec_v2_overflow_test_result_t;
+
+typedef struct {
+    uint16_t frame_samples;
+    uint16_t outbuf_bytes;
+    uint16_t encoded_bytes;
+    uint32_t internal_before_kb;
+    uint32_t internal_after_open_kb;
+    uint32_t internal_after_close_kb;
+    uint32_t dma_before_kb;
+    uint32_t dma_after_open_kb;
+    uint32_t dma_after_close_kb;
+    uint32_t psram_before_kb;
+    uint32_t psram_after_open_kb;
+    uint32_t psram_after_close_kb;
+    int codec_error;
+} nb_audio_codec_v2_opus_test_result_t;
 
 esp_err_t audio_codec_service_v2_init(void);
 esp_err_t audio_codec_service_v2_deinit(void);
@@ -67,6 +87,8 @@ esp_err_t audio_codec_service_v2_reset_diagnostics(void);
 esp_err_t audio_codec_service_v2_overflow_test(
     uint32_t packets,
     nb_audio_codec_v2_overflow_test_result_t *out);
+esp_err_t audio_codec_service_v2_opus_encode_test(
+    nb_audio_codec_v2_opus_test_result_t *out);
 
 #ifdef __cplusplus
 }

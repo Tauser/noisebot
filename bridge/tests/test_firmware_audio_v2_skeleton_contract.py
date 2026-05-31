@@ -53,11 +53,17 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "nb_audio_codec_v2_worker_state_t worker_state;" in codec_h
     assert "bool worker_supported;" in codec_h
     assert "bool worker_active;" in codec_h
+    assert "uint32_t opus_encode_tests;" in codec_h
+    assert "uint32_t opus_encoded_bytes_total;" in codec_h
+    assert "uint16_t opus_last_packet_bytes;" in codec_h
+    assert "int opus_codec_error;" in codec_h
     assert "const char *audio_codec_service_v2_worker_state_name(" in codec_h
+    assert "nb_audio_codec_v2_opus_test_result_t" in codec_h
     assert '{ .uri = "/api/audio/codec-v2"' in web
     assert '{ .uri = "/api/audio/codec-v2/encode-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/drain"' in web
     assert '{ .uri = "/api/audio/codec-v2/reset"' in web
+    assert '{ .uri = "/api/audio/codec-v2/opus-encode-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/overflow-test"' in web
     assert '\\"opus_bitrate\\":%u' in web
     assert '\\"max_queue_packets\\":%u' in web
@@ -87,12 +93,25 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED" in codec_c
     assert 'return "not_started";' in codec_c
     assert "audio_codec_service_v2_overflow_test(" in codec_c
+    assert "audio_codec_service_v2_opus_encode_test(" in codec_c
+    assert "esp_opus_enc_open" in codec_c
+    assert "esp_opus_enc_process" in codec_c
+    assert "esp_opus_enc_close" in codec_c
+    assert "ESP_OPUS_ENC_FRAME_DURATION_60_MS" in codec_c
+    assert "ESP_OPUS_ENC_APPLICATION_AUDIO" in codec_c
+    assert ".enable_dtx         = true" in codec_c
+    assert ".enable_vbr         = true" in codec_c
     assert "out->attempted_packets = packets;" in codec_c
     assert "out->status_packet_drops_after_cleanup = s_status.packet_drops;" in codec_c
     assert '\\"pending_samples\\":%u' in web
     assert '\\"worker_supported\\":%s' in web
     assert '\\"worker_active\\":%s' in web
     assert '\\"worker_state\\":\\"%s\\"' in web
+    assert '\\"opus_encode_tests\\":%lu' in web
+    assert '\\"opus_encoded_bytes_total\\":%lu' in web
+    assert '\\"opus_last_packet_bytes\\":%u' in web
+    assert '\\"test_format\\":\\"opus\\"' in web
+    assert '\\"encoded_bytes\\":%u' in web
     assert '\\"drained_packets\\":%lu' in web
     assert '\\"intentional_overflow\\":true' in web
     assert '\\"queue_count_after_cleanup\\":%lu' in web

@@ -124,7 +124,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     codec_v2 = debug_sub.add_parser("codec-v2")
     codec_v2.add_argument(
         "action",
-        choices=["status", "encode-test", "drain", "reset", "overflow-test"],
+        choices=["status", "encode-test", "drain", "reset", "opus-encode-test", "overflow-test"],
         nargs="?",
         default="status",
     )
@@ -552,6 +552,8 @@ def run_debug_command(args: argparse.Namespace) -> None:
             payload = client.audio_codec_v2_drain()
         elif args.action == "reset":
             payload = client.audio_codec_v2_reset()
+        elif args.action == "opus-encode-test":
+            payload = client.audio_codec_v2_opus_encode_test()
         elif args.action == "overflow-test":
             payload = client.audio_codec_v2_overflow_test(args.packets)
         else:
@@ -584,6 +586,8 @@ def _format_codec_v2_status(payload: dict[str, object]) -> str:
             f"- Fila atual: {payload.get('queue_count', '')}",
             f"- Pacotes/drop: {payload.get('packets_out', '')}/"
             f"{payload.get('packet_drops', '')}",
+            f"- Opus teste: {payload.get('opus_encode_tests', '')} / "
+            f"{payload.get('opus_last_packet_bytes', payload.get('encoded_bytes', ''))} bytes",
             f"- Samples pendentes: {payload.get('pending_samples', '')}",
             f"- Pacotes drenados: {payload.get('drained_packets', '')}",
             f"- Erro: {payload.get('error', '')}",
