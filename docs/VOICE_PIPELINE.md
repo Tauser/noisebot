@@ -204,6 +204,22 @@ v2 registrou `pcm_frames_in=39`, `worker_opus_packets=39`,
 `live_bridge_transport=false`, `opus_enabled=false` e `ESP_OK`; status final
 ficou com `worker_active=false`, `worker_state=stopped`, fila zero e PCM16
 como fallback.
+O `codec-ab` curto agora usa o transporte `codec-v2` em vez do endpoint Opus
+legado. Em hardware, com a frase pareada `me diga uma curiosidade`, o PCM16
+retornou `ok=true`, `turn_id=7`, `outcome=local_intent`,
+`transcript_quality=good`, transcript `Diga uma curiosidade.`,
+`transcript_similarity=0.858`, `total_samples=51200`, `duration_ms=3200.0` e
+`stt_ms=1060.0`. O Opus v2 retornou `ok=true`, `turn_id=8`,
+`outcome=local_intent`, `transcript_quality=good`, transcript
+`Me diga uma curiosidade.`, `transcript_similarity=1.0`,
+`total_samples=83504`, `duration_ms=5219.0`, `stt_ms=1107.8`,
+`packets_drained=87`, `packet_drops=0`, `encoded_bytes=21368` e
+`server_codec_confirmed=true`. Apos o A/B, o status do Codec v2 confirmou
+worker parado e `packet_drops=0`; uma sobra de 1 pacote egress foi drenada
+por `codec-v2 egress-drain`. Para fechar esse rollback automaticamente, o
+`transport-disable` local agora drena a fila egress e retorna
+`egress_drained_packets`; o harness `codec-ab` tambem chama `egress-drain`
+apos desabilitar Opus.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

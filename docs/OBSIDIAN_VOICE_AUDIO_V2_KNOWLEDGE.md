@@ -939,6 +939,20 @@ Validacao:
     `opus_egress_packet_drops=0`, `queue_count=0` e `opus_codec_error=0`;
     rollback via `transport-disable` retornou `opus_enabled=false`,
     `ESP_OK`, worker parado e PCM16 como fallback.
+  - `codec-ab` curto agora usa o transporte `codec-v2` e foi validado em
+    hardware com a frase `me diga uma curiosidade`: PCM16 retornou `ok=true`,
+    `turn_id=7`, `outcome=local_intent`, transcript `Diga uma curiosidade.`,
+    `transcript_similarity=0.858`, `duration_ms=3200.0`, `stt_ms=1060.0`;
+    Opus v2 retornou `ok=true`, `turn_id=8`, `outcome=local_intent`,
+    transcript `Me diga uma curiosidade.`, `transcript_similarity=1.0`,
+    `duration_ms=5219.0`, `stt_ms=1107.8`, `packets_drained=87`,
+    `packet_drops=0`, `encoded_bytes=21368` e
+    `server_codec_confirmed=true`.
+  - observacao de limpeza: apos o A/B curto, ficou 1 pacote egress pendente
+    apos rollback; foi drenado por `codec-v2 egress-drain`. Correcao local:
+    `transport-disable` passa a drenar egress e retornar
+    `egress_drained_packets`; o harness `codec-ab` tambem chama
+    `egress-drain` apos desabilitar Opus.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

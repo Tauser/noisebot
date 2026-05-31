@@ -928,6 +928,20 @@ Validacao em hardware:
     `opus_enabled=false` e `error=ESP_OK`; status final confirmou
     `worker_active=false`, `worker_state=stopped`, fila zero e PCM16 como
     fallback;
+  - `codec-ab` curto usando o worker v2 live validado em hardware:
+    frase pareada `me diga uma curiosidade`; PCM16 retornou `ok=true`,
+    `turn_id=7`, `outcome=local_intent`, transcript `Diga uma curiosidade.`,
+    `transcript_similarity=0.858`, `stt_ms=1060.0` e `duration_ms=3200.0`;
+    Opus v2 retornou `ok=true`, `turn_id=8`, `outcome=local_intent`,
+    transcript `Me diga uma curiosidade.`, `transcript_similarity=1.0`,
+    `stt_ms=1107.8`, `duration_ms=5219.0`, `packets_drained=87`,
+    `packet_drops=0`, `encoded_bytes=21368` e
+    `server_codec_confirmed=true`;
+  - observacao de rollback do A/B: apos desabilitar Opus, o status mostrou
+    1 pacote egress pendente, drenado manualmente por `codec-v2 egress-drain`;
+    a correcao local faz `transport-disable` chamar
+    `audio_codec_service_v2_drain_opus_egress()` e o harness `codec-ab`
+    tambem chama `egress-drain` apos rollback;
   - referencia de hardware anterior do primeiro controle live, ainda com
     worker de compatibilidade:
     `codec-v2 transport-enable` retornou `ok=true`,
@@ -1194,9 +1208,11 @@ opt-in no lugar do worker de compatibilidade, mantendo PCM16 como padrao e
 rollback via `codec-v2 transport-disable`. A validacao local passou com
 contrato bridge focado, server facade e `idf.py build`; a validacao em
 hardware tambem passou com turno Opus live curto, 39 pacotes Opus, 9488 bytes,
-zero drops, fila final zero e rollback limpo. O proximo avanco seguro e rodar
-`codec-ab` curto ou bateria de 3 turnos Opus vs PCM16 antes de qualquer
-promocao de Opus como padrao.
+zero drops, fila final zero e rollback limpo. O A/B curto PCM16 vs Opus v2
+tambem passou com zero drops e STT `good` nos dois caminhos. O proximo avanco
+seguro e flashear a correcao de limpeza do `transport-disable` e rodar uma
+bateria de 3 turnos Opus vs PCM16 antes de qualquer promocao de Opus como
+padrao.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.
