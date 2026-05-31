@@ -2069,11 +2069,20 @@ Implementação:
   reproducao, sessao, codec e processamento de voz de forma paralela,
   preservando PCM16/wake/barge-in atuais. Ver
   `docs/VOICE_AUDIO_V2_ARCHITECTURE.md`.
-- [ ] AFE como fonte do bridge é candidata após A/B curto, mas ainda não é
-  padrão. Ver `docs/VOICE_PIPELINE.md` e `docs/VOICE_AB_PHASE5_8192.md`.
-- [ ] Próximo avanço: repetir A/B live curto no perfil Opus 32 kbps antes de
-  considerar Opus como padrão obrigatório, sem alterar wake word, VAD,
-  follow-up, realtime ou AEC.
+- [x] Migracao Opus v2 fechada como default local do server:
+  `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`, worker live do
+  `audio_codec_service_v2`, `codec-v2 health` limpo, zero drops, fila egress
+  zero, `opus_codec_error=0`, barge/no-echo em Opus validados e rollback PCM16
+  preservado por env/restart ou `codec-v2 transport-disable`.
+- [x] Corte percebido de resposta foi separado de audio: TTS/playback completou
+  e o problema observado era visual no `TEXT_SCROLL`; o server pagina texto por
+  limite UTF-8 e largura visual aproximada sem novo opcode.
+- [x] Proximas fases pos-Opus documentadas em
+  `docs/VOICE_AUDIO_V2_NEXT_PHASES.md`: playback v2 como dono gradual do
+  downlink, checklist/health de release, Voice Activity v2 shadow/opt-in,
+  Capture Session v2 por flag e policy conversacional avancada. Sem mexer em
+  wake threshold, AEC device-side, follow-up automatico ou barge-in sem wake
+  junto com essas fases.
 
 ---
 
@@ -2624,11 +2633,12 @@ no protocolo.
 - [x] Barge-in por wake word e no-echo foram validados por harness live.
 - [x] AEC-live classifica AEC de dispositivo como `promotable=false` quando o
       firmware retorna diagnóstico de falta de referência.
+- [x] Opus foi promovido de experimento manual para capability oficial opt-in,
+      com status/HELLO/metrics coerentes, worker Codec v2, default local do
+      server e fallback PCM16 automatico.
 - [ ] Reconexão TCP/UART coberta por teste automático.
 - [ ] Cancelamento explícito de fala (`SPEECH_CANCEL`/turn id no fio) coberto
       por teste antes de qualquer nova mudança no firmware.
-- [ ] Promover Opus de experimento manual para capability oficial opt-in, com
-      status/HELLO/metrics coerentes e fallback PCM16 automático.
 
 ---
 

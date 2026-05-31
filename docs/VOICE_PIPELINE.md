@@ -23,8 +23,9 @@ atraso de `VOICE_END` e alinhamento por chunks sem descartar fala válida como
 ## Decisões
 
 - O caminho atual permanece PCM16 como fallback seguro. Opus 16 kHz mono em
-frames de 60 ms já foi validado como modo experimental opt-in e é o próximo
-modo a ser promovido para capability oficial negociada.
+frames de 60 ms foi fechado como transporte v2 local default do server, com
+rollback operacional para PCM16 por env/restart ou `codec-v2
+transport-disable`.
 - Supressão de ruído em Python fica desligada por padrão. Nos testes práticos
 ela piorou a transcrição e aumentou risco de watchdog.
 - Backpressure persistente no bridge encerra a sessão. Áudio atrasado ou
@@ -47,7 +48,8 @@ como feature universal do ESP32-S3.
 O plano completo para refazer o subsistema de voz de forma paralela e segura
 esta em `docs/VOICE_AUDIO_V2_ARCHITECTURE.md`. Ele separa Audio I/O, playback,
 captura de sessao, VAD/AFE, codec e bridge, com PCM16 como fallback e Opus
-opt-in ate validacao em hardware.
+opt-in no firmware. As fases restantes pos-Opus estao em
+`docs/VOICE_AUDIO_V2_NEXT_PHASES.md`.
 
 Status v2 atual: Audio I/O e playback ja possuem probes explicitos validados.
 `voice_capture_session_v2` possui replay/status/cancel via
@@ -249,8 +251,8 @@ passou:
   56 pacotes Opus drenados, 13856 bytes, `packet_drops=0`, `enable_ok=true`,
   `disable_ok=true` e `server_codec_confirmed=true`.
 
-Decisao: os bloqueios de barge/no-echo para Opus v2 opt-in estao verdes; o
-proximo passo e decidir promocao de HELLO/capability/default mantendo rollback
+Decisao: os bloqueios de barge/no-echo para Opus v2 opt-in estao verdes e a
+migracao Opus v2 foi fechada como default local do server, mantendo rollback
 PCM16.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
@@ -781,8 +783,8 @@ Critérios de aceite:
 - [x] Criar diagnóstico offline de qualidade Opus em cima dos WAVs reais.
 - [x] Fixar perfil live inicial em Opus 16 kHz mono, 60 ms, 32 kbps, mantendo
   PCM16 como padrão.
-- [ ] Repetir A/B live curto em 32 kbps antes de considerar Opus como
-  padrão obrigatório.
+- [x] Repetir A/B live curto no perfil 32 kbps antes de considerar promocao
+  local. A promocao local foi aplicada no server com rollback PCM16 preservado.
 
 ### Fase 7 — AEC e Modo Realtime
 
@@ -938,6 +940,18 @@ Status de fechamento: a migracao Opus v2 esta concluida como default local do
 server, com PCM16 preservado como rollback operacional. O contrato do firmware
 continua anunciando Opus como capability opt-in, enquanto o server local liga o
 transporte Opus no startup via `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`.
+
+O roadmap detalhado das fases restantes esta em
+`docs/VOICE_AUDIO_V2_NEXT_PHASES.md`. A ordem curta agora e:
+
+1. Playback v2 como dono gradual do downlink.
+2. Checklist/health de release para proteger Opus, PCM16, texto visual e
+   turn-taking.
+3. Voice Activity v2 em shadow/opt-in, sem AEC device-side.
+4. Capture Session v2 assumindo upstream por flag.
+5. Policy conversacional avancada somente depois de no-echo/captura estaveis.
+
+Historico de fechamento Opus:
 
 1. Preservar wake/VAD/turn-taking atual: sem ajuste novo sem regressão
    comprovada e teste.

@@ -28,6 +28,7 @@ captura, reproducao, VAD, Opus, bridge, wake word ou barge-in.
 ## Leitura Obrigatoria
 
 - [[VOICE_AUDIO_V2_ARCHITECTURE]]
+- [[VOICE_AUDIO_V2_NEXT_PHASES]]
 - [[VOICE_PIPELINE]]
 - [[ROADMAP]]
 - [[REFERENCE_ARCHITECTURES]]
@@ -63,7 +64,8 @@ Meta da arquitetura v2:
 
 - Separar Audio I/O, playback, voice activity, capture session, codec e bridge.
 - Preservar PCM16 como fallback padrao.
-- Manter Opus como opt-in ate validacao maior.
+- Manter Opus como capability opt-in no firmware e default local do server apos
+  validacao, sempre com rollback PCM16.
 - Manter wake word e barge-in atuais intactos enquanto a base v2 nasce.
 - Usar Xiaozhi/StackChan como referencia de arquitetura, nao como copia cega.
 
@@ -98,6 +100,22 @@ Regra principal:
   - VBR: on.
 - 60 ms vem de Xiaozhi/StackChan.
 - 32 kbps vem do diagnostico offline nos WAVs reais do NoiseBot.
+
+### Proximas Fases Pos-Opus
+
+O detalhamento operacional fica em `docs/VOICE_AUDIO_V2_NEXT_PHASES.md`.
+
+Ordem atual:
+
+1. Playback v2 como dono gradual do downlink SAY/playback.
+2. Checklist/health de release para preservar Opus, PCM16, texto visual e
+   turn-taking.
+3. Voice Activity v2 em shadow/opt-in para VAD/NS/AFE, sem AEC device-side.
+4. Capture Session v2 assumindo upstream por flag.
+5. Policy conversacional avancada apenas depois de no-echo/captura estaveis.
+
+Regra: nao reabrir wake threshold, follow-up automatico, AEC ou barge-in sem
+wake dentro da mesma mudanca de playback/captura/codec.
 
 ### Wake Word
 
@@ -1229,6 +1247,7 @@ arquitetura, nao como copia cega de hardware.
 ## Links Internos
 
 - [[VOICE_AUDIO_V2_ARCHITECTURE]]
+- [[VOICE_AUDIO_V2_NEXT_PHASES]]
 - [[VOICE_PIPELINE]]
 - [[VOICE_OPUS_QUALITY]]
 - [[VOICE_AB_PHASE5]]

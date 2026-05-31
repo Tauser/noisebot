@@ -11,6 +11,9 @@ funciona no hardware atual.
 Versao para consulta rapida em Obsidian/IA:
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`.
 
+Roadmap operacional das fases restantes apos o fechamento do Opus:
+`docs/VOICE_AUDIO_V2_NEXT_PHASES.md`.
+
 O objetivo nao e "reescrever tudo". O objetivo e retirar do `audio_service.c`
 as responsabilidades que foram acumuladas ao longo da migracao e criar um
 pipeline v2 paralelo, testavel, atras de flag, com rollback imediato para o
@@ -1126,34 +1129,28 @@ Aceite:
 - packet drops = 0.
 - PCM16 fallback intacto.
 
-### Fase G - AFE/VAD/NS Opcional
+### Fases Restantes Pos-Opus
 
-Objetivo: aproximar do Xiaozhi sem prometer AEC.
+Status: movidas para `docs/VOICE_AUDIO_V2_NEXT_PHASES.md` para evitar que o
+fechamento do Opus fique misturado com o restante da decomposicao de audio.
 
-Entregas:
+Resumo:
 
-- AFE para VAD/NS em modo opt-in;
-- sem AEC device se `input_reference=false`;
-- metricas comparando VAD ESP-SR vs AFE.
+- Fase I: `audio_playback_service_v2` assume gradualmente o downlink
+  SAY/playback, com cancel/drain/status e sem HAL direto ate o handoff.
+- Fase J: `voice_activity_service_v2` entra como processor shadow/opt-in para
+  VAD/NS/AFE, sem AEC device-side no hardware atual.
+- Fase K: `voice_capture_session_v2` assume gradualmente pre-roll, timeouts,
+  discard reasons e `VOICE_START/AUDIO_CHUNK/VOICE_END` por flag.
+- Fase L: policy conversacional avancada, incluindo follow-up opt-in e
+  turn-taking mais natural, so depois de no-echo/captura estaveis.
+- Fase M: checklist/health/replay de release para preservar Opus, PCM16,
+  playback, texto visual e turn-taking.
 
-Aceite:
-
-- Reduz falso start sem matar fala normal.
-- Nao altera wake word.
-- Nao promove AEC sem criterio.
-
-### Fase H - Decisao de Promocao
-
-Objetivo: decidir se v2 vira padrao.
-
-Aceite minimo:
-
-- PCM16 v2 >= PCM16 v1 em STT e estabilidade.
-- Opus v2 sem perda semantica relevante no ambiente real.
-- Barge-in por wake segue ok.
-- No-echo segue ok.
-- Sem aumento perigoso de heap/CPU.
-- Rollback documentado.
+As restricoes continuam as mesmas: PCM16 e rollback permanecem obrigatorios,
+wake word atual nao muda sem evidencia, AEC device-side segue bloqueado sem
+referencia limpa de playback, e barge-in sem wake/follow-up automatico nao
+entram junto com refactor de audio.
 
 ## Checklist de Testes por Fase
 
