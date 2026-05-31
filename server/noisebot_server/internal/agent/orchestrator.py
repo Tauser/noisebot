@@ -80,6 +80,7 @@ LLM_CONFIG_FALLBACK_REPLY = (
 TTS_FAST_FRAGMENT_MAX_CHARS = 96
 TTS_FAST_FRAGMENT_MIN_CHARS = 24
 TEXT_SCROLL_MAX_BYTES = 128
+TEXT_SCROLL_PAGE_MAX_CHARS = 38
 TEXT_SCROLL_PAGE_INTERVAL_S = 2.2
 
 
@@ -1478,7 +1479,12 @@ class Orchestrator:
         })
 
 
-def _split_text_scroll_pages(text: str, *, max_bytes: int = TEXT_SCROLL_MAX_BYTES) -> list[str]:
+def _split_text_scroll_pages(
+    text: str,
+    *,
+    max_bytes: int = TEXT_SCROLL_MAX_BYTES,
+    max_chars: int = TEXT_SCROLL_PAGE_MAX_CHARS,
+) -> list[str]:
     """Split visible reply text into UTF-8-safe TEXT_SCROLL pages."""
     words = " ".join(str(text or "").split()).split(" ")
     pages: list[str] = []
@@ -1488,14 +1494,14 @@ def _split_text_scroll_pages(text: str, *, max_bytes: int = TEXT_SCROLL_MAX_BYTE
         if not word:
             continue
         candidate = f"{current} {word}".strip() if current else word
-        if len(candidate.encode("utf-8")) <= max_bytes:
+        if len(candidate.encode("utf-8")) <= max_bytes and len(candidate) <= max_chars:
             current = candidate
             continue
         if current:
             pages.append(current)
             current = ""
-        while len(word.encode("utf-8")) > max_bytes:
-            prefix = _utf8_prefix(word, max_bytes)
+        while len(word.encode("utf-8")) > max_bytes or len(word) > max_chars:
+            prefix = _text_prefix(word, max_bytes, max_chars)
             if not prefix:
                 break
             pages.append(prefix)
@@ -1507,11 +1513,11 @@ def _split_text_scroll_pages(text: str, *, max_bytes: int = TEXT_SCROLL_MAX_BYTE
     return pages or []
 
 
-def _utf8_prefix(text: str, max_bytes: int) -> str:
+def _text_prefix(text: str, max_bytes: int, max_chars: int) -> str:
     out = ""
     for char in text:
         candidate = out + char
-        if len(candidate.encode("utf-8")) > max_bytes:
+        if len(candidate.encode("utf-8")) > max_bytes or len(candidate) > max_chars:
             break
         out = candidate
     return out

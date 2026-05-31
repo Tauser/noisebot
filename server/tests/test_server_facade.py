@@ -3004,7 +3004,25 @@ def test_server_text_scroll_pages_are_utf8_safe() -> None:
     assert len(pages) > 1
     assert " ".join(pages).replace(" .", ".") != ""
     assert all(len(page.encode("utf-8")) <= 128 for page in pages)
+    assert all(len(page) <= 38 for page in pages)
     assert "Olá" in pages[0]
+
+
+def test_server_text_scroll_pages_split_visually_wide_reply() -> None:
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    pages = orchestrator_module._split_text_scroll_pages(
+        "A Terra é o nosso lar! Tem água, ar e muita vida incrível."
+    )
+
+    assert pages == [
+        "A Terra é o nosso lar! Tem água, ar e",
+        "muita vida incrível.",
+    ]
+    assert all(len(page.encode("utf-8")) <= 128 for page in pages)
+    assert all(len(page) <= 38 for page in pages)
 
 
 @pytest.mark.asyncio

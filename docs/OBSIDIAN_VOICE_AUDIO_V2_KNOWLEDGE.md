@@ -1050,6 +1050,12 @@ Validacao:
     firmware novo e nao altera audio/Opus/PCM16. `/ai/metrics` passa a expor
     `text_scroll_pages` e `text_scroll_pages_sent`; diagnostico reconhece
     paginacao concluida. Validacao local: `server/tests` passou com 149 testes.
+  - refino de largura visual do `TEXT_SCROLL`: uma frase media pode caber em
+    128 bytes mas ainda depender do scroll horizontal lento do overlay do
+    firmware. O server agora limita paginas tambem a aproximadamente 38
+    caracteres, mantendo UTF-8 seguro e sem novo opcode. Isso e server-only,
+    nao altera TTS, Opus, PCM16, captura nem playback. Validacao local: teste
+    focado de paginacao e `server/tests` passaram com 150 testes.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

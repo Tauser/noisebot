@@ -1292,5 +1292,13 @@ protocolo binario e nao altera audio/Opus/PCM16. As metricas registram
 `/ai/metrics` diferencia truncamento antigo de paginacao concluida. Validacao
 local: `server/tests` com 149 testes verdes.
 
+Refino de largura visual: uma resposta curta/media ainda podia caber em uma
+unica pagina de 128 bytes e mesmo assim terminar antes do overlay horizontal do
+firmware mostrar tudo. O server agora divide paginas tambem por limite visual
+aproximado de 38 caracteres, mantendo o limite UTF-8 de 128 bytes e o mesmo
+opcode `TEXT_SCROLL`. Isso e server-only, nao exige flash, nao altera TTS,
+Opus, PCM16 nem sincronismo de audio. Validacao local: teste focado de
+paginacao e `server/tests` com 150 testes verdes.
+
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

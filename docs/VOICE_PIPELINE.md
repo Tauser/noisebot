@@ -969,7 +969,11 @@ Pendências:
    truncamento visual; `/ai/metrics` preserva `reply` longo para diagnostico.
    Avanco: o server pagina respostas longas em multiplos `TEXT_SCROLL` UTF-8
    seguros de ate 128 bytes, sem novo opcode e sem mudanca no firmware. As
-   metricas expõem `text_scroll_pages` e `text_scroll_pages_sent`.
+   metricas expõem `text_scroll_pages` e `text_scroll_pages_sent`. Refino:
+   paginas tambem sao limitadas por largura visual aproximada de 38 caracteres,
+   porque frases medias podem caber em 128 bytes e ainda assim depender do
+   scroll horizontal lento do overlay. Esse ajuste e server-only, preserva o
+   protocolo e foi validado com `server/tests` verde.
 
 Essa ordem evita a armadilha de trocar codec, VAD, AEC e STT ao mesmo tempo. O
 fim desejado é ambicioso, mas cada fase precisa ter medição própria para o robô
