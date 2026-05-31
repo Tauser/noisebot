@@ -128,6 +128,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "status",
             "encode-test",
             "drain",
+            "egress-drain",
             "reset",
             "opus-encode-test",
             "worker-start",
@@ -564,6 +565,8 @@ def run_debug_command(args: argparse.Namespace) -> None:
             payload = client.audio_codec_v2_encode_test()
         elif args.action == "drain":
             payload = client.audio_codec_v2_drain()
+        elif args.action == "egress-drain":
+            payload = client.audio_codec_v2_egress_drain()
         elif args.action == "reset":
             payload = client.audio_codec_v2_reset()
         elif args.action == "opus-encode-test":

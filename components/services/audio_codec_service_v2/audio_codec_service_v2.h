@@ -22,6 +22,7 @@ extern "C" {
 #define NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES 960U
 #define NB_AUDIO_CODEC_V2_OPUS_BITRATE       32000U
 #define NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS  40U
+#define NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS 40U
 #define NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES 16U
 #define NB_AUDIO_CODEC_V2_OVERFLOW_TEST_MAX_PACKETS 200U
 #define NB_AUDIO_CODEC_V2_WORKER_STRESS_MAX_PACKETS NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS
@@ -61,6 +62,16 @@ typedef struct {
     uint32_t worker_payload_last_checksum;
     uint8_t worker_payload_preview_len;
     uint8_t worker_payload_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];
+    uint32_t opus_egress_packets_in;
+    uint32_t opus_egress_packets_drained;
+    uint32_t opus_egress_packet_drops;
+    uint32_t opus_egress_queue_count;
+    uint32_t opus_egress_bytes_total;
+    uint32_t opus_egress_last_sequence;
+    uint16_t opus_egress_last_bytes;
+    uint32_t opus_egress_last_checksum;
+    uint8_t opus_egress_preview_len;
+    uint8_t opus_egress_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];
     uint32_t opus_encode_tests;
     uint32_t opus_encoded_bytes_total;
     uint16_t opus_last_packet_bytes;
@@ -121,6 +132,16 @@ typedef struct {
     uint32_t worker_payload_last_checksum;
     uint8_t worker_payload_preview_len;
     uint8_t worker_payload_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];
+    uint32_t opus_egress_packets_delta;
+    uint32_t opus_egress_bytes_delta;
+    uint32_t opus_egress_packet_drops_delta;
+    uint32_t opus_egress_drained_after_test;
+    uint32_t opus_egress_queue_count_after_cleanup;
+    uint16_t opus_egress_last_bytes;
+    uint32_t opus_egress_last_sequence;
+    uint32_t opus_egress_last_checksum;
+    uint8_t opus_egress_preview_len;
+    uint8_t opus_egress_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];
     uint32_t packet_drops_delta;
     uint32_t queue_count_after;
     uint16_t pending_samples_after;
@@ -135,6 +156,7 @@ void audio_codec_service_v2_get_status(nb_audio_codec_v2_status_t *out);
 esp_err_t audio_codec_service_v2_feed_pcm16(const int16_t *samples, uint16_t sample_count);
 esp_err_t audio_codec_service_v2_encode_test_once(void);
 esp_err_t audio_codec_service_v2_drain_synthetic(uint32_t *drained_packets);
+esp_err_t audio_codec_service_v2_drain_opus_egress(uint32_t *drained_packets);
 esp_err_t audio_codec_service_v2_reset_diagnostics(void);
 esp_err_t audio_codec_service_v2_overflow_test(
     uint32_t packets,

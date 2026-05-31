@@ -195,6 +195,9 @@ class FirmwareDiagClient:
     def audio_codec_v2_drain(self) -> dict[str, Any]:
         return self._post_json("api/audio/codec-v2/drain")
 
+    def audio_codec_v2_egress_drain(self) -> dict[str, Any]:
+        return self._post_json("api/audio/codec-v2/egress/drain")
+
     def audio_codec_v2_reset(self) -> dict[str, Any]:
         return self._post_json("api/audio/codec-v2/reset")
 

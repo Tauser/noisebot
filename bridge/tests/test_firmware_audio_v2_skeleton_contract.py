@@ -48,6 +48,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "#define NB_AUDIO_CODEC_V2_OPUS_FRAME_MS      60U" in codec_h
     assert "#define NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES 960U" in codec_h
     assert "#define NB_AUDIO_CODEC_V2_OPUS_BITRATE       32000U" in codec_h
+    assert "#define NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS 40U" in codec_h
     assert "NB_AUDIO_CODEC_V2_FORMAT_PCM16 = 0" in codec_h
     assert "NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED = 0" in codec_h
     assert "NB_AUDIO_CODEC_V2_WORKER_STATE_RUNNING" in codec_h
@@ -64,6 +65,11 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "uint32_t worker_payload_bytes_total;" in codec_h
     assert "uint32_t worker_payload_last_checksum;" in codec_h
     assert "uint8_t worker_payload_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];" in codec_h
+    assert "uint32_t opus_egress_packets_in;" in codec_h
+    assert "uint32_t opus_egress_packets_drained;" in codec_h
+    assert "uint32_t opus_egress_packet_drops;" in codec_h
+    assert "uint32_t opus_egress_queue_count;" in codec_h
+    assert "uint8_t opus_egress_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];" in codec_h
     assert "uint32_t opus_encode_tests;" in codec_h
     assert "uint32_t opus_encoded_bytes_total;" in codec_h
     assert "uint16_t opus_last_packet_bytes;" in codec_h
@@ -73,6 +79,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '{ .uri = "/api/audio/codec-v2"' in web
     assert '{ .uri = "/api/audio/codec-v2/encode-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/drain"' in web
+    assert '{ .uri = "/api/audio/codec-v2/egress/drain"' in web
     assert '{ .uri = "/api/audio/codec-v2/reset"' in web
     assert '{ .uri = "/api/audio/codec-v2/opus-encode-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/worker/start"' in web
@@ -130,6 +137,10 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "s_status.worker_opus_encoded_bytes_total += encoded_bytes;" in codec_c
     assert "s_status.worker_opus_last_packet_bytes = encoded_bytes;" in codec_c
     assert "observe_worker_payload(s_worker_opus_out, encoded_bytes);" in codec_c
+    assert "enqueue_opus_egress_packet(s_worker_opus_out, encoded_bytes);" in codec_c
+    assert "audio_codec_service_v2_drain_opus_egress(" in codec_c
+    assert "s_status.opus_egress_queue_count >= NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS" in codec_c
+    assert "s_status.opus_egress_packets_drained += s_status.opus_egress_queue_count;" in codec_c
     assert "checksum_payload(" in codec_c
     assert "esp_opus_enc_open" in codec_c
     assert "esp_opus_enc_process" in codec_c
@@ -167,6 +178,13 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"worker_stress\\":true' in web
     assert '\\"worker_feed\\":true' in web
     assert '\\"worker_payload_observer\\":true' in web
+    assert '\\"opus_egress_queue\\":true' in web
+    assert '\\"opus_egress_packets_in\\":%lu' in web
+    assert '\\"opus_egress_queue_count\\":%lu' in web
+    assert '\\"opus_egress_packets_delta\\":%lu' in web
+    assert '\\"opus_egress_drained_after_test\\":%lu' in web
+    assert '\\"opus_egress_queue_count_after_cleanup\\":%lu' in web
+    assert '\\"opus_egress_drain\\":true' in web
     assert '\\"worker_payload_packets_delta\\":%lu' in web
     assert '\\"worker_payload_preview_hex\\":\\"%s\\"' in web
     assert '\\"pcm_frames_in_delta\\":%lu' in web

@@ -145,6 +145,7 @@ class OpsHttpServer:
         wa.router.add_get("/api/device/audio/codec-v2", self._get_device_audio_codec_v2)
         wa.router.add_post("/api/device/audio/codec-v2/encode-test", self._post_device_audio_codec_v2_encode_test)
         wa.router.add_post("/api/device/audio/codec-v2/drain", self._post_device_audio_codec_v2_drain)
+        wa.router.add_post("/api/device/audio/codec-v2/egress/drain", self._post_device_audio_codec_v2_egress_drain)
         wa.router.add_post("/api/device/audio/codec-v2/reset", self._post_device_audio_codec_v2_reset)
         wa.router.add_post("/api/device/audio/codec-v2/opus-encode-test", self._post_device_audio_codec_v2_opus_encode_test)
         wa.router.add_post("/api/device/audio/codec-v2/worker/start", self._post_device_audio_codec_v2_worker_start)
@@ -532,6 +533,13 @@ class OpsHttpServer:
         self._require_token(request)
         return await self._proxy_firmware_diag_post(
             self._firmware_diag_client.audio_codec_v2_drain
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_codec_v2_egress_drain(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_codec_v2_egress_drain
             if self._firmware_diag_client is not None else None
         )
 

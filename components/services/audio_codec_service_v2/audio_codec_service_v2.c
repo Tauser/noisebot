@@ -107,6 +107,29 @@ static void observe_worker_payload(const uint8_t *payload, uint16_t payload_byte
     memcpy(s_status.worker_payload_preview, payload, s_status.worker_payload_preview_len);
 }
 
+static void enqueue_opus_egress_packet(const uint8_t *payload, uint16_t payload_bytes)
+{
+    if (payload == NULL || payload_bytes == 0U) {
+        return;
+    }
+
+    if (s_status.opus_egress_queue_count >= NB_AUDIO_CODEC_V2_MAX_EGRESS_PACKETS) {
+        s_status.opus_egress_packet_drops++;
+        return;
+    }
+
+    s_status.opus_egress_queue_count++;
+    s_status.opus_egress_packets_in++;
+    s_status.opus_egress_bytes_total += payload_bytes;
+    s_status.opus_egress_last_sequence++;
+    s_status.opus_egress_last_bytes = payload_bytes;
+    s_status.opus_egress_last_checksum = checksum_payload(payload, payload_bytes);
+    s_status.opus_egress_preview_len = payload_bytes < NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES
+                                            ? (uint8_t)payload_bytes
+                                            : (uint8_t)NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES;
+    memcpy(s_status.opus_egress_preview, payload, s_status.opus_egress_preview_len);
+}
+
 static esp_err_t encode_synthetic_opus_frame(
     void *enc,
     int16_t *frame,
@@ -281,6 +304,7 @@ static void codec_worker_task(void *arg)
             s_status.worker_opus_last_packet_bytes = encoded_bytes;
             s_status.worker_opus_encoded_bytes_total += encoded_bytes;
             observe_worker_payload(s_worker_opus_out, encoded_bytes);
+            enqueue_opus_egress_packet(s_worker_opus_out, encoded_bytes);
         }
         vTaskDelay(pdMS_TO_TICKS(CODEC_WORKER_POLL_MS));
     }
@@ -304,6 +328,7 @@ static void codec_worker_task(void *arg)
         s_status.worker_opus_last_packet_bytes = encoded_bytes;
         s_status.worker_opus_encoded_bytes_total += encoded_bytes;
         observe_worker_payload(s_worker_opus_out, encoded_bytes);
+        enqueue_opus_egress_packet(s_worker_opus_out, encoded_bytes);
     }
 
     esp_opus_enc_close(enc);
@@ -448,6 +473,18 @@ esp_err_t audio_codec_service_v2_drain_synthetic(uint32_t *drained_packets)
 
     *drained_packets = s_status.queue_count;
     s_status.queue_count = 0;
+    return ESP_OK;
+}
+
+esp_err_t audio_codec_service_v2_drain_opus_egress(uint32_t *drained_packets)
+{
+    if (drained_packets == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    *drained_packets = s_status.opus_egress_queue_count;
+    s_status.opus_egress_packets_drained += s_status.opus_egress_queue_count;
+    s_status.opus_egress_queue_count = 0;
     return ESP_OK;
 }
 
@@ -739,6 +776,9 @@ esp_err_t audio_codec_service_v2_worker_feed_test(
     uint32_t opus_bytes_before = s_status.worker_opus_encoded_bytes_total;
     uint32_t payload_packets_before = s_status.worker_payload_packets;
     uint32_t payload_bytes_before = s_status.worker_payload_bytes_total;
+    uint32_t egress_packets_before = s_status.opus_egress_packets_in;
+    uint32_t egress_bytes_before = s_status.opus_egress_bytes_total;
+    uint32_t egress_drops_before = s_status.opus_egress_packet_drops;
     uint32_t drops_before = s_status.packet_drops;
 
     for (uint32_t frame = 0; frame < frames; frame++) {
@@ -786,6 +826,16 @@ esp_err_t audio_codec_service_v2_worker_feed_test(
     out->worker_payload_last_checksum = s_status.worker_payload_last_checksum;
     out->worker_payload_preview_len = s_status.worker_payload_preview_len;
     memcpy(out->worker_payload_preview, s_status.worker_payload_preview, sizeof(out->worker_payload_preview));
+    out->opus_egress_packets_delta = s_status.opus_egress_packets_in - egress_packets_before;
+    out->opus_egress_bytes_delta = s_status.opus_egress_bytes_total - egress_bytes_before;
+    out->opus_egress_packet_drops_delta = s_status.opus_egress_packet_drops - egress_drops_before;
+    out->opus_egress_last_bytes = s_status.opus_egress_last_bytes;
+    out->opus_egress_last_sequence = s_status.opus_egress_last_sequence;
+    out->opus_egress_last_checksum = s_status.opus_egress_last_checksum;
+    out->opus_egress_preview_len = s_status.opus_egress_preview_len;
+    memcpy(out->opus_egress_preview, s_status.opus_egress_preview, sizeof(out->opus_egress_preview));
+    (void)audio_codec_service_v2_drain_opus_egress(&out->opus_egress_drained_after_test);
+    out->opus_egress_queue_count_after_cleanup = s_status.opus_egress_queue_count;
     out->packet_drops_delta = s_status.packet_drops - drops_before;
     out->queue_count_after = s_status.queue_count;
     out->pending_samples_after = s_pending_samples;

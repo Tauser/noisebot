@@ -1688,8 +1688,11 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
     char payload_preview_hex[(NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES * 2U) + 1U];
     bytes_to_hex(st.worker_payload_preview, st.worker_payload_preview_len,
                  payload_preview_hex, sizeof(payload_preview_hex));
+    char egress_preview_hex[(NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES * 2U) + 1U];
+    bytes_to_hex(st.opus_egress_preview, st.opus_egress_preview_len,
+                 egress_preview_hex, sizeof(egress_preview_hex));
 
-    char buf[1400];
+    char buf[1900];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"format\":\"%s\","
              "\"worker_supported\":%s,\"worker_active\":%s,"
@@ -1710,6 +1713,16 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              "\"worker_payload_last_checksum\":%lu,"
              "\"worker_payload_preview_len\":%u,"
              "\"worker_payload_preview_hex\":\"%s\","
+             "\"opus_egress_packets_in\":%lu,"
+             "\"opus_egress_packets_drained\":%lu,"
+             "\"opus_egress_packet_drops\":%lu,"
+             "\"opus_egress_queue_count\":%lu,"
+             "\"opus_egress_bytes_total\":%lu,"
+             "\"opus_egress_last_sequence\":%lu,"
+             "\"opus_egress_last_bytes\":%u,"
+             "\"opus_egress_last_checksum\":%lu,"
+             "\"opus_egress_preview_len\":%u,"
+             "\"opus_egress_preview_hex\":\"%s\","
              "\"opus_encode_tests\":%lu,\"opus_encoded_bytes_total\":%lu,"
              "\"opus_last_packet_bytes\":%u,\"opus_codec_error\":%d,"
              "\"pending_samples\":%u,"
@@ -1741,6 +1754,16 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.worker_payload_last_checksum,
              (unsigned)st.worker_payload_preview_len,
              payload_preview_hex,
+             (unsigned long)st.opus_egress_packets_in,
+             (unsigned long)st.opus_egress_packets_drained,
+             (unsigned long)st.opus_egress_packet_drops,
+             (unsigned long)st.opus_egress_queue_count,
+             (unsigned long)st.opus_egress_bytes_total,
+             (unsigned long)st.opus_egress_last_sequence,
+             (unsigned)st.opus_egress_last_bytes,
+             (unsigned long)st.opus_egress_last_checksum,
+             (unsigned)st.opus_egress_preview_len,
+             egress_preview_hex,
              (unsigned long)st.opus_encode_tests,
              (unsigned long)st.opus_encoded_bytes_total,
              (unsigned)st.opus_last_packet_bytes,
@@ -1820,6 +1843,43 @@ static esp_err_t handle_api_audio_codec_v2_drain(httpd_req_t *req)
              st.opus_codec_error,
              (unsigned)st.pending_samples,
              (unsigned long)drained_packets,
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_audio_codec_v2_egress_drain(httpd_req_t *req)
+{
+    uint32_t drained_packets = 0;
+    esp_err_t err = audio_codec_service_v2_drain_opus_egress(&drained_packets);
+    nb_audio_codec_v2_status_t st;
+    audio_codec_service_v2_get_status(&st);
+
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+
+    char buf[900];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"diagnostic\":true,\"test_format\":\"opus\","
+             "\"opus_egress_drain\":true,"
+             "\"drained_packets\":%lu,"
+             "\"opus_egress_packets_in\":%lu,"
+             "\"opus_egress_packets_drained\":%lu,"
+             "\"opus_egress_packet_drops\":%lu,"
+             "\"opus_egress_queue_count\":%lu,"
+             "\"opus_egress_bytes_total\":%lu,"
+             "\"worker_active\":%s,\"worker_state\":\"%s\","
+             "\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             (unsigned long)drained_packets,
+             (unsigned long)st.opus_egress_packets_in,
+             (unsigned long)st.opus_egress_packets_drained,
+             (unsigned long)st.opus_egress_packet_drops,
+             (unsigned long)st.opus_egress_queue_count,
+             (unsigned long)st.opus_egress_bytes_total,
+             st.worker_active ? "true" : "false",
+             audio_codec_service_v2_worker_state_name(st.worker_state),
              esp_err_to_name(err));
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);
@@ -1986,11 +2046,15 @@ static esp_err_t handle_api_audio_codec_v2_worker_feed_test(httpd_req_t *req)
     char payload_preview_hex[(NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES * 2U) + 1U];
     bytes_to_hex(result.worker_payload_preview, result.worker_payload_preview_len,
                  payload_preview_hex, sizeof(payload_preview_hex));
+    char egress_preview_hex[(NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES * 2U) + 1U];
+    bytes_to_hex(result.opus_egress_preview, result.opus_egress_preview_len,
+                 egress_preview_hex, sizeof(egress_preview_hex));
 
-    char buf[1300];
+    char buf[1900];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"diagnostic\":true,\"test_format\":\"opus\","
              "\"worker_feed\":true,\"worker_payload_observer\":true,"
+             "\"opus_egress_queue\":true,"
              "\"attempted_frames\":%lu,"
              "\"attempted_samples\":%lu,\"pcm_frames_in_delta\":%lu,"
              "\"packets_out_delta\":%lu,\"worker_drained_packets_delta\":%lu,"
@@ -2004,6 +2068,16 @@ static esp_err_t handle_api_audio_codec_v2_worker_feed_test(httpd_req_t *req)
              "\"worker_payload_last_checksum\":%lu,"
              "\"worker_payload_preview_len\":%u,"
              "\"worker_payload_preview_hex\":\"%s\","
+             "\"opus_egress_packets_delta\":%lu,"
+             "\"opus_egress_bytes_delta\":%lu,"
+             "\"opus_egress_packet_drops_delta\":%lu,"
+             "\"opus_egress_drained_after_test\":%lu,"
+             "\"opus_egress_queue_count_after_cleanup\":%lu,"
+             "\"opus_egress_last_bytes\":%u,"
+             "\"opus_egress_last_sequence\":%lu,"
+             "\"opus_egress_last_checksum\":%lu,"
+             "\"opus_egress_preview_len\":%u,"
+             "\"opus_egress_preview_hex\":\"%s\","
              "\"packet_drops_delta\":%lu,\"queue_count_after\":%lu,"
              "\"pending_samples_after\":%u,\"worker_state_after\":\"%s\","
              "\"max_frames\":%u,\"error\":\"%s\"}",
@@ -2023,6 +2097,16 @@ static esp_err_t handle_api_audio_codec_v2_worker_feed_test(httpd_req_t *req)
              (unsigned long)result.worker_payload_last_checksum,
              (unsigned)result.worker_payload_preview_len,
              payload_preview_hex,
+             (unsigned long)result.opus_egress_packets_delta,
+             (unsigned long)result.opus_egress_bytes_delta,
+             (unsigned long)result.opus_egress_packet_drops_delta,
+             (unsigned long)result.opus_egress_drained_after_test,
+             (unsigned long)result.opus_egress_queue_count_after_cleanup,
+             (unsigned)result.opus_egress_last_bytes,
+             (unsigned long)result.opus_egress_last_sequence,
+             (unsigned long)result.opus_egress_last_checksum,
+             (unsigned)result.opus_egress_preview_len,
+             egress_preview_hex,
              (unsigned long)result.packet_drops_delta,
              (unsigned long)result.queue_count_after,
              (unsigned)result.pending_samples_after,
@@ -3511,6 +3595,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/codec-v2", .method = HTTP_GET, .handler = handle_api_audio_codec_v2_status },
     { .uri = "/api/audio/codec-v2/encode-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_encode_test },
     { .uri = "/api/audio/codec-v2/drain", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_drain },
+    { .uri = "/api/audio/codec-v2/egress/drain", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_egress_drain },
     { .uri = "/api/audio/codec-v2/reset", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_reset },
     { .uri = "/api/audio/codec-v2/opus-encode-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_opus_encode_test },
     { .uri = "/api/audio/codec-v2/worker/start", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_start },

@@ -745,6 +745,7 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     assert client.audio_codec_v2_status()["ok"]
     assert client.audio_codec_v2_encode_test()["ok"]
     assert client.audio_codec_v2_drain()["ok"]
+    assert client.audio_codec_v2_egress_drain()["ok"]
     assert client.audio_codec_v2_reset()["ok"]
     assert client.audio_codec_v2_opus_encode_test()["ok"]
     assert client.audio_codec_v2_worker_start()["ok"]
@@ -756,6 +757,7 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     assert post_paths == [
         "api/audio/codec-v2/encode-test",
         "api/audio/codec-v2/drain",
+        "api/audio/codec-v2/egress/drain",
         "api/audio/codec-v2/reset",
         "api/audio/codec-v2/opus-encode-test",
         "api/audio/codec-v2/worker/start",
@@ -915,6 +917,25 @@ def test_server_cli_parses_codec_v2_drain_debug_command() -> None:
     assert args.debug_command == "codec-v2"
     assert args.host == "192.168.1.30"
     assert args.action == "drain"
+    assert args.json
+
+
+def test_server_cli_parses_codec_v2_egress_drain_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "egress-drain",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "codec-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "egress-drain"
     assert args.json
 
 
@@ -1116,6 +1137,46 @@ def test_server_cli_runs_codec_v2_drain_debug_command(monkeypatch, capsys) -> No
     captured = capsys.readouterr()
     assert '"queue_count": 0' in captured.out
     assert '"drained_packets": 1' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
+
+
+def test_server_cli_runs_codec_v2_egress_drain_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+
+    def fake_egress_drain(self):
+        calls["base_url"] = self.base_url
+        return {
+            "ok": True,
+            "diagnostic": True,
+            "test_format": "opus",
+            "opus_egress_drain": True,
+            "drained_packets": 3,
+            "opus_egress_packets_drained": 3,
+            "opus_egress_queue_count": 0,
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "audio_codec_v2_egress_drain",
+        fake_egress_drain,
+    )
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "egress-drain",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"opus_egress_drain": true' in captured.out
+    assert '"drained_packets": 3' in captured.out
+    assert '"opus_egress_queue_count": 0' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
 
 
@@ -1337,6 +1398,17 @@ def test_server_cli_runs_codec_v2_worker_feed_test_debug_command(monkeypatch, ca
             "worker_payload_last_checksum": 123456,
             "worker_payload_preview_len": 16,
             "worker_payload_preview_hex": "00112233445566778899aabbccddeeff",
+            "opus_egress_queue": True,
+            "opus_egress_packets_delta": frames,
+            "opus_egress_bytes_delta": frames * 248,
+            "opus_egress_packet_drops_delta": 0,
+            "opus_egress_drained_after_test": frames,
+            "opus_egress_queue_count_after_cleanup": 0,
+            "opus_egress_last_bytes": 248,
+            "opus_egress_last_sequence": frames,
+            "opus_egress_last_checksum": 123456,
+            "opus_egress_preview_len": 16,
+            "opus_egress_preview_hex": "00112233445566778899aabbccddeeff",
             "packet_drops_delta": 0,
             "queue_count_after": 0,
             "pending_samples_after": 0,
@@ -1364,7 +1436,9 @@ def test_server_cli_runs_codec_v2_worker_feed_test_debug_command(monkeypatch, ca
     captured = capsys.readouterr()
     assert '"worker_feed": true' in captured.out
     assert '"worker_payload_observer": true' in captured.out
+    assert '"opus_egress_queue": true' in captured.out
     assert '"worker_payload_preview_hex": "00112233445566778899aabbccddeeff"' in captured.out
+    assert '"opus_egress_queue_count_after_cleanup": 0' in captured.out
     assert '"pcm_frames_in_delta": 10' in captured.out
     assert '"pending_samples_after": 0' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
