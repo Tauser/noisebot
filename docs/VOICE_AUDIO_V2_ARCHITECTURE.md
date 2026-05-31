@@ -1226,7 +1226,12 @@ sem promover Opus como padrao ainda. Os harnesses do server ja foram preparados
 para isso com `--codec opus-v2`: eles ligam o transporte pelo namespace
 `codec-v2`, medem pacotes/drops/bytes e executam rollback automatico para PCM16
 com limpeza da egress queue. Validacao local: `server/tests` completo passou;
-validacao em hardware ainda pendente.
+validacao em hardware tambem passou. `barge-live --codec opus-v2` retornou
+`ok=true`, cancelamento em 1.6 ms, `discard_reason=barge_in`, 137 pacotes Opus,
+33558 bytes e zero drops. `no-echo-live --codec opus-v2` retornou `ok=true`,
+`unexpected_turn_id=null` em janela silenciosa de 10s, 56 pacotes Opus,
+13856 bytes e zero drops. O proximo avanco seguro e decidir promocao
+HELLO/capability/default do Opus v2, preservando PCM16 como fallback e rollback.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

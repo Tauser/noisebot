@@ -968,7 +968,13 @@ Validacao:
     `barge-live` e `no-echo-live` agora aceitam `--codec opus-v2`; os harnesses
     ligam `codec-v2 transport-enable`, medem pacotes/drops/bytes, e sempre
     fazem rollback com `transport-disable` + `egress-drain`. `server/tests`
-    completo passou com 138 testes. Falta validacao em hardware.
+    completo passou com 138 testes.
+  - validacao em hardware de turn-taking com Opus v2 opt-in:
+    `barge-live --codec opus-v2` retornou `ok=true`,
+    `interruption_cancel_ms=1.6`, `discard_reason=barge_in`, 137 pacotes Opus,
+    33558 bytes e `packet_drops=0`; `no-echo-live --codec opus-v2` retornou
+    `ok=true`, `unexpected_turn_id=null` em 10s de silencio, 56 pacotes Opus,
+    13856 bytes e `packet_drops=0`.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

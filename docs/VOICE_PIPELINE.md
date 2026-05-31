@@ -236,8 +236,22 @@ Os harnesses `barge-live` e `no-echo-live` agora aceitam
 `/api/audio/codec-v2/transport/enable` antes do turno, coletam contadores do
 Codec v2, validam que houve pacotes Opus drenados sem drops e fazem rollback
 automatico com `transport-disable` seguido de `egress-drain`. A validacao local
-do server passou com `server/tests` completo; ainda falta rodar os dois
-harnesses em hardware.
+do server passou com `server/tests` completo. A validacao em hardware tambem
+passou:
+
+- `barge-live --codec opus-v2`: `ok=true`, `interrupted_turn_id=25`,
+  `interruption_cancel_ms=1.6`, `discard_reason=barge_in`,
+  `outcome=interrupted`, 137 pacotes Opus drenados, 33558 bytes,
+  `packet_drops=0`, `enable_ok=true`, `disable_ok=true` e
+  `server_codec_confirmed=true`.
+- `no-echo-live --codec opus-v2`: `ok=true`, `response_turn_id=27`,
+  `unexpected_turn_id=null`, janela silenciosa de 10s, `outcome=llm`,
+  56 pacotes Opus drenados, 13856 bytes, `packet_drops=0`, `enable_ok=true`,
+  `disable_ok=true` e `server_codec_confirmed=true`.
+
+Decisao: os bloqueios de barge/no-echo para Opus v2 opt-in estao verdes; o
+proximo passo e decidir promocao de HELLO/capability/default mantendo rollback
+PCM16.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960
