@@ -917,6 +917,17 @@ Validacao:
     `live_bridge_transport=false`, `opus_enabled=false` e `ESP_OK`; status
     final confirmou worker parado, `capture-v2` desligado e Codec v2 limpo em
     `format=pcm16`.
+  - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
+    server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
+    curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o
+    NoiseBot e estou ansioso para conversar com voce.`, `total_samples=51824`,
+    `duration_ms=3239.0`, `stt_ms=1094.3`, `first_audio_out_ms=5490.9`,
+    `tts_first_audio_ms=471.1`; worker de compatibilidade registrou
+    `pcm_encode_packets=54`, `opus_packet_enqueued=54`,
+    `opus_packet_drained=54`, `opus_packet_drops=0`,
+    `opus_packet_queue_count=0`, `opus_packet_bytes_total=13110` e
+    `codec_error=0`; rollback desligou Opus e status final confirmou
+    `capture-v2` desligado e Codec v2 limpo em `format=pcm16`.
   - validacao em hardware do caminho feed PCM16 -> worker Opus:
     `worker-feed-test --frames 10` retornou `attempted_frames=10`,
     `attempted_samples=9600`, `pcm_frames_in_delta=10`,

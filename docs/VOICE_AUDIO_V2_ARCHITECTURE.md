@@ -917,6 +917,20 @@ Validacao em hardware:
     `error=ESP_OK`;
   - status final confirmou worker parado, `capture-v2` sem sessao ativa,
     `real_capture_enabled=false`, Codec v2 limpo e `format=pcm16`.
+- Validacao Opus live curta pelo namespace Codec v2:
+  - server rodando com `NOISEBOT_LLM_MODEL=qwen3.5:9b`;
+  - `codec-v2 transport-enable` ligou `live_bridge_transport=true` e
+    `opus_enabled=true`;
+  - turno real produziu transcript `Fale uma frase curta.` com
+    `transcript_quality=good`, `outcome=llm`, resposta do LLM e TTS;
+  - metricas: `total_samples=51824`, `duration_ms=3239.0`, `stt_ms=1094.3`,
+    `first_audio_out_ms=5490.9`, `tts_first_audio_ms=471.1`;
+  - worker de compatibilidade: `pcm_encode_packets=54`,
+    `opus_packet_enqueued=54`, `opus_packet_drained=54`,
+    `opus_packet_drops=0`, `opus_packet_queue_count=0`,
+    `opus_packet_bytes_total=13110`, `codec_error=0`;
+  - rollback confirmou `live_bridge_transport=false`, `opus_enabled=false`,
+    `capture-v2` desligado e status final em PCM16 limpo.
 - Validacao em hardware do caminho feed PCM16 -> worker Opus apos flash:
   - `worker-feed-test --frames 10` retornou `ok=true`,
     `attempted_frames=10`, `attempted_samples=9600`,
@@ -1135,11 +1149,11 @@ Metricas obrigatorias:
 ## Proxima Implementacao Permitida
 
 O stub de handoff Opus para bridge e o controle opt-in de transporte live pelo
-namespace Codec v2 ja foram validados em hardware. O proximo avanco seguro e
-rodar um `opus-live` curto com rollback automatico e comparar contra um turno
-PCM16 normal. Depois disso, escolher entre integrar o worker live do proprio
-`audio_codec_service_v2` ao transporte ou manter temporariamente o worker de
-compatibilidade enquanto se mede `codec-ab`.
+namespace Codec v2 ja foram validados em hardware, incluindo um turno Opus live
+curto com `qwen3.5:9b`, zero drops e rollback para PCM16. O proximo avanco
+seguro e rodar `codec-ab` curto ou uma bateria de 3 turnos Opus vs PCM16 antes
+de decidir se o worker live do proprio `audio_codec_service_v2` deve assumir o
+transporte no lugar do worker de compatibilidade.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

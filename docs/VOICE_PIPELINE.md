@@ -591,6 +591,23 @@ Validação atual:
   - `que horas sao`: `ok=true`, `outcome=local_intent`,
     `total_samples=46064`, `packets_drained=48`, `packet_drops=0`;
   - todos com `transcript_quality=good`, `enable_ok=true` e `disable_ok=true`.
+- Firmware real, Opus live pelo namespace Codec v2 em 2026-05-31:
+  - server rodando com `NOISEBOT_LLM_MODEL=qwen3.5:9b`;
+  - `codec-v2 transport-enable` retornou `live_bridge_transport=true`,
+    `opus_enabled=true`, `pcm16_fallback=true`, `ESP_OK`;
+  - turno real: transcript `Fale uma frase curta.`, `transcript_quality=good`,
+    `outcome=llm`, reply `Ola! Sou o NoiseBot e estou ansioso para conversar
+    com voce.`;
+  - `total_samples=51824`, `duration_ms=3239.0`, `stt_ms=1094.3`,
+    `first_audio_out_ms=5490.9`, `tts_first_audio_ms=471.1`;
+  - worker Opus de compatibilidade: `pcm_feed_frames=54`,
+    `pcm_encode_packets=54`, `opus_packet_enqueued=54`,
+    `opus_packet_drained=54`, `opus_packet_drops=0`,
+    `opus_packet_queue_count=0`, `opus_packet_bytes_total=13110`,
+    `codec_error=0`;
+  - rollback: `codec-v2 transport-disable` retornou
+    `live_bridge_transport=false`, `opus_enabled=false`, `ESP_OK`; status final
+    confirmou `capture-v2` desligado e Codec v2 limpo em `format=pcm16`.
 - Firmware real, `codec-ab` curto em 2026-05-29:
   - PCM16: 3/3 turnos `ok=true`, `transcript_quality=good`, STT medio
     1049,6 ms;
