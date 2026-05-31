@@ -780,9 +780,10 @@ Validacao:
     `peak_queue_count`, `queue_count_after_cleanup` e
     `status_packet_drops_after_cleanup`, sem poluir status global;
   - `opus-encode-test` e o primeiro Opus real no `audio_codec_service_v2`:
-    abre o encoder Espressif, codifica um frame sintetico de 960 samples,
-    fecha o encoder e reporta `encoded_bytes`, heap e `codec_error`, sem task,
-    sem bridge, sem captura/playback e sem mudar o PCM16 como padrao;
+    cria uma task temporaria com stack proprio, abre o encoder Espressif,
+    codifica um frame sintetico de 960 samples, fecha o encoder e reporta
+    `encoded_bytes`, heap e `codec_error`, sem worker persistente, sem bridge,
+    sem captura/playback e sem mudar o PCM16 como padrao;
   - validado em hardware apos flash:
     `initialized=false`, `format=pcm16`, `opus_frame_ms=60`,
     `opus_frame_samples=960`, `opus_bitrate=32000`,
@@ -809,6 +810,9 @@ Validacao:
   - validacao local do encode Opus real diagnostico: teste focado bridge 6,
     teste focado server 113, bridge completo 160, server completo 128 e
     `idf.py build`.
+  - observacao de hardware: a tentativa inicial de rodar o encode Opus
+    sincronamente no handler HTTP causou timeout e indisponibilidade HTTP; a
+    correcao moveu o encode para task temporaria com stack proprio.
   - validacao em hardware do stub de worker inativo apos flash:
     `codec-v2 status` retornou `worker_supported=false`,
     `worker_active=false`, `worker_state=not_started`, contadores zerados,

@@ -681,9 +681,10 @@ Implementacao atual:
 - `POST /api/audio/codec-v2/reset` zera contadores, fila e amostras pendentes,
   preservando o contrato fixo e `format=pcm16`;
 - `POST /api/audio/codec-v2/opus-encode-test` executa o primeiro encode Opus
-  real dentro do `audio_codec_service_v2`: abre o encoder Espressif, codifica
-  um frame sintetico de 960 samples, fecha o encoder e retorna bytes/heap/erro;
-  nao cria task, nao envia ao bridge, nao altera captura/playback e nao muda o
+  real dentro do `audio_codec_service_v2`: cria uma task temporaria com stack
+  proprio, abre o encoder Espressif, codifica um frame sintetico de 960
+  samples, fecha o encoder e retorna bytes/heap/erro; nao cria worker
+  persistente, nao envia ao bridge, nao altera captura/playback e nao muda o
   formato padrao PCM16;
 - `POST /api/audio/codec-v2/overflow-test` executa teste diagnostico
   autocontido: limpa estado no inicio, tenta enfileirar N pacotes completos,
@@ -763,6 +764,10 @@ Validacao em hardware:
   - `bridge/tests`: 160 testes;
   - `server/tests`: 128 testes;
   - `idf.py build` limpo.
+- Observacao de hardware: a primeira versao sincronamente no handler HTTP
+  causou timeout e indisponibilidade HTTP apos o teste. A correcao moveu o
+  encode para task temporaria `nb_codec_v2_opus_test` com stack proprio e
+  timeout dedicado no CLI.
 - Validacao em hardware do stub de worker inativo apos flash:
   - `GET /api/audio/codec-v2`: `initialized=false`, `format=pcm16`,
     `worker_supported=false`, `worker_active=false`,
