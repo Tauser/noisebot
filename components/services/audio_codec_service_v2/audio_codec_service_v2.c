@@ -124,3 +124,31 @@ esp_err_t audio_codec_service_v2_reset_diagnostics(void)
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
     return ESP_OK;
 }
+
+esp_err_t audio_codec_service_v2_overflow_test(
+    uint32_t packets,
+    nb_audio_codec_v2_overflow_test_result_t *out)
+{
+    if (out == NULL || packets == 0U || packets > NB_AUDIO_CODEC_V2_OVERFLOW_TEST_MAX_PACKETS) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    audio_codec_service_v2_reset_diagnostics();
+    memset(out, 0, sizeof(*out));
+    out->attempted_packets = packets;
+
+    for (uint32_t i = 0; i < packets; i++) {
+        enqueue_synthetic_packet();
+        if (s_status.queue_count > out->peak_queue_count) {
+            out->peak_queue_count = s_status.queue_count;
+        }
+    }
+
+    out->accepted_packets = s_status.packets_out;
+    out->dropped_packets = s_status.packet_drops;
+
+    audio_codec_service_v2_reset_diagnostics();
+    out->queue_count_after_cleanup = s_status.queue_count;
+    out->status_packet_drops_after_cleanup = s_status.packet_drops;
+    return ESP_OK;
+}

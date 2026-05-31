@@ -1759,6 +1759,50 @@ static esp_err_t handle_api_audio_codec_v2_reset(httpd_req_t *req)
     return send_audio_codec_v2_status(req, err);
 }
 
+static esp_err_t handle_api_audio_codec_v2_overflow_test(httpd_req_t *req)
+{
+    uint32_t packets = 45U;
+    char body[MAX_BODY_LEN];
+    int body_len = 0;
+    if (recv_body(req, body, sizeof(body), &body_len) && body_len > 0U) {
+        cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+        if (root != NULL) {
+            const cJSON *packets_item = cJSON_GetObjectItemCaseSensitive(root, "packets");
+            if (cJSON_IsNumber(packets_item) && packets_item->valueint > 0) {
+                packets = (uint32_t)packets_item->valueint;
+            }
+            cJSON_Delete(root);
+        }
+    }
+
+    nb_audio_codec_v2_overflow_test_result_t result;
+    esp_err_t err = audio_codec_service_v2_overflow_test(packets, &result);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "400 Bad Request");
+    }
+
+    char buf[560];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"diagnostic\":true,\"intentional_overflow\":true,"
+             "\"attempted_packets\":%lu,\"accepted_packets\":%lu,"
+             "\"dropped_packets\":%lu,\"packet_drops_delta\":%lu,"
+             "\"peak_queue_count\":%lu,\"queue_count_after_cleanup\":%lu,"
+             "\"status_packet_drops_after_cleanup\":%lu,"
+             "\"max_queue_packets\":%u,\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             (unsigned long)result.attempted_packets,
+             (unsigned long)result.accepted_packets,
+             (unsigned long)result.dropped_packets,
+             (unsigned long)result.dropped_packets,
+             (unsigned long)result.peak_queue_count,
+             (unsigned long)result.queue_count_after_cleanup,
+             (unsigned long)result.status_packet_drops_after_cleanup,
+             (unsigned)NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS,
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
 static esp_err_t handle_api_audio_io_v2_probe(httpd_req_t *req)
 {
     if (audio_service_is_busy()) {
@@ -3194,6 +3238,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/codec-v2/encode-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_encode_test },
     { .uri = "/api/audio/codec-v2/drain", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_drain },
     { .uri = "/api/audio/codec-v2/reset", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_reset },
+    { .uri = "/api/audio/codec-v2/overflow-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_overflow_test },
     { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
     { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },
     { .uri = "/api/audio/processor/aec/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_aec_probe },

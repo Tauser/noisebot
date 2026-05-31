@@ -746,11 +746,13 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     assert client.audio_codec_v2_encode_test()["ok"]
     assert client.audio_codec_v2_drain()["ok"]
     assert client.audio_codec_v2_reset()["ok"]
+    assert client.audio_codec_v2_overflow_test(45)["ok"]
     assert get_paths == ["api/audio/codec-v2"]
     assert post_paths == [
         "api/audio/codec-v2/encode-test",
         "api/audio/codec-v2/drain",
         "api/audio/codec-v2/reset",
+        "api/audio/codec-v2/overflow-test",
     ]
 
 
@@ -925,6 +927,28 @@ def test_server_cli_parses_codec_v2_reset_debug_command() -> None:
     assert args.json
 
 
+def test_server_cli_parses_codec_v2_overflow_test_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "overflow-test",
+        "--packets",
+        "45",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "codec-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "overflow-test"
+    assert args.packets == 45
+    assert args.json
+
+
 def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
     cli = importlib.import_module("noisebot_server.cli")
     firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
@@ -1041,6 +1065,55 @@ def test_server_cli_runs_codec_v2_reset_debug_command(monkeypatch, capsys) -> No
     assert '"pending_samples": 0' in captured.out
     assert '"max_queue_packets": 40' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
+
+
+def test_server_cli_runs_codec_v2_overflow_test_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+
+    def fake_overflow_test(self, packets=45):
+        calls["base_url"] = self.base_url
+        calls["packets"] = packets
+        return {
+            "ok": True,
+            "diagnostic": True,
+            "intentional_overflow": True,
+            "attempted_packets": packets,
+            "accepted_packets": 40,
+            "dropped_packets": packets - 40,
+            "packet_drops_delta": packets - 40,
+            "peak_queue_count": 40,
+            "queue_count_after_cleanup": 0,
+            "status_packet_drops_after_cleanup": 0,
+            "max_queue_packets": 40,
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "audio_codec_v2_overflow_test",
+        fake_overflow_test,
+    )
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "overflow-test",
+        "--packets",
+        "45",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"intentional_overflow": true' in captured.out
+    assert '"attempted_packets": 45' in captured.out
+    assert '"dropped_packets": 5' in captured.out
+    assert '"queue_count_after_cleanup": 0' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
+    assert calls["packets"] == 45
 
 
 def test_server_cli_parses_barge_live_debug_command() -> None:
