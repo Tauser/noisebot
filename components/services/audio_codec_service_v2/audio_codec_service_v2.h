@@ -97,6 +97,21 @@ typedef struct {
     nb_audio_codec_v2_worker_state_t worker_state_after;
 } nb_audio_codec_v2_worker_stress_result_t;
 
+typedef struct {
+    uint32_t attempted_frames;
+    uint32_t attempted_samples;
+    uint32_t pcm_frames_in_delta;
+    uint32_t packets_out_delta;
+    uint32_t worker_drained_packets_delta;
+    uint32_t worker_opus_packets_delta;
+    uint32_t worker_opus_encoded_bytes_delta;
+    uint16_t worker_opus_last_packet_bytes;
+    uint32_t packet_drops_delta;
+    uint32_t queue_count_after;
+    uint16_t pending_samples_after;
+    nb_audio_codec_v2_worker_state_t worker_state_after;
+} nb_audio_codec_v2_worker_feed_result_t;
+
 esp_err_t audio_codec_service_v2_init(void);
 esp_err_t audio_codec_service_v2_deinit(void);
 bool audio_codec_service_v2_is_initialized(void);
@@ -116,6 +131,9 @@ esp_err_t audio_codec_service_v2_worker_stop(void);
 esp_err_t audio_codec_service_v2_worker_stress_test(
     uint32_t packets,
     nb_audio_codec_v2_worker_stress_result_t *out);
+esp_err_t audio_codec_service_v2_worker_feed_test(
+    uint32_t frames,
+    nb_audio_codec_v2_worker_feed_result_t *out);
 
 #ifdef __cplusplus
 }

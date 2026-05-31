@@ -702,6 +702,13 @@ Implementacao atual:
   ate 40 pacotes sinteticos completos, espera drenar/codificar, para o worker
   e retorna deltas de pacotes, bytes Opus, drops, fila final e estado final;
   nao toca captura, bridge ou playback;
+- `POST /api/audio/codec-v2/worker/feed-test` executa teste diagnostico
+  autocontido do caminho `feed_pcm16` -> packetizer -> fila -> worker Opus:
+  limpa estado, inicia o worker opt-in, alimenta ate 40 frames PCM16
+  sinteticos de 960 samples pelo `audio_codec_service_v2_feed_pcm16()`,
+  espera drenar/codificar, para o worker e retorna deltas de frames PCM,
+  pacotes, bytes Opus, drops, fila final, pendencias e estado final; nao toca
+  captura, bridge ou playback;
 - `reset` preserva o estado do worker quando ele esta ativo, evitando status
   incoerente ou segunda task acidental;
 - o server expoe proxy diagnostico em `/api/device/audio/codec-v2`;
@@ -713,6 +720,7 @@ Implementacao atual:
 - o server tambem expoe `/api/device/audio/codec-v2/worker/start`;
 - o server tambem expoe `/api/device/audio/codec-v2/worker/stop`;
 - o server tambem expoe `/api/device/audio/codec-v2/worker/stress-test`;
+- o server tambem expoe `/api/device/audio/codec-v2/worker/feed-test`;
 - CLI `noisebot_server debug codec-v2 status` consulta o endpoint do firmware;
 - CLI `noisebot_server debug codec-v2 encode-test` aciona o teste sintetico;
 - CLI `noisebot_server debug codec-v2 drain` drena a fila sintetica;
@@ -725,6 +733,8 @@ Implementacao atual:
 - CLI `noisebot_server debug codec-v2 worker-stop` para o worker opt-in;
 - CLI `noisebot_server debug codec-v2 worker-stress-test --packets N` executa
   o teste multi-pacote autocontido do worker Opus;
+- CLI `noisebot_server debug codec-v2 worker-feed-test --frames N` executa
+  o teste autocontido do packetizer PCM16 com worker Opus opt-in;
 - os endpoints nao ligam Opus persistente e nao alteram bridge/captura/playback;
 - o Opus operacional existente permanece no caminho opt-in atual
   `/api/audio/opus/transport/enable`, com PCM16 como fallback padrao.
@@ -802,6 +812,17 @@ Validacao em hardware:
   - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
   - `server/tests/test_server_facade.py`: 116 testes;
   - `idf.py build` limpo.
+- Validacao local do caminho feed PCM16 -> worker Opus:
+  - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
+  - `server/tests/test_server_facade.py`: 117 testes;
+  - `idf.py build` limpo;
+  - precisa flash para validacao em hardware com
+    `noisebot_server --host 192.168.1.30 debug codec-v2 worker-feed-test --frames 10 --json`;
+    esperado: `pcm_frames_in_delta=10`, `packets_out_delta=10`,
+    `worker_opus_packets_delta=10`, `worker_opus_encoded_bytes_delta>0`,
+    `pending_samples_after=0`, `packet_drops_delta=0`,
+    `queue_count_after=0`, `worker_state_after=stopped` e `capture-v2`
+    desligado.
 - Validacao em hardware do worker Opus multi-pacote sintetico apos flash:
   - `worker-stress-test --packets 10` retornou `ok=true`,
     `accepted_packets=10`, `worker_drained_packets_delta=10`,

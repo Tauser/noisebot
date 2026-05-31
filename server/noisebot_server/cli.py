@@ -133,6 +133,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "worker-start",
             "worker-stop",
             "worker-stress-test",
+            "worker-feed-test",
             "overflow-test",
         ],
         nargs="?",
@@ -140,6 +141,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     codec_v2.add_argument("--firmware-url", default="")
     codec_v2.add_argument("--packets", type=int, default=45)
+    codec_v2.add_argument("--frames", type=int, default=10)
     codec_v2.add_argument("--json", action="store_true", help="Emitir JSON")
 
     parser.add_argument("--host", help="IP do ESP32")
@@ -556,7 +558,7 @@ def run_debug_command(args: argparse.Namespace) -> None:
         if not firmware_url:
             raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
 
-        timeout_s = 10.0 if args.action in ("opus-encode-test", "worker-stress-test") else 1.5
+        timeout_s = 10.0 if args.action in ("opus-encode-test", "worker-stress-test", "worker-feed-test") else 1.5
         client = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=timeout_s)
         if args.action == "encode-test":
             payload = client.audio_codec_v2_encode_test()
@@ -572,6 +574,8 @@ def run_debug_command(args: argparse.Namespace) -> None:
             payload = client.audio_codec_v2_worker_stop()
         elif args.action == "worker-stress-test":
             payload = client.audio_codec_v2_worker_stress_test(args.packets)
+        elif args.action == "worker-feed-test":
+            payload = client.audio_codec_v2_worker_feed_test(args.frames)
         elif args.action == "overflow-test":
             payload = client.audio_codec_v2_overflow_test(args.packets)
         else:

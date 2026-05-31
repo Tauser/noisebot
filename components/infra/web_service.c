@@ -1922,6 +1922,61 @@ static esp_err_t handle_api_audio_codec_v2_worker_stress_test(httpd_req_t *req)
     return httpd_resp_sendstr(req, buf);
 }
 
+static esp_err_t handle_api_audio_codec_v2_worker_feed_test(httpd_req_t *req)
+{
+    uint32_t frames = 10U;
+    char body[MAX_BODY_LEN];
+    int body_len = 0;
+    if (recv_body(req, body, sizeof(body), &body_len) && body_len > 0U) {
+        cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+        if (root != NULL) {
+            const cJSON *frames_item = cJSON_GetObjectItemCaseSensitive(root, "frames");
+            if (cJSON_IsNumber(frames_item) && frames_item->valueint > 0) {
+                frames = (uint32_t)frames_item->valueint;
+            }
+            cJSON_Delete(root);
+        }
+    }
+
+    nb_audio_codec_v2_worker_feed_result_t result;
+    esp_err_t err = audio_codec_service_v2_worker_feed_test(frames, &result);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_ARG
+                                   ? "400 Bad Request"
+                                   : "409 Conflict");
+    }
+
+    char buf[900];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"diagnostic\":true,\"test_format\":\"opus\","
+             "\"worker_feed\":true,\"attempted_frames\":%lu,"
+             "\"attempted_samples\":%lu,\"pcm_frames_in_delta\":%lu,"
+             "\"packets_out_delta\":%lu,\"worker_drained_packets_delta\":%lu,"
+             "\"worker_opus_packets_delta\":%lu,"
+             "\"worker_opus_encoded_bytes_delta\":%lu,"
+             "\"worker_opus_last_packet_bytes\":%u,"
+             "\"packet_drops_delta\":%lu,\"queue_count_after\":%lu,"
+             "\"pending_samples_after\":%u,\"worker_state_after\":\"%s\","
+             "\"max_frames\":%u,\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             (unsigned long)result.attempted_frames,
+             (unsigned long)result.attempted_samples,
+             (unsigned long)result.pcm_frames_in_delta,
+             (unsigned long)result.packets_out_delta,
+             (unsigned long)result.worker_drained_packets_delta,
+             (unsigned long)result.worker_opus_packets_delta,
+             (unsigned long)result.worker_opus_encoded_bytes_delta,
+             (unsigned)result.worker_opus_last_packet_bytes,
+             (unsigned long)result.packet_drops_delta,
+             (unsigned long)result.queue_count_after,
+             (unsigned)result.pending_samples_after,
+             audio_codec_service_v2_worker_state_name(result.worker_state_after),
+             (unsigned)NB_AUDIO_CODEC_V2_WORKER_STRESS_MAX_PACKETS,
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
 static esp_err_t handle_api_audio_codec_v2_overflow_test(httpd_req_t *req)
 {
     uint32_t packets = 45U;
@@ -3405,6 +3460,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/codec-v2/worker/start", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_start },
     { .uri = "/api/audio/codec-v2/worker/stop", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_stop },
     { .uri = "/api/audio/codec-v2/worker/stress-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_stress_test },
+    { .uri = "/api/audio/codec-v2/worker/feed-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_feed_test },
     { .uri = "/api/audio/codec-v2/overflow-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_overflow_test },
     { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
     { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },

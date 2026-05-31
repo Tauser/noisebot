@@ -72,6 +72,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '{ .uri = "/api/audio/codec-v2/opus-encode-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/worker/start"' in web
     assert '{ .uri = "/api/audio/codec-v2/worker/stop"' in web
+    assert '{ .uri = "/api/audio/codec-v2/worker/feed-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/overflow-test"' in web
     assert '\\"opus_bitrate\\":%u' in web
     assert '\\"max_queue_packets\\":%u' in web
@@ -86,6 +87,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "NB_AUDIO_CODEC_V2_WORKER_STRESS_MAX_PACKETS" in codec_h
     assert "nb_audio_codec_v2_overflow_test_result_t" in codec_h
     assert "nb_audio_codec_v2_worker_stress_result_t" in codec_h
+    assert "nb_audio_codec_v2_worker_feed_result_t" in codec_h
     codec_c = (
         COMPONENTS / "audio_codec_service_v2" / "audio_codec_service_v2.c"
     ).read_text(encoding="utf-8")
@@ -111,6 +113,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "audio_codec_service_v2_worker_start(" in codec_c
     assert "audio_codec_service_v2_worker_stop(" in codec_c
     assert "audio_codec_service_v2_worker_stress_test(" in codec_c
+    assert "audio_codec_service_v2_worker_feed_test(" in codec_c
     assert '"nb_codec_v2_worker"' in codec_c
     assert "#define CODEC_WORKER_TASK_STACK OPUS_TEST_TASK_STACK" in codec_c
     assert "xTaskCreatePinnedToCoreWithCaps(" in codec_c
@@ -133,7 +136,10 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "CODEC_WORKER_STRESS_TIMEOUT_MS" in codec_c
     assert "out->worker_opus_packets_delta" in codec_c
     assert "out->worker_opus_encoded_bytes_delta" in codec_c
+    assert "out->pcm_frames_in_delta" in codec_c
+    assert "out->pending_samples_after" in codec_c
     assert '{ .uri = "/api/audio/codec-v2/worker/stress-test"' in web
+    assert '{ .uri = "/api/audio/codec-v2/worker/feed-test"' in web
     assert '\\"pending_samples\\":%u' in web
     assert '\\"worker_supported\\":%s' in web
     assert '\\"worker_active\\":%s' in web
@@ -150,6 +156,9 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"drained_packets\\":%lu' in web
     assert '\\"intentional_overflow\\":true' in web
     assert '\\"worker_stress\\":true' in web
+    assert '\\"worker_feed\\":true' in web
+    assert '\\"pcm_frames_in_delta\\":%lu' in web
+    assert '\\"pending_samples_after\\":%u' in web
     assert '\\"worker_opus_packets_delta\\":%lu' in web
     assert '\\"worker_opus_encoded_bytes_delta\\":%lu' in web
     assert '\\"queue_count_after_cleanup\\":%lu' in web

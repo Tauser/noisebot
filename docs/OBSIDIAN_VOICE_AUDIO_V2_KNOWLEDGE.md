@@ -757,6 +757,7 @@ Validacao:
   - server proxy: `/api/device/audio/codec-v2/worker/start`;
   - server proxy: `/api/device/audio/codec-v2/worker/stop`;
   - server proxy: `/api/device/audio/codec-v2/worker/stress-test`;
+  - server proxy: `/api/device/audio/codec-v2/worker/feed-test`;
   - CLI: `noisebot_server debug codec-v2 status`;
   - CLI: `noisebot_server debug codec-v2 encode-test`;
   - CLI: `noisebot_server debug codec-v2 drain`;
@@ -766,6 +767,7 @@ Validacao:
   - CLI: `noisebot_server debug codec-v2 worker-start`;
   - CLI: `noisebot_server debug codec-v2 worker-stop`;
   - CLI: `noisebot_server debug codec-v2 worker-stress-test --packets N`;
+  - CLI: `noisebot_server debug codec-v2 worker-feed-test --frames N`;
   - status atual publica o worker opt-in:
     `worker_supported=true`, `worker_active=false`,
     `worker_state=not_started`, `worker_drained_packets` e contadores
@@ -804,6 +806,14 @@ Validacao:
     `worker_opus_encoded_bytes_delta`, `packet_drops_delta`,
     `queue_count_after` e `worker_state_after`, sem captura, bridge ou
     playback;
+  - worker-feed-test diagnostico: limpa estado, inicia o worker opt-in,
+    alimenta ate 40 frames PCM16 sinteticos de 960 samples pelo
+    `audio_codec_service_v2_feed_pcm16()`, espera o packetizer enfileirar,
+    a task drenar e codificar, para o worker e retorna
+    `pcm_frames_in_delta`, `packets_out_delta`, `worker_opus_packets_delta`,
+    `worker_opus_encoded_bytes_delta`, `pending_samples_after`,
+    `packet_drops_delta`, `queue_count_after` e `worker_state_after`, sem
+    captura, bridge ou playback;
   - reset diagnostico preserva o estado do worker quando ele esta ativo, para
     evitar status incoerente ou uma segunda task acidental;
   - validado em hardware apos flash:
@@ -839,6 +849,9 @@ Validacao:
     `idf.py build`.
   - validacao local do worker Opus multi-pacote sintetico: teste focado bridge
     6, teste focado server 116 e `idf.py build`.
+  - validacao local do caminho feed PCM16 -> worker Opus: teste focado bridge
+    6, teste focado server 117 e `idf.py build`; precisa flash para validar em
+    hardware com `codec-v2 worker-feed-test --frames 10`.
   - validacao em hardware do worker Opus multi-pacote sintetico:
     `worker-stress-test --packets 10` retornou `accepted_packets=10`,
     `worker_drained_packets_delta=10`, `worker_opus_packets_delta=10`,
