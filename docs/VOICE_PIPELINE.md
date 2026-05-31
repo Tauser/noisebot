@@ -919,7 +919,12 @@ Pendências:
 - Investigar apos fechar a migracao Opus: algumas respostas faladas parecem
   cortar o texto antes do fim. Tratar como pendencia separada de TTS/streaming,
   chunking, fila de playback ou criterio de fim de fala; nao misturar com a
-  troca PCM16/Opus sem evidencia.
+  troca PCM16/Opus sem evidencia. Avanco: o server passou a registrar
+  diagnostico de completude TTS/playback por turno (`tts_chunks_sent`,
+  `tts_pcm_bytes_in`, `tts_pcm_bytes_sent`, `tts_padding_bytes`,
+  `tts_say_begin_sent`, `tts_say_end_sent`, `tts_expected_duration_ms`,
+  `tts_completed`, `text_scroll_truncated`) para o proximo teste real dizer se
+  o corte esta no audio, no `TEXT_SCROLL` visual de 128 bytes ou no envio SAY.
 
 ## Ordem Recomendada
 
@@ -952,6 +957,9 @@ Pendências:
    `capture-v2` desligado.
 6. AEC/realtime/follow-up continuam standby até existir referência limpa de
    playback ou server-side AEC validado.
+7. Usar os novos campos de completude TTS/playback em `/ai/metrics` para
+   investigar o corte de texto/voz depois de confirmar a migração Opus em uso
+   diário.
 
 Essa ordem evita a armadilha de trocar codec, VAD, AEC e STT ao mesmo tempo. O
 fim desejado é ambicioso, mas cada fase precisa ter medição própria para o robô

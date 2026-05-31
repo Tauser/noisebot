@@ -1022,6 +1022,15 @@ Validacao:
     zero drops, fila egress zero, `opus_codec_error=0` e `capture-v2`
     desligado. PCM16 permanece rollback por env `pcm16` ou
     `codec-v2 transport-disable`.
+  - diagnostico de corte de resposta adicionado no server: cada sessao recente
+    passa a expor contadores de completude TTS/playback (`tts_chunks_sent`,
+    `tts_pcm_bytes_in`, `tts_pcm_bytes_sent`, `tts_padding_bytes`,
+    `tts_say_begin_sent`, `tts_say_end_sent`, `tts_expected_duration_ms`,
+    `tts_completed`) e campos de limite visual (`text_scroll_bytes`,
+    `text_scroll_payload_bytes`, `text_scroll_truncated`). Objetivo: separar
+    corte de audio, corte visual de `TEXT_SCROLL` de 128 bytes e falha de envio
+    SAY sem mexer em firmware/protocolo. Validacao local: `server/tests` passou
+    com 143 testes.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

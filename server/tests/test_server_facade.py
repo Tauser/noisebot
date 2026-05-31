@@ -1785,6 +1785,7 @@ def test_server_cli_runs_barge_live_debug_command(monkeypatch, capsys) -> None:
 
 def test_server_barge_live_accepts_aggregate_interruption(monkeypatch) -> None:
     barge_live = importlib.import_module("noisebot_server.internal.ops.barge_live")
+    codec_v2_live = importlib.import_module("noisebot_server.internal.ops.codec_v2_live")
 
     payloads = [
         {
@@ -1812,6 +1813,11 @@ def test_server_barge_live_accepts_aggregate_interruption(monkeypatch) -> None:
         return payloads.pop(0) if payloads else payloads[-1]
 
     monkeypatch.setattr(barge_live, "get_json", fake_get_json)
+    monkeypatch.setattr(
+        codec_v2_live,
+        "get_json",
+        lambda _url: {"audio": {"format": "pcm16"}, "codecs": {"opus": False}},
+    )
 
     trial = barge_live.run_barge_live_trial(
         phrase="me conte uma historia longa",
@@ -1972,6 +1978,7 @@ def test_server_cli_runs_no_echo_live_debug_command(monkeypatch, capsys) -> None
 
 def test_server_no_echo_live_pcm16_tracks_response_turn(monkeypatch) -> None:
     no_echo = importlib.import_module("noisebot_server.internal.ops.no_echo_live")
+    codec_v2_live = importlib.import_module("noisebot_server.internal.ops.codec_v2_live")
 
     payloads = [
         {"recent_voice_sessions": [{"turn_id": 200, "outcome": "llm"}]},
@@ -1983,6 +1990,11 @@ def test_server_no_echo_live_pcm16_tracks_response_turn(monkeypatch) -> None:
         return payloads.pop(0) if payloads else {"recent_voice_sessions": [{"turn_id": 201}]}
 
     monkeypatch.setattr(no_echo, "get_json", fake_get_json)
+    monkeypatch.setattr(
+        codec_v2_live,
+        "get_json",
+        lambda _url: {"audio": {"format": "pcm16"}, "codecs": {"opus": False}},
+    )
 
     trial = no_echo.run_no_echo_live_trial(
         phrase="me conte uma historia longa",
@@ -2866,6 +2878,10 @@ def test_server_metrics_exposes_last_voice_session() -> None:
         "discard_reason": "stt_empty",
         "duration_ms": 736.2,
         "transcript_quality": "empty",
+        "tts_chunks_sent": 23,
+        "tts_pcm_bytes_sent": 11776,
+        "tts_completed": True,
+        "text_scroll_truncated": True,
         "secret": "nao deve aparecer",
     })
 
@@ -2877,6 +2893,10 @@ def test_server_metrics_exposes_last_voice_session() -> None:
         "discard_reason": "stt_empty",
         "duration_ms": 736.2,
         "transcript_quality": "empty",
+        "tts_chunks_sent": 23,
+        "tts_pcm_bytes_sent": 11776,
+        "tts_completed": True,
+        "text_scroll_truncated": True,
     }
     assert payload["recent_voice_sessions"] == [payload["last_voice_session"]]
     assert payload["voice_alert"] == {
@@ -2889,6 +2909,62 @@ def test_server_metrics_exposes_last_voice_session() -> None:
         "detail": "STT rejeitou ou degradou a transcrição",
         "next_check": "Comparar RMS, peak, clipping e amostra enviada ao STT.",
     }
+
+
+@pytest.mark.asyncio
+async def test_server_tts_records_playback_completion_diagnostics() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class DummyTts:
+        async def synthesize_stream(self, sentences):
+            async for _sentence in sentences:
+                yield b"\x11\x22" * 300
+
+    class DummyAdapter:
+        def __init__(self) -> None:
+            self.texts: list[str] = []
+            self.say_chunks: list[bytes] = []
+            self.say_end: list[int] = []
+
+        async def send_say_begin(self, turn_id: int) -> None:
+            pass
+
+        async def send_say(self, pcm: bytes) -> None:
+            self.say_chunks.append(pcm)
+
+        async def send_say_end(self, turn_id: int) -> None:
+            self.say_end.append(turn_id)
+
+        async def send_text_scroll(self, text: str) -> None:
+            self.texts.append(text)
+
+    bus = runtime.EventBus(default_maxsize=512)
+    adapter = DummyAdapter()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: adapter,
+        tts_provider=DummyTts(),
+    )
+    session = runtime.SessionContext(turn_id=77)
+    session.reply_text = "Resposta longa " + ("x" * 180)
+
+    await orchestrator._run_tts_and_speak(77, ["primeira frase"], session)
+    await asyncio.sleep(0)
+
+    assert len(adapter.say_chunks) == 2
+    assert adapter.say_end == [77]
+    assert adapter.texts == [session.reply_text]
+    assert session.meta["tts_sentence_count"] == 1
+    assert session.meta["tts_chunks_sent"] == 2
+    assert session.meta["tts_pcm_bytes_in"] == 600
+    assert session.meta["tts_pcm_bytes_sent"] == 1024
+    assert session.meta["tts_padding_bytes"] == 424
+    assert session.meta["tts_completed"] is True
+    assert session.meta["text_scroll_truncated"] is True
 
 
 def test_server_dashboard_renders_voice_diagnostics_panel() -> None:

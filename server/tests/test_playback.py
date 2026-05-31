@@ -40,7 +40,7 @@ async def test_output_scheduler_rechunks_oversized_tts_frames() -> None:
     scheduler = OutputScheduler()
     source = bytes(range(256)) * 3  # 768 bytes; not aligned to firmware chunks.
 
-    await scheduler.run(7, _iter_chunks(source[:532], source[532:]), adapter)
+    stats = await scheduler.run(7, _iter_chunks(source[:532], source[532:]), adapter)
 
     assert adapter.begin == [7]
     assert adapter.end == [7]
@@ -48,6 +48,12 @@ async def test_output_scheduler_rechunks_oversized_tts_frames() -> None:
     assert adapter.chunks[0] == source[:CHUNK_BYTES]
     assert adapter.chunks[1].startswith(source[CHUNK_BYTES:])
     assert adapter.chunks[1][len(source) - CHUNK_BYTES :] == b"\x00" * (CHUNK_BYTES * 2 - len(source))
+    assert stats.chunks_sent == 2
+    assert stats.pcm_bytes_in == len(source)
+    assert stats.pcm_bytes_sent == CHUNK_BYTES * 2
+    assert stats.padding_bytes == CHUNK_BYTES * 2 - len(source)
+    assert stats.say_begin_sent is True
+    assert stats.say_end_sent is True
 
 
 @pytest.mark.asyncio
@@ -56,10 +62,15 @@ async def test_output_scheduler_sends_exact_chunk_without_padding() -> None:
     scheduler = OutputScheduler()
     source = b"\x11\x22" * (CHUNK_BYTES // 2)
 
-    await scheduler.run(8, _iter_chunks(source), adapter)
+    stats = await scheduler.run(8, _iter_chunks(source), adapter)
 
     assert [len(chunk) for chunk in adapter.chunks] == [CHUNK_BYTES]
     assert adapter.chunks[0] == source
+    assert stats.chunks_sent == 1
+    assert stats.pcm_bytes_in == CHUNK_BYTES
+    assert stats.pcm_bytes_sent == CHUNK_BYTES
+    assert stats.padding_bytes == 0
+    assert stats.say_end_sent is True
 
 
 @pytest.mark.asyncio

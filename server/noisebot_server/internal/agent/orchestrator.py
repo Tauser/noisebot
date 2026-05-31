@@ -79,6 +79,7 @@ LLM_CONFIG_FALLBACK_REPLY = (
 )
 TTS_FAST_FRAGMENT_MAX_CHARS = 96
 TTS_FAST_FRAGMENT_MIN_CHARS = 24
+TEXT_SCROLL_MAX_BYTES = 128
 
 
 def _sentences_for_tts(text: str) -> list[str]:
@@ -1010,6 +1011,8 @@ class Orchestrator:
         """
         first_audio_recorded = False
         session.mark("tts_start")
+        session.meta["tts_sentence_count"] = len(sentences)
+        session.meta["tts_text_chars"] = sum(len(sentence) for sentence in sentences)
 
         async def _on_first(tid: int) -> None:
             nonlocal first_audio_recorded
@@ -1038,7 +1041,7 @@ class Orchestrator:
                 )
                 if self.adapter is not None and session.reply_text:
                     asyncio.create_task(
-                        self._send_reply_text_scroll(session.reply_text[:128]),
+                        self._send_reply_text_scroll(session),
                         name=f"nb_reply_text_{tid}",
                     )
 
@@ -1052,13 +1055,24 @@ class Orchestrator:
             for s in sentences:
                 yield s
 
-        await scheduler.run(
+        stats = await scheduler.run(
             turn_id=turn_id,
             pcm_iter=self._tts.synthesize_stream(_aiter_sentences()),
             adapter=self.adapter,
             on_first_audio=_on_first,
             on_audio_progress=_on_progress,
         )
+        session.meta["tts_chunks_sent"] = stats.chunks_sent
+        session.meta["tts_pcm_bytes_in"] = stats.pcm_bytes_in
+        session.meta["tts_pcm_bytes_sent"] = stats.pcm_bytes_sent
+        session.meta["tts_padding_bytes"] = stats.padding_bytes
+        session.meta["tts_say_begin_sent"] = stats.say_begin_sent
+        session.meta["tts_say_end_sent"] = stats.say_end_sent
+        session.meta["tts_expected_duration_ms"] = round(
+            stats.chunks_sent * 16.0,
+            1,
+        )
+        session.meta["tts_completed"] = bool(stats.chunks_sent and stats.say_end_sent)
         if not first_audio_recorded:
             log.warning(
                 "Turno %d: TTS nao gerou nenhum chunk de audio para %d frase(s)",
@@ -1066,10 +1080,16 @@ class Orchestrator:
                 len(sentences),
             )
 
-    async def _send_reply_text_scroll(self, text: str) -> None:
+    async def _send_reply_text_scroll(self, session: SessionContext) -> None:
         adapter = self.adapter
+        text = session.reply_text or ""
         if adapter is None or not text:
             return
+        encoded = text.encode("utf-8")
+        session.meta["text_scroll_chars"] = len(text)
+        session.meta["text_scroll_bytes"] = len(encoded)
+        session.meta["text_scroll_payload_bytes"] = min(len(encoded), TEXT_SCROLL_MAX_BYTES)
+        session.meta["text_scroll_truncated"] = len(encoded) > TEXT_SCROLL_MAX_BYTES
         try:
             await adapter.send_text_scroll(text)
         except Exception as exc:
@@ -1422,6 +1442,20 @@ class Orchestrator:
             "intent_name": session.intent_name,
             "reply": session.reply_text,
             "reply_chars": len(session.reply_text or ""),
+            "tts_sentence_count": session.meta.get("tts_sentence_count"),
+            "tts_text_chars": session.meta.get("tts_text_chars"),
+            "tts_chunks_sent": session.meta.get("tts_chunks_sent"),
+            "tts_pcm_bytes_in": session.meta.get("tts_pcm_bytes_in"),
+            "tts_pcm_bytes_sent": session.meta.get("tts_pcm_bytes_sent"),
+            "tts_padding_bytes": session.meta.get("tts_padding_bytes"),
+            "tts_say_begin_sent": session.meta.get("tts_say_begin_sent"),
+            "tts_say_end_sent": session.meta.get("tts_say_end_sent"),
+            "tts_expected_duration_ms": session.meta.get("tts_expected_duration_ms"),
+            "tts_completed": session.meta.get("tts_completed"),
+            "text_scroll_chars": session.meta.get("text_scroll_chars"),
+            "text_scroll_bytes": session.meta.get("text_scroll_bytes"),
+            "text_scroll_payload_bytes": session.meta.get("text_scroll_payload_bytes"),
+            "text_scroll_truncated": session.meta.get("text_scroll_truncated"),
             "voice_end_to_stt_start_ms": delta_ms("voice_end", "stt_start"),
             "stt_ms": delta_ms("stt_start", "stt_end"),
             "end_of_turn_ms": since_start_ms("stt_end"),

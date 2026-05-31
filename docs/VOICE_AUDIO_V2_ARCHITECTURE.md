@@ -1260,5 +1260,13 @@ Promocao local aplicada: `server/.env` agora define
 `opus_codec_error=0` e `capture-v2` desligado. Rollback local: remover/alterar
 essa env para `pcm16` ou chamar `codec-v2 transport-disable`.
 
+Diagnostico de corte de resposta: o server agora registra por turno contadores
+de TTS/playback em `recent_voice_sessions`: frases e chars enviados ao TTS,
+chunks SAY enviados, bytes PCM recebidos/enviados, padding, `SAY_BEGIN`,
+`SAY_END`, duracao esperada de fala, `tts_completed` e truncamento do
+`TEXT_SCROLL` de 128 bytes. Isso nao muda firmware nem protocolo; serve para
+separar corte real de audio, limite visual de texto e falha de envio ao
+firmware. Validacao local: `server/tests` com 143 testes verdes.
+
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.
