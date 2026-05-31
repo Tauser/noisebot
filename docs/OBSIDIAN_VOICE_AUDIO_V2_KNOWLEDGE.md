@@ -793,6 +793,14 @@ Validacao:
   - validacao local do overflow-test diagnostico: teste focado bridge 6, teste
     focado server 111, bridge completo 160, server completo 126 e
     `idf.py build`.
+  - validacao em hardware do overflow-test diagnostico apos flash:
+    `packets=40` resultou em `accepted_packets=40`, `dropped_packets=0`;
+    `packets=41` resultou em `accepted_packets=40`, `dropped_packets=1`;
+    `packets=45` resultou em `accepted_packets=40`, `dropped_packets=5`;
+    todos com `peak_queue_count=40`, `queue_count_after_cleanup=0`,
+    `status_packet_drops_after_cleanup=0`, `error=ESP_OK`; status final do
+    codec voltou zerado e `capture-v2 status` seguiu com
+    `real_capture_enabled=false`, `session_active=false`, `last_error=ESP_OK`.
   - validacao em hardware do reset diagnostico apos flash:
     status inicial zerado, `encode-test` gerou `queue_count=1` e
     `pending_samples=64`, `reset` zerou contadores/fila/pendencias,

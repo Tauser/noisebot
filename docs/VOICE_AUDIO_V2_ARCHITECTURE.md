@@ -739,6 +739,22 @@ Validacao em hardware:
   - `bridge/tests`: 160 testes;
   - `server/tests`: 126 testes;
   - `idf.py build` limpo.
+- Validacao em hardware do overflow-test diagnostico apos flash:
+  - `packets=40`: `accepted_packets=40`, `dropped_packets=0`,
+    `peak_queue_count=40`, `queue_count_after_cleanup=0`,
+    `status_packet_drops_after_cleanup=0`, `error=ESP_OK`;
+  - `packets=41`: `accepted_packets=40`, `dropped_packets=1`,
+    `peak_queue_count=40`, `queue_count_after_cleanup=0`,
+    `status_packet_drops_after_cleanup=0`, `error=ESP_OK`;
+  - `packets=45`: `accepted_packets=40`, `dropped_packets=5`,
+    `peak_queue_count=40`, `queue_count_after_cleanup=0`,
+    `status_packet_drops_after_cleanup=0`, `error=ESP_OK`;
+  - status final do codec voltou limpo:
+    `pcm_frames_in=0`, `packets_out=0`, `packet_drops=0`,
+    `queue_count=0`, `pending_samples=0`, `format=pcm16`;
+  - `capture-v2 status` confirmou fallback seguro:
+    `real_capture_enabled=false`, `session_active=false`,
+    `state=IDLE_SESSION`, `last_error=ESP_OK`.
 - Validacao em hardware do reset diagnostico apos flash:
   - status inicial zerado e contrato fixo preservado;
   - apos `encode-test`: `pcm_frames_in=1`, `packets_out=1`,

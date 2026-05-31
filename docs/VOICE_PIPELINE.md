@@ -85,7 +85,10 @@ flash, `encode-test -> reset -> status` confirmou contadores zerados,
 O overflow-test diagnostico em `codec-v2 overflow-test --packets N` limpa o
 estado antes e depois do teste, tenta enfileirar pacotes completos sinteticos e
 retorna metricas separadas (`accepted_packets`, `dropped_packets`,
-`peak_queue_count`) sem deixar drops acumulados no status global.
+`peak_queue_count`) sem deixar drops acumulados no status global. Em hardware,
+apos flash, `packets=40/41/45` retornaram respectivamente `0/1/5` drops,
+sempre com `peak_queue_count=40`, limpeza final em zero e `ESP_OK`; o status
+global do codec voltou limpo e `capture-v2` permaneceu desligado.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
