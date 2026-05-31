@@ -162,7 +162,12 @@ egress`, registra `bridge_handoff_*` como pacotes prontos, mas retorna
 ele ainda nao envia Opus pelo bridge, nao renegocia `HELLO`, nao ativa
 `bridge_service_set_opus_enabled()`, nao toca captura/playback e nao promove
 Opus como padrao. A validacao local passou com teste focado bridge, teste
-focado server e `idf.py build`; falta flash/validacao em hardware.
+focado server e `idf.py build`. Em hardware apos flash,
+`bridge-handoff-test --frames 10` retornou 10 pacotes prontos, 2434 bytes,
+zero drops, `bridge_packet_not_sent=true`, `bridge_transport_unchanged=true`,
+`opus_egress_queue_count_after_cleanup=0` e `worker_state_after=stopped`;
+status final confirmou `format=pcm16`, `bridge_handoff_packets_ready=10`,
+fila egress zerada, `error=ESP_OK` e `capture-v2` desligado.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

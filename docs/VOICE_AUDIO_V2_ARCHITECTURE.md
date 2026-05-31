@@ -869,14 +869,21 @@ Validacao em hardware:
     altera `bridge_service_set_opus_enabled()`, nao toca captura/playback e
     nao promove Opus como padrao;
   - validacao local: teste focado bridge 6, teste focado server 120 e
-    `idf.py build`; precisa flash para validar em hardware com
-    `noisebot_server --host 192.168.1.30 debug codec-v2 bridge-handoff-test --frames 10 --json`;
-    esperado: `bridge_handoff_stub=true`,
+    `idf.py build`;
+  - validacao em hardware apos flash:
+    `noisebot_server --host 192.168.1.30 debug codec-v2 bridge-handoff-test --frames 10 --json`
+    retornou `bridge_handoff_stub=true`,
     `bridge_transport_unchanged=true`, `bridge_packet_not_sent=true`,
     `bridge_handoff_packets_ready_delta=10`,
     `bridge_handoff_bytes_ready_delta=2434`,
-    `opus_egress_queue_count_after_cleanup=0`, zero drops,
-    `worker_state_after=stopped` e `capture-v2` desligado.
+    `opus_egress_queue_count_after_cleanup=0`, zero drops e
+    `worker_state_after=stopped`;
+  - `codec-v2 status` final confirmou `format=pcm16`,
+    `worker_active=false`, `bridge_handoff_packets_ready=10`,
+    `bridge_handoff_bytes_ready=2434`, `opus_egress_queue_count=0`,
+    `packet_drops=0` e `error=ESP_OK`;
+  - `capture-v2 status` final confirmou `real_capture_enabled=false`,
+    `session_active=false`, `state=IDLE_SESSION` e `last_error=ESP_OK`.
 - Validacao em hardware do caminho feed PCM16 -> worker Opus apos flash:
   - `worker-feed-test --frames 10` retornou `ok=true`,
     `attempted_frames=10`, `attempted_samples=9600`,
@@ -1094,21 +1101,13 @@ Metricas obrigatorias:
 
 ## Proxima Implementacao Permitida
 
-A proxima mudanca permitida apos o stub de handoff Opus deve continuar sendo
-opt-in e diagnostica. Antes de qualquer transporte real de Opus para a bridge,
-validar em hardware:
+O stub de handoff Opus para bridge ja foi validado em hardware. A proxima
+mudanca ainda deve ser opt-in e explicita. Antes de enviar Opus real ao
+`bridge_service`, alterar HELLO/capabilities ou mudar transporte live,
+consultar o usuario e definir o contrato de rollback.
 
-- `noisebot_server --host 192.168.1.30 debug codec-v2 bridge-handoff-test --frames 10 --json`;
-- `codec-v2 status` final com fila egress zerada, `format=pcm16` e
-  `error=ESP_OK`;
-- `capture-v2 status` final com `real_capture_enabled=false` e
-  `session_active=false`.
-
-Somente depois dessa validacao, consultar antes de abrir qualquer endpoint que
-envie Opus real ao `bridge_service`, altere HELLO/capabilities ou mude o
-transporte live. O proximo passo de codigo aceitavel sem decisao de produto e
-apenas ampliar diagnostico/observabilidade do handoff, mantendo
-`bridge_packet_not_sent=true`.
+O proximo passo de codigo aceitavel sem decisao de produto e apenas ampliar
+diagnostico/observabilidade do handoff, mantendo `bridge_packet_not_sent=true`.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.
