@@ -921,11 +921,18 @@ Pendências:
 
 1. Preservar wake/VAD/turn-taking atual: sem ajuste novo sem regressão
    comprovada e teste.
-2. Promover Opus para capability oficial opt-in com fallback PCM16.
-3. Ampliar regressão automática de protocolo, incluindo reconexão e
+2. Promover Opus para capability oficial opt-in com fallback PCM16. Feito no
+   contrato local: `codecs` descreve o transporte ativo (`pcm16=true`,
+   `opus=false` por padrao) e `codec_options` anuncia suporte opt-in a
+   `opus_tx` com `opus_default=false`, 16 kHz mono, frames de 60 ms/960 samples
+   e 32 kbps. `BRIDGE_HELLO_V2_OPUS` continua reservado para transporte Opus
+   ativo apos enable explicito.
+3. Validar em hardware o HELLO/status novo apos flash e confirmar que
+   `/api/ai/status` espelha `codec_options`.
+4. Ampliar regressão automática de protocolo, incluindo reconexão e
    cancelamento explícito.
-4. Só depois avaliar se Opus deve virar padrão obrigatório.
-5. AEC/realtime/follow-up continuam standby até existir referência limpa de
+5. Só depois avaliar se Opus deve virar padrão obrigatório.
+6. AEC/realtime/follow-up continuam standby até existir referência limpa de
    playback ou server-side AEC validado.
 
 Essa ordem evita a armadilha de trocar codec, VAD, AEC e STT ao mesmo tempo. O

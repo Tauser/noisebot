@@ -636,12 +636,15 @@ def test_server_ai_status_exposes_firmware_audio_capabilities() -> None:
                 "chunk_samples": 960,
             },
             "codecs": {"pcm16": False, "opus": True},
+            "codec_options": {"opus_tx": True, "opus_default": False},
             "features": ["voice_session_v2", "opus_tx"],
         },
     )
 
     assert payload["audio"]["format"] == "opus"
     assert payload["codecs"] == {"pcm16": False, "opus": True}
+    assert payload["codec_options"] == {"opus_tx": True, "opus_default": False}
+    assert payload["firmware"]["codec_options"] == payload["codec_options"]
     assert payload["features"] == ["voice_session_v2", "opus_tx"]
     assert payload["firmware"]["features"] == payload["features"]
 
@@ -2760,6 +2763,15 @@ def test_server_hello_declares_voice_contract() -> None:
         "chunk_samples": 256,
     }
     assert hello["codecs"] == {"pcm16": True, "opus": False}
+    assert hello["codec_options"] == {
+        "opus_tx": True,
+        "opus_default": False,
+        "opus_sample_rate": 16000,
+        "opus_channels": 1,
+        "opus_frame_duration": 60,
+        "opus_frame_samples": 960,
+        "opus_bitrate": 32000,
+    }
     assert hello["listen"]["mode"] == "auto"
     assert hello["listen"]["max_speech_ms"] == 9200
     assert hello["listen"]["max_utterance_samples"] == 192000

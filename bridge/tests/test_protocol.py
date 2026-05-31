@@ -68,6 +68,18 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(decoded["audio"]["chunk_samples"], 256)
         self.assertIn("speech_cancel", decoded["tx"])
         self.assertEqual(decoded["codecs"], {"pcm16": True, "opus": False})
+        self.assertEqual(
+            decoded["codec_options"],
+            {
+                "opus_tx": True,
+                "opus_default": False,
+                "opus_sample_rate": 16000,
+                "opus_channels": 1,
+                "opus_frame_duration": 60,
+                "opus_frame_samples": 960,
+                "opus_bitrate": 32000,
+            },
+        )
         self.assertTrue(decoded["conversation"]["auto"])
         self.assertFalse(decoded["conversation"]["manual"])
         self.assertFalse(decoded["conversation"]["followup"])
@@ -83,6 +95,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(caps["audio"]["format"], "pcm16")
         self.assertTrue(caps["codecs"]["pcm16"])
         self.assertFalse(caps["codecs"]["opus"])
+        self.assertTrue(caps["codec_options"]["opus_tx"])
+        self.assertFalse(caps["codec_options"]["opus_default"])
         validate_pcm16_audio_contract(caps)
 
     def test_audio_contract_rejects_opus_until_enabled(self):

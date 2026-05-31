@@ -42,6 +42,15 @@ BRIDGE_HELLO_CAPABILITIES = {
         "pcm16": True,
         "opus": False,
     },
+    "codec_options": {
+        "opus_tx": True,
+        "opus_default": False,
+        "opus_sample_rate": 16000,
+        "opus_channels": 1,
+        "opus_frame_duration": 60,
+        "opus_frame_samples": 960,
+        "opus_bitrate": 32000,
+    },
     "conversation": {
         "auto": True,
         "manual": False,

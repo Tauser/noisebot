@@ -38,6 +38,7 @@ def ai_status_response(
     caps = firmware_capabilities if isinstance(firmware_capabilities, dict) else {}
     audio = caps.get("audio", {})
     codecs = caps.get("codecs", {})
+    codec_options = caps.get("codec_options", {})
     features = caps.get("features", [])
     return {
         "connected": connected,
@@ -57,10 +58,12 @@ def ai_status_response(
         "last_route": last_route,
         "audio": audio if isinstance(audio, dict) else {},
         "codecs": codecs if isinstance(codecs, dict) else {},
+        "codec_options": codec_options if isinstance(codec_options, dict) else {},
         "features": features if isinstance(features, list) else [],
         "firmware": {
             "audio": audio if isinstance(audio, dict) else {},
             "codecs": codecs if isinstance(codecs, dict) else {},
+            "codec_options": codec_options if isinstance(codec_options, dict) else {},
             "features": features if isinstance(features, list) else [],
         },
         "updated_at": _now_iso(),

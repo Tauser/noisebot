@@ -41,6 +41,15 @@ def test_firmware_hello_keeps_pcm16_default_and_opus_disabled():
         "chunk_samples": 256,
     }
     assert hello["codecs"] == {"pcm16": True, "opus": False}
+    assert hello["codec_options"] == {
+        "opus_tx": True,
+        "opus_default": False,
+        "opus_sample_rate": 16000,
+        "opus_channels": 1,
+        "opus_frame_duration": 60,
+        "opus_frame_samples": 960,
+        "opus_bitrate": 32000,
+    }
 
 
 def test_firmware_opus_contract_is_explicit_but_disabled():
@@ -62,6 +71,11 @@ def test_firmware_opus_contract_is_explicit_but_disabled():
         "frame_duration": 60,
     }
     assert hello["codecs"] == {"pcm16": False, "opus": True}
+    assert hello["codec_options"]["opus_tx"] is True
+    assert hello["codec_options"]["opus_default"] is False
+    assert hello["codec_options"]["opus_frame_duration"] == 60
+    assert hello["codec_options"]["opus_frame_samples"] == 960
+    assert hello["codec_options"]["opus_bitrate"] == 32000
     assert "opus_tx" in hello["features"]
     assert "void bridge_service_set_opus_enabled(bool enabled)" in src
     assert "bridge_service_opus_is_enabled() ? BRIDGE_HELLO_V2_OPUS : BRIDGE_HELLO_V2" in src

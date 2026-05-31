@@ -975,6 +975,15 @@ Validacao:
     33558 bytes e `packet_drops=0`; `no-echo-live --codec opus-v2` retornou
     `ok=true`, `unexpected_turn_id=null` em 10s de silencio, 56 pacotes Opus,
     13856 bytes e `packet_drops=0`.
+  - promocao local de capability Opus v2 opt-in no contrato HELLO/status:
+    `codecs` passa a significar apenas transporte ativo e continua
+    `pcm16=true`, `opus=false` no HELLO padrao; `codec_options` anuncia
+    `opus_tx=true`, `opus_default=false`, 16 kHz mono, 60 ms/960 samples e
+    32 kbps. O HELLO Opus ativo preserva `codecs.opus=true` somente apos enable
+    explicito. O server espelha `codec_options` em `/api/ai/status`.
+    Validacao local: contratos bridge focados passaram, `bridge/tests` completo
+    passou com 160 testes, `server/tests` completo passou com 138 testes e
+    `idf.py build` passou.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

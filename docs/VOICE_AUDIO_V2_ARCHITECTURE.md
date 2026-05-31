@@ -1217,21 +1217,16 @@ O worker live do proprio `audio_codec_service_v2` ja assumiu o transporte Opus
 opt-in no lugar do worker de compatibilidade, mantendo PCM16 como padrao e
 rollback via `codec-v2 transport-disable`. A validacao local passou com
 contrato bridge focado, server facade e `idf.py build`; a validacao em
-hardware tambem passou com turno Opus live curto, 39 pacotes Opus, 9488 bytes,
-zero drops, fila final zero e rollback limpo. O A/B curto PCM16 vs Opus v2
-tambem passou com zero drops e STT `good` nos dois caminhos, e a bateria de
-3 turnos por codec confirmou estabilidade do worker v2 live. O proximo avanco
-seguro e validar regressao `barge-live` e `no-echo-live` com Opus v2 opt-in,
-sem promover Opus como padrao ainda. Os harnesses do server ja foram preparados
-para isso com `--codec opus-v2`: eles ligam o transporte pelo namespace
-`codec-v2`, medem pacotes/drops/bytes e executam rollback automatico para PCM16
-com limpeza da egress queue. Validacao local: `server/tests` completo passou;
-validacao em hardware tambem passou. `barge-live --codec opus-v2` retornou
-`ok=true`, cancelamento em 1.6 ms, `discard_reason=barge_in`, 137 pacotes Opus,
-33558 bytes e zero drops. `no-echo-live --codec opus-v2` retornou `ok=true`,
-`unexpected_turn_id=null` em janela silenciosa de 10s, 56 pacotes Opus,
-13856 bytes e zero drops. O proximo avanco seguro e decidir promocao
-HELLO/capability/default do Opus v2, preservando PCM16 como fallback e rollback.
+hardware tambem passou com turno Opus live curto, A/B PCM16 vs Opus v2,
+bateria de 3 turnos por codec e regressao `barge-live`/`no-echo-live` com
+Opus v2 opt-in. O contrato HELLO agora promove Opus v2 como capability oficial
+opt-in sem mudar o default: `codecs` continua representando o transporte ativo
+e permanece `pcm16=true`, `opus=false` no HELLO padrao; `codec_options`
+anuncia suporte a `opus_tx`, `opus_default=false`, 16 kHz mono, 60 ms/960
+samples e 32 kbps. O server tambem espelha `codec_options` em `/api/ai/status`.
+O proximo avanco seguro e flashar essa mudanca de contrato e validar no
+hardware que HELLO/status continuam PCM16 por padrao, anunciam a capability
+Opus v2 opt-in e mantem rollback limpo.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.
