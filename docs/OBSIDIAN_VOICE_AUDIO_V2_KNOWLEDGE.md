@@ -838,8 +838,15 @@ Validacao:
     teste focado server 115, bridge completo 160, server completo 130 e
     `idf.py build`.
   - validacao local do worker Opus multi-pacote sintetico: teste focado bridge
-    6, teste focado server 116 e `idf.py build`; precisa flash para validar em
-    hardware com `codec-v2 worker-stress-test --packets 10`.
+    6, teste focado server 116 e `idf.py build`.
+  - validacao em hardware do worker Opus multi-pacote sintetico:
+    `worker-stress-test --packets 10` retornou `accepted_packets=10`,
+    `worker_drained_packets_delta=10`, `worker_opus_packets_delta=10`,
+    `worker_opus_encoded_bytes_delta=2434`,
+    `worker_opus_last_packet_bytes=242`, `packet_drops_delta=0`,
+    `queue_count_after=0`, `worker_state_after=stopped`, `error=ESP_OK`;
+    `capture-v2 status` apos o teste permaneceu desligado e em
+    `IDLE_SESSION`.
   - observacao de hardware do Opus dentro do worker opt-in: a primeira
     tentativa com stack persistente de 24 KB falhou em `worker-start` com HTTP
     409 e `worker_state=error`, sem derrubar HTTP nem tocar captura; a

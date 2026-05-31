@@ -802,12 +802,16 @@ Validacao em hardware:
   - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
   - `server/tests/test_server_facade.py`: 116 testes;
   - `idf.py build` limpo.
-  - precisa flash para validacao em hardware com
-    `noisebot_server --host 192.168.1.30 debug codec-v2 worker-stress-test --packets 10 --json`;
-    esperado: `worker_opus_packets_delta=10`,
-    `worker_opus_encoded_bytes_delta>0`, `packet_drops_delta=0`,
-    `queue_count_after=0`, `worker_state_after=stopped` e `capture-v2`
-    desligado.
+- Validacao em hardware do worker Opus multi-pacote sintetico apos flash:
+  - `worker-stress-test --packets 10` retornou `ok=true`,
+    `accepted_packets=10`, `worker_drained_packets_delta=10`,
+    `worker_opus_packets_delta=10`,
+    `worker_opus_encoded_bytes_delta=2434`,
+    `worker_opus_last_packet_bytes=242`, `packet_drops_delta=0`,
+    `queue_count_after=0`, `worker_state_after=stopped`, `error=ESP_OK`;
+  - `capture-v2 status` apos o teste permaneceu com
+    `real_capture_enabled=false`, `session_active=false`,
+    `state=IDLE_SESSION` e `last_error=ESP_OK`.
 - Observacao de hardware do Opus dentro do worker opt-in:
   - a primeira tentativa com stack persistente igual ao teste temporario
     (`2048 * 12`) falhou em `worker-start` com HTTP 409 e

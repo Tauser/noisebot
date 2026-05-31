@@ -120,8 +120,11 @@ O novo `codec-v2 worker-stress-test --packets N` amplia esse passo sem ligar
 captura real nem bridge: ele inicia o worker opt-in, enfileira ate 40 pacotes
 sinteticos completos, espera a task codificar/drenar, para o worker e retorna
 deltas de pacotes Opus, bytes, drops, fila final e estado final. A validacao
-local passou com contrato bridge focado, server facade e `idf.py build`; falta
-flash para validar em hardware com `--packets 10`.
+local passou com contrato bridge focado, server facade e `idf.py build`. Em
+hardware apos flash, `--packets 10` retornou `worker_opus_packets_delta=10`,
+`worker_opus_encoded_bytes_delta=2434`, `packet_drops_delta=0`,
+`queue_count_after=0`, `worker_state_after=stopped` e `ESP_OK`; `capture-v2`
+permaneceu desligado.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960
