@@ -539,9 +539,17 @@ Nunca:
 | Barge-in corta mas responde "Oi" | audio curto/vazio apos cancel | pre-roll, capture start, STT discard | reativar follow-up |
 | TTS velho toca depois do cancel | fila SAY nao limpa | playback queue, bridge SAY drop | mexer no STT |
 | Opus piora transcript | codec/janela/volume | codec-ab, packet drops, duration | mexer no VAD sem evidencia |
+| Resposta falada corta antes do fim | TTS/streaming/chunk/playback queue | SAY chunks, TTS stop, playback queue, text length | culpar Opus sem A/B |
 | AEC probe falha | sem referencia/heap | processor status | forcar AEC device-side |
 | Crash I2S/ISR | I/O/recovery | audio_hal, task stack, DMA | adicionar processamento no ISR |
 | STT audio_curto | VOICE_START/END errado | session state, total_samples | culpar LLM |
+
+Pendencia observada em uso real:
+
+- Algumas respostas faladas parecem cortar o texto antes do fim. Investigar
+  depois da migracao Opus, tratando como problema separado de TTS/streaming,
+  chunking, fila de playback ou criterio de fim de fala. Nao atribuir ao codec
+  sem evidencia de A/B.
 
 ## Comandos de Teste
 

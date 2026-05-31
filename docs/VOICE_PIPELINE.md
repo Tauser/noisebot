@@ -916,6 +916,10 @@ Pendências:
 
 - Só reabrir follow-up automático ou barge-in por VAD sem wake word depois de
   AEC/AFE validado.
+- Investigar apos fechar a migracao Opus: algumas respostas faladas parecem
+  cortar o texto antes do fim. Tratar como pendencia separada de TTS/streaming,
+  chunking, fila de playback ou criterio de fim de fala; nao misturar com a
+  troca PCM16/Opus sem evidencia.
 
 ## Ordem Recomendada
 
