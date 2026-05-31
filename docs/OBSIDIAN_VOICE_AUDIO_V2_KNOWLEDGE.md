@@ -784,6 +784,12 @@ Validacao:
     server 107, bridge completo 160, server completo 122 e `idf.py build`.
   - validacao local do reset diagnostico: teste focado bridge 6, teste focado
     server 109, bridge completo 160, server completo 124 e `idf.py build`.
+  - validacao em hardware do reset diagnostico apos flash:
+    status inicial zerado, `encode-test` gerou `queue_count=1` e
+    `pending_samples=64`, `reset` zerou contadores/fila/pendencias,
+    preservou `format=pcm16` e `error=ESP_OK`; `capture-v2 status` seguiu
+    com `real_capture_enabled=false`, `session_active=false`,
+    `last_error=ESP_OK`.
   - validacao em hardware do drain sintetico apos flash:
     status inicial zerado, `encode-test` gerou `queue_count=1` e
     `pending_samples=64`, `drain` retornou `drained_packets=1` e zerou

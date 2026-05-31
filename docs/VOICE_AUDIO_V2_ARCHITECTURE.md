@@ -727,6 +727,17 @@ Validacao em hardware:
   - `bridge/tests`: 160 testes;
   - `server/tests`: 124 testes;
   - `idf.py build` limpo.
+- Validacao em hardware do reset diagnostico apos flash:
+  - status inicial zerado e contrato fixo preservado;
+  - apos `encode-test`: `pcm_frames_in=1`, `packets_out=1`,
+    `packet_drops=0`, `queue_count=1`, `pending_samples=64`;
+  - apos `reset`: `pcm_frames_in=0`, `packets_out=0`,
+    `packet_drops=0`, `queue_count=0`, `pending_samples=0`,
+    `format=pcm16`, `error=ESP_OK`;
+  - status final manteve contadores zerados e contrato fixo;
+  - `capture-v2 status` confirmou fallback seguro:
+    `real_capture_enabled=false`, `session_active=false`,
+    `state=IDLE_SESSION`, `last_error=ESP_OK`.
 - Validacao em hardware do drain sintetico apos flash:
   - status inicial: `pcm_frames_in=0`, `packets_out=0`, `packet_drops=0`,
     `queue_count=0`, `pending_samples=0`, `error=ESP_OK`;

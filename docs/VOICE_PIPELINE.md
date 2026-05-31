@@ -79,7 +79,9 @@ hardware, após flash, a sequência `status -> encode-test -> drain -> status`
 confirmou `drained_packets=1`, `queue_count=0`, `pending_samples=64`,
 `packet_drops=0` e `ESP_OK`; `capture-v2` permaneceu desligado. O reset
 diagnostico em `codec-v2 reset` zera contadores, fila e amostras pendentes
-sem alterar `format=pcm16` nem o contrato fixo do codec.
+sem alterar `format=pcm16` nem o contrato fixo do codec. Em hardware, após
+flash, `encode-test -> reset -> status` confirmou contadores zerados,
+`pending_samples=0`, `format=pcm16`, `ESP_OK` e `capture-v2` desligado.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
