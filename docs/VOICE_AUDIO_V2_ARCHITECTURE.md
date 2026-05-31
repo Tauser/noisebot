@@ -776,6 +776,12 @@ Validacao em hardware:
   - `bridge/tests`: 160 testes;
   - `server/tests`: 128 testes;
   - `idf.py build` limpo.
+- Validacao local do worker opt-in:
+  - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
+  - `server/tests/test_server_facade.py`: 115 testes;
+  - `bridge/tests`: 160 testes;
+  - `server/tests`: 130 testes;
+  - `idf.py build` limpo.
 - Observacao de hardware: a primeira versao sincronamente no handler HTTP
   causou timeout e indisponibilidade HTTP apos o teste. A correcao moveu o
   encode para task temporaria `nb_codec_v2_opus_test` com stack proprio e
@@ -831,6 +837,20 @@ Validacao em hardware:
   - `ok=true`, `initialized=false`, `format=pcm16`,
     `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`,
     `queue_count=0`, `pending_samples=64`, `error=ESP_OK`.
+- Validacao em hardware do worker opt-in apos flash:
+  - status inicial: `worker_supported=true`, `worker_active=false`,
+    `worker_state=not_started`, `queue_count=0`,
+    `worker_drained_packets=0`, `error=ESP_OK`;
+  - `worker-start`: `ok=true`, `worker_state=starting`, sem fila ou drops;
+  - `encode-test` com worker ativo: `worker_active=true`,
+    `worker_state=running`, `pcm_frames_in=1`, `packets_out=1`,
+    `queue_count=1`, `worker_drained_packets=0`, `pending_samples=64`;
+  - status seguinte: `worker_state=running`, `queue_count=0`,
+    `worker_drained_packets=1`, `packet_drops=0`, `error=ESP_OK`;
+  - `worker-stop`: `worker_active=false`, `worker_state=stopped`,
+    `queue_count=0`, `worker_drained_packets=1`, `error=ESP_OK`;
+  - `capture-v2 status`: `real_capture_enabled=false`,
+    `session_active=false`, `state=IDLE_SESSION`, `last_error=ESP_OK`.
 
 Aceite:
 

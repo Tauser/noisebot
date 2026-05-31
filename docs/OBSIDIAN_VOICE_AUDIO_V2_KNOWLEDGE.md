@@ -855,11 +855,14 @@ Validacao:
   - validacao em hardware do `encode-test` apos flash:
     `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`,
     `queue_count=0`, `pending_samples=64`, `error=ESP_OK`.
-  - precisa validar em hardware apos flash: `codec-v2 worker-start`,
-    `codec-v2 encode-test`, aguardar breve intervalo, `codec-v2 status` e
-    `codec-v2 worker-stop`; esperado: worker inicia, fila volta a zero,
-    `worker_drained_packets` aumenta, stop retorna `worker_state=stopped` e
-    `capture-v2 status` permanece desligado.
+  - validacao em hardware do worker opt-in apos flash:
+    status inicial `worker_supported=true`, `worker_active=false`,
+    `worker_state=not_started`; `worker-start` retornou `ok=true`;
+    `encode-test` com worker ativo gerou `queue_count=1`; status seguinte
+    confirmou `queue_count=0`, `worker_drained_packets=1`, `packet_drops=0`;
+    `worker-stop` retornou `worker_active=false`, `worker_state=stopped`;
+    `capture-v2 status` permaneceu com `real_capture_enabled=false`,
+    `session_active=false`, `state=IDLE_SESSION`, `last_error=ESP_OK`.
 - Packet drops zero em teste curto.
 - Transcript comparavel ao PCM16.
 - `server_codec_confirmed=true`.

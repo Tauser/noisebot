@@ -97,8 +97,11 @@ fila sintetica e soma `worker_drained_packets`. `codec-v2 worker-stop` solicita
 parada, drena a fila restante e deixa `worker_state=stopped`. Isso ainda nao
 liga Opus persistente, bridge, captura ou playback v2; o PCM16/v1 segue como
 padrao. A validacao local passou com teste focado de contrato, `server/tests`,
-`bridge/tests` e `idf.py build`. Falta flash para validar o start/stop em
-hardware.
+`bridge/tests` e `idf.py build`. Em hardware apos flash, a sequencia
+`status -> worker-start -> encode-test -> status -> worker-stop -> capture-v2`
+confirmou `worker_supported=true`, worker rodando, `queue_count=0` apos drain
+pela task, `worker_drained_packets=1`, `worker_state=stopped` no stop,
+`packet_drops=0` e `capture-v2` desligado.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960
