@@ -753,6 +753,8 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     assert client.audio_codec_v2_worker_stress_test(10)["ok"]
     assert client.audio_codec_v2_worker_feed_test(10)["ok"]
     assert client.audio_codec_v2_bridge_handoff_test(10)["ok"]
+    assert client.audio_codec_v2_transport_enable()["ok"]
+    assert client.audio_codec_v2_transport_disable()["ok"]
     assert client.audio_codec_v2_overflow_test(45)["ok"]
     assert get_paths == ["api/audio/codec-v2"]
     assert post_paths == [
@@ -766,6 +768,8 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
         "api/audio/codec-v2/worker/stress-test",
         "api/audio/codec-v2/worker/feed-test",
         "api/audio/codec-v2/bridge-handoff-test",
+        "api/audio/codec-v2/transport/enable",
+        "api/audio/codec-v2/transport/disable",
         "api/audio/codec-v2/overflow-test",
     ]
 
@@ -1050,6 +1054,22 @@ def test_server_cli_parses_codec_v2_worker_debug_commands() -> None:
         "10",
         "--json",
     ])
+    transport_enable_args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "transport-enable",
+        "--json",
+    ])
+    transport_disable_args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "transport-disable",
+        "--json",
+    ])
 
     assert start_args.command == "debug"
     assert start_args.debug_command == "codec-v2"
@@ -1074,6 +1094,14 @@ def test_server_cli_parses_codec_v2_worker_debug_commands() -> None:
     assert handoff_args.action == "bridge-handoff-test"
     assert handoff_args.frames == 10
     assert handoff_args.json
+    assert transport_enable_args.command == "debug"
+    assert transport_enable_args.debug_command == "codec-v2"
+    assert transport_enable_args.action == "transport-enable"
+    assert transport_enable_args.json
+    assert transport_disable_args.command == "debug"
+    assert transport_disable_args.debug_command == "codec-v2"
+    assert transport_disable_args.action == "transport-disable"
+    assert transport_disable_args.json
 
 
 def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
@@ -1518,6 +1546,75 @@ def test_server_cli_runs_codec_v2_bridge_handoff_test_debug_command(monkeypatch,
     assert '"bridge_handoff_preview_hex": "00112233445566778899aabbccddeeff"' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
     assert calls["frames"] == 10
+
+
+def test_server_cli_runs_codec_v2_transport_debug_commands(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: list[str] = []
+
+    def fake_transport_enable(self):
+        calls.append(f"enable:{self.base_url}")
+        return {
+            "ok": True,
+            "codec_v2_transport": True,
+            "live_bridge_transport": True,
+            "compat_worker": "audio_processor_service",
+            "pcm16_fallback": True,
+            "opus_enabled": True,
+            "error": "ESP_OK",
+        }
+
+    def fake_transport_disable(self):
+        calls.append(f"disable:{self.base_url}")
+        return {
+            "ok": True,
+            "codec_v2_transport": True,
+            "live_bridge_transport": False,
+            "compat_worker": "audio_processor_service",
+            "pcm16_fallback": True,
+            "opus_enabled": False,
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "audio_codec_v2_transport_enable",
+        fake_transport_enable,
+    )
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "audio_codec_v2_transport_disable",
+        fake_transport_disable,
+    )
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "transport-enable",
+        "--json",
+    ])
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "transport-disable",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"codec_v2_transport": true' in captured.out
+    assert '"live_bridge_transport": true' in captured.out
+    assert '"live_bridge_transport": false' in captured.out
+    assert '"compat_worker": "audio_processor_service"' in captured.out
+    assert '"pcm16_fallback": true' in captured.out
+    assert calls == [
+        "enable:http://192.168.1.30/",
+        "disable:http://192.168.1.30/",
+    ]
 
 
 def test_server_cli_runs_codec_v2_worker_debug_commands(monkeypatch, capsys) -> None:

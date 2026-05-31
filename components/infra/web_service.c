@@ -2209,6 +2209,57 @@ static esp_err_t handle_api_audio_codec_v2_bridge_handoff_test(httpd_req_t *req)
     return httpd_resp_sendstr(req, buf);
 }
 
+static esp_err_t handle_api_audio_codec_v2_transport_enable(httpd_req_t *req)
+{
+    esp_err_t err = audio_processor_service_opus_worker_start();
+    if (err == ESP_ERR_INVALID_STATE) {
+        err = ESP_OK;
+    }
+    if (err == ESP_OK) {
+        bridge_service_set_opus_enabled(true);
+    } else {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+
+    char buf[320];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"diagnostic\":false,"
+             "\"codec_v2_transport\":true,"
+             "\"live_bridge_transport\":%s,"
+             "\"compat_worker\":\"audio_processor_service\","
+             "\"pcm16_fallback\":true,"
+             "\"opus_enabled\":%s,\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             bridge_service_opus_is_enabled() ? "true" : "false",
+             bridge_service_opus_is_enabled() ? "true" : "false",
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_audio_codec_v2_transport_disable(httpd_req_t *req)
+{
+    bridge_service_set_opus_enabled(false);
+    esp_err_t err = audio_processor_service_opus_worker_stop();
+    if (err == ESP_ERR_INVALID_STATE) {
+        err = ESP_OK;
+    }
+
+    char buf[320];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"diagnostic\":false,"
+             "\"codec_v2_transport\":true,"
+             "\"live_bridge_transport\":false,"
+             "\"compat_worker\":\"audio_processor_service\","
+             "\"pcm16_fallback\":true,"
+             "\"opus_enabled\":%s,\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             bridge_service_opus_is_enabled() ? "true" : "false",
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
 static esp_err_t handle_api_audio_codec_v2_overflow_test(httpd_req_t *req)
 {
     uint32_t packets = 45U;
@@ -3695,6 +3746,8 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/codec-v2/worker/stress-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_stress_test },
     { .uri = "/api/audio/codec-v2/worker/feed-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_feed_test },
     { .uri = "/api/audio/codec-v2/bridge-handoff-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_bridge_handoff_test },
+    { .uri = "/api/audio/codec-v2/transport/enable", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_transport_enable },
+    { .uri = "/api/audio/codec-v2/transport/disable", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_transport_disable },
     { .uri = "/api/audio/codec-v2/overflow-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_overflow_test },
     { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
     { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },

@@ -89,6 +89,8 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '{ .uri = "/api/audio/codec-v2/worker/stop"' in web
     assert '{ .uri = "/api/audio/codec-v2/worker/feed-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/bridge-handoff-test"' in web
+    assert '{ .uri = "/api/audio/codec-v2/transport/enable"' in web
+    assert '{ .uri = "/api/audio/codec-v2/transport/disable"' in web
     assert '{ .uri = "/api/audio/codec-v2/overflow-test"' in web
     assert '\\"opus_bitrate\\":%u' in web
     assert '\\"max_queue_packets\\":%u' in web
@@ -197,6 +199,10 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"bridge_packet_not_sent\\":%s' in web
     assert '\\"bridge_handoff_packets_ready_delta\\":%lu' in web
     assert '\\"bridge_handoff_preview_hex\\":\\"%s\\"' in web
+    assert '\\"codec_v2_transport\\":true' in web
+    assert '\\"live_bridge_transport\\":%s' in web
+    assert '\\"pcm16_fallback\\":true' in web
+    assert '\\"compat_worker\\":\\"audio_processor_service\\"' in web
     assert '\\"worker_payload_packets_delta\\":%lu' in web
     assert '\\"worker_payload_preview_hex\\":\\"%s\\"' in web
     assert '\\"pcm_frames_in_delta\\":%lu' in web

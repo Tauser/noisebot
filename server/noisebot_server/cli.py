@@ -136,6 +136,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "worker-stress-test",
             "worker-feed-test",
             "bridge-handoff-test",
+            "transport-enable",
+            "transport-disable",
             "overflow-test",
         ],
         nargs="?",
@@ -587,6 +589,10 @@ def run_debug_command(args: argparse.Namespace) -> None:
             payload = client.audio_codec_v2_worker_feed_test(args.frames)
         elif args.action == "bridge-handoff-test":
             payload = client.audio_codec_v2_bridge_handoff_test(args.frames)
+        elif args.action == "transport-enable":
+            payload = client.audio_codec_v2_transport_enable()
+        elif args.action == "transport-disable":
+            payload = client.audio_codec_v2_transport_disable()
         elif args.action == "overflow-test":
             payload = client.audio_codec_v2_overflow_test(args.packets)
         else:
