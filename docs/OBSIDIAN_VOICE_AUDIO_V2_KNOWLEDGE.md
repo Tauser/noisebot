@@ -820,6 +820,12 @@ Validacao:
     atualiza contadores de payload, bytes totais, sequencia, checksum e preview
     fixa de ate 16 bytes; isso e apenas diagnostico e nao envia dados ao
     bridge;
+  - fila egress Opus diagnostica: o worker agora enfileira metadados do pacote
+    Opus codificado em uma fila limitada de ate 40 pacotes, com contadores,
+    bytes totais, drops, checksum, preview e endpoint
+    `/api/audio/codec-v2/egress/drain`; o `worker-feed-test` drena essa fila
+    automaticamente ao final e retorna `opus_egress_*`, sem tocar bridge,
+    captura ou playback;
   - reset diagnostico preserva o estado do worker quando ele esta ativo, para
     evitar status incoerente ou uma segunda task acidental;
   - validado em hardware apos flash:
@@ -858,8 +864,16 @@ Validacao:
   - validacao local do caminho feed PCM16 -> worker Opus: teste focado bridge
     6, teste focado server 117 e `idf.py build`.
   - validacao local do observador de payload Opus do worker: teste focado
-    bridge 6, teste focado server 117 e `idf.py build`; precisa flash para
-    validar em hardware via `codec-v2 worker-feed-test --frames 10`.
+    bridge 6, teste focado server 117 e `idf.py build`; hardware validado via
+    `codec-v2 worker-feed-test --frames 10` com
+    `worker_payload_packets_delta=10`, `worker_payload_bytes_delta=2434`,
+    preview nao vazio, zero drops e `capture-v2` desligado.
+  - validacao local da fila egress Opus diagnostica: teste focado bridge 6,
+    teste focado server 119 e `idf.py build`; precisa flash para validar em
+    hardware via `codec-v2 worker-feed-test --frames 10`, esperando
+    `opus_egress_packets_delta=10`, `opus_egress_packet_drops_delta=0`,
+    `opus_egress_drained_after_test=10` e
+    `opus_egress_queue_count_after_cleanup=0`.
   - validacao em hardware do caminho feed PCM16 -> worker Opus:
     `worker-feed-test --frames 10` retornou `attempted_frames=10`,
     `attempted_samples=9600`, `pcm_frames_in_delta=10`,

@@ -142,8 +142,18 @@ Opus codificado, ele atualiza contadores de payload, bytes totais, sequencia,
 checksum e preview fixa de ate 16 bytes do ultimo payload. Esses campos aparecem
 no status do Codec v2 e no `worker-feed-test`, mas nao criam fila de rede, nao
 enviam nada ao bridge e nao tocam captura/playback. A validacao local passou
-com contrato bridge focado, server facade e `idf.py build`; falta flash para
-validar em hardware com `worker-feed-test --frames 10`.
+com contrato bridge focado, server facade e `idf.py build`; a validacao em
+hardware com `worker-feed-test --frames 10` retornou payload observado, preview
+nao vazio, zero drops e `capture-v2` desligado.
+
+O Codec v2 agora tambem possui uma fila egress Opus diagnostica e limitada a
+40 pacotes. Ela representa o contrato interno "pacote Opus pronto para envio",
+mas ainda nao envia nada ao `bridge_service`: o worker apenas registra
+contadores, bytes, drops, checksum e preview do ultimo pacote. O endpoint
+`codec-v2 egress-drain` limpa a fila, e `worker-feed-test` faz cleanup
+automatico ao final. A validacao local passou com contrato bridge focado,
+server facade e `idf.py build`; falta flash para validar em hardware com
+`worker-feed-test --frames 10`.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960
