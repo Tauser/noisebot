@@ -169,27 +169,29 @@ zero drops, `bridge_packet_not_sent=true`, `bridge_transport_unchanged=true`,
 status final confirmou `format=pcm16`, `bridge_handoff_packets_ready=10`,
 fila egress zerada, `error=ESP_OK` e `capture-v2` desligado.
 
-O primeiro controle v2 para transporte Opus live agora existe como opt-in
-explicito: `codec-v2 transport-enable` e `codec-v2 transport-disable`. No
-firmware, os endpoints sao `/api/audio/codec-v2/transport/enable` e
+O controle v2 para transporte Opus live existe como opt-in explicito:
+`codec-v2 transport-enable` e `codec-v2 transport-disable`. No firmware, os
+endpoints sao `/api/audio/codec-v2/transport/enable` e
 `/api/audio/codec-v2/transport/disable`; no server, os proxies sao
 `/api/device/audio/codec-v2/transport/enable` e
 `/api/device/audio/codec-v2/transport/disable`. O CLI expõe:
 `noisebot_server debug codec-v2 transport-enable --json` e
-`noisebot_server debug codec-v2 transport-disable --json`. Este passo ainda
-nao substitui o worker diagnostico do `audio_codec_service_v2` como encoder
-live; ele usa o worker Opus ja existente do `audio_processor_service` como
-compatibilidade para colocar o liga/desliga do transporte sob o namespace v2.
-O retorno marca `codec_v2_transport=true`, `compat_worker` como
-`audio_processor_service` e `pcm16_fallback=true`. O caminho PCM16 continua
-padrao, e `transport-disable` e o rollback imediato para desligar Opus live.
-Em hardware apos flash, `transport-enable` retornou `ok=true`,
-`live_bridge_transport=true`, `opus_enabled=true`, `pcm16_fallback=true` e
-`ESP_OK`. O status do worker Opus de compatibilidade confirmou task criada,
-worker rodando, Opus 16 kHz/60 ms/32 kbps aberto com `codec_error=0` e stack
-em PSRAM. `transport-disable` retornou `live_bridge_transport=false`,
-`opus_enabled=false` e `ESP_OK`; os status finais confirmaram worker parado,
-`capture-v2` desligado e Codec v2 limpo em `format=pcm16`.
+`noisebot_server debug codec-v2 transport-disable --json`. O transporte agora
+usa o worker live do proprio `audio_codec_service_v2`: o endpoint de enable
+inicia `audio_codec_service_v2_worker_start()`, liga
+`bridge_service_set_opus_enabled(true)` e o loop do `audio_service` alimenta o
+codec v2 com PCM16 normalizado. O worker v2 codifica frames reais de 960
+samples e guarda pacotes Opus em uma fila egress real para
+`audio_service` drenar com `audio_codec_service_v2_read_opus_packet()` antes
+de chamar `bridge_service_send_opus_packet()`. O retorno marca
+`codec_v2_transport=true`, `transport_worker="audio_codec_service_v2"`,
+`compat_worker="audio_codec_service_v2"` e `pcm16_fallback=true`.
+`transport-disable` desliga primeiro o Opus no bridge e para o worker v2,
+mantendo rollback imediato para PCM16. O caminho PCM16 continua padrao; este
+passo nao altera wake, VAD, state machine, follow-up, captura v2 ou playback
+v2. Validacao local atual: contrato bridge focado, server facade e
+`idf.py build` limpo. A validacao de hardware deste novo worker live ainda
+requer flash.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

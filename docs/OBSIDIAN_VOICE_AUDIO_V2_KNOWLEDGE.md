@@ -842,10 +842,16 @@ Validacao:
     `/api/device/audio/codec-v2/transport/enable` e
     `/api/device/audio/codec-v2/transport/disable`, e CLI
     `noisebot_server debug codec-v2 transport-enable|transport-disable --json`;
-    por seguranca, este primeiro controle usa o worker Opus de compatibilidade
-    do `audio_processor_service`, retorna
-    `compat_worker="audio_processor_service"` e `pcm16_fallback=true`, nao muda
-    o padrao PCM16 e permite rollback imediato via `transport-disable`;
+    o controle agora usa o worker live do proprio `audio_codec_service_v2`.
+    `transport-enable` inicia `audio_codec_service_v2_worker_start()`, liga
+    `bridge_service_set_opus_enabled(true)` e faz o `audio_service` alimentar
+    PCM16 normalizado no codec v2. O worker codifica frames reais de 960
+    samples e grava pacotes Opus em uma fila egress real para
+    `audio_codec_service_v2_read_opus_packet()` drenar antes de
+    `bridge_service_send_opus_packet()`. O JSON retorna
+    `transport_worker="audio_codec_service_v2"`,
+    `compat_worker="audio_codec_service_v2"` e `pcm16_fallback=true`; PCM16
+    continua padrao e rollback imediato via `transport-disable`;
   - reset diagnostico preserva o estado do worker quando ele esta ativo, para
     evitar status incoerente ou uma segunda task acidental;
   - validado em hardware apos flash:
@@ -917,6 +923,9 @@ Validacao:
     `live_bridge_transport=false`, `opus_enabled=false` e `ESP_OK`; status
     final confirmou worker parado, `capture-v2` desligado e Codec v2 limpo em
     `format=pcm16`.
+  - validacao local da migracao do transporte live para o worker do
+    `audio_codec_service_v2`: teste focado bridge 12, server facade 121 e
+    `idf.py build` limpo. Validacao em hardware ainda pendente de flash.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o
