@@ -925,7 +925,20 @@ Validacao:
     `format=pcm16`.
   - validacao local da migracao do transporte live para o worker do
     `audio_codec_service_v2`: teste focado bridge 12, server facade 121 e
-    `idf.py build` limpo. Validacao em hardware ainda pendente de flash.
+    `idf.py build` limpo. Validacao em hardware apos flash passou:
+    `transport-enable` retornou
+    `transport_worker="audio_codec_service_v2"`, `opus_enabled=true` e
+    `ESP_OK`; status ativo mostrou worker `running`, `opus_codec_error=0`,
+    filas zeradas e zero drops; turno real com transcript `Me conte uma
+    história curta.` teve `transcript_quality=good`, `outcome=llm`,
+    `turn_id=4`, `chunk_count=39`, `total_samples=37424`,
+    `duration_ms=2339.0`, `stt_ms=1088.0`, `first_audio_out_ms=5480.9` e
+    resposta LLM falada; worker v2 registrou `worker_opus_packets=39`,
+    `worker_opus_encoded_bytes_total=9488`,
+    `opus_egress_packets_drained=39`, `packet_drops=0`,
+    `opus_egress_packet_drops=0`, `queue_count=0` e `opus_codec_error=0`;
+    rollback via `transport-disable` retornou `opus_enabled=false`,
+    `ESP_OK`, worker parado e PCM16 como fallback.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

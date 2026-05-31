@@ -190,8 +190,20 @@ de chamar `bridge_service_send_opus_packet()`. O retorno marca
 mantendo rollback imediato para PCM16. O caminho PCM16 continua padrao; este
 passo nao altera wake, VAD, state machine, follow-up, captura v2 ou playback
 v2. Validacao local atual: contrato bridge focado, server facade e
-`idf.py build` limpo. A validacao de hardware deste novo worker live ainda
-requer flash.
+`idf.py build` limpo. Validacao em hardware apos flash passou: status inicial
+limpo, `transport-enable` retornou `transport_worker="audio_codec_service_v2"`,
+`opus_enabled=true` e `ESP_OK`; status ativo mostrou worker `running`,
+`opus_codec_error=0`, filas zeradas e zero drops. Um turno real com transcript
+`Me conte uma história curta.` teve `transcript_quality=good`, `outcome=llm`,
+`turn_id=4`, `chunk_count=39`, `total_samples=37424`, `duration_ms=2339.0`,
+`stt_ms=1088.0`, `first_audio_out_ms=5480.9` e resposta LLM falada. O worker
+v2 registrou `pcm_frames_in=39`, `worker_opus_packets=39`,
+`worker_opus_encoded_bytes_total=9488`, `opus_egress_packets_drained=39`,
+`packet_drops=0`, `opus_egress_packet_drops=0`, `queue_count=0` e
+`opus_codec_error=0`. `transport-disable` retornou
+`live_bridge_transport=false`, `opus_enabled=false` e `ESP_OK`; status final
+ficou com `worker_active=false`, `worker_state=stopped`, fila zero e PCM16
+como fallback.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

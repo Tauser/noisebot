@@ -908,7 +908,26 @@ Validacao em hardware:
     VAD, state machine, follow-up, captura v2 ou playback v2;
   - validacao local da migracao para worker v2 live: contrato bridge focado
     12, server facade 121 e `idf.py build` limpo;
-  - validacao em hardware do worker v2 live ainda pendente de flash;
+  - validacao em hardware do worker v2 live apos flash:
+    `codec-v2 status` inicial limpo, `transport-enable` retornou
+    `transport_worker="audio_codec_service_v2"`, `opus_enabled=true` e
+    `error=ESP_OK`, status ativo mostrou worker `running`,
+    `opus_codec_error=0`, filas zeradas e zero drops;
+  - turno real validado com transcript `Me conte uma história curta.`,
+    `transcript_quality=good`, `outcome=llm`, `turn_id=4`,
+    `chunk_count=39`, `total_samples=37424`, `duration_ms=2339.0`,
+    `stt_ms=1088.0` e `first_audio_out_ms=5480.9`;
+  - metricas do worker v2 no turno: `pcm_frames_in=39`, `packets_out=39`,
+    `worker_drained_packets=39`, `worker_opus_packets=39`,
+    `worker_opus_encoded_bytes_total=9488`,
+    `opus_egress_packets_in=39`, `opus_egress_packets_drained=39`,
+    `packet_drops=0`, `opus_egress_packet_drops=0`, `queue_count=0`,
+    `opus_egress_queue_count=0`, `pending_samples=704` e
+    `opus_codec_error=0`;
+  - rollback: `transport-disable` retornou `live_bridge_transport=false`,
+    `opus_enabled=false` e `error=ESP_OK`; status final confirmou
+    `worker_active=false`, `worker_state=stopped`, fila zero e PCM16 como
+    fallback;
   - referencia de hardware anterior do primeiro controle live, ainda com
     worker de compatibilidade:
     `codec-v2 transport-enable` retornou `ok=true`,
@@ -1171,13 +1190,13 @@ Metricas obrigatorias:
 ## Proxima Implementacao Permitida
 
 O worker live do proprio `audio_codec_service_v2` ja assumiu o transporte Opus
-opt-in no lugar do worker de compatibilidade em codigo local, mantendo PCM16
-como padrao e rollback via `codec-v2 transport-disable`. A validacao local
-passou com contrato bridge focado, server facade e `idf.py build`. O proximo
-avanco seguro e flashear e validar em hardware:
-`codec-v2 transport-enable`, status do Codec v2, um turno Opus live curto,
-status final e `transport-disable`. Se zero drops e rollback limpo se
-confirmarem, rodar `codec-ab` curto ou bateria de 3 turnos Opus vs PCM16.
+opt-in no lugar do worker de compatibilidade, mantendo PCM16 como padrao e
+rollback via `codec-v2 transport-disable`. A validacao local passou com
+contrato bridge focado, server facade e `idf.py build`; a validacao em
+hardware tambem passou com turno Opus live curto, 39 pacotes Opus, 9488 bytes,
+zero drops, fila final zero e rollback limpo. O proximo avanco seguro e rodar
+`codec-ab` curto ou bateria de 3 turnos Opus vs PCM16 antes de qualquer
+promocao de Opus como padrao.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.
