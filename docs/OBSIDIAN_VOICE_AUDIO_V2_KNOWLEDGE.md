@@ -758,6 +758,10 @@ Validacao:
   - CLI: `noisebot_server debug codec-v2 drain`;
   - CLI: `noisebot_server debug codec-v2 reset`;
   - CLI: `noisebot_server debug codec-v2 overflow-test --packets N`;
+  - status atual tambem publica o contrato do worker futuro como inativo:
+    `worker_supported=false`, `worker_active=false` e
+    `worker_state=not_started`, sem criar task, endpoint de start/stop ou
+    Opus real;
   - `encode-test` e sintetico PCM16 passthrough: incrementa contadores de
     frame/pacote sem worker, sem Opus real, sem bridge e sem captura;
   - packetizer sintetico acumula chunks PCM16 de 256 samples ate frame de
@@ -791,6 +795,9 @@ Validacao:
   - validacao local do reset diagnostico: teste focado bridge 6, teste focado
     server 109, bridge completo 160, server completo 124 e `idf.py build`.
   - validacao local do overflow-test diagnostico: teste focado bridge 6, teste
+    focado server 111, bridge completo 160, server completo 126 e
+    `idf.py build`.
+  - validacao local do stub de worker inativo: teste focado bridge 6, teste
     focado server 111, bridge completo 160, server completo 126 e
     `idf.py build`.
   - validacao em hardware do overflow-test diagnostico apos flash:

@@ -663,6 +663,10 @@ Implementacao atual:
 - `audio_codec_service_v2` continua inativo e nao e inicializado no boot;
 - `GET /api/audio/codec-v2` retorna constantes do contrato e contadores
   zerados do skeleton;
+- o status do codec v2 tambem expoe o contrato do worker futuro:
+  `worker_supported=false`, `worker_active=false` e
+  `worker_state=not_started`; esta etapa nao cria task, nao adiciona endpoints
+  de start/stop e nao ativa Opus real;
 - `POST /api/audio/codec-v2/encode-test` executa um teste sintetico PCM16
   passthrough: incrementa `pcm_frames_in` e `packets_out`, mantendo
   `packet_drops=0` e sem fila pendente;
@@ -734,6 +738,12 @@ Validacao em hardware:
   - `server/tests`: 124 testes;
   - `idf.py build` limpo.
 - Validacao local do overflow-test diagnostico:
+  - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
+  - `server/tests/test_server_facade.py`: 111 testes;
+  - `bridge/tests`: 160 testes;
+  - `server/tests`: 126 testes;
+  - `idf.py build` limpo.
+- Validacao local do stub de worker inativo:
   - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
   - `server/tests/test_server_facade.py`: 111 testes;
   - `bridge/tests`: 160 testes;

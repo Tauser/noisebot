@@ -89,6 +89,11 @@ retorna metricas separadas (`accepted_packets`, `dropped_packets`,
 apos flash, `packets=40/41/45` retornaram respectivamente `0/1/5` drops,
 sempre com `peak_queue_count=40`, limpeza final em zero e `ESP_OK`; o status
 global do codec voltou limpo e `capture-v2` permaneceu desligado.
+O status do Codec v2 agora tambem explicita o worker futuro como contrato
+inativo: `worker_supported=false`, `worker_active=false` e
+`worker_state=not_started`. Isso nao cria task, nao adiciona start/stop, nao
+liga Opus real e nao altera bridge/captura/playback; a validacao local passou
+com teste focado de contrato, `server/tests`, `bridge/tests` e `idf.py build`.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
