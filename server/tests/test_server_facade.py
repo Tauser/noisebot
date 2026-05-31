@@ -2911,6 +2911,29 @@ def test_server_metrics_exposes_last_voice_session() -> None:
     }
 
 
+def test_server_metrics_preserves_full_reply_for_tts_diagnostics() -> None:
+    metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
+    api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    reply = "Resposta longa. " + ("texto completo " * 20)
+    store = status_module.StatusStore()
+    store.record_voice_session({
+        "turn_id": 43,
+        "outcome": "llm",
+        "reply": reply,
+        "transcript": "Me conte uma história longa.",
+        "tts_completed": True,
+        "text_scroll_truncated": True,
+    })
+
+    payload = api_module.MetricsApi(metrics_module.MetricsRegistry(), store).get_metrics()
+
+    assert payload["last_voice_session"]["reply"] == reply
+    assert payload["last_voice_session"]["transcript"] == "Me conte uma história longa."
+    assert payload["last_voice_session"]["text_scroll_truncated"] is True
+
+
 @pytest.mark.asyncio
 async def test_server_tts_records_playback_completion_diagnostics() -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")

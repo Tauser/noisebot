@@ -219,7 +219,15 @@ def _sanitize_session(value: dict) -> dict:
             continue
         item = value[key]
         if isinstance(item, str):
-            safe[key] = _safe_runtime_text(item, limit=120)
+            safe[key] = _safe_runtime_text(item, limit=_session_text_limit(key))
         elif isinstance(item, (int, float, bool)) or item is None:
             safe[key] = item
     return safe
+
+
+def _session_text_limit(key: str) -> int:
+    if key == "reply":
+        return 1200
+    if key == "transcript":
+        return 500
+    return 120

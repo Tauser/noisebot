@@ -1037,6 +1037,13 @@ Validacao:
     cancelamentos; quando `text_scroll_truncated=true` mas TTS completou,
     `voice_diagnosis` identifica limite visual de `TEXT_SCROLL`, sem marcar
     alerta de audio. Validacao local: `server/tests` passou com 145 testes.
+  - validacao real de resposta longa apos a instrumentacao: `/ai/metrics`
+    mostrou transcript `Me conte uma história longa.`, `tts_completed=true`,
+    `tts_say_end_sent=true`, 589 chunks SAY, `tts_expected_duration_ms=9424.0`,
+    `voice_alert=null` e diagnostico apenas de truncamento visual
+    `TEXT_SCROLL`. O `last_voice_session.reply` agora preserva ate 1200 chars
+    para diagnostico, evitando falso corte no proprio endpoint de metricas.
+    Validacao local: `server/tests` passou com 146 testes.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

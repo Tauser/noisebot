@@ -1275,5 +1275,13 @@ orienta checar chunks SAY, `SAY_BEGIN/SAY_END` e cancelamentos; se apenas
 `TEXT_SCROLL`, sem tratar isso como corte de audio. Validacao local:
 `server/tests` com 145 testes verdes.
 
+Validacao real apos resposta longa confirmou `tts_completed=true`,
+`tts_say_end_sent=true`, 589 chunks SAY, `tts_expected_duration_ms=9424.0`,
+`voice_alert=null` e `voice_diagnosis` apontando apenas truncamento visual de
+`TEXT_SCROLL`. Para evitar falso diagnostico nos proximos testes, o
+`last_voice_session.reply` em `/ai/metrics` agora preserva ate 1200 caracteres,
+enquanto `transcript` preserva ate 500. Validacao local: `server/tests` com
+146 testes verdes.
+
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

@@ -964,7 +964,9 @@ Pendências:
 7. Usar os novos campos de completude TTS/playback em `/ai/metrics` para
    investigar o corte de texto/voz depois de confirmar a migração Opus em uso
    diário. O endpoint ja diferencia `tts_completed=false` de
-   `text_scroll_truncated=true`.
+   `text_scroll_truncated=true`. A validacao real com resposta longa mostrou
+   TTS/playback completo (`SAY_END`, 589 chunks, ~9,4 s esperados) e apenas
+   truncamento visual; `/ai/metrics` preserva `reply` longo para diagnostico.
 
 Essa ordem evita a armadilha de trocar codec, VAD, AEC e STT ao mesmo tempo. O
 fim desejado é ambicioso, mas cada fase precisa ter medição própria para o robô
