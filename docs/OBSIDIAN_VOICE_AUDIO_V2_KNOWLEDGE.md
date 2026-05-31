@@ -869,11 +869,13 @@ Validacao:
     `worker_payload_packets_delta=10`, `worker_payload_bytes_delta=2434`,
     preview nao vazio, zero drops e `capture-v2` desligado.
   - validacao local da fila egress Opus diagnostica: teste focado bridge 6,
-    teste focado server 119 e `idf.py build`; precisa flash para validar em
-    hardware via `codec-v2 worker-feed-test --frames 10`, esperando
-    `opus_egress_packets_delta=10`, `opus_egress_packet_drops_delta=0`,
-    `opus_egress_drained_after_test=10` e
-    `opus_egress_queue_count_after_cleanup=0`.
+    teste focado server 119 e `idf.py build`; hardware validado via
+    `codec-v2 worker-feed-test --frames 10` com
+    `opus_egress_packets_delta=10`, `opus_egress_bytes_delta=2434`,
+    `opus_egress_packet_drops_delta=0`,
+    `opus_egress_drained_after_test=10`,
+    `opus_egress_queue_count_after_cleanup=0`, preview nao vazio,
+    status final com `opus_egress_queue_count=0` e `capture-v2` desligado.
   - validacao em hardware do caminho feed PCM16 -> worker Opus:
     `worker-feed-test --frames 10` retornou `attempted_frames=10`,
     `attempted_samples=9600`, `pcm_frames_in_delta=10`,

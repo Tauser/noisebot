@@ -152,8 +152,9 @@ mas ainda nao envia nada ao `bridge_service`: o worker apenas registra
 contadores, bytes, drops, checksum e preview do ultimo pacote. O endpoint
 `codec-v2 egress-drain` limpa a fila, e `worker-feed-test` faz cleanup
 automatico ao final. A validacao local passou com contrato bridge focado,
-server facade e `idf.py build`; falta flash para validar em hardware com
-`worker-feed-test --frames 10`.
+server facade e `idf.py build`; a validacao em hardware com
+`worker-feed-test --frames 10` retornou 10 pacotes egress, 2434 bytes, zero
+drops, cleanup da fila para zero e `capture-v2` desligado.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

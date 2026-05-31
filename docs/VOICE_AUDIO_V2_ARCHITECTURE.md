@@ -842,16 +842,22 @@ Validacao em hardware:
   - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
   - `server/tests/test_server_facade.py`: 119 testes;
   - `idf.py build` limpo;
-  - precisa flash para validacao em hardware com
-    `noisebot_server --host 192.168.1.30 debug codec-v2 worker-feed-test --frames 10 --json`;
-    esperado: `opus_egress_queue=true`,
-    `opus_egress_packets_delta=10`, `opus_egress_bytes_delta>0`,
+- Validacao em hardware da fila egress Opus diagnostica:
+  - `worker-feed-test --frames 10` retornou `opus_egress_queue=true`,
+    `opus_egress_packets_delta=10`, `opus_egress_bytes_delta=2434`,
     `opus_egress_packet_drops_delta=0`,
     `opus_egress_drained_after_test=10`,
     `opus_egress_queue_count_after_cleanup=0`,
+    `opus_egress_last_bytes=242`, `opus_egress_last_checksum>0`,
+    `opus_egress_preview_len=16`, `opus_egress_preview_hex` nao vazio,
     `packet_drops_delta=0`, `queue_count_after=0`,
     `pending_samples_after=0`, `worker_state_after=stopped` e
-    `capture-v2` desligado.
+    `error=ESP_OK`;
+  - `codec-v2 status` final confirmou `opus_egress_packets_in=10`,
+    `opus_egress_packets_drained=10`,
+    `opus_egress_packet_drops=0`, `opus_egress_queue_count=0`;
+  - `capture-v2 status` final confirmou `real_capture_enabled=false`,
+    `session_active=false`, `state=IDLE_SESSION` e `last_error=ESP_OK`.
 - Validacao em hardware do caminho feed PCM16 -> worker Opus apos flash:
   - `worker-feed-test --frames 10` retornou `ok=true`,
     `attempted_frames=10`, `attempted_samples=9600`,
