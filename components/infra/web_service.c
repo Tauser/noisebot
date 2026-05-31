@@ -1666,7 +1666,7 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_codec_v2_status_t st;
     audio_codec_service_v2_get_status(&st);
 
-    char buf[800];
+    char buf[900];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"format\":\"%s\","
              "\"worker_supported\":%s,\"worker_active\":%s,"
@@ -1676,6 +1676,7 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              "\"opus_bitrate\":%u,\"max_queue_packets\":%u,"
              "\"pcm_frames_in\":%lu,\"packets_out\":%lu,"
              "\"packet_drops\":%lu,\"queue_count\":%lu,"
+             "\"worker_drained_packets\":%lu,"
              "\"opus_encode_tests\":%lu,\"opus_encoded_bytes_total\":%lu,"
              "\"opus_last_packet_bytes\":%u,\"opus_codec_error\":%d,"
              "\"pending_samples\":%u,"
@@ -1696,6 +1697,7 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.packets_out,
              (unsigned long)st.packet_drops,
              (unsigned long)st.queue_count,
+             (unsigned long)st.worker_drained_packets,
              (unsigned long)st.opus_encode_tests,
              (unsigned long)st.opus_encoded_bytes_total,
              (unsigned)st.opus_last_packet_bytes,
@@ -1731,7 +1733,7 @@ static esp_err_t handle_api_audio_codec_v2_drain(httpd_req_t *req)
         httpd_resp_set_status(req, "500 Internal Server Error");
     }
 
-    char buf[860];
+    char buf[960];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"format\":\"%s\","
              "\"worker_supported\":%s,\"worker_active\":%s,"
@@ -1741,6 +1743,7 @@ static esp_err_t handle_api_audio_codec_v2_drain(httpd_req_t *req)
              "\"opus_bitrate\":%u,\"max_queue_packets\":%u,"
              "\"pcm_frames_in\":%lu,\"packets_out\":%lu,"
              "\"packet_drops\":%lu,\"queue_count\":%lu,"
+             "\"worker_drained_packets\":%lu,"
              "\"opus_encode_tests\":%lu,\"opus_encoded_bytes_total\":%lu,"
              "\"opus_last_packet_bytes\":%u,\"opus_codec_error\":%d,"
              "\"pending_samples\":%u,\"drained_packets\":%lu,"
@@ -1761,6 +1764,7 @@ static esp_err_t handle_api_audio_codec_v2_drain(httpd_req_t *req)
              (unsigned long)st.packets_out,
              (unsigned long)st.packet_drops,
              (unsigned long)st.queue_count,
+             (unsigned long)st.worker_drained_packets,
              (unsigned long)st.opus_encode_tests,
              (unsigned long)st.opus_encoded_bytes_total,
              (unsigned)st.opus_last_packet_bytes,
@@ -1835,6 +1839,24 @@ static esp_err_t handle_api_audio_codec_v2_opus_encode_test(httpd_req_t *req)
              esp_err_to_name(err));
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_audio_codec_v2_worker_start(httpd_req_t *req)
+{
+    esp_err_t err = audio_codec_service_v2_worker_start();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "409 Conflict");
+    }
+    return send_audio_codec_v2_status(req, err);
+}
+
+static esp_err_t handle_api_audio_codec_v2_worker_stop(httpd_req_t *req)
+{
+    esp_err_t err = audio_codec_service_v2_worker_stop();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+    return send_audio_codec_v2_status(req, err);
 }
 
 static esp_err_t handle_api_audio_codec_v2_overflow_test(httpd_req_t *req)
@@ -3317,6 +3339,8 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/codec-v2/drain", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_drain },
     { .uri = "/api/audio/codec-v2/reset", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_reset },
     { .uri = "/api/audio/codec-v2/opus-encode-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_opus_encode_test },
+    { .uri = "/api/audio/codec-v2/worker/start", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_start },
+    { .uri = "/api/audio/codec-v2/worker/stop", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_stop },
     { .uri = "/api/audio/codec-v2/overflow-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_overflow_test },
     { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
     { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },

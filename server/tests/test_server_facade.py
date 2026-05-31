@@ -747,6 +747,8 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     assert client.audio_codec_v2_drain()["ok"]
     assert client.audio_codec_v2_reset()["ok"]
     assert client.audio_codec_v2_opus_encode_test()["ok"]
+    assert client.audio_codec_v2_worker_start()["ok"]
+    assert client.audio_codec_v2_worker_stop()["ok"]
     assert client.audio_codec_v2_overflow_test(45)["ok"]
     assert get_paths == ["api/audio/codec-v2"]
     assert post_paths == [
@@ -754,6 +756,8 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
         "api/audio/codec-v2/drain",
         "api/audio/codec-v2/reset",
         "api/audio/codec-v2/opus-encode-test",
+        "api/audio/codec-v2/worker/start",
+        "api/audio/codec-v2/worker/stop",
         "api/audio/codec-v2/overflow-test",
     ]
 
@@ -968,6 +972,36 @@ def test_server_cli_parses_codec_v2_opus_encode_test_debug_command() -> None:
     assert args.host == "192.168.1.30"
     assert args.action == "opus-encode-test"
     assert args.json
+
+
+def test_server_cli_parses_codec_v2_worker_debug_commands() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    start_args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "worker-start",
+        "--json",
+    ])
+    stop_args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "worker-stop",
+        "--json",
+    ])
+
+    assert start_args.command == "debug"
+    assert start_args.debug_command == "codec-v2"
+    assert start_args.action == "worker-start"
+    assert start_args.json
+    assert stop_args.command == "debug"
+    assert stop_args.debug_command == "codec-v2"
+    assert stop_args.action == "worker-stop"
+    assert stop_args.json
 
 
 def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
@@ -1188,6 +1222,64 @@ def test_server_cli_runs_codec_v2_opus_encode_test_debug_command(monkeypatch, ca
     assert '"encoded_bytes": 180' in captured.out
     assert '"worker_state": "not_started"' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
+
+
+def test_server_cli_runs_codec_v2_worker_debug_commands(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: list[str] = []
+
+    def fake_worker_start(self):
+        calls.append(f"start:{self.base_url}")
+        return {
+            "ok": True,
+            "worker_supported": True,
+            "worker_active": True,
+            "worker_state": "running",
+            "worker_drained_packets": 0,
+            "queue_count": 0,
+            "error": "ESP_OK",
+        }
+
+    def fake_worker_stop(self):
+        calls.append(f"stop:{self.base_url}")
+        return {
+            "ok": True,
+            "worker_supported": True,
+            "worker_active": False,
+            "worker_state": "stopped",
+            "worker_drained_packets": 1,
+            "queue_count": 0,
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_codec_v2_worker_start", fake_worker_start)
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_codec_v2_worker_stop", fake_worker_stop)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "worker-start",
+        "--json",
+    ])
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "worker-stop",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"worker_state": "running"' in captured.out
+    assert '"worker_state": "stopped"' in captured.out
+    assert calls == [
+        "start:http://192.168.1.30/",
+        "stop:http://192.168.1.30/",
+    ]
 
 
 def test_server_cli_parses_barge_live_debug_command() -> None:

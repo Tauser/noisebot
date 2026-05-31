@@ -50,9 +50,12 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "#define NB_AUDIO_CODEC_V2_OPUS_BITRATE       32000U" in codec_h
     assert "NB_AUDIO_CODEC_V2_FORMAT_PCM16 = 0" in codec_h
     assert "NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED = 0" in codec_h
+    assert "NB_AUDIO_CODEC_V2_WORKER_STATE_RUNNING" in codec_h
+    assert "NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPED" in codec_h
     assert "nb_audio_codec_v2_worker_state_t worker_state;" in codec_h
     assert "bool worker_supported;" in codec_h
     assert "bool worker_active;" in codec_h
+    assert "uint32_t worker_drained_packets;" in codec_h
     assert "uint32_t opus_encode_tests;" in codec_h
     assert "uint32_t opus_encoded_bytes_total;" in codec_h
     assert "uint16_t opus_last_packet_bytes;" in codec_h
@@ -64,6 +67,8 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '{ .uri = "/api/audio/codec-v2/drain"' in web
     assert '{ .uri = "/api/audio/codec-v2/reset"' in web
     assert '{ .uri = "/api/audio/codec-v2/opus-encode-test"' in web
+    assert '{ .uri = "/api/audio/codec-v2/worker/start"' in web
+    assert '{ .uri = "/api/audio/codec-v2/worker/stop"' in web
     assert '{ .uri = "/api/audio/codec-v2/overflow-test"' in web
     assert '\\"opus_bitrate\\":%u' in web
     assert '\\"max_queue_packets\\":%u' in web
@@ -87,13 +92,23 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "*drained_packets = s_status.queue_count;" in codec_c
     assert "s_status.queue_count = 0;" in codec_c
     assert "was_initialized = s_status.initialized" in codec_c
+    assert "worker_active = s_status.worker_active" in codec_c
+    assert "worker_state = s_status.worker_state" in codec_c
     assert "s_status.initialized = was_initialized;" in codec_c
+    assert "s_status.worker_active = worker_active;" in codec_c
+    assert "s_status.worker_state = worker_state;" in codec_c
     assert "s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;" in codec_c
-    assert "reset_worker_stub_status();" in codec_c
+    assert "reset_worker_status();" in codec_c
     assert "NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED" in codec_c
     assert 'return "not_started";' in codec_c
     assert "audio_codec_service_v2_overflow_test(" in codec_c
     assert "audio_codec_service_v2_opus_encode_test(" in codec_c
+    assert "audio_codec_service_v2_worker_start(" in codec_c
+    assert "audio_codec_service_v2_worker_stop(" in codec_c
+    assert '"nb_codec_v2_worker"' in codec_c
+    assert "CODEC_WORKER_TASK_STACK" in codec_c
+    assert "CODEC_WORKER_STOP_TIMEOUT_MS" in codec_c
+    assert "s_status.worker_drained_packets += s_status.queue_count;" in codec_c
     assert "esp_opus_enc_open" in codec_c
     assert "esp_opus_enc_process" in codec_c
     assert "esp_opus_enc_close" in codec_c
@@ -107,6 +122,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"worker_supported\\":%s' in web
     assert '\\"worker_active\\":%s' in web
     assert '\\"worker_state\\":\\"%s\\"' in web
+    assert '\\"worker_drained_packets\\":%lu' in web
     assert '\\"opus_encode_tests\\":%lu' in web
     assert '\\"opus_encoded_bytes_total\\":%lu' in web
     assert '\\"opus_last_packet_bytes\\":%u' in web

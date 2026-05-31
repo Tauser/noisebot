@@ -31,6 +31,11 @@ typedef enum {
 
 typedef enum {
     NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED = 0,
+    NB_AUDIO_CODEC_V2_WORKER_STATE_STARTING,
+    NB_AUDIO_CODEC_V2_WORKER_STATE_RUNNING,
+    NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPING,
+    NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPED,
+    NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR,
 } nb_audio_codec_v2_worker_state_t;
 
 typedef struct {
@@ -43,6 +48,7 @@ typedef struct {
     uint32_t packets_out;
     uint32_t packet_drops;
     uint32_t queue_count;
+    uint32_t worker_drained_packets;
     uint32_t opus_encode_tests;
     uint32_t opus_encoded_bytes_total;
     uint16_t opus_last_packet_bytes;
@@ -89,6 +95,8 @@ esp_err_t audio_codec_service_v2_overflow_test(
     nb_audio_codec_v2_overflow_test_result_t *out);
 esp_err_t audio_codec_service_v2_opus_encode_test(
     nb_audio_codec_v2_opus_test_result_t *out);
+esp_err_t audio_codec_service_v2_worker_start(void);
+esp_err_t audio_codec_service_v2_worker_stop(void);
 
 #ifdef __cplusplus
 }

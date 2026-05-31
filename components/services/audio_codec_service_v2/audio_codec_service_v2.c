@@ -17,6 +17,11 @@
 #define OPUS_TEST_TASK_PRIORITY 2U
 #define OPUS_TEST_TASK_CORE 0
 #define OPUS_TEST_TIMEOUT_MS 8000U
+#define CODEC_WORKER_TASK_STACK 4096U
+#define CODEC_WORKER_TASK_PRIORITY 2U
+#define CODEC_WORKER_TASK_CORE 0
+#define CODEC_WORKER_STOP_TIMEOUT_MS 2000U
+#define CODEC_WORKER_POLL_MS 20U
 #define OPUS_ENC_CONFIG() {                                      \
         .sample_rate        = ESP_AUDIO_SAMPLE_RATE_16K,         \
         .channel            = ESP_AUDIO_MONO,                    \
@@ -33,6 +38,8 @@
 static nb_audio_codec_v2_status_t s_status = {
     .format = NB_AUDIO_CODEC_V2_FORMAT_PCM16,
     .opus_codec_error = -1,
+    .worker_supported = true,
+    .worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED,
 };
 static int16_t s_pending_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
 static uint16_t s_pending_samples;
@@ -43,16 +50,20 @@ static SemaphoreHandle_t s_opus_test_done;
 static TaskHandle_t s_opus_test_task;
 static nb_audio_codec_v2_opus_test_result_t s_opus_test_result;
 static esp_err_t s_opus_test_err = ESP_ERR_INVALID_STATE;
+static StaticSemaphore_t s_worker_done_buf;
+static SemaphoreHandle_t s_worker_done;
+static TaskHandle_t s_worker_task;
+static volatile bool s_worker_stop_requested;
 
 static uint32_t heap_free_kb(uint32_t caps)
 {
     return (uint32_t)(heap_caps_get_free_size(caps) / 1024U);
 }
 
-static void reset_worker_stub_status(void)
+static void reset_worker_status(void)
 {
     s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED;
-    s_status.worker_supported = false;
+    s_status.worker_supported = true;
     s_status.worker_active = false;
 }
 
@@ -152,6 +163,34 @@ static void opus_encode_test_task(void *arg)
     vTaskDelete(NULL);
 }
 
+static void codec_worker_task(void *arg)
+{
+    (void)arg;
+    s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_RUNNING;
+    s_status.worker_active = true;
+
+    while (!s_worker_stop_requested) {
+        if (s_status.queue_count > 0U) {
+            s_status.worker_drained_packets += s_status.queue_count;
+            s_status.queue_count = 0;
+        }
+        vTaskDelay(pdMS_TO_TICKS(CODEC_WORKER_POLL_MS));
+    }
+
+    if (s_status.queue_count > 0U) {
+        s_status.worker_drained_packets += s_status.queue_count;
+        s_status.queue_count = 0;
+    }
+
+    s_status.worker_active = false;
+    s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPED;
+    s_worker_task = NULL;
+    if (s_worker_done != NULL) {
+        xSemaphoreGive(s_worker_done);
+    }
+    vTaskDelete(NULL);
+}
+
 static void enqueue_synthetic_packet(void)
 {
     if (s_status.queue_count >= NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS) {
@@ -175,7 +214,7 @@ esp_err_t audio_codec_service_v2_init(void)
     s_status.initialized = true;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
     s_status.opus_codec_error = -1;
-    reset_worker_stub_status();
+    reset_worker_status();
     return ESP_OK;
 }
 
@@ -184,13 +223,16 @@ esp_err_t audio_codec_service_v2_deinit(void)
     if (!s_status.initialized) {
         return ESP_ERR_INVALID_STATE;
     }
+    if (s_worker_task != NULL || s_status.worker_active) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
     memset(&s_status, 0, sizeof(s_status));
     memset(s_pending_frame, 0, sizeof(s_pending_frame));
     s_pending_samples = 0;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
     s_status.opus_codec_error = -1;
-    reset_worker_stub_status();
+    reset_worker_status();
     return ESP_OK;
 }
 
@@ -204,6 +246,16 @@ const char *audio_codec_service_v2_worker_state_name(nb_audio_codec_v2_worker_st
     switch (state) {
     case NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED:
         return "not_started";
+    case NB_AUDIO_CODEC_V2_WORKER_STATE_STARTING:
+        return "starting";
+    case NB_AUDIO_CODEC_V2_WORKER_STATE_RUNNING:
+        return "running";
+    case NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPING:
+        return "stopping";
+    case NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPED:
+        return "stopped";
+    case NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR:
+        return "error";
     default:
         return "unknown";
     }
@@ -271,6 +323,9 @@ esp_err_t audio_codec_service_v2_drain_synthetic(uint32_t *drained_packets)
 esp_err_t audio_codec_service_v2_reset_diagnostics(void)
 {
     bool was_initialized = s_status.initialized;
+    bool worker_supported = s_status.worker_supported;
+    bool worker_active = s_status.worker_active;
+    nb_audio_codec_v2_worker_state_t worker_state = s_status.worker_state;
 
     memset(&s_status, 0, sizeof(s_status));
     memset(s_pending_frame, 0, sizeof(s_pending_frame));
@@ -278,7 +333,9 @@ esp_err_t audio_codec_service_v2_reset_diagnostics(void)
     s_status.initialized = was_initialized;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
     s_status.opus_codec_error = -1;
-    reset_worker_stub_status();
+    s_status.worker_supported = worker_supported;
+    s_status.worker_active = worker_active;
+    s_status.worker_state = worker_state;
     return ESP_OK;
 }
 
@@ -353,4 +410,70 @@ esp_err_t audio_codec_service_v2_opus_encode_test(
 
     *out = s_opus_test_result;
     return s_opus_test_err;
+}
+
+esp_err_t audio_codec_service_v2_worker_start(void)
+{
+    if (s_worker_task != NULL || s_status.worker_active) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (s_worker_done == NULL) {
+        s_worker_done = xSemaphoreCreateBinaryStatic(&s_worker_done_buf);
+        if (s_worker_done == NULL) {
+            s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR;
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    while (xSemaphoreTake(s_worker_done, 0) == pdTRUE) {
+    }
+
+    s_worker_stop_requested = false;
+    s_status.worker_supported = true;
+    s_status.worker_active = false;
+    s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_STARTING;
+
+    BaseType_t rc = xTaskCreatePinnedToCore(
+        codec_worker_task,
+        "nb_codec_v2_worker",
+        CODEC_WORKER_TASK_STACK,
+        NULL,
+        CODEC_WORKER_TASK_PRIORITY,
+        &s_worker_task,
+        CODEC_WORKER_TASK_CORE);
+    if (rc != pdPASS) {
+        s_worker_task = NULL;
+        s_status.worker_active = false;
+        s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR;
+        return ESP_ERR_NO_MEM;
+    }
+
+    return ESP_OK;
+}
+
+esp_err_t audio_codec_service_v2_worker_stop(void)
+{
+    if (s_worker_task == NULL && !s_status.worker_active) {
+        s_status.worker_active = false;
+        if (s_status.worker_state == NB_AUDIO_CODEC_V2_WORKER_STATE_STARTING ||
+            s_status.worker_state == NB_AUDIO_CODEC_V2_WORKER_STATE_RUNNING ||
+            s_status.worker_state == NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPING) {
+            s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPED;
+        }
+        return ESP_OK;
+    }
+
+    if (s_worker_done == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_STOPPING;
+    s_worker_stop_requested = true;
+
+    if (xSemaphoreTake(s_worker_done, pdMS_TO_TICKS(CODEC_WORKER_STOP_TIMEOUT_MS)) != pdTRUE) {
+        s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_ERROR;
+        return ESP_ERR_TIMEOUT;
+    }
+
+    return ESP_OK;
 }
