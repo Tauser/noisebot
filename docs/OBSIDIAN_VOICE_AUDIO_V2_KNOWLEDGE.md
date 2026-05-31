@@ -836,6 +836,16 @@ Validacao:
     chama `bridge_service_send_opus_packet()`, nao renegocia HELLO, nao ativa
     `bridge_service_set_opus_enabled()`, nao toca captura/playback e nao
     promove Opus como padrao;
+  - controle opt-in de transporte Opus live no namespace Codec v2: endpoints
+    `/api/audio/codec-v2/transport/enable` e
+    `/api/audio/codec-v2/transport/disable`, proxies server
+    `/api/device/audio/codec-v2/transport/enable` e
+    `/api/device/audio/codec-v2/transport/disable`, e CLI
+    `noisebot_server debug codec-v2 transport-enable|transport-disable --json`;
+    por seguranca, este primeiro controle usa o worker Opus de compatibilidade
+    do `audio_processor_service`, retorna
+    `compat_worker="audio_processor_service"` e `pcm16_fallback=true`, nao muda
+    o padrao PCM16 e permite rollback imediato via `transport-disable`;
   - reset diagnostico preserva o estado do worker quando ele esta ativo, para
     evitar status incoerente ou uma segunda task acidental;
   - validado em hardware apos flash:
@@ -896,6 +906,13 @@ Validacao:
     `worker_state_after=stopped`; status final confirmou `format=pcm16`,
     `bridge_handoff_packets_ready=10`, fila egress zerada, `error=ESP_OK` e
     `capture-v2` desligado.
+  - validacao local do controle de transporte Opus live pelo namespace v2:
+    teste focado bridge, teste focado server 121 e `idf.py build`; validacao
+    em hardware pendente apos flash com
+    `codec-v2 transport-enable --json` seguido de
+    `codec-v2 transport-disable --json`, esperando `ESP_OK`,
+    `pcm16_fallback=true`, `live_bridge_transport=true` no enable e
+    `live_bridge_transport=false` no disable.
   - validacao em hardware do caminho feed PCM16 -> worker Opus:
     `worker-feed-test --frames 10` retornou `attempted_frames=10`,
     `attempted_samples=9600`, `pcm_frames_in_delta=10`,

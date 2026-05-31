@@ -884,6 +884,32 @@ Validacao em hardware:
     `packet_drops=0` e `error=ESP_OK`;
   - `capture-v2 status` final confirmou `real_capture_enabled=false`,
     `session_active=false`, `state=IDLE_SESSION` e `last_error=ESP_OK`.
+- Transporte Opus live controlado pelo namespace Codec v2:
+  - novos endpoints opt-in `/api/audio/codec-v2/transport/enable` e
+    `/api/audio/codec-v2/transport/disable`;
+  - proxies server `/api/device/audio/codec-v2/transport/enable` e
+    `/api/device/audio/codec-v2/transport/disable`;
+  - CLI `noisebot_server debug codec-v2 transport-enable --json` e
+    `noisebot_server debug codec-v2 transport-disable --json`;
+  - `transport-enable` inicia o worker Opus de compatibilidade atual em
+    `audio_processor_service` e entao liga `bridge_service_set_opus_enabled`;
+  - `transport-disable` desliga primeiro o transporte Opus do bridge e depois
+    para o worker de compatibilidade;
+  - o JSON retorna `codec_v2_transport=true`,
+    `compat_worker="audio_processor_service"` e `pcm16_fallback=true`;
+  - este passo nao troca o padrao para Opus, nao remove PCM16, nao altera wake,
+    VAD, state machine, follow-up, captura v2 ou playback v2;
+  - validacao local: contrato bridge focado, server facade 121 e
+    `idf.py build` limpo;
+  - validacao em hardware pendente apos flash:
+    `noisebot_server --host 192.168.1.30 debug codec-v2 transport-enable --json`
+    deve retornar `ok=true`, `codec_v2_transport=true`,
+    `live_bridge_transport=true`, `compat_worker="audio_processor_service"`,
+    `pcm16_fallback=true` e `error=ESP_OK`;
+  - rollback imediato:
+    `noisebot_server --host 192.168.1.30 debug codec-v2 transport-disable --json`
+    deve retornar `live_bridge_transport=false`, `opus_enabled=false` e
+    `error=ESP_OK`.
 - Validacao em hardware do caminho feed PCM16 -> worker Opus apos flash:
   - `worker-feed-test --frames 10` retornou `ok=true`,
     `attempted_frames=10`, `attempted_samples=9600`,
@@ -1101,13 +1127,14 @@ Metricas obrigatorias:
 
 ## Proxima Implementacao Permitida
 
-O stub de handoff Opus para bridge ja foi validado em hardware. A proxima
-mudanca ainda deve ser opt-in e explicita. Antes de enviar Opus real ao
-`bridge_service`, alterar HELLO/capabilities ou mudar transporte live,
-consultar o usuario e definir o contrato de rollback.
-
-O proximo passo de codigo aceitavel sem decisao de produto e apenas ampliar
-diagnostico/observabilidade do handoff, mantendo `bridge_packet_not_sent=true`.
+O stub de handoff Opus para bridge ja foi validado em hardware e o controle
+opt-in de transporte live pelo namespace Codec v2 foi implementado localmente.
+A proxima acao e validacao em hardware apos flash dos comandos
+`transport-enable` e `transport-disable`, sempre confirmando rollback para
+PCM16. Depois disso, o proximo avanco de codigo deve ser escolher entre:
+integrar o worker live do proprio `audio_codec_service_v2` ao transporte, ou
+manter temporariamente o worker de compatibilidade enquanto se mede `opus-live`
+e `codec-ab`.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.
