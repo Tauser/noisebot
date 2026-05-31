@@ -579,12 +579,14 @@ Barge-in:
 
 ```powershell
 python -m noisebot_server --host 192.168.1.30 debug barge-live "me conte uma historia longa" --json
+python -m noisebot_server --host 192.168.1.30 debug barge-live "me conte uma historia longa" --codec opus-v2 --json
 ```
 
 No echo:
 
 ```powershell
 python -m noisebot_server --host 192.168.1.30 debug no-echo-live "me conte uma historia longa" --json
+python -m noisebot_server --host 192.168.1.30 debug no-echo-live "me conte uma historia longa" --codec opus-v2 --json
 ```
 
 Capture v2 status/replay:
@@ -962,6 +964,11 @@ Validacao:
     Codec v2 confirmou `worker_state=stopped`, `opus_egress_queue_count=0`,
     `opus_egress_packet_drops=0`, `opus_codec_error=0` e `capture-v2`
     desligado.
+  - preparacao local para regressao de turn-taking com Opus v2:
+    `barge-live` e `no-echo-live` agora aceitam `--codec opus-v2`; os harnesses
+    ligam `codec-v2 transport-enable`, medem pacotes/drops/bytes, e sempre
+    fazem rollback com `transport-disable` + `egress-drain`. `server/tests`
+    completo passou com 138 testes. Falta validacao em hardware.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

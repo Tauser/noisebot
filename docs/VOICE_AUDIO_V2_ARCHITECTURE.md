@@ -1222,7 +1222,11 @@ zero drops, fila final zero e rollback limpo. O A/B curto PCM16 vs Opus v2
 tambem passou com zero drops e STT `good` nos dois caminhos, e a bateria de
 3 turnos por codec confirmou estabilidade do worker v2 live. O proximo avanco
 seguro e validar regressao `barge-live` e `no-echo-live` com Opus v2 opt-in,
-sem promover Opus como padrao ainda.
+sem promover Opus como padrao ainda. Os harnesses do server ja foram preparados
+para isso com `--codec opus-v2`: eles ligam o transporte pelo namespace
+`codec-v2`, medem pacotes/drops/bytes e executam rollback automatico para PCM16
+com limpeza da egress queue. Validacao local: `server/tests` completo passou;
+validacao em hardware ainda pendente.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

@@ -1693,6 +1693,10 @@ def test_server_cli_parses_barge_live_debug_command() -> None:
         "me conte uma historia longa",
         "--server-url",
         "http://127.0.0.1:8765",
+        "--firmware-url",
+        "http://192.168.1.30",
+        "--codec",
+        "opus-v2",
         "--timeout-s",
         "12",
         "--json",
@@ -1702,6 +1706,8 @@ def test_server_cli_parses_barge_live_debug_command() -> None:
     assert args.debug_command == "barge-live"
     assert args.phrase == "me conte uma historia longa"
     assert args.server_url == "http://127.0.0.1:8765"
+    assert args.firmware_url == "http://192.168.1.30"
+    assert args.codec == "opus-v2"
     assert args.timeout_s == 12.0
     assert args.json
 
@@ -1716,6 +1722,7 @@ def test_server_cli_runs_barge_live_debug_command(monkeypatch, capsys) -> None:
         calls.update(kwargs)
         return barge_live.BargeLiveTrial(
             phrase=kwargs["phrase"],
+            codec=kwargs["codec"],
             ok=True,
             interrupted_turn_id=88,
             interruption_cancel_ms=12.5,
@@ -1731,12 +1738,18 @@ def test_server_cli_runs_barge_live_debug_command(monkeypatch, capsys) -> None:
         "debug",
         "barge-live",
         "me conte uma historia longa",
+        "--codec",
+        "opus-v2",
+        "--firmware-url",
+        "http://192.168.1.30",
         "--json",
     ])
 
     captured = capsys.readouterr()
     assert '"ok": true' in captured.out
     assert calls["phrase"] == "me conte uma historia longa"
+    assert calls["codec"] == "opus-v2"
+    assert calls["firmware_url"] == "http://192.168.1.30"
 
 
 def test_server_barge_live_accepts_aggregate_interruption(monkeypatch) -> None:
@@ -1773,6 +1786,7 @@ def test_server_barge_live_accepts_aggregate_interruption(monkeypatch) -> None:
         phrase="me conte uma historia longa",
         server_url="http://127.0.0.1:8765",
         timeout_s=1.0,
+        codec="pcm16",
         input_fn=lambda _prompt: "",
         print_fn=lambda _text: None,
     )
@@ -1781,6 +1795,74 @@ def test_server_barge_live_accepts_aggregate_interruption(monkeypatch) -> None:
     assert trial.interrupted_turn_id == 82
     assert trial.interruption_cancel_ms == 1.0
     assert trial.transcript == "Que horas são?"
+
+
+def test_server_barge_live_opus_v2_tracks_codec_stats(monkeypatch) -> None:
+    barge_live = importlib.import_module("noisebot_server.internal.ops.barge_live")
+    codec_v2_live = importlib.import_module("noisebot_server.internal.ops.codec_v2_live")
+
+    metrics_payloads = [
+        {
+            "turns": {"interrupted": 0},
+            "latency_ms": {"interruption_cancel": {"count": 0}},
+            "recent_voice_sessions": [{"turn_id": 100, "outcome": "llm"}],
+        },
+        {
+            "turns": {"interrupted": 1},
+            "latency_ms": {"interruption_cancel": {"count": 1, "p95": 2.0}},
+            "recent_voice_sessions": [
+                {
+                    "turn_id": 101,
+                    "outcome": "interrupted",
+                    "discard_reason": "barge_in",
+                    "transcript": "pare",
+                }
+            ],
+        },
+    ]
+
+    def fake_metrics_get_json(url):
+        assert url.endswith("/ai/metrics")
+        return metrics_payloads.pop(0)
+
+    firmware_status = iter([
+        {"features": ["opus_tx"]},
+        {"opus_egress_packets_drained": 10, "opus_egress_bytes_total": 1000},
+        {"opus_egress_packets_drained": 14, "opus_egress_bytes_total": 1600},
+    ])
+    post_paths: list[str] = []
+
+    def fake_codec_get_json(url):
+        return next(firmware_status)
+
+    def fake_post_json(url):
+        post_paths.append(url)
+        return {"ok": True, "opus_enabled": "transport/enable" in url}
+
+    monkeypatch.setattr(barge_live, "get_json", fake_metrics_get_json)
+    monkeypatch.setattr(codec_v2_live, "get_json", fake_codec_get_json)
+    monkeypatch.setattr(codec_v2_live, "post_json", fake_post_json)
+
+    trial = barge_live.run_barge_live_trial(
+        phrase="me conte uma historia longa",
+        server_url="http://127.0.0.1:8765",
+        firmware_url="http://192.168.1.30",
+        codec="opus-v2",
+        timeout_s=1.0,
+        input_fn=lambda _prompt: "",
+        print_fn=lambda _text: None,
+    )
+
+    assert trial.ok is True
+    assert trial.codec == "opus-v2"
+    assert trial.packets_drained == 4
+    assert trial.encoded_bytes == 600
+    assert trial.packet_drops == 0
+    assert post_paths == [
+        "http://192.168.1.30/api/audio/codec-v2/transport/enable",
+        "http://192.168.1.30/api/audio/codec-v2/transport/disable",
+        "http://192.168.1.30/api/audio/codec-v2/egress/drain",
+    ]
 
 
 def test_server_cli_parses_no_echo_live_debug_command() -> None:
@@ -1792,6 +1874,10 @@ def test_server_cli_parses_no_echo_live_debug_command() -> None:
         "me conte uma historia longa",
         "--server-url",
         "http://127.0.0.1:8765",
+        "--firmware-url",
+        "http://192.168.1.30",
+        "--codec",
+        "opus-v2",
         "--quiet-window-s",
         "6",
         "--timeout-s",
@@ -1803,6 +1889,8 @@ def test_server_cli_parses_no_echo_live_debug_command() -> None:
     assert args.debug_command == "no-echo-live"
     assert args.phrase == "me conte uma historia longa"
     assert args.server_url == "http://127.0.0.1:8765"
+    assert args.firmware_url == "http://192.168.1.30"
+    assert args.codec == "opus-v2"
     assert args.quiet_window_s == 6.0
     assert args.timeout_s == 12.0
     assert args.json
@@ -1818,6 +1906,7 @@ def test_server_cli_runs_no_echo_live_debug_command(monkeypatch, capsys) -> None
         calls.update(kwargs)
         return no_echo.NoEchoLiveTrial(
             phrase=kwargs["phrase"],
+            codec=kwargs["codec"],
             ok=True,
             response_turn_id=91,
             unexpected_turn_id=None,
@@ -1833,6 +1922,10 @@ def test_server_cli_runs_no_echo_live_debug_command(monkeypatch, capsys) -> None
         "debug",
         "no-echo-live",
         "me conte uma historia longa",
+        "--codec",
+        "opus-v2",
+        "--firmware-url",
+        "http://192.168.1.30",
         "--quiet-window-s",
         "6",
         "--json",
@@ -1841,7 +1934,38 @@ def test_server_cli_runs_no_echo_live_debug_command(monkeypatch, capsys) -> None
     captured = capsys.readouterr()
     assert '"ok": true' in captured.out
     assert calls["phrase"] == "me conte uma historia longa"
+    assert calls["codec"] == "opus-v2"
+    assert calls["firmware_url"] == "http://192.168.1.30"
     assert calls["quiet_window_s"] == 6.0
+
+
+def test_server_no_echo_live_pcm16_tracks_response_turn(monkeypatch) -> None:
+    no_echo = importlib.import_module("noisebot_server.internal.ops.no_echo_live")
+
+    payloads = [
+        {"recent_voice_sessions": [{"turn_id": 200, "outcome": "llm"}]},
+        {"recent_voice_sessions": [{"turn_id": 201, "outcome": "llm", "transcript": "historia"}]},
+    ]
+
+    def fake_get_json(url):
+        assert url.endswith("/ai/metrics")
+        return payloads.pop(0) if payloads else {"recent_voice_sessions": [{"turn_id": 201}]}
+
+    monkeypatch.setattr(no_echo, "get_json", fake_get_json)
+
+    trial = no_echo.run_no_echo_live_trial(
+        phrase="me conte uma historia longa",
+        server_url="http://127.0.0.1:8765",
+        quiet_window_s=0.01,
+        timeout_s=1.0,
+        input_fn=lambda _prompt: "",
+        print_fn=lambda _text: None,
+    )
+
+    assert trial.ok is True
+    assert trial.codec == "pcm16"
+    assert trial.response_turn_id == 201
+    assert trial.unexpected_turn_id is None
 
 
 def test_server_cli_parses_aec_live_debug_command() -> None:

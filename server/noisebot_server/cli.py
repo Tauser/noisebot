@@ -90,6 +90,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     barge_live = debug_sub.add_parser("barge-live")
     barge_live.add_argument("phrase", nargs="?", default="me conte uma historia longa")
     barge_live.add_argument("--server-url", default="http://127.0.0.1:8765")
+    barge_live.add_argument("--firmware-url", default="")
+    barge_live.add_argument("--codec", choices=["pcm16", "opus-v2"], default="pcm16")
     barge_live.add_argument("--timeout-s", type=float, default=45.0)
     barge_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     barge_live.add_argument("--json", action="store_true", help="Emitir JSON")
@@ -97,6 +99,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     no_echo_live = debug_sub.add_parser("no-echo-live")
     no_echo_live.add_argument("phrase", nargs="?", default="me conte uma historia longa")
     no_echo_live.add_argument("--server-url", default="http://127.0.0.1:8765")
+    no_echo_live.add_argument("--firmware-url", default="")
+    no_echo_live.add_argument("--codec", choices=["pcm16", "opus-v2"], default="pcm16")
     no_echo_live.add_argument("--quiet-window-s", type=float, default=10.0)
     no_echo_live.add_argument("--timeout-s", type=float, default=45.0)
     no_echo_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
@@ -453,10 +457,13 @@ def run_debug_command(args: argparse.Namespace) -> None:
             run_barge_live_trial,
         )
 
+        firmware_url = _resolve_firmware_url(args)
         trial = run_barge_live_trial(
             phrase=args.phrase,
             server_url=args.server_url,
             timeout_s=args.timeout_s,
+            codec=args.codec,
+            firmware_url=firmware_url,
         )
         text = format_barge_live_json(trial) if args.json else format_barge_live_markdown(trial)
         if args.output:
@@ -474,11 +481,14 @@ def run_debug_command(args: argparse.Namespace) -> None:
             run_no_echo_live_trial,
         )
 
+        firmware_url = _resolve_firmware_url(args)
         trial = run_no_echo_live_trial(
             phrase=args.phrase,
             server_url=args.server_url,
             quiet_window_s=args.quiet_window_s,
             timeout_s=args.timeout_s,
+            codec=args.codec,
+            firmware_url=firmware_url,
         )
         text = format_no_echo_live_json(trial) if args.json else format_no_echo_live_markdown(trial)
         if args.output:
@@ -697,6 +707,18 @@ def _run_capture_v2_live(client, *, no_prompt: bool) -> dict[str, object]:
         "after": after,
         "disabled": disabled,
     }
+
+
+def _resolve_firmware_url(args: argparse.Namespace) -> str:
+    firmware_url = getattr(args, "firmware_url", "") or os.environ.get(
+        "NOISEBOT_ROBOT_HTTP_URL",
+        "",
+    )
+    if not firmware_url:
+        host = args.host or os.environ.get("NOISEBOT_HOST", "")
+        if host:
+            firmware_url = f"http://{host}"
+    return firmware_url.rstrip("/")
 
 
 def _parse_bitrates(raw: str) -> list[int]:

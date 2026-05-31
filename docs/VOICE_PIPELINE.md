@@ -231,6 +231,13 @@ v2 confirmou worker `stopped`, `packet_drops=0`,
 `opus_codec_error=0` e PCM16 como fallback. Decisao: Opus v2 e candidato
 forte, mas segue opt-in ate validar regressao de barge/no-echo e decidir
 HELLO/capability oficial.
+Os harnesses `barge-live` e `no-echo-live` agora aceitam
+`--codec pcm16|opus-v2` e `--firmware-url`/`--host`. Em `opus-v2`, eles usam
+`/api/audio/codec-v2/transport/enable` antes do turno, coletam contadores do
+Codec v2, validam que houve pacotes Opus drenados sem drops e fazem rollback
+automatico com `transport-disable` seguido de `egress-drain`. A validacao local
+do server passou com `server/tests` completo; ainda falta rodar os dois
+harnesses em hardware.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

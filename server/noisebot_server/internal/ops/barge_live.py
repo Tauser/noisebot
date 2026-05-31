@@ -7,12 +7,14 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .codec_v2_live import CodecV2LiveGuard, CodecV2LiveStats
 from .voice_ab import VoiceAbError, get_json
 
 
 @dataclass(frozen=True)
 class BargeLiveTrial:
     phrase: str
+    codec: str
     ok: bool
     interrupted_turn_id: int | None
     interruption_cancel_ms: float | None
@@ -20,10 +22,17 @@ class BargeLiveTrial:
     reply: str
     discard_reason: str
     outcome: str
+    packets_drained: int = 0
+    packet_drops: int = 0
+    encoded_bytes: int = 0
+    enable_ok: bool = True
+    disable_ok: bool = True
+    server_codec_confirmed: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "phrase": self.phrase,
+            "codec": self.codec,
             "ok": self.ok,
             "interrupted_turn_id": self.interrupted_turn_id,
             "interruption_cancel_ms": self.interruption_cancel_ms,
@@ -31,6 +40,12 @@ class BargeLiveTrial:
             "reply": self.reply,
             "discard_reason": self.discard_reason,
             "outcome": self.outcome,
+            "packets_drained": self.packets_drained,
+            "packet_drops": self.packet_drops,
+            "encoded_bytes": self.encoded_bytes,
+            "enable_ok": self.enable_ok,
+            "disable_ok": self.disable_ok,
+            "server_codec_confirmed": self.server_codec_confirmed,
         }
 
 
@@ -39,6 +54,8 @@ def run_barge_live_trial(
     phrase: str,
     server_url: str,
     timeout_s: float,
+    codec: str = "pcm16",
+    firmware_url: str | None = None,
     input_fn: Callable[[str], str] = input,
     print_fn: Callable[[str], None] = print,
 ) -> BargeLiveTrial:
@@ -50,17 +67,19 @@ def run_barge_live_trial(
     before_interrupted = _turns_interrupted_count(before)
     before_cancel_count = _interruption_cancel_count(before)
 
-    print_fn(f"Inicie uma resposta longa: {phrase}")
-    print_fn("Quando o robo estiver falando, interrompa com wake word e uma frase curta.")
-    input_fn("Pressione Enter quando a interrupcao terminar: ")
+    with CodecV2LiveGuard(codec=codec, server_url=server_url, firmware_url=firmware_url) as guard:
+        print_fn(f"[{codec}] Inicie uma resposta longa: {phrase}")
+        print_fn("Quando o robo estiver falando, interrompa com wake word e uma frase curta.")
+        input_fn("Pressione Enter quando a interrupcao terminar: ")
 
-    payload = _wait_for_barge_session(
-        server_url=server_url,
-        previous_turn_id=before_turn_id,
-        previous_interrupted=before_interrupted,
-        previous_cancel_count=before_cancel_count,
-        timeout_s=timeout_s,
-    )
+        payload = _wait_for_barge_session(
+            server_url=server_url,
+            previous_turn_id=before_turn_id,
+            previous_interrupted=before_interrupted,
+            previous_cancel_count=before_cancel_count,
+            timeout_s=timeout_s,
+        )
+    codec_stats = guard.stats()
     session = payload["session"]
     metrics = payload["metrics"]
     cancel_ms = _interruption_cancel_ms(metrics)
@@ -70,8 +89,10 @@ def run_barge_live_trial(
         and session.get("discard_reason") == "barge_in"
         and (cancel_ms is None or cancel_ms <= 400.0)
     )
+    ok = ok and _codec_ok(codec_stats)
     return BargeLiveTrial(
         phrase=phrase,
+        codec=codec,
         ok=ok,
         interrupted_turn_id=_optional_int(session.get("turn_id")),
         interruption_cancel_ms=cancel_ms,
@@ -79,6 +100,12 @@ def run_barge_live_trial(
         reply=str(session.get("reply") or ""),
         discard_reason=str(session.get("discard_reason") or ""),
         outcome=str(session.get("outcome") or ""),
+        packets_drained=codec_stats.packets_drained,
+        packet_drops=codec_stats.packet_drops,
+        encoded_bytes=codec_stats.encoded_bytes,
+        enable_ok=codec_stats.enable_ok,
+        disable_ok=codec_stats.disable_ok,
+        server_codec_confirmed=codec_stats.server_codec_confirmed,
     )
 
 
@@ -89,8 +116,10 @@ def format_barge_live_markdown(trial: BargeLiveTrial) -> str:
             "# Barge-in Live",
             "",
             f"- Status: {status}",
+            f"- Codec: {trial.codec}",
             f"- Turno interrompido: {trial.interrupted_turn_id if trial.interrupted_turn_id is not None else ''}",
             f"- Cancelamento: {_fmt_float(trial.interruption_cancel_ms)} ms",
+            f"- Opus packets/drops/bytes: {trial.packets_drained}/{trial.packet_drops}/{trial.encoded_bytes}",
             f"- Outcome: {trial.outcome}",
             f"- Descarte: {trial.discard_reason}",
             f"- Transcript: {trial.transcript}",
@@ -218,6 +247,19 @@ def _optional_int(value: object) -> int | None:
 
 def _fmt_float(value: float | None) -> str:
     return "" if value is None else f"{value:.1f}"
+
+
+def _codec_ok(stats: CodecV2LiveStats) -> bool:
+    if stats.codec == "pcm16":
+        return stats.disable_ok and stats.server_codec_confirmed
+    return (
+        stats.enable_ok
+        and stats.disable_ok
+        and stats.server_codec_confirmed
+        and stats.packets_drained > 0
+        and stats.packet_drops == 0
+        and stats.encoded_bytes > 0
+    )
 
 
 __all__ = [
