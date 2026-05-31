@@ -815,14 +815,19 @@ Validacao em hardware:
 - Validacao local do caminho feed PCM16 -> worker Opus:
   - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
   - `server/tests/test_server_facade.py`: 117 testes;
-  - `idf.py build` limpo;
-  - precisa flash para validacao em hardware com
-    `noisebot_server --host 192.168.1.30 debug codec-v2 worker-feed-test --frames 10 --json`;
-    esperado: `pcm_frames_in_delta=10`, `packets_out_delta=10`,
-    `worker_opus_packets_delta=10`, `worker_opus_encoded_bytes_delta>0`,
-    `pending_samples_after=0`, `packet_drops_delta=0`,
-    `queue_count_after=0`, `worker_state_after=stopped` e `capture-v2`
-    desligado.
+  - `idf.py build` limpo.
+- Validacao em hardware do caminho feed PCM16 -> worker Opus apos flash:
+  - `worker-feed-test --frames 10` retornou `ok=true`,
+    `attempted_frames=10`, `attempted_samples=9600`,
+    `pcm_frames_in_delta=10`, `packets_out_delta=10`,
+    `worker_drained_packets_delta=10`, `worker_opus_packets_delta=10`,
+    `worker_opus_encoded_bytes_delta=2434`,
+    `worker_opus_last_packet_bytes=242`, `packet_drops_delta=0`,
+    `queue_count_after=0`, `pending_samples_after=0`,
+    `worker_state_after=stopped`, `error=ESP_OK`;
+  - `capture-v2 status` apos o teste permaneceu com
+    `real_capture_enabled=false`, `session_active=false`,
+    `state=IDLE_SESSION` e `last_error=ESP_OK`.
 - Validacao em hardware do worker Opus multi-pacote sintetico apos flash:
   - `worker-stress-test --packets 10` retornou `ok=true`,
     `accepted_packets=10`, `worker_drained_packets_delta=10`,

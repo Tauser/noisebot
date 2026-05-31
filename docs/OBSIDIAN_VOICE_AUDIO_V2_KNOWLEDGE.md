@@ -850,8 +850,16 @@ Validacao:
   - validacao local do worker Opus multi-pacote sintetico: teste focado bridge
     6, teste focado server 116 e `idf.py build`.
   - validacao local do caminho feed PCM16 -> worker Opus: teste focado bridge
-    6, teste focado server 117 e `idf.py build`; precisa flash para validar em
-    hardware com `codec-v2 worker-feed-test --frames 10`.
+    6, teste focado server 117 e `idf.py build`.
+  - validacao em hardware do caminho feed PCM16 -> worker Opus:
+    `worker-feed-test --frames 10` retornou `attempted_frames=10`,
+    `attempted_samples=9600`, `pcm_frames_in_delta=10`,
+    `packets_out_delta=10`, `worker_drained_packets_delta=10`,
+    `worker_opus_packets_delta=10`, `worker_opus_encoded_bytes_delta=2434`,
+    `worker_opus_last_packet_bytes=242`, `packet_drops_delta=0`,
+    `queue_count_after=0`, `pending_samples_after=0`,
+    `worker_state_after=stopped`, `error=ESP_OK`; `capture-v2 status` apos o
+    teste permaneceu desligado e em `IDLE_SESSION`.
   - validacao em hardware do worker Opus multi-pacote sintetico:
     `worker-stress-test --packets 10` retornou `accepted_packets=10`,
     `worker_drained_packets_delta=10`, `worker_opus_packets_delta=10`,
