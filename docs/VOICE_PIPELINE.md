@@ -82,6 +82,10 @@ diagnostico em `codec-v2 reset` zera contadores, fila e amostras pendentes
 sem alterar `format=pcm16` nem o contrato fixo do codec. Em hardware, após
 flash, `encode-test -> reset -> status` confirmou contadores zerados,
 `pending_samples=0`, `format=pcm16`, `ESP_OK` e `capture-v2` desligado.
+O overflow-test diagnostico em `codec-v2 overflow-test --packets N` limpa o
+estado antes e depois do teste, tenta enfileirar pacotes completos sinteticos e
+retorna metricas separadas (`accepted_packets`, `dropped_packets`,
+`peak_queue_count`) sem deixar drops acumulados no status global.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,

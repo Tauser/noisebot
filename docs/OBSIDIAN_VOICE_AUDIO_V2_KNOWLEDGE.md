@@ -752,10 +752,12 @@ Validacao:
   - server proxy: `/api/device/audio/codec-v2/encode-test`;
   - server proxy: `/api/device/audio/codec-v2/drain`;
   - server proxy: `/api/device/audio/codec-v2/reset`;
+  - server proxy: `/api/device/audio/codec-v2/overflow-test`;
   - CLI: `noisebot_server debug codec-v2 status`;
   - CLI: `noisebot_server debug codec-v2 encode-test`;
   - CLI: `noisebot_server debug codec-v2 drain`;
   - CLI: `noisebot_server debug codec-v2 reset`;
+  - CLI: `noisebot_server debug codec-v2 overflow-test --packets N`;
   - `encode-test` e sintetico PCM16 passthrough: incrementa contadores de
     frame/pacote sem worker, sem Opus real, sem bridge e sem captura;
   - packetizer sintetico acumula chunks PCM16 de 256 samples ate frame de
@@ -767,6 +769,10 @@ Validacao:
   - reset diagnostico zera `pcm_frames_in`, `packets_out`, `packet_drops`,
     `queue_count` e `pending_samples`, preservando `format=pcm16` e contrato
     fixo do codec;
+  - overflow-test diagnostico e autocontido: limpa antes e depois, reporta
+    `attempted_packets`, `accepted_packets`, `dropped_packets`,
+    `peak_queue_count`, `queue_count_after_cleanup` e
+    `status_packet_drops_after_cleanup`, sem poluir status global;
   - validado em hardware apos flash:
     `initialized=false`, `format=pcm16`, `opus_frame_ms=60`,
     `opus_frame_samples=960`, `opus_bitrate=32000`,
@@ -784,6 +790,9 @@ Validacao:
     server 107, bridge completo 160, server completo 122 e `idf.py build`.
   - validacao local do reset diagnostico: teste focado bridge 6, teste focado
     server 109, bridge completo 160, server completo 124 e `idf.py build`.
+  - validacao local do overflow-test diagnostico: teste focado bridge 6, teste
+    focado server 111, bridge completo 160, server completo 126 e
+    `idf.py build`.
   - validacao em hardware do reset diagnostico apos flash:
     status inicial zerado, `encode-test` gerou `queue_count=1` e
     `pending_samples=64`, `reset` zerou contadores/fila/pendencias,
