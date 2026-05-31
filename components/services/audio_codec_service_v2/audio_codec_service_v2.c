@@ -8,6 +8,7 @@
 #include "esp_heap_caps.h"
 #include "esp_opus_enc.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -17,7 +18,7 @@
 #define OPUS_TEST_TASK_PRIORITY 2U
 #define OPUS_TEST_TASK_CORE 0
 #define OPUS_TEST_TIMEOUT_MS 8000U
-#define CODEC_WORKER_TASK_STACK (2048U * 6U)
+#define CODEC_WORKER_TASK_STACK OPUS_TEST_TASK_STACK
 #define CODEC_WORKER_TASK_PRIORITY 2U
 #define CODEC_WORKER_TASK_CORE 0
 #define CODEC_WORKER_STOP_TIMEOUT_MS 2000U
@@ -219,7 +220,11 @@ static void codec_worker_task(void *arg)
         if (s_worker_done != NULL) {
             xSemaphoreGive(s_worker_done);
         }
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+        vTaskDeleteWithCaps(NULL);
+#else
         vTaskDelete(NULL);
+#endif
         return;
     }
 
@@ -278,7 +283,11 @@ static void codec_worker_task(void *arg)
     if (s_worker_done != NULL) {
         xSemaphoreGive(s_worker_done);
     }
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+    vTaskDeleteWithCaps(NULL);
+#else
     vTaskDelete(NULL);
+#endif
 }
 
 static void enqueue_synthetic_packet(void)
@@ -523,7 +532,19 @@ esp_err_t audio_codec_service_v2_worker_start(void)
     s_status.worker_active = false;
     s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_STARTING;
 
-    BaseType_t rc = xTaskCreatePinnedToCore(
+    BaseType_t rc;
+#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
+    rc = xTaskCreatePinnedToCoreWithCaps(
+        codec_worker_task,
+        "nb_codec_v2_worker",
+        CODEC_WORKER_TASK_STACK,
+        NULL,
+        CODEC_WORKER_TASK_PRIORITY,
+        &s_worker_task,
+        CODEC_WORKER_TASK_CORE,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    rc = xTaskCreatePinnedToCore(
         codec_worker_task,
         "nb_codec_v2_worker",
         CODEC_WORKER_TASK_STACK,
@@ -531,6 +552,7 @@ esp_err_t audio_codec_service_v2_worker_start(void)
         CODEC_WORKER_TASK_PRIORITY,
         &s_worker_task,
         CODEC_WORKER_TASK_CORE);
+#endif
     if (rc != pdPASS) {
         s_worker_task = NULL;
         s_status.worker_active = false;
