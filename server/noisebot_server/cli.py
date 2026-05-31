@@ -509,7 +509,8 @@ def run_debug_command(args: argparse.Namespace) -> None:
         if not firmware_url:
             raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
 
-        client = FirmwareDiagClient(firmware_url.rstrip("/") + "/")
+        timeout_s = 10.0 if args.action == "opus-encode-test" else 1.5
+        client = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=timeout_s)
         if args.action == "status":
             payload = client.audio_capture_v2_status()
         elif args.action == "replay":

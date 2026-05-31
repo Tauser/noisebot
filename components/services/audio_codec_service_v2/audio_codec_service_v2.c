@@ -7,9 +7,16 @@
 #include "esp_audio_types.h"
 #include "esp_heap_caps.h"
 #include "esp_opus_enc.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 #include <string.h>
 
 #define OPUS_TEST_MAX_BYTES 1024U
+#define OPUS_TEST_TASK_STACK (2048U * 12U)
+#define OPUS_TEST_TASK_PRIORITY 2U
+#define OPUS_TEST_TASK_CORE 0
+#define OPUS_TEST_TIMEOUT_MS 8000U
 #define OPUS_ENC_CONFIG() {                                      \
         .sample_rate        = ESP_AUDIO_SAMPLE_RATE_16K,         \
         .channel            = ESP_AUDIO_MONO,                    \
@@ -31,6 +38,11 @@ static int16_t s_pending_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
 static uint16_t s_pending_samples;
 static int16_t s_opus_test_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
 static uint8_t s_opus_test_out[OPUS_TEST_MAX_BYTES];
+static StaticSemaphore_t s_opus_test_done_buf;
+static SemaphoreHandle_t s_opus_test_done;
+static TaskHandle_t s_opus_test_task;
+static nb_audio_codec_v2_opus_test_result_t s_opus_test_result;
+static esp_err_t s_opus_test_err = ESP_ERR_INVALID_STATE;
 
 static uint32_t heap_free_kb(uint32_t caps)
 {
@@ -49,6 +61,95 @@ static void fill_opus_test_frame(void)
     for (uint16_t i = 0; i < NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES; i++) {
         s_opus_test_frame[i] = (int16_t)(((int32_t)(i & 0x3fU) * 64) - 2048);
     }
+}
+
+static esp_err_t opus_encode_test_inline(nb_audio_codec_v2_opus_test_result_t *out)
+{
+    if (out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memset(out, 0, sizeof(*out));
+    out->codec_error = -1;
+    out->internal_before_kb = heap_free_kb(MALLOC_CAP_INTERNAL);
+    out->dma_before_kb = heap_free_kb(MALLOC_CAP_DMA);
+    out->psram_before_kb = heap_free_kb(MALLOC_CAP_SPIRAM);
+
+    void *enc = NULL;
+    esp_opus_enc_config_t cfg = OPUS_ENC_CONFIG();
+    esp_audio_err_t codec_err = esp_opus_enc_open(&cfg, sizeof(cfg), &enc);
+    out->codec_error = (int)codec_err;
+    out->internal_after_open_kb = heap_free_kb(MALLOC_CAP_INTERNAL);
+    out->dma_after_open_kb = heap_free_kb(MALLOC_CAP_DMA);
+    out->psram_after_open_kb = heap_free_kb(MALLOC_CAP_SPIRAM);
+
+    if (codec_err != ESP_AUDIO_ERR_OK || enc == NULL) {
+        s_status.opus_codec_error = (int)codec_err;
+        if (enc != NULL) {
+            esp_opus_enc_close(enc);
+        }
+        out->internal_after_close_kb = heap_free_kb(MALLOC_CAP_INTERNAL);
+        out->dma_after_close_kb = heap_free_kb(MALLOC_CAP_DMA);
+        out->psram_after_close_kb = heap_free_kb(MALLOC_CAP_SPIRAM);
+        return ESP_ERR_NO_MEM;
+    }
+
+    int frame_bytes = 0;
+    int out_bytes = 0;
+    codec_err = esp_opus_enc_get_frame_size(enc, &frame_bytes, &out_bytes);
+    out->codec_error = (int)codec_err;
+    out->frame_samples = (uint16_t)(frame_bytes / (int)sizeof(int16_t));
+    out->outbuf_bytes = (uint16_t)out_bytes;
+
+    if (codec_err == ESP_AUDIO_ERR_OK &&
+        out->frame_samples == NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES &&
+        out_bytes > 0 &&
+        out_bytes <= (int)sizeof(s_opus_test_out)) {
+        fill_opus_test_frame();
+        esp_audio_enc_in_frame_t in = {
+            .buffer = (uint8_t *)s_opus_test_frame,
+            .len = (uint32_t)frame_bytes,
+        };
+        esp_audio_enc_out_frame_t encoded = {
+            .buffer = s_opus_test_out,
+            .len = (uint32_t)out_bytes,
+            .encoded_bytes = 0,
+        };
+
+        codec_err = esp_opus_enc_process(enc, &in, &encoded);
+        out->codec_error = (int)codec_err;
+        out->encoded_bytes = (uint16_t)encoded.encoded_bytes;
+    }
+
+    esp_opus_enc_close(enc);
+    out->internal_after_close_kb = heap_free_kb(MALLOC_CAP_INTERNAL);
+    out->dma_after_close_kb = heap_free_kb(MALLOC_CAP_DMA);
+    out->psram_after_close_kb = heap_free_kb(MALLOC_CAP_SPIRAM);
+
+    s_status.opus_codec_error = out->codec_error;
+    if (codec_err != ESP_AUDIO_ERR_OK ||
+        out->frame_samples != NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES ||
+        out->encoded_bytes == 0U) {
+        return ESP_FAIL;
+    }
+
+    s_status.pcm_frames_in++;
+    s_status.packets_out++;
+    s_status.opus_encode_tests++;
+    s_status.opus_last_packet_bytes = out->encoded_bytes;
+    s_status.opus_encoded_bytes_total += out->encoded_bytes;
+    return ESP_OK;
+}
+
+static void opus_encode_test_task(void *arg)
+{
+    (void)arg;
+    s_opus_test_err = opus_encode_test_inline(&s_opus_test_result);
+    s_opus_test_task = NULL;
+    if (s_opus_test_done != NULL) {
+        xSemaphoreGive(s_opus_test_done);
+    }
+    vTaskDelete(NULL);
 }
 
 static void enqueue_synthetic_packet(void)
@@ -216,74 +317,40 @@ esp_err_t audio_codec_service_v2_opus_encode_test(
         return ESP_ERR_INVALID_ARG;
     }
 
-    memset(out, 0, sizeof(*out));
-    out->codec_error = -1;
-    out->internal_before_kb = heap_free_kb(MALLOC_CAP_INTERNAL);
-    out->dma_before_kb = heap_free_kb(MALLOC_CAP_DMA);
-    out->psram_before_kb = heap_free_kb(MALLOC_CAP_SPIRAM);
+    if (s_opus_test_task != NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
-    void *enc = NULL;
-    esp_opus_enc_config_t cfg = OPUS_ENC_CONFIG();
-    esp_audio_err_t codec_err = esp_opus_enc_open(&cfg, sizeof(cfg), &enc);
-    out->codec_error = (int)codec_err;
-    out->internal_after_open_kb = heap_free_kb(MALLOC_CAP_INTERNAL);
-    out->dma_after_open_kb = heap_free_kb(MALLOC_CAP_DMA);
-    out->psram_after_open_kb = heap_free_kb(MALLOC_CAP_SPIRAM);
-
-    if (codec_err != ESP_AUDIO_ERR_OK || enc == NULL) {
-        s_status.opus_codec_error = (int)codec_err;
-        if (enc != NULL) {
-            esp_opus_enc_close(enc);
+    if (s_opus_test_done == NULL) {
+        s_opus_test_done = xSemaphoreCreateBinaryStatic(&s_opus_test_done_buf);
+        if (s_opus_test_done == NULL) {
+            return ESP_ERR_NO_MEM;
         }
-        out->internal_after_close_kb = heap_free_kb(MALLOC_CAP_INTERNAL);
-        out->dma_after_close_kb = heap_free_kb(MALLOC_CAP_DMA);
-        out->psram_after_close_kb = heap_free_kb(MALLOC_CAP_SPIRAM);
+    }
+    while (xSemaphoreTake(s_opus_test_done, 0) == pdTRUE) {
+    }
+
+    memset(&s_opus_test_result, 0, sizeof(s_opus_test_result));
+    s_opus_test_result.codec_error = -1;
+    s_opus_test_err = ESP_ERR_TIMEOUT;
+
+    BaseType_t rc = xTaskCreatePinnedToCore(
+        opus_encode_test_task,
+        "nb_codec_v2_opus_test",
+        OPUS_TEST_TASK_STACK,
+        NULL,
+        OPUS_TEST_TASK_PRIORITY,
+        &s_opus_test_task,
+        OPUS_TEST_TASK_CORE);
+    if (rc != pdPASS) {
+        s_opus_test_task = NULL;
         return ESP_ERR_NO_MEM;
     }
 
-    int frame_bytes = 0;
-    int out_bytes = 0;
-    codec_err = esp_opus_enc_get_frame_size(enc, &frame_bytes, &out_bytes);
-    out->codec_error = (int)codec_err;
-    out->frame_samples = (uint16_t)(frame_bytes / (int)sizeof(int16_t));
-    out->outbuf_bytes = (uint16_t)out_bytes;
-
-    if (codec_err == ESP_AUDIO_ERR_OK &&
-        out->frame_samples == NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES &&
-        out_bytes > 0 &&
-        out_bytes <= (int)sizeof(s_opus_test_out)) {
-        fill_opus_test_frame();
-        esp_audio_enc_in_frame_t in = {
-            .buffer = (uint8_t *)s_opus_test_frame,
-            .len = (uint32_t)frame_bytes,
-        };
-        esp_audio_enc_out_frame_t encoded = {
-            .buffer = s_opus_test_out,
-            .len = (uint32_t)out_bytes,
-            .encoded_bytes = 0,
-        };
-
-        codec_err = esp_opus_enc_process(enc, &in, &encoded);
-        out->codec_error = (int)codec_err;
-        out->encoded_bytes = (uint16_t)encoded.encoded_bytes;
+    if (xSemaphoreTake(s_opus_test_done, pdMS_TO_TICKS(OPUS_TEST_TIMEOUT_MS)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
     }
 
-    esp_opus_enc_close(enc);
-    out->internal_after_close_kb = heap_free_kb(MALLOC_CAP_INTERNAL);
-    out->dma_after_close_kb = heap_free_kb(MALLOC_CAP_DMA);
-    out->psram_after_close_kb = heap_free_kb(MALLOC_CAP_SPIRAM);
-
-    s_status.opus_codec_error = out->codec_error;
-    if (codec_err != ESP_AUDIO_ERR_OK ||
-        out->frame_samples != NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES ||
-        out->encoded_bytes == 0U) {
-        return ESP_FAIL;
-    }
-
-    s_status.pcm_frames_in++;
-    s_status.packets_out++;
-    s_status.opus_encode_tests++;
-    s_status.opus_last_packet_bytes = out->encoded_bytes;
-    s_status.opus_encoded_bytes_total += out->encoded_bytes;
-    return ESP_OK;
+    *out = s_opus_test_result;
+    return s_opus_test_err;
 }

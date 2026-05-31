@@ -117,8 +117,10 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"queue_count_after_cleanup\\":%lu' in web
     assert "audio_codec_service_v2_encode_test_once()" in web
     assert "audio_codec_service_v2_init()" not in web
-    assert "xTaskCreate" not in codec_c
-    assert "xTaskCreatePinnedToCore" not in codec_c
+    assert "xTaskCreatePinnedToCore(" in codec_c
+    assert '"nb_codec_v2_opus_test"' in codec_c
+    assert "OPUS_TEST_TASK_STACK" in codec_c
+    assert "OPUS_TEST_TIMEOUT_MS" in codec_c
     assert "audio_codec_service_v2" in infra_cmake
     assert "#define NB_VOICE_CAPTURE_V2_WAIT_FOR_SPEECH_MS  8000U" in capture_h
     assert "#define NB_VOICE_CAPTURE_V2_END_SILENCE_MS      900U" in capture_h
