@@ -59,6 +59,11 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "uint32_t worker_opus_packets;" in codec_h
     assert "uint32_t worker_opus_encoded_bytes_total;" in codec_h
     assert "uint16_t worker_opus_last_packet_bytes;" in codec_h
+    assert "NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES 16U" in codec_h
+    assert "uint32_t worker_payload_packets;" in codec_h
+    assert "uint32_t worker_payload_bytes_total;" in codec_h
+    assert "uint32_t worker_payload_last_checksum;" in codec_h
+    assert "uint8_t worker_payload_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];" in codec_h
     assert "uint32_t opus_encode_tests;" in codec_h
     assert "uint32_t opus_encoded_bytes_total;" in codec_h
     assert "uint16_t opus_last_packet_bytes;" in codec_h
@@ -124,6 +129,8 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "s_status.worker_opus_packets++;" in codec_c
     assert "s_status.worker_opus_encoded_bytes_total += encoded_bytes;" in codec_c
     assert "s_status.worker_opus_last_packet_bytes = encoded_bytes;" in codec_c
+    assert "observe_worker_payload(s_worker_opus_out, encoded_bytes);" in codec_c
+    assert "checksum_payload(" in codec_c
     assert "esp_opus_enc_open" in codec_c
     assert "esp_opus_enc_process" in codec_c
     assert "esp_opus_enc_close" in codec_c
@@ -138,6 +145,8 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "out->worker_opus_encoded_bytes_delta" in codec_c
     assert "out->pcm_frames_in_delta" in codec_c
     assert "out->pending_samples_after" in codec_c
+    assert "out->worker_payload_packets_delta" in codec_c
+    assert "out->worker_payload_last_checksum" in codec_c
     assert '{ .uri = "/api/audio/codec-v2/worker/stress-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/worker/feed-test"' in web
     assert '\\"pending_samples\\":%u' in web
@@ -157,6 +166,9 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"intentional_overflow\\":true' in web
     assert '\\"worker_stress\\":true' in web
     assert '\\"worker_feed\\":true' in web
+    assert '\\"worker_payload_observer\\":true' in web
+    assert '\\"worker_payload_packets_delta\\":%lu' in web
+    assert '\\"worker_payload_preview_hex\\":\\"%s\\"' in web
     assert '\\"pcm_frames_in_delta\\":%lu' in web
     assert '\\"pending_samples_after\\":%u' in web
     assert '\\"worker_opus_packets_delta\\":%lu' in web

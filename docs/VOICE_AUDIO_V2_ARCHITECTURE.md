@@ -707,8 +707,14 @@ Implementacao atual:
   limpa estado, inicia o worker opt-in, alimenta ate 40 frames PCM16
   sinteticos de 960 samples pelo `audio_codec_service_v2_feed_pcm16()`,
   espera drenar/codificar, para o worker e retorna deltas de frames PCM,
-  pacotes, bytes Opus, drops, fila final, pendencias e estado final; nao toca
-  captura, bridge ou playback;
+  pacotes, bytes Opus, payloads observados, checksum/preview do ultimo payload,
+  drops, fila final, pendencias e estado final; nao toca captura, bridge ou
+  playback;
+- o worker Opus agora observa o payload codificado localmente: a cada pacote
+  drenado ele atualiza `worker_payload_packets`, `worker_payload_bytes_total`,
+  `worker_payload_last_sequence`, `worker_payload_last_checksum` e uma preview
+  fixa de ate 16 bytes em hex; isso e apenas diagnostico, nao existe fila de
+  rede nem envio ao bridge;
 - `reset` preserva o estado do worker quando ele esta ativo, evitando status
   incoerente ou segunda task acidental;
 - o server expoe proxy diagnostico em `/api/device/audio/codec-v2`;
@@ -816,6 +822,18 @@ Validacao em hardware:
   - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
   - `server/tests/test_server_facade.py`: 117 testes;
   - `idf.py build` limpo.
+- Validacao local do observador de payload Opus do worker:
+  - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
+  - `server/tests/test_server_facade.py`: 117 testes;
+  - `idf.py build` limpo;
+  - precisa flash para validacao em hardware com
+    `noisebot_server --host 192.168.1.30 debug codec-v2 worker-feed-test --frames 10 --json`;
+    esperado: `worker_payload_packets_delta=10`,
+    `worker_payload_bytes_delta=2434`, `worker_payload_last_bytes=242`,
+    `worker_payload_last_sequence=10`, `worker_payload_last_checksum>0`,
+    `worker_payload_preview_len=16`, `worker_payload_preview_hex` nao vazio,
+    `packet_drops_delta=0`, `queue_count_after=0`,
+    `worker_state_after=stopped` e `capture-v2` desligado.
 - Validacao em hardware do caminho feed PCM16 -> worker Opus apos flash:
   - `worker-feed-test --frames 10` retornou `ok=true`,
     `attempted_frames=10`, `attempted_samples=9600`,

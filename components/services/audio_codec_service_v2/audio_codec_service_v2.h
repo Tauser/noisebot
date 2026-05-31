@@ -22,6 +22,7 @@ extern "C" {
 #define NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES 960U
 #define NB_AUDIO_CODEC_V2_OPUS_BITRATE       32000U
 #define NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS  40U
+#define NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES 16U
 #define NB_AUDIO_CODEC_V2_OVERFLOW_TEST_MAX_PACKETS 200U
 #define NB_AUDIO_CODEC_V2_WORKER_STRESS_MAX_PACKETS NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS
 
@@ -53,6 +54,13 @@ typedef struct {
     uint32_t worker_opus_packets;
     uint32_t worker_opus_encoded_bytes_total;
     uint16_t worker_opus_last_packet_bytes;
+    uint32_t worker_payload_packets;
+    uint32_t worker_payload_bytes_total;
+    uint16_t worker_payload_last_bytes;
+    uint32_t worker_payload_last_sequence;
+    uint32_t worker_payload_last_checksum;
+    uint8_t worker_payload_preview_len;
+    uint8_t worker_payload_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];
     uint32_t opus_encode_tests;
     uint32_t opus_encoded_bytes_total;
     uint16_t opus_last_packet_bytes;
@@ -106,6 +114,13 @@ typedef struct {
     uint32_t worker_opus_packets_delta;
     uint32_t worker_opus_encoded_bytes_delta;
     uint16_t worker_opus_last_packet_bytes;
+    uint32_t worker_payload_packets_delta;
+    uint32_t worker_payload_bytes_delta;
+    uint16_t worker_payload_last_bytes;
+    uint32_t worker_payload_last_sequence;
+    uint32_t worker_payload_last_checksum;
+    uint8_t worker_payload_preview_len;
+    uint8_t worker_payload_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];
     uint32_t packet_drops_delta;
     uint32_t queue_count_after;
     uint16_t pending_samples_after;

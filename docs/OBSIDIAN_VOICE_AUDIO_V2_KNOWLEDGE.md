@@ -812,8 +812,14 @@ Validacao:
     a task drenar e codificar, para o worker e retorna
     `pcm_frames_in_delta`, `packets_out_delta`, `worker_opus_packets_delta`,
     `worker_opus_encoded_bytes_delta`, `pending_samples_after`,
+    `worker_payload_packets_delta`, `worker_payload_bytes_delta`,
+    `worker_payload_last_checksum`, `worker_payload_preview_hex`,
     `packet_drops_delta`, `queue_count_after` e `worker_state_after`, sem
     captura, bridge ou playback;
+  - observador de payload do worker Opus: a cada pacote codificado, o worker
+    atualiza contadores de payload, bytes totais, sequencia, checksum e preview
+    fixa de ate 16 bytes; isso e apenas diagnostico e nao envia dados ao
+    bridge;
   - reset diagnostico preserva o estado do worker quando ele esta ativo, para
     evitar status incoerente ou uma segunda task acidental;
   - validado em hardware apos flash:
@@ -851,6 +857,9 @@ Validacao:
     6, teste focado server 116 e `idf.py build`.
   - validacao local do caminho feed PCM16 -> worker Opus: teste focado bridge
     6, teste focado server 117 e `idf.py build`.
+  - validacao local do observador de payload Opus do worker: teste focado
+    bridge 6, teste focado server 117 e `idf.py build`; precisa flash para
+    validar em hardware via `codec-v2 worker-feed-test --frames 10`.
   - validacao em hardware do caminho feed PCM16 -> worker Opus:
     `worker-feed-test --frames 10` retornou `attempted_frames=10`,
     `attempted_samples=9600`, `pcm_frames_in_delta=10`,

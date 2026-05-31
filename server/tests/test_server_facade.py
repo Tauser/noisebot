@@ -1329,6 +1329,14 @@ def test_server_cli_runs_codec_v2_worker_feed_test_debug_command(monkeypatch, ca
             "worker_opus_packets_delta": frames,
             "worker_opus_encoded_bytes_delta": frames * 248,
             "worker_opus_last_packet_bytes": 248,
+            "worker_payload_observer": True,
+            "worker_payload_packets_delta": frames,
+            "worker_payload_bytes_delta": frames * 248,
+            "worker_payload_last_bytes": 248,
+            "worker_payload_last_sequence": frames,
+            "worker_payload_last_checksum": 123456,
+            "worker_payload_preview_len": 16,
+            "worker_payload_preview_hex": "00112233445566778899aabbccddeeff",
             "packet_drops_delta": 0,
             "queue_count_after": 0,
             "pending_samples_after": 0,
@@ -1355,6 +1363,8 @@ def test_server_cli_runs_codec_v2_worker_feed_test_debug_command(monkeypatch, ca
 
     captured = capsys.readouterr()
     assert '"worker_feed": true' in captured.out
+    assert '"worker_payload_observer": true' in captured.out
+    assert '"worker_payload_preview_hex": "00112233445566778899aabbccddeeff"' in captured.out
     assert '"pcm_frames_in_delta": 10' in captured.out
     assert '"pending_samples_after": 0' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"

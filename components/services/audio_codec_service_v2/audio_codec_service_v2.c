@@ -78,6 +78,35 @@ static void fill_synthetic_opus_frame(int16_t *frame)
     }
 }
 
+static uint32_t checksum_payload(const uint8_t *payload, uint16_t payload_bytes)
+{
+    uint32_t hash = 2166136261UL;
+
+    for (uint16_t i = 0; i < payload_bytes; i++) {
+        hash ^= payload[i];
+        hash *= 16777619UL;
+    }
+
+    return hash;
+}
+
+static void observe_worker_payload(const uint8_t *payload, uint16_t payload_bytes)
+{
+    if (payload == NULL || payload_bytes == 0U) {
+        return;
+    }
+
+    s_status.worker_payload_packets++;
+    s_status.worker_payload_bytes_total += payload_bytes;
+    s_status.worker_payload_last_bytes = payload_bytes;
+    s_status.worker_payload_last_sequence++;
+    s_status.worker_payload_last_checksum = checksum_payload(payload, payload_bytes);
+    s_status.worker_payload_preview_len = payload_bytes < NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES
+                                              ? (uint8_t)payload_bytes
+                                              : (uint8_t)NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES;
+    memcpy(s_status.worker_payload_preview, payload, s_status.worker_payload_preview_len);
+}
+
 static esp_err_t encode_synthetic_opus_frame(
     void *enc,
     int16_t *frame,
@@ -251,6 +280,7 @@ static void codec_worker_task(void *arg)
             s_status.worker_opus_packets++;
             s_status.worker_opus_last_packet_bytes = encoded_bytes;
             s_status.worker_opus_encoded_bytes_total += encoded_bytes;
+            observe_worker_payload(s_worker_opus_out, encoded_bytes);
         }
         vTaskDelay(pdMS_TO_TICKS(CODEC_WORKER_POLL_MS));
     }
@@ -273,6 +303,7 @@ static void codec_worker_task(void *arg)
         s_status.worker_opus_packets++;
         s_status.worker_opus_last_packet_bytes = encoded_bytes;
         s_status.worker_opus_encoded_bytes_total += encoded_bytes;
+        observe_worker_payload(s_worker_opus_out, encoded_bytes);
     }
 
     esp_opus_enc_close(enc);
@@ -706,6 +737,8 @@ esp_err_t audio_codec_service_v2_worker_feed_test(
     uint32_t drained_before = s_status.worker_drained_packets;
     uint32_t opus_packets_before = s_status.worker_opus_packets;
     uint32_t opus_bytes_before = s_status.worker_opus_encoded_bytes_total;
+    uint32_t payload_packets_before = s_status.worker_payload_packets;
+    uint32_t payload_bytes_before = s_status.worker_payload_bytes_total;
     uint32_t drops_before = s_status.packet_drops;
 
     for (uint32_t frame = 0; frame < frames; frame++) {
@@ -746,6 +779,13 @@ esp_err_t audio_codec_service_v2_worker_feed_test(
     out->worker_opus_packets_delta = s_status.worker_opus_packets - opus_packets_before;
     out->worker_opus_encoded_bytes_delta = s_status.worker_opus_encoded_bytes_total - opus_bytes_before;
     out->worker_opus_last_packet_bytes = s_status.worker_opus_last_packet_bytes;
+    out->worker_payload_packets_delta = s_status.worker_payload_packets - payload_packets_before;
+    out->worker_payload_bytes_delta = s_status.worker_payload_bytes_total - payload_bytes_before;
+    out->worker_payload_last_bytes = s_status.worker_payload_last_bytes;
+    out->worker_payload_last_sequence = s_status.worker_payload_last_sequence;
+    out->worker_payload_last_checksum = s_status.worker_payload_last_checksum;
+    out->worker_payload_preview_len = s_status.worker_payload_preview_len;
+    memcpy(out->worker_payload_preview, s_status.worker_payload_preview, sizeof(out->worker_payload_preview));
     out->packet_drops_delta = s_status.packet_drops - drops_before;
     out->queue_count_after = s_status.queue_count;
     out->pending_samples_after = s_pending_samples;

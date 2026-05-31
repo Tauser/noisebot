@@ -1661,12 +1661,35 @@ static const char *audio_codec_v2_format_name(nb_audio_codec_v2_format_t format)
     }
 }
 
+static void bytes_to_hex(const uint8_t *bytes, uint8_t byte_count, char *out, size_t out_size)
+{
+    static const char k_hex[] = "0123456789abcdef";
+    size_t pos = 0;
+
+    if (out == NULL || out_size == 0U) {
+        return;
+    }
+    if (bytes == NULL) {
+        out[0] = '\0';
+        return;
+    }
+
+    for (uint8_t i = 0; i < byte_count && (pos + 2U) < out_size; i++) {
+        out[pos++] = k_hex[(bytes[i] >> 4) & 0x0fU];
+        out[pos++] = k_hex[bytes[i] & 0x0fU];
+    }
+    out[pos] = '\0';
+}
+
 static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
 {
     nb_audio_codec_v2_status_t st;
     audio_codec_service_v2_get_status(&st);
+    char payload_preview_hex[(NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES * 2U) + 1U];
+    bytes_to_hex(st.worker_payload_preview, st.worker_payload_preview_len,
+                 payload_preview_hex, sizeof(payload_preview_hex));
 
-    char buf[1040];
+    char buf[1400];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"format\":\"%s\","
              "\"worker_supported\":%s,\"worker_active\":%s,"
@@ -1680,6 +1703,13 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              "\"worker_opus_packets\":%lu,"
              "\"worker_opus_encoded_bytes_total\":%lu,"
              "\"worker_opus_last_packet_bytes\":%u,"
+             "\"worker_payload_packets\":%lu,"
+             "\"worker_payload_bytes_total\":%lu,"
+             "\"worker_payload_last_bytes\":%u,"
+             "\"worker_payload_last_sequence\":%lu,"
+             "\"worker_payload_last_checksum\":%lu,"
+             "\"worker_payload_preview_len\":%u,"
+             "\"worker_payload_preview_hex\":\"%s\","
              "\"opus_encode_tests\":%lu,\"opus_encoded_bytes_total\":%lu,"
              "\"opus_last_packet_bytes\":%u,\"opus_codec_error\":%d,"
              "\"pending_samples\":%u,"
@@ -1704,6 +1734,13 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.worker_opus_packets,
              (unsigned long)st.worker_opus_encoded_bytes_total,
              (unsigned)st.worker_opus_last_packet_bytes,
+             (unsigned long)st.worker_payload_packets,
+             (unsigned long)st.worker_payload_bytes_total,
+             (unsigned)st.worker_payload_last_bytes,
+             (unsigned long)st.worker_payload_last_sequence,
+             (unsigned long)st.worker_payload_last_checksum,
+             (unsigned)st.worker_payload_preview_len,
+             payload_preview_hex,
              (unsigned long)st.opus_encode_tests,
              (unsigned long)st.opus_encoded_bytes_total,
              (unsigned)st.opus_last_packet_bytes,
@@ -1946,15 +1983,27 @@ static esp_err_t handle_api_audio_codec_v2_worker_feed_test(httpd_req_t *req)
                                    : "409 Conflict");
     }
 
-    char buf[900];
+    char payload_preview_hex[(NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES * 2U) + 1U];
+    bytes_to_hex(result.worker_payload_preview, result.worker_payload_preview_len,
+                 payload_preview_hex, sizeof(payload_preview_hex));
+
+    char buf[1300];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"diagnostic\":true,\"test_format\":\"opus\","
-             "\"worker_feed\":true,\"attempted_frames\":%lu,"
+             "\"worker_feed\":true,\"worker_payload_observer\":true,"
+             "\"attempted_frames\":%lu,"
              "\"attempted_samples\":%lu,\"pcm_frames_in_delta\":%lu,"
              "\"packets_out_delta\":%lu,\"worker_drained_packets_delta\":%lu,"
              "\"worker_opus_packets_delta\":%lu,"
              "\"worker_opus_encoded_bytes_delta\":%lu,"
              "\"worker_opus_last_packet_bytes\":%u,"
+             "\"worker_payload_packets_delta\":%lu,"
+             "\"worker_payload_bytes_delta\":%lu,"
+             "\"worker_payload_last_bytes\":%u,"
+             "\"worker_payload_last_sequence\":%lu,"
+             "\"worker_payload_last_checksum\":%lu,"
+             "\"worker_payload_preview_len\":%u,"
+             "\"worker_payload_preview_hex\":\"%s\","
              "\"packet_drops_delta\":%lu,\"queue_count_after\":%lu,"
              "\"pending_samples_after\":%u,\"worker_state_after\":\"%s\","
              "\"max_frames\":%u,\"error\":\"%s\"}",
@@ -1967,6 +2016,13 @@ static esp_err_t handle_api_audio_codec_v2_worker_feed_test(httpd_req_t *req)
              (unsigned long)result.worker_opus_packets_delta,
              (unsigned long)result.worker_opus_encoded_bytes_delta,
              (unsigned)result.worker_opus_last_packet_bytes,
+             (unsigned long)result.worker_payload_packets_delta,
+             (unsigned long)result.worker_payload_bytes_delta,
+             (unsigned)result.worker_payload_last_bytes,
+             (unsigned long)result.worker_payload_last_sequence,
+             (unsigned long)result.worker_payload_last_checksum,
+             (unsigned)result.worker_payload_preview_len,
+             payload_preview_hex,
              (unsigned long)result.packet_drops_delta,
              (unsigned long)result.queue_count_after,
              (unsigned)result.pending_samples_after,

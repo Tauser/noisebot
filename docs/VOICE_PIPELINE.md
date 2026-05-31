@@ -137,6 +137,13 @@ hardware apos flash, `--frames 10` retornou `pcm_frames_in_delta=10`,
 `worker_opus_encoded_bytes_delta=2434`, `packet_drops_delta=0`,
 `queue_count_after=0`, `pending_samples_after=0`, `worker_state_after=stopped`
 e `ESP_OK`; `capture-v2` permaneceu desligado.
+O worker Opus agora tem um observador diagnostico de payload: para cada pacote
+Opus codificado, ele atualiza contadores de payload, bytes totais, sequencia,
+checksum e preview fixa de ate 16 bytes do ultimo payload. Esses campos aparecem
+no status do Codec v2 e no `worker-feed-test`, mas nao criam fila de rede, nao
+enviam nada ao bridge e nao tocam captura/playback. A validacao local passou
+com contrato bridge focado, server facade e `idf.py build`; falta flash para
+validar em hardware com `worker-feed-test --frames 10`.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960
