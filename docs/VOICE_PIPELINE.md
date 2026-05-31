@@ -91,17 +91,22 @@ sempre com `peak_queue_count=40`, limpeza final em zero e `ESP_OK`; o status
 global do codec voltou limpo e `capture-v2` permaneceu desligado.
 O status do Codec v2 agora explicita o worker opt-in:
 `worker_supported=true`, `worker_active=false`, `worker_state=not_started` e
-`worker_drained_packets`. O boot nao cria task. `codec-v2 worker-start` cria a
-task FreeRTOS `nb_codec_v2_worker` apenas sob comando explicito; ela consome a
-fila sintetica e soma `worker_drained_packets`. `codec-v2 worker-stop` solicita
-parada, drena a fila restante e deixa `worker_state=stopped`. Isso ainda nao
-liga Opus persistente, bridge, captura ou playback v2; o PCM16/v1 segue como
-padrao. A validacao local passou com teste focado de contrato, `server/tests`,
-`bridge/tests` e `idf.py build`. Em hardware apos flash, a sequencia
+`worker_drained_packets`, alem dos contadores `worker_opus_*`. O boot nao cria
+task. `codec-v2 worker-start` cria a task FreeRTOS `nb_codec_v2_worker` apenas
+sob comando explicito; ela abre o encoder Opus no contexto do worker, consome a
+fila sintetica, codifica um frame sintetico de 960 samples por pacote, soma
+`worker_drained_packets` e atualiza `worker_opus_packets`,
+`worker_opus_encoded_bytes_total` e `worker_opus_last_packet_bytes`.
+`codec-v2 worker-stop` solicita parada, drena a fila restante e deixa
+`worker_state=stopped`. Isso ainda nao liga bridge, captura ou playback v2; o
+PCM16/v1 segue como padrao. A validacao local passou com teste focado de
+contrato, `server/tests`, `bridge/tests` e `idf.py build`. Em hardware, antes
+do Opus no worker, a sequencia
 `status -> worker-start -> encode-test -> status -> worker-stop -> capture-v2`
 confirmou `worker_supported=true`, worker rodando, `queue_count=0` apos drain
 pela task, `worker_drained_packets=1`, `worker_state=stopped` no stop,
-`packet_drops=0` e `capture-v2` desligado.
+`packet_drops=0` e `capture-v2` desligado. Falta flash para validar os
+contadores `worker_opus_*` em hardware.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

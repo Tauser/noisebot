@@ -766,8 +766,8 @@ Validacao:
   - CLI: `noisebot_server debug codec-v2 worker-stop`;
   - status atual publica o worker opt-in:
     `worker_supported=true`, `worker_active=false`,
-    `worker_state=not_started` e `worker_drained_packets`, sem criar task no
-    boot ou ligar Opus persistente;
+    `worker_state=not_started`, `worker_drained_packets` e contadores
+    `worker_opus_*`, sem criar task no boot;
   - `encode-test` e sintetico PCM16 passthrough: incrementa contadores de
     frame/pacote sem worker, sem Opus real, sem bridge e sem captura;
   - packetizer sintetico acumula chunks PCM16 de 256 samples ate frame de
@@ -789,10 +789,13 @@ Validacao:
     `encoded_bytes`, heap e `codec_error`, sem worker persistente, sem bridge,
     sem captura/playback e sem mudar o PCM16 como padrao;
   - worker opt-in: `worker-start` cria a task FreeRTOS
-    `nb_codec_v2_worker` apenas sob comando explicito; ela consome a fila
-    sintetica, incrementa `worker_drained_packets` e nao toca captura, bridge,
-    playback ou Opus persistente; `worker-stop` solicita parada, drena o
-    restante e retorna `worker_state=stopped`;
+    `nb_codec_v2_worker` apenas sob comando explicito; ela abre o encoder
+    Opus no contexto do worker, consome a fila sintetica, codifica um frame
+    sintetico de 960 samples por pacote, incrementa `worker_drained_packets`
+    e atualiza `worker_opus_packets`, `worker_opus_encoded_bytes_total` e
+    `worker_opus_last_packet_bytes`; nao toca captura, bridge ou playback;
+    `worker-stop` solicita parada, drena o restante e retorna
+    `worker_state=stopped`;
   - reset diagnostico preserva o estado do worker quando ele esta ativo, para
     evitar status incoerente ou uma segunda task acidental;
   - validado em hardware apos flash:
@@ -823,6 +826,9 @@ Validacao:
     `idf.py build`.
   - validacao local do worker opt-in: teste focado bridge 6, teste focado
     server 115, bridge completo 160, server completo 130 e `idf.py build`.
+  - validacao local do Opus dentro do worker opt-in: teste focado bridge 6,
+    teste focado server 115, bridge completo 160, server completo 130 e
+    `idf.py build`.
   - observacao de hardware: a tentativa inicial de rodar o encode Opus
     sincronamente no handler HTTP causou timeout e indisponibilidade HTTP; a
     correcao moveu o encode para task temporaria com stack proprio.
@@ -870,6 +876,12 @@ Validacao:
     `worker_active=false`, `worker_state=stopped`, `error=ESP_OK`;
     status seguinte confirmou HTTP saudavel, fila zerada e
     `opus_codec_error=0`; `capture-v2 status` permaneceu desligado.
+  - precisa validar em hardware apos flash: `codec-v2 worker-start`,
+    `codec-v2 encode-test`, `codec-v2 status`, `codec-v2 worker-stop` e
+    `capture-v2 status`; esperado: `queue_count=0`, `worker_drained_packets`
+    aumenta, `worker_opus_packets>0`, `worker_opus_encoded_bytes_total>0`,
+    `worker_opus_last_packet_bytes>0`, `packet_drops=0`,
+    `worker_state=stopped` e `capture-v2` desligado.
 - Packet drops zero em teste curto.
 - Transcript comparavel ao PCM16.
 - `server_codec_confirmed=true`.

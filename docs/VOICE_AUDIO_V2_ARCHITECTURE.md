@@ -665,8 +665,9 @@ Implementacao atual:
   zerados do skeleton;
 - o status do codec v2 expoe o worker opt-in:
   `worker_supported=true`, `worker_active=false`,
-  `worker_state=not_started` e `worker_drained_packets`; o boot nao cria task
-  e Opus real nao vira worker persistente;
+  `worker_state=not_started`, `worker_drained_packets`,
+  `worker_opus_packets`, `worker_opus_encoded_bytes_total` e
+  `worker_opus_last_packet_bytes`; o boot nao cria task;
 - `POST /api/audio/codec-v2/encode-test` executa um teste sintetico PCM16
   passthrough: incrementa `pcm_frames_in` e `packets_out`, mantendo
   `packet_drops=0` e sem fila pendente;
@@ -690,9 +691,10 @@ Implementacao atual:
   autocontido: limpa estado no inicio, tenta enfileirar N pacotes completos,
   reporta aceitos/drops/pico de fila e limpa estado ao final;
 - `POST /api/audio/codec-v2/worker/start` cria a task FreeRTOS
-  `nb_codec_v2_worker` apenas sob comando explicito; ela consome a fila
-  sintetica, soma `worker_drained_packets` e nao toca captura, bridge,
-  playback ou Opus persistente;
+  `nb_codec_v2_worker` apenas sob comando explicito; ela abre o encoder Opus
+  no contexto do worker, consome a fila sintetica, codifica um frame sintetico
+  de 960 samples por pacote, soma `worker_drained_packets` e atualiza os
+  contadores `worker_opus_*`; nao toca captura, bridge ou playback;
 - `POST /api/audio/codec-v2/worker/stop` solicita parada, drena a fila
   restante, aguarda confirmacao e deixa `worker_state=stopped`;
 - `reset` preserva o estado do worker quando ele esta ativo, evitando status
@@ -777,6 +779,12 @@ Validacao em hardware:
   - `server/tests`: 128 testes;
   - `idf.py build` limpo.
 - Validacao local do worker opt-in:
+  - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
+  - `server/tests/test_server_facade.py`: 115 testes;
+  - `bridge/tests`: 160 testes;
+  - `server/tests`: 130 testes;
+  - `idf.py build` limpo.
+- Validacao local do Opus dentro do worker opt-in:
   - `bridge/tests/test_firmware_audio_v2_skeleton_contract.py`: 6 testes;
   - `server/tests/test_server_facade.py`: 115 testes;
   - `bridge/tests`: 160 testes;
