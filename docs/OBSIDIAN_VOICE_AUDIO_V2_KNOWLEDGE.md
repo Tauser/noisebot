@@ -826,6 +826,16 @@ Validacao:
     `/api/audio/codec-v2/egress/drain`; o `worker-feed-test` drena essa fila
     automaticamente ao final e retorna `opus_egress_*`, sem tocar bridge,
     captura ou playback;
+  - stub de handoff Opus para bridge: endpoint diagnostico
+    `/api/audio/codec-v2/bridge-handoff-test`, proxy server
+    `/api/device/audio/codec-v2/bridge-handoff-test` e CLI
+    `noisebot_server debug codec-v2 bridge-handoff-test --frames N`; ele roda
+    `feed_pcm16 -> worker Opus -> egress`, registra `bridge_handoff_*` como
+    pacotes prontos para handoff e retorna `bridge_handoff_stub=true`,
+    `bridge_packet_not_sent=true` e `bridge_transport_unchanged=true`; nao
+    chama `bridge_service_send_opus_packet()`, nao renegocia HELLO, nao ativa
+    `bridge_service_set_opus_enabled()`, nao toca captura/playback e nao
+    promove Opus como padrao;
   - reset diagnostico preserva o estado do worker quando ele esta ativo, para
     evitar status incoerente ou uma segunda task acidental;
   - validado em hardware apos flash:
@@ -876,6 +886,14 @@ Validacao:
     `opus_egress_drained_after_test=10`,
     `opus_egress_queue_count_after_cleanup=0`, preview nao vazio,
     status final com `opus_egress_queue_count=0` e `capture-v2` desligado.
+  - validacao local do stub de handoff Opus para bridge: teste focado bridge
+    6, teste focado server 120 e `idf.py build`; precisa flash para validar em
+    hardware com `codec-v2 bridge-handoff-test --frames 10`, esperando
+    `bridge_handoff_stub=true`, `bridge_packet_not_sent=true`,
+    `bridge_transport_unchanged=true`, `bridge_handoff_packets_ready_delta=10`,
+    `bridge_handoff_bytes_ready_delta=2434`,
+    `opus_egress_queue_count_after_cleanup=0`, zero drops,
+    `worker_state_after=stopped` e `capture-v2` desligado.
   - validacao em hardware do caminho feed PCM16 -> worker Opus:
     `worker-feed-test --frames 10` retornou `attempted_frames=10`,
     `attempted_samples=9600`, `pcm_frames_in_delta=10`,

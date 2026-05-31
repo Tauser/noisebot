@@ -858,6 +858,25 @@ Validacao em hardware:
     `opus_egress_packet_drops=0`, `opus_egress_queue_count=0`;
   - `capture-v2 status` final confirmou `real_capture_enabled=false`,
     `session_active=false`, `state=IDLE_SESSION` e `last_error=ESP_OK`.
+- Stub de handoff Opus para bridge:
+  - novo endpoint diagnostico `/api/audio/codec-v2/bridge-handoff-test`;
+  - proxy server `/api/device/audio/codec-v2/bridge-handoff-test`;
+  - CLI `noisebot_server debug codec-v2 bridge-handoff-test --frames N`;
+  - internamente roda o mesmo caminho `feed_pcm16 -> worker Opus -> egress`,
+    registra `bridge_handoff_*` como pacotes prontos para handoff, mas retorna
+    `bridge_packet_not_sent=true` e `bridge_transport_unchanged=true`;
+  - nao chama `bridge_service_send_opus_packet()`, nao renegocia HELLO, nao
+    altera `bridge_service_set_opus_enabled()`, nao toca captura/playback e
+    nao promove Opus como padrao;
+  - validacao local: teste focado bridge 6, teste focado server 120 e
+    `idf.py build`; precisa flash para validar em hardware com
+    `noisebot_server --host 192.168.1.30 debug codec-v2 bridge-handoff-test --frames 10 --json`;
+    esperado: `bridge_handoff_stub=true`,
+    `bridge_transport_unchanged=true`, `bridge_packet_not_sent=true`,
+    `bridge_handoff_packets_ready_delta=10`,
+    `bridge_handoff_bytes_ready_delta=2434`,
+    `opus_egress_queue_count_after_cleanup=0`, zero drops,
+    `worker_state_after=stopped` e `capture-v2` desligado.
 - Validacao em hardware do caminho feed PCM16 -> worker Opus apos flash:
   - `worker-feed-test --frames 10` retornou `ok=true`,
     `attempted_frames=10`, `attempted_samples=9600`,
@@ -1075,14 +1094,21 @@ Metricas obrigatorias:
 
 ## Proxima Implementacao Permitida
 
-A Fase B ja criou apenas headers, CMake e fontes inativas dos novos
-componentes. A proxima mudanca de codigo deve ser a Fase C:
+A proxima mudanca permitida apos o stub de handoff Opus deve continuar sendo
+opt-in e diagnostica. Antes de qualquer transporte real de Opus para a bridge,
+validar em hardware:
 
-- ativar `audio_io_service_v2` somente como probe explicito;
-- ler mic e alimentar speaker com silencio sem tocar wake, bridge ou playback
-  atual;
-- expor metricas de chunks, falhas I2S, RMS/peak e heap;
-- manter rollback imediato para o pipeline v1.
+- `noisebot_server --host 192.168.1.30 debug codec-v2 bridge-handoff-test --frames 10 --json`;
+- `codec-v2 status` final com fila egress zerada, `format=pcm16` e
+  `error=ESP_OK`;
+- `capture-v2 status` final com `real_capture_enabled=false` e
+  `session_active=false`.
+
+Somente depois dessa validacao, consultar antes de abrir qualquer endpoint que
+envie Opus real ao `bridge_service`, altere HELLO/capabilities ou mude o
+transporte live. O proximo passo de codigo aceitavel sem decisao de produto e
+apenas ampliar diagnostico/observabilidade do handoff, mantendo
+`bridge_packet_not_sent=true`.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

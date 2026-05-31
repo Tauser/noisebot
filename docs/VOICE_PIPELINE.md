@@ -155,6 +155,14 @@ automatico ao final. A validacao local passou com contrato bridge focado,
 server facade e `idf.py build`; a validacao em hardware com
 `worker-feed-test --frames 10` retornou 10 pacotes egress, 2434 bytes, zero
 drops, cleanup da fila para zero e `capture-v2` desligado.
+O stub diagnostico `codec-v2 bridge-handoff-test --frames N` e o primeiro
+contrato de fronteira com a bridge: ele roda `feed_pcm16 -> worker Opus ->
+egress`, registra `bridge_handoff_*` como pacotes prontos, mas retorna
+`bridge_packet_not_sent=true` e `bridge_transport_unchanged=true`. Portanto
+ele ainda nao envia Opus pelo bridge, nao renegocia `HELLO`, nao ativa
+`bridge_service_set_opus_enabled()`, nao toca captura/playback e nao promove
+Opus como padrao. A validacao local passou com teste focado bridge, teste
+focado server e `idf.py build`; falta flash/validacao em hardware.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960
