@@ -105,14 +105,17 @@ do Opus no worker, a sequencia
 `status -> worker-start -> encode-test -> status -> worker-stop -> capture-v2`
 confirmou `worker_supported=true`, worker rodando, `queue_count=0` apos drain
 pela task, `worker_drained_packets=1`, `worker_state=stopped` no stop,
-`packet_drops=0` e `capture-v2` desligado. Falta flash para validar os
-contadores `worker_opus_*` em hardware. A primeira tentativa em hardware com
-stack persistente de 24 KB em heap interno falhou no `worker-start` com HTTP
-409 e `worker_state=error`, sem derrubar HTTP. A tentativa com stack interna
-de 12 KB criou a task, mas o encode deixou o HTTP indisponivel. A correcao
-local voltou o worker para 24 KB, agora com stack em PSRAM via
+`packet_drops=0` e `capture-v2` desligado. Com Opus no worker, a mesma
+sequencia em hardware confirmou `worker_opus_packets=1`,
+`worker_opus_encoded_bytes_total=248`, `worker_opus_last_packet_bytes=248`,
+`queue_count=0`, `packet_drops=0`, `error=ESP_OK`, `worker_state=stopped` e
+`capture-v2` desligado. A primeira tentativa em hardware com stack persistente
+de 24 KB em heap interno falhou no `worker-start` com HTTP 409 e
+`worker_state=error`, sem derrubar HTTP. A tentativa com stack interna de 12 KB
+criou a task, mas o encode deixou o HTTP indisponivel. A correcao local voltou
+o worker para 24 KB, agora com stack em PSRAM via
 `xTaskCreatePinnedToCoreWithCaps` e delecao por `vTaskDeleteWithCaps`;
-teste focado/build passaram e falta novo flash.
+teste focado/build passaram e a validacao em hardware fechou o contrato.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

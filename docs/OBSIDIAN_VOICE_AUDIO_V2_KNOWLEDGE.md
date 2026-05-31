@@ -835,7 +835,14 @@ Validacao:
     tentativa com stack interna de 12 KB criou a task, mas o encode deixou HTTP
     indisponivel. A correcao local voltou o worker para 24 KB com stack em
     PSRAM via `xTaskCreatePinnedToCoreWithCaps` e delecao por
-    `vTaskDeleteWithCaps`; teste focado/build passaram. Falta novo flash.
+    `vTaskDeleteWithCaps`; teste focado/build passaram. A validacao em hardware
+    apos flash passou: `worker-start` retornou `ok=true`; `encode-test` com
+    worker ativo foi drenado pela task; status confirmou `queue_count=0`,
+    `worker_drained_packets=1`, `worker_opus_packets=1`,
+    `worker_opus_encoded_bytes_total=248`,
+    `worker_opus_last_packet_bytes=248`, `packet_drops=0`, `error=ESP_OK`;
+    `worker-stop` deixou `worker_active=false`, `worker_state=stopped`; e
+    `capture-v2 status` permaneceu desligado.
   - observacao de hardware: a tentativa inicial de rodar o encode Opus
     sincronamente no handler HTTP causou timeout e indisponibilidade HTTP; a
     correcao moveu o encode para task temporaria com stack proprio.
@@ -883,12 +890,17 @@ Validacao:
     `worker_active=false`, `worker_state=stopped`, `error=ESP_OK`;
     status seguinte confirmou HTTP saudavel, fila zerada e
     `opus_codec_error=0`; `capture-v2 status` permaneceu desligado.
-  - precisa validar em hardware apos flash: `codec-v2 worker-start`,
-    `codec-v2 encode-test`, `codec-v2 status`, `codec-v2 worker-stop` e
-    `capture-v2 status`; esperado: `queue_count=0`, `worker_drained_packets`
-    aumenta, `worker_opus_packets>0`, `worker_opus_encoded_bytes_total>0`,
-    `worker_opus_last_packet_bytes>0`, `packet_drops=0`,
-    `worker_state=stopped` e `capture-v2` desligado.
+  - validacao em hardware do Opus no worker opt-in com stack PSRAM:
+    `codec-v2 status` iniciou limpo com `worker_supported=true`,
+    `worker_active=false`, `worker_state=not_started`; `worker-start`
+    retornou `ok=true`; `encode-test` com worker ativo gerou
+    `packets_out=1`, `queue_count=1` e `opus_codec_error=0`; status seguinte
+    confirmou `queue_count=0`, `worker_drained_packets=1`,
+    `worker_opus_packets=1`, `worker_opus_encoded_bytes_total=248`,
+    `worker_opus_last_packet_bytes=248`, `packet_drops=0`, `error=ESP_OK`;
+    `worker-stop` retornou `worker_active=false`, `worker_state=stopped`; e
+    `capture-v2 status` permaneceu com `real_capture_enabled=false`,
+    `session_active=false`, `state=IDLE_SESSION`, `last_error=ESP_OK`.
 - Packet drops zero em teste curto.
 - Transcript comparavel ao PCM16.
 - `server_codec_confirmed=true`.

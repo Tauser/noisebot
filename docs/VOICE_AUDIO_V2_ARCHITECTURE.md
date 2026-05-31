@@ -802,7 +802,15 @@ Validacao em hardware:
     `xTaskCreatePinnedToCoreWithCaps(..., MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)`
     e encerrado com `vTaskDeleteWithCaps`;
   - validacao local apos correcao PSRAM: teste focado bridge 6, server facade
-    115 e `idf.py build` limpo; falta flash para nova validacao em hardware.
+    115 e `idf.py build` limpo;
+  - validacao em hardware apos correcao PSRAM: `worker-start` retornou
+    `ok=true`; `encode-test` com worker ativo gerou um pacote sintetico;
+    status seguinte confirmou `queue_count=0`, `worker_drained_packets=1`,
+    `worker_opus_packets=1`, `worker_opus_encoded_bytes_total=248`,
+    `worker_opus_last_packet_bytes=248`, `packet_drops=0` e `error=ESP_OK`;
+    `worker-stop` deixou `worker_active=false`, `worker_state=stopped`;
+    `capture-v2 status` permaneceu com `real_capture_enabled=false` e
+    `session_active=false`.
 - Observacao de hardware: a primeira versao sincronamente no handler HTTP
   causou timeout e indisponibilidade HTTP apos o teste. A correcao moveu o
   encode para task temporaria `nb_codec_v2_opus_test` com stack proprio e
