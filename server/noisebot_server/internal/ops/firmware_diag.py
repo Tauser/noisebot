@@ -216,6 +216,9 @@ class FirmwareDiagClient:
     def audio_codec_v2_worker_feed_test(self, frames: int = 10) -> dict[str, Any]:
         return self._post_json("api/audio/codec-v2/worker/feed-test", {"frames": frames})
 
+    def audio_codec_v2_bridge_handoff_test(self, frames: int = 10) -> dict[str, Any]:
+        return self._post_json("api/audio/codec-v2/bridge-handoff-test", {"frames": frames})
+
     def audio_codec_v2_overflow_test(self, packets: int = 45) -> dict[str, Any]:
         return self._post_json("api/audio/codec-v2/overflow-test", {"packets": packets})
 

@@ -72,6 +72,15 @@ typedef struct {
     uint32_t opus_egress_last_checksum;
     uint8_t opus_egress_preview_len;
     uint8_t opus_egress_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];
+    bool bridge_handoff_supported;
+    bool bridge_handoff_active;
+    uint32_t bridge_handoff_packets_ready;
+    uint32_t bridge_handoff_bytes_ready;
+    uint32_t bridge_handoff_last_sequence;
+    uint16_t bridge_handoff_last_bytes;
+    uint32_t bridge_handoff_last_checksum;
+    uint8_t bridge_handoff_preview_len;
+    uint8_t bridge_handoff_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];
     uint32_t opus_encode_tests;
     uint32_t opus_encoded_bytes_total;
     uint16_t opus_last_packet_bytes;
@@ -148,6 +157,25 @@ typedef struct {
     nb_audio_codec_v2_worker_state_t worker_state_after;
 } nb_audio_codec_v2_worker_feed_result_t;
 
+typedef struct {
+    uint32_t attempted_frames;
+    bool bridge_handoff_stub;
+    bool bridge_transport_unchanged;
+    bool bridge_packet_not_sent;
+    uint32_t opus_egress_packets_delta;
+    uint32_t opus_egress_bytes_delta;
+    uint32_t bridge_handoff_packets_ready_delta;
+    uint32_t bridge_handoff_bytes_ready_delta;
+    uint16_t bridge_handoff_last_bytes;
+    uint32_t bridge_handoff_last_sequence;
+    uint32_t bridge_handoff_last_checksum;
+    uint8_t bridge_handoff_preview_len;
+    uint8_t bridge_handoff_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];
+    uint32_t opus_egress_queue_count_after_cleanup;
+    uint32_t packet_drops_delta;
+    nb_audio_codec_v2_worker_state_t worker_state_after;
+} nb_audio_codec_v2_bridge_handoff_result_t;
+
 esp_err_t audio_codec_service_v2_init(void);
 esp_err_t audio_codec_service_v2_deinit(void);
 bool audio_codec_service_v2_is_initialized(void);
@@ -171,6 +199,9 @@ esp_err_t audio_codec_service_v2_worker_stress_test(
 esp_err_t audio_codec_service_v2_worker_feed_test(
     uint32_t frames,
     nb_audio_codec_v2_worker_feed_result_t *out);
+esp_err_t audio_codec_service_v2_bridge_handoff_test(
+    uint32_t frames,
+    nb_audio_codec_v2_bridge_handoff_result_t *out);
 
 #ifdef __cplusplus
 }

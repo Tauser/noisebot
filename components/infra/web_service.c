@@ -1691,8 +1691,11 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
     char egress_preview_hex[(NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES * 2U) + 1U];
     bytes_to_hex(st.opus_egress_preview, st.opus_egress_preview_len,
                  egress_preview_hex, sizeof(egress_preview_hex));
+    char handoff_preview_hex[(NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES * 2U) + 1U];
+    bytes_to_hex(st.bridge_handoff_preview, st.bridge_handoff_preview_len,
+                 handoff_preview_hex, sizeof(handoff_preview_hex));
 
-    char buf[1900];
+    char buf[2400];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"format\":\"%s\","
              "\"worker_supported\":%s,\"worker_active\":%s,"
@@ -1723,6 +1726,15 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              "\"opus_egress_last_checksum\":%lu,"
              "\"opus_egress_preview_len\":%u,"
              "\"opus_egress_preview_hex\":\"%s\","
+             "\"bridge_handoff_supported\":%s,"
+             "\"bridge_handoff_active\":%s,"
+             "\"bridge_handoff_packets_ready\":%lu,"
+             "\"bridge_handoff_bytes_ready\":%lu,"
+             "\"bridge_handoff_last_sequence\":%lu,"
+             "\"bridge_handoff_last_bytes\":%u,"
+             "\"bridge_handoff_last_checksum\":%lu,"
+             "\"bridge_handoff_preview_len\":%u,"
+             "\"bridge_handoff_preview_hex\":\"%s\","
              "\"opus_encode_tests\":%lu,\"opus_encoded_bytes_total\":%lu,"
              "\"opus_last_packet_bytes\":%u,\"opus_codec_error\":%d,"
              "\"pending_samples\":%u,"
@@ -1764,6 +1776,15 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.opus_egress_last_checksum,
              (unsigned)st.opus_egress_preview_len,
              egress_preview_hex,
+             st.bridge_handoff_supported ? "true" : "false",
+             st.bridge_handoff_active ? "true" : "false",
+             (unsigned long)st.bridge_handoff_packets_ready,
+             (unsigned long)st.bridge_handoff_bytes_ready,
+             (unsigned long)st.bridge_handoff_last_sequence,
+             (unsigned)st.bridge_handoff_last_bytes,
+             (unsigned long)st.bridge_handoff_last_checksum,
+             (unsigned)st.bridge_handoff_preview_len,
+             handoff_preview_hex,
              (unsigned long)st.opus_encode_tests,
              (unsigned long)st.opus_encoded_bytes_total,
              (unsigned)st.opus_last_packet_bytes,
@@ -2110,6 +2131,77 @@ static esp_err_t handle_api_audio_codec_v2_worker_feed_test(httpd_req_t *req)
              (unsigned long)result.packet_drops_delta,
              (unsigned long)result.queue_count_after,
              (unsigned)result.pending_samples_after,
+             audio_codec_service_v2_worker_state_name(result.worker_state_after),
+             (unsigned)NB_AUDIO_CODEC_V2_WORKER_STRESS_MAX_PACKETS,
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_audio_codec_v2_bridge_handoff_test(httpd_req_t *req)
+{
+    uint32_t frames = 10U;
+    char body[MAX_BODY_LEN];
+    int body_len = 0;
+    if (recv_body(req, body, sizeof(body), &body_len) && body_len > 0U) {
+        cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+        if (root != NULL) {
+            const cJSON *frames_item = cJSON_GetObjectItemCaseSensitive(root, "frames");
+            if (cJSON_IsNumber(frames_item) && frames_item->valueint > 0) {
+                frames = (uint32_t)frames_item->valueint;
+            }
+            cJSON_Delete(root);
+        }
+    }
+
+    nb_audio_codec_v2_bridge_handoff_result_t result;
+    esp_err_t err = audio_codec_service_v2_bridge_handoff_test(frames, &result);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_ARG
+                                   ? "400 Bad Request"
+                                   : "409 Conflict");
+    }
+
+    char handoff_preview_hex[(NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES * 2U) + 1U];
+    bytes_to_hex(result.bridge_handoff_preview, result.bridge_handoff_preview_len,
+                 handoff_preview_hex, sizeof(handoff_preview_hex));
+
+    char buf[1300];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"diagnostic\":true,\"test_format\":\"opus\","
+             "\"bridge_handoff_stub\":%s,"
+             "\"bridge_transport_unchanged\":%s,"
+             "\"bridge_packet_not_sent\":%s,"
+             "\"attempted_frames\":%lu,"
+             "\"opus_egress_packets_delta\":%lu,"
+             "\"opus_egress_bytes_delta\":%lu,"
+             "\"bridge_handoff_packets_ready_delta\":%lu,"
+             "\"bridge_handoff_bytes_ready_delta\":%lu,"
+             "\"bridge_handoff_last_bytes\":%u,"
+             "\"bridge_handoff_last_sequence\":%lu,"
+             "\"bridge_handoff_last_checksum\":%lu,"
+             "\"bridge_handoff_preview_len\":%u,"
+             "\"bridge_handoff_preview_hex\":\"%s\","
+             "\"opus_egress_queue_count_after_cleanup\":%lu,"
+             "\"packet_drops_delta\":%lu,"
+             "\"worker_state_after\":\"%s\","
+             "\"max_frames\":%u,\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             result.bridge_handoff_stub ? "true" : "false",
+             result.bridge_transport_unchanged ? "true" : "false",
+             result.bridge_packet_not_sent ? "true" : "false",
+             (unsigned long)result.attempted_frames,
+             (unsigned long)result.opus_egress_packets_delta,
+             (unsigned long)result.opus_egress_bytes_delta,
+             (unsigned long)result.bridge_handoff_packets_ready_delta,
+             (unsigned long)result.bridge_handoff_bytes_ready_delta,
+             (unsigned)result.bridge_handoff_last_bytes,
+             (unsigned long)result.bridge_handoff_last_sequence,
+             (unsigned long)result.bridge_handoff_last_checksum,
+             (unsigned)result.bridge_handoff_preview_len,
+             handoff_preview_hex,
+             (unsigned long)result.opus_egress_queue_count_after_cleanup,
+             (unsigned long)result.packet_drops_delta,
              audio_codec_service_v2_worker_state_name(result.worker_state_after),
              (unsigned)NB_AUDIO_CODEC_V2_WORKER_STRESS_MAX_PACKETS,
              esp_err_to_name(err));
@@ -3602,6 +3694,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/codec-v2/worker/stop", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_stop },
     { .uri = "/api/audio/codec-v2/worker/stress-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_stress_test },
     { .uri = "/api/audio/codec-v2/worker/feed-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_worker_feed_test },
+    { .uri = "/api/audio/codec-v2/bridge-handoff-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_bridge_handoff_test },
     { .uri = "/api/audio/codec-v2/overflow-test", .method = HTTP_POST, .handler = handle_api_audio_codec_v2_overflow_test },
     { .uri = "/api/audio/processor", .method = HTTP_GET,   .handler = handle_api_audio_processor_status },
     { .uri = "/api/audio/processor/probe", .method = HTTP_POST, .handler = handle_api_audio_processor_probe },

@@ -135,6 +135,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "worker-stop",
             "worker-stress-test",
             "worker-feed-test",
+            "bridge-handoff-test",
             "overflow-test",
         ],
         nargs="?",
@@ -559,7 +560,12 @@ def run_debug_command(args: argparse.Namespace) -> None:
         if not firmware_url:
             raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
 
-        timeout_s = 10.0 if args.action in ("opus-encode-test", "worker-stress-test", "worker-feed-test") else 1.5
+        timeout_s = 10.0 if args.action in (
+            "opus-encode-test",
+            "worker-stress-test",
+            "worker-feed-test",
+            "bridge-handoff-test",
+        ) else 1.5
         client = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=timeout_s)
         if args.action == "encode-test":
             payload = client.audio_codec_v2_encode_test()
@@ -579,6 +585,8 @@ def run_debug_command(args: argparse.Namespace) -> None:
             payload = client.audio_codec_v2_worker_stress_test(args.packets)
         elif args.action == "worker-feed-test":
             payload = client.audio_codec_v2_worker_feed_test(args.frames)
+        elif args.action == "bridge-handoff-test":
+            payload = client.audio_codec_v2_bridge_handoff_test(args.frames)
         elif args.action == "overflow-test":
             payload = client.audio_codec_v2_overflow_test(args.packets)
         else:

@@ -370,6 +370,7 @@ esp_err_t audio_codec_service_v2_init(void)
     s_status.initialized = true;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
     s_status.opus_codec_error = -1;
+    s_status.bridge_handoff_supported = true;
     reset_worker_status();
     return ESP_OK;
 }
@@ -388,6 +389,7 @@ esp_err_t audio_codec_service_v2_deinit(void)
     s_pending_samples = 0;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
     s_status.opus_codec_error = -1;
+    s_status.bridge_handoff_supported = true;
     reset_worker_status();
     return ESP_OK;
 }
@@ -501,6 +503,8 @@ esp_err_t audio_codec_service_v2_reset_diagnostics(void)
     s_status.initialized = was_initialized;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
     s_status.opus_codec_error = -1;
+    s_status.bridge_handoff_supported = true;
+    s_status.bridge_handoff_active = false;
     s_status.worker_supported = worker_supported;
     s_status.worker_active = worker_active;
     s_status.worker_state = worker_state;
@@ -840,5 +844,61 @@ esp_err_t audio_codec_service_v2_worker_feed_test(
     out->queue_count_after = s_status.queue_count;
     out->pending_samples_after = s_pending_samples;
     out->worker_state_after = s_status.worker_state;
+    return err;
+}
+
+esp_err_t audio_codec_service_v2_bridge_handoff_test(
+    uint32_t frames,
+    nb_audio_codec_v2_bridge_handoff_result_t *out)
+{
+    if (out == NULL ||
+        frames == 0U ||
+        frames > NB_AUDIO_CODEC_V2_WORKER_STRESS_MAX_PACKETS) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint32_t handoff_packets_before = s_status.bridge_handoff_packets_ready;
+    uint32_t handoff_bytes_before = s_status.bridge_handoff_bytes_ready;
+
+    nb_audio_codec_v2_worker_feed_result_t feed;
+    esp_err_t err = audio_codec_service_v2_worker_feed_test(frames, &feed);
+
+    memset(out, 0, sizeof(*out));
+    out->attempted_frames = frames;
+    out->bridge_handoff_stub = true;
+    out->bridge_transport_unchanged = true;
+    out->bridge_packet_not_sent = true;
+    out->opus_egress_packets_delta = feed.opus_egress_packets_delta;
+    out->opus_egress_bytes_delta = feed.opus_egress_bytes_delta;
+    out->opus_egress_queue_count_after_cleanup = feed.opus_egress_queue_count_after_cleanup;
+    out->packet_drops_delta = feed.packet_drops_delta + feed.opus_egress_packet_drops_delta;
+    out->worker_state_after = feed.worker_state_after;
+
+    if (err == ESP_OK) {
+        s_status.bridge_handoff_supported = true;
+        s_status.bridge_handoff_active = false;
+        s_status.bridge_handoff_packets_ready += feed.opus_egress_packets_delta;
+        s_status.bridge_handoff_bytes_ready += feed.opus_egress_bytes_delta;
+        s_status.bridge_handoff_last_sequence = feed.opus_egress_last_sequence;
+        s_status.bridge_handoff_last_bytes = feed.opus_egress_last_bytes;
+        s_status.bridge_handoff_last_checksum = feed.opus_egress_last_checksum;
+        s_status.bridge_handoff_preview_len = feed.opus_egress_preview_len;
+        memcpy(s_status.bridge_handoff_preview,
+               feed.opus_egress_preview,
+               sizeof(s_status.bridge_handoff_preview));
+    }
+
+    out->bridge_handoff_packets_ready_delta =
+        s_status.bridge_handoff_packets_ready - handoff_packets_before;
+    out->bridge_handoff_bytes_ready_delta =
+        s_status.bridge_handoff_bytes_ready - handoff_bytes_before;
+    out->bridge_handoff_last_bytes = s_status.bridge_handoff_last_bytes;
+    out->bridge_handoff_last_sequence = s_status.bridge_handoff_last_sequence;
+    out->bridge_handoff_last_checksum = s_status.bridge_handoff_last_checksum;
+    out->bridge_handoff_preview_len = s_status.bridge_handoff_preview_len;
+    memcpy(out->bridge_handoff_preview,
+           s_status.bridge_handoff_preview,
+           sizeof(out->bridge_handoff_preview));
+
     return err;
 }

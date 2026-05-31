@@ -752,6 +752,7 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     assert client.audio_codec_v2_worker_stop()["ok"]
     assert client.audio_codec_v2_worker_stress_test(10)["ok"]
     assert client.audio_codec_v2_worker_feed_test(10)["ok"]
+    assert client.audio_codec_v2_bridge_handoff_test(10)["ok"]
     assert client.audio_codec_v2_overflow_test(45)["ok"]
     assert get_paths == ["api/audio/codec-v2"]
     assert post_paths == [
@@ -764,6 +765,7 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
         "api/audio/codec-v2/worker/stop",
         "api/audio/codec-v2/worker/stress-test",
         "api/audio/codec-v2/worker/feed-test",
+        "api/audio/codec-v2/bridge-handoff-test",
         "api/audio/codec-v2/overflow-test",
     ]
 
@@ -1038,6 +1040,16 @@ def test_server_cli_parses_codec_v2_worker_debug_commands() -> None:
         "10",
         "--json",
     ])
+    handoff_args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "bridge-handoff-test",
+        "--frames",
+        "10",
+        "--json",
+    ])
 
     assert start_args.command == "debug"
     assert start_args.debug_command == "codec-v2"
@@ -1057,6 +1069,11 @@ def test_server_cli_parses_codec_v2_worker_debug_commands() -> None:
     assert feed_args.action == "worker-feed-test"
     assert feed_args.frames == 10
     assert feed_args.json
+    assert handoff_args.command == "debug"
+    assert handoff_args.debug_command == "codec-v2"
+    assert handoff_args.action == "bridge-handoff-test"
+    assert handoff_args.frames == 10
+    assert handoff_args.json
 
 
 def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
@@ -1441,6 +1458,64 @@ def test_server_cli_runs_codec_v2_worker_feed_test_debug_command(monkeypatch, ca
     assert '"opus_egress_queue_count_after_cleanup": 0' in captured.out
     assert '"pcm_frames_in_delta": 10' in captured.out
     assert '"pending_samples_after": 0' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
+    assert calls["frames"] == 10
+
+
+def test_server_cli_runs_codec_v2_bridge_handoff_test_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+
+    def fake_bridge_handoff_test(self, frames=10):
+        calls["base_url"] = self.base_url
+        calls["frames"] = frames
+        return {
+            "ok": True,
+            "diagnostic": True,
+            "test_format": "opus",
+            "bridge_handoff_stub": True,
+            "bridge_transport_unchanged": True,
+            "bridge_packet_not_sent": True,
+            "attempted_frames": frames,
+            "opus_egress_packets_delta": frames,
+            "opus_egress_bytes_delta": frames * 248,
+            "bridge_handoff_packets_ready_delta": frames,
+            "bridge_handoff_bytes_ready_delta": frames * 248,
+            "bridge_handoff_last_bytes": 248,
+            "bridge_handoff_last_sequence": frames,
+            "bridge_handoff_last_checksum": 123456,
+            "bridge_handoff_preview_len": 16,
+            "bridge_handoff_preview_hex": "00112233445566778899aabbccddeeff",
+            "opus_egress_queue_count_after_cleanup": 0,
+            "packet_drops_delta": 0,
+            "worker_state_after": "stopped",
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "audio_codec_v2_bridge_handoff_test",
+        fake_bridge_handoff_test,
+    )
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "codec-v2",
+        "bridge-handoff-test",
+        "--frames",
+        "10",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"bridge_handoff_stub": true' in captured.out
+    assert '"bridge_transport_unchanged": true' in captured.out
+    assert '"bridge_packet_not_sent": true' in captured.out
+    assert '"bridge_handoff_packets_ready_delta": 10' in captured.out
+    assert '"bridge_handoff_preview_hex": "00112233445566778899aabbccddeeff"' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
     assert calls["frames"] == 10
 

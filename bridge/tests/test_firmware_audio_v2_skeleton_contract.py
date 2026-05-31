@@ -70,6 +70,9 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "uint32_t opus_egress_packet_drops;" in codec_h
     assert "uint32_t opus_egress_queue_count;" in codec_h
     assert "uint8_t opus_egress_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];" in codec_h
+    assert "bool bridge_handoff_supported;" in codec_h
+    assert "uint32_t bridge_handoff_packets_ready;" in codec_h
+    assert "uint8_t bridge_handoff_preview[NB_AUDIO_CODEC_V2_PAYLOAD_PREVIEW_BYTES];" in codec_h
     assert "uint32_t opus_encode_tests;" in codec_h
     assert "uint32_t opus_encoded_bytes_total;" in codec_h
     assert "uint16_t opus_last_packet_bytes;" in codec_h
@@ -85,6 +88,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '{ .uri = "/api/audio/codec-v2/worker/start"' in web
     assert '{ .uri = "/api/audio/codec-v2/worker/stop"' in web
     assert '{ .uri = "/api/audio/codec-v2/worker/feed-test"' in web
+    assert '{ .uri = "/api/audio/codec-v2/bridge-handoff-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/overflow-test"' in web
     assert '\\"opus_bitrate\\":%u' in web
     assert '\\"max_queue_packets\\":%u' in web
@@ -126,6 +130,9 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "audio_codec_service_v2_worker_stop(" in codec_c
     assert "audio_codec_service_v2_worker_stress_test(" in codec_c
     assert "audio_codec_service_v2_worker_feed_test(" in codec_c
+    assert "audio_codec_service_v2_bridge_handoff_test(" in codec_c
+    assert "bridge_handoff_stub = true" in codec_c
+    assert "bridge_packet_not_sent = true" in codec_c
     assert '"nb_codec_v2_worker"' in codec_c
     assert "#define CODEC_WORKER_TASK_STACK OPUS_TEST_TASK_STACK" in codec_c
     assert "xTaskCreatePinnedToCoreWithCaps(" in codec_c
@@ -185,6 +192,11 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert '\\"opus_egress_drained_after_test\\":%lu' in web
     assert '\\"opus_egress_queue_count_after_cleanup\\":%lu' in web
     assert '\\"opus_egress_drain\\":true' in web
+    assert '\\"bridge_handoff_stub\\":%s' in web
+    assert '\\"bridge_transport_unchanged\\":%s' in web
+    assert '\\"bridge_packet_not_sent\\":%s' in web
+    assert '\\"bridge_handoff_packets_ready_delta\\":%lu' in web
+    assert '\\"bridge_handoff_preview_hex\\":\\"%s\\"' in web
     assert '\\"worker_payload_packets_delta\\":%lu' in web
     assert '\\"worker_payload_preview_hex\\":\\"%s\\"' in web
     assert '\\"pcm_frames_in_delta\\":%lu' in web
