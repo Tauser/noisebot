@@ -863,6 +863,13 @@ Validacao:
     `worker-stop` retornou `worker_active=false`, `worker_state=stopped`;
     `capture-v2 status` permaneceu com `real_capture_enabled=false`,
     `session_active=false`, `state=IDLE_SESSION`, `last_error=ESP_OK`.
+  - validacao em hardware do `opus-encode-test` corrigido apos flash:
+    retornou `ok=true`, `test_format=opus`, `frame_samples=960`,
+    `encoded_bytes=248`, `codec_error=0`, `opus_encode_tests=1`,
+    `opus_last_packet_bytes=248`, `queue_count=0`, `packet_drops=0`,
+    `worker_active=false`, `worker_state=stopped`, `error=ESP_OK`;
+    status seguinte confirmou HTTP saudavel, fila zerada e
+    `opus_codec_error=0`; `capture-v2 status` permaneceu desligado.
 - Packet drops zero em teste curto.
 - Transcript comparavel ao PCM16.
 - `server_codec_confirmed=true`.

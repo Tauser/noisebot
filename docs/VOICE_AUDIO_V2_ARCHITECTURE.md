@@ -851,6 +851,16 @@ Validacao em hardware:
     `queue_count=0`, `worker_drained_packets=1`, `error=ESP_OK`;
   - `capture-v2 status`: `real_capture_enabled=false`,
     `session_active=false`, `state=IDLE_SESSION`, `last_error=ESP_OK`.
+- Validacao em hardware do `opus-encode-test` corrigido apos flash:
+  - `noisebot_server --host 192.168.1.30 debug codec-v2 opus-encode-test --json`;
+  - `ok=true`, `test_format=opus`, `frame_samples=960`,
+    `encoded_bytes=248`, `codec_error=0`, `opus_encode_tests=1`,
+    `opus_last_packet_bytes=248`, `queue_count=0`, `packet_drops=0`,
+    `worker_active=false`, `worker_state=stopped`, `error=ESP_OK`;
+  - status seguinte confirmou HTTP saudavel, `opus_encoded_bytes_total=248`,
+    fila zerada e `opus_codec_error=0`;
+  - `capture-v2 status`: `real_capture_enabled=false`,
+    `session_active=false`, `state=IDLE_SESSION`, `last_error=ESP_OK`.
 
 Aceite:
 

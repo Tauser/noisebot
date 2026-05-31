@@ -110,7 +110,11 @@ não cria worker persistente, não envia ao bridge, não toca captura/playback e
 não muda o padrão PCM16. A tentativa inicial síncrona no handler HTTP causou
 timeout/indisponibilidade HTTP no hardware; por isso o teste passou a rodar em
 task temporária. A validação local passou com contrato bridge focado, server
-facade, `bridge/tests`, `server/tests` e `idf.py build`.
+facade, `bridge/tests`, `server/tests` e `idf.py build`. Em hardware apos
+flash, o teste corrigido retornou `encoded_bytes=248`, `codec_error=0`,
+`opus_encode_tests=1`, `queue_count=0`, `packet_drops=0`,
+`worker_active=false`, `worker_state=stopped` e `ESP_OK`; o status seguinte
+confirmou HTTP saudavel e `capture-v2` permaneceu desligado.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
