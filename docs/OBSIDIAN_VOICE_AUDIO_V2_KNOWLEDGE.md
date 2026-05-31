@@ -800,6 +800,12 @@ Validacao:
   - validacao local do stub de worker inativo: teste focado bridge 6, teste
     focado server 111, bridge completo 160, server completo 126 e
     `idf.py build`.
+  - validacao em hardware do stub de worker inativo apos flash:
+    `codec-v2 status` retornou `worker_supported=false`,
+    `worker_active=false`, `worker_state=not_started`, contadores zerados,
+    `format=pcm16` e `error=ESP_OK`; `capture-v2 status` seguiu com
+    `real_capture_enabled=false`, `session_active=false`,
+    `state=IDLE_SESSION` e `last_error=ESP_OK`.
   - validacao em hardware do overflow-test diagnostico apos flash:
     `packets=40` resultou em `accepted_packets=40`, `dropped_packets=0`;
     `packets=41` resultou em `accepted_packets=40`, `dropped_packets=1`;

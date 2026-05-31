@@ -749,6 +749,12 @@ Validacao em hardware:
   - `bridge/tests`: 160 testes;
   - `server/tests`: 126 testes;
   - `idf.py build` limpo.
+- Validacao em hardware do stub de worker inativo apos flash:
+  - `GET /api/audio/codec-v2`: `initialized=false`, `format=pcm16`,
+    `worker_supported=false`, `worker_active=false`,
+    `worker_state=not_started`, contadores zerados e `error=ESP_OK`;
+  - `GET /api/audio/capture-v2`: `real_capture_enabled=false`,
+    `session_active=false`, `state=IDLE_SESSION`, `last_error=ESP_OK`.
 - Validacao em hardware do overflow-test diagnostico apos flash:
   - `packets=40`: `accepted_packets=40`, `dropped_packets=0`,
     `peak_queue_count=40`, `queue_count_after_cleanup=0`,

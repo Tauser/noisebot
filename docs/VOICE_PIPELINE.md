@@ -94,6 +94,9 @@ inativo: `worker_supported=false`, `worker_active=false` e
 `worker_state=not_started`. Isso nao cria task, nao adiciona start/stop, nao
 liga Opus real e nao altera bridge/captura/playback; a validacao local passou
 com teste focado de contrato, `server/tests`, `bridge/tests` e `idf.py build`.
+Em hardware apos flash, `codec-v2 status` confirmou o worker inativo,
+contadores zerados, `format=pcm16` e `ESP_OK`; `capture-v2 status` confirmou
+`real_capture_enabled=false`, `session_active=false` e `IDLE_SESSION`.
 
 A nota de consulta para Obsidian/IA fica em
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`, com decisoes, parametros,
