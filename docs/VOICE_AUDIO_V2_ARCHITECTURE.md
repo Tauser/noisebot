@@ -942,6 +942,16 @@ Validacao em hardware:
     a correcao local faz `transport-disable` chamar
     `audio_codec_service_v2_drain_opus_egress()` e o harness `codec-ab`
     tambem chama `egress-drain` apos rollback;
+  - validacao em hardware apos flash da correcao de rollback:
+    `codec-ab --repeat 3 "me diga uma curiosidade"` passou com 3/3 PCM16 e
+    3/3 Opus v2 `ok=true`; PCM16 teve STT medio ~1081.0 ms e todos os turnos
+    com `transcript_quality=good`; Opus v2 teve STT medio ~1086.6 ms, todos
+    com transcript `Me diga uma curiosidade.`, `transcript_similarity=1.0`,
+    334 pacotes drenados pelo harness, 81213 bytes Opus e `packet_drops=0`;
+  - status final apos a bateria confirmou `worker_active=false`,
+    `worker_state=stopped`, `packet_drops=0`,
+    `opus_egress_packet_drops=0`, `opus_egress_queue_count=0`,
+    `opus_codec_error=0` e `capture-v2` desligado;
   - referencia de hardware anterior do primeiro controle live, ainda com
     worker de compatibilidade:
     `codec-v2 transport-enable` retornou `ok=true`,
@@ -1209,10 +1219,10 @@ rollback via `codec-v2 transport-disable`. A validacao local passou com
 contrato bridge focado, server facade e `idf.py build`; a validacao em
 hardware tambem passou com turno Opus live curto, 39 pacotes Opus, 9488 bytes,
 zero drops, fila final zero e rollback limpo. O A/B curto PCM16 vs Opus v2
-tambem passou com zero drops e STT `good` nos dois caminhos. O proximo avanco
-seguro e flashear a correcao de limpeza do `transport-disable` e rodar uma
-bateria de 3 turnos Opus vs PCM16 antes de qualquer promocao de Opus como
-padrao.
+tambem passou com zero drops e STT `good` nos dois caminhos, e a bateria de
+3 turnos por codec confirmou estabilidade do worker v2 live. O proximo avanco
+seguro e validar regressao `barge-live` e `no-echo-live` com Opus v2 opt-in,
+sem promover Opus como padrao ainda.
 
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.

@@ -220,6 +220,17 @@ por `codec-v2 egress-drain`. Para fechar esse rollback automaticamente, o
 `transport-disable` local agora drena a fila egress e retorna
 `egress_drained_packets`; o harness `codec-ab` tambem chama `egress-drain`
 apos desabilitar Opus.
+Depois do flash da correcao de rollback, a bateria `codec-ab --repeat 3` com
+a mesma frase pareada tambem passou. PCM16: 3/3 `ok=true`, todos com
+`transcript_quality=good`, match semantico e STT medio ~1081.0 ms. Opus v2:
+3/3 `ok=true`, todos com transcript `Me diga uma curiosidade.`,
+`transcript_similarity=1.0`, STT medio ~1086.6 ms, `packet_drops=0`,
+334 pacotes drenados pelo harness e 81213 bytes Opus. O status final do Codec
+v2 confirmou worker `stopped`, `packet_drops=0`,
+`opus_egress_packet_drops=0`, `opus_egress_queue_count=0`,
+`opus_codec_error=0` e PCM16 como fallback. Decisao: Opus v2 e candidato
+forte, mas segue opt-in ate validar regressao de barge/no-echo e decidir
+HELLO/capability oficial.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

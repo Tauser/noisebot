@@ -953,6 +953,15 @@ Validacao:
     `transport-disable` passa a drenar egress e retornar
     `egress_drained_packets`; o harness `codec-ab` tambem chama
     `egress-drain` apos desabilitar Opus.
+  - validacao em hardware apos flash da correcao de rollback:
+    `codec-ab --repeat 3 "me diga uma curiosidade"` passou com 3/3 PCM16 e
+    3/3 Opus v2 `ok=true`; PCM16 teve STT medio ~1081.0 ms, Opus v2 teve STT
+    medio ~1086.6 ms, todos os turnos Opus transcreveram `Me diga uma
+    curiosidade.`, `transcript_similarity=1.0`, `packet_drops=0`,
+    334 pacotes drenados pelo harness e 81213 bytes Opus; status final do
+    Codec v2 confirmou `worker_state=stopped`, `opus_egress_queue_count=0`,
+    `opus_egress_packet_drops=0`, `opus_codec_error=0` e `capture-v2`
+    desligado.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o
