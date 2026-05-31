@@ -1015,6 +1015,13 @@ Validacao:
     `worker_opus_packets=579`, `opus_egress_packets_drained=579`,
     `worker_opus_encoded_bytes_total=140756`, zero drops, egress queue zero,
     worker `running`, `opus_codec_error=0` e `capture-v2` desligado.
+  - promocao local aplicada: `server/.env` define
+    `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`; reinicio do server sem
+    `--audio-codec` confirmou `/ai/status` em Opus ativo com `qwen3.5:9b`,
+    worker v2 `running`, `packets_out=738`, `opus_egress_packets_drained=738`,
+    zero drops, fila egress zero, `opus_codec_error=0` e `capture-v2`
+    desligado. PCM16 permanece rollback por env `pcm16` ou
+    `codec-v2 transport-disable`.
   - validacao em hardware de turno Opus live curto pelo namespace Codec v2 com
     server em `NOISEBOT_LLM_MODEL=qwen3.5:9b`: transcript `Fale uma frase
     curta.`, `transcript_quality=good`, `outcome=llm`, reply `Ola! Sou o

@@ -946,6 +946,10 @@ Pendências:
    fabrica e rollback simples. Validacao live confirmou startup em Opus e volta
    limpa para PCM16. Soak real com intents locais e LLM em Opus v2 confirmou
    579 pacotes processados/drenados, zero drops, fila zero e codec sem erro.
+   Promocao local aplicada em `server/.env` com
+   `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`; reinicio sem flag confirmou Opus
+   ativo, 738 pacotes processados/drenados, zero drops, fila zero e
+   `capture-v2` desligado.
 6. AEC/realtime/follow-up continuam standby até existir referência limpa de
    playback ou server-side AEC validado.
 

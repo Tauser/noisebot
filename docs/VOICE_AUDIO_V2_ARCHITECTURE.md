@@ -1252,5 +1252,13 @@ ultimo turno LLM sem erro, `pcm_frames_in=579`, `packets_out=579`,
 `opus_egress_packet_drops=0`, `opus_egress_queue_count=0`, worker `running`,
 `opus_codec_error=0` e `capture-v2` desligado.
 
+Promocao local aplicada: `server/.env` agora define
+`NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`. O server foi reiniciado sem
+`--audio-codec` e mesmo assim `/ai/status` confirmou Opus ativo, modelo
+`qwen3.5:9b`, worker v2 `running`, `packets_out=738`,
+`opus_egress_packets_drained=738`, zero drops, fila egress zero,
+`opus_codec_error=0` e `capture-v2` desligado. Rollback local: remover/alterar
+essa env para `pcm16` ou chamar `codec-v2 transport-disable`.
+
 Qualquer mudanca em wake, VAD thresholds, state machine, barge-in ou follow-up
 antes disso deve ser considerada fora de escopo.
