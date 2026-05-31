@@ -960,6 +960,9 @@ def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
             "ok": True,
             "initialized": False,
             "format": "pcm16",
+            "worker_supported": False,
+            "worker_active": False,
+            "worker_state": "not_started",
             "opus_frame_ms": 60,
             "opus_frame_samples": 960,
             "opus_bitrate": 32000,
@@ -984,6 +987,7 @@ def test_server_cli_runs_codec_v2_debug_command(monkeypatch, capsys) -> None:
 
     captured = capsys.readouterr()
     assert '"format": "pcm16"' in captured.out
+    assert '"worker_state": "not_started"' in captured.out
     assert '"packets_out": 1' in captured.out
     assert '"queue_count": 1' in captured.out
     assert '"opus_bitrate": 32000' in captured.out

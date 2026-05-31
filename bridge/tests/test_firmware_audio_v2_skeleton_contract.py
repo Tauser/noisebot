@@ -49,6 +49,11 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "#define NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES 960U" in codec_h
     assert "#define NB_AUDIO_CODEC_V2_OPUS_BITRATE       32000U" in codec_h
     assert "NB_AUDIO_CODEC_V2_FORMAT_PCM16 = 0" in codec_h
+    assert "NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED = 0" in codec_h
+    assert "nb_audio_codec_v2_worker_state_t worker_state;" in codec_h
+    assert "bool worker_supported;" in codec_h
+    assert "bool worker_active;" in codec_h
+    assert "const char *audio_codec_service_v2_worker_state_name(" in codec_h
     assert '{ .uri = "/api/audio/codec-v2"' in web
     assert '{ .uri = "/api/audio/codec-v2/encode-test"' in web
     assert '{ .uri = "/api/audio/codec-v2/drain"' in web
@@ -78,15 +83,23 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "was_initialized = s_status.initialized" in codec_c
     assert "s_status.initialized = was_initialized;" in codec_c
     assert "s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;" in codec_c
+    assert "reset_worker_stub_status();" in codec_c
+    assert "NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED" in codec_c
+    assert 'return "not_started";' in codec_c
     assert "audio_codec_service_v2_overflow_test(" in codec_c
     assert "out->attempted_packets = packets;" in codec_c
     assert "out->status_packet_drops_after_cleanup = s_status.packet_drops;" in codec_c
     assert '\\"pending_samples\\":%u' in web
+    assert '\\"worker_supported\\":%s' in web
+    assert '\\"worker_active\\":%s' in web
+    assert '\\"worker_state\\":\\"%s\\"' in web
     assert '\\"drained_packets\\":%lu' in web
     assert '\\"intentional_overflow\\":true' in web
     assert '\\"queue_count_after_cleanup\\":%lu' in web
     assert "audio_codec_service_v2_encode_test_once()" in web
     assert "audio_codec_service_v2_init()" not in web
+    assert "xTaskCreate" not in codec_c
+    assert "xTaskCreatePinnedToCore" not in codec_c
     assert "audio_codec_service_v2" in infra_cmake
     assert "#define NB_VOICE_CAPTURE_V2_WAIT_FOR_SPEECH_MS  8000U" in capture_h
     assert "#define NB_VOICE_CAPTURE_V2_END_SILENCE_MS      900U" in capture_h

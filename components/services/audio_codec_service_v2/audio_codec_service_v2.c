@@ -11,6 +11,13 @@ static nb_audio_codec_v2_status_t s_status = {
 static int16_t s_pending_frame[NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES];
 static uint16_t s_pending_samples;
 
+static void reset_worker_stub_status(void)
+{
+    s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED;
+    s_status.worker_supported = false;
+    s_status.worker_active = false;
+}
+
 static void enqueue_synthetic_packet(void)
 {
     if (s_status.queue_count >= NB_AUDIO_CODEC_V2_MAX_QUEUE_PACKETS) {
@@ -33,6 +40,7 @@ esp_err_t audio_codec_service_v2_init(void)
     s_pending_samples = 0;
     s_status.initialized = true;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
+    reset_worker_stub_status();
     return ESP_OK;
 }
 
@@ -46,12 +54,23 @@ esp_err_t audio_codec_service_v2_deinit(void)
     memset(s_pending_frame, 0, sizeof(s_pending_frame));
     s_pending_samples = 0;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
+    reset_worker_stub_status();
     return ESP_OK;
 }
 
 bool audio_codec_service_v2_is_initialized(void)
 {
     return s_status.initialized;
+}
+
+const char *audio_codec_service_v2_worker_state_name(nb_audio_codec_v2_worker_state_t state)
+{
+    switch (state) {
+    case NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED:
+        return "not_started";
+    default:
+        return "unknown";
+    }
 }
 
 void audio_codec_service_v2_get_status(nb_audio_codec_v2_status_t *out)
@@ -122,6 +141,7 @@ esp_err_t audio_codec_service_v2_reset_diagnostics(void)
     s_pending_samples = 0;
     s_status.initialized = was_initialized;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
+    reset_worker_stub_status();
     return ESP_OK;
 }
 

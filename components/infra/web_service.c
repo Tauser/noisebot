@@ -1666,9 +1666,11 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_codec_v2_status_t st;
     audio_codec_service_v2_get_status(&st);
 
-    char buf[512];
+    char buf[640];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"format\":\"%s\","
+             "\"worker_supported\":%s,\"worker_active\":%s,"
+             "\"worker_state\":\"%s\","
              "\"sample_rate_hz\":%u,\"channels\":%u,"
              "\"opus_frame_ms\":%u,\"opus_frame_samples\":%u,"
              "\"opus_bitrate\":%u,\"max_queue_packets\":%u,"
@@ -1679,6 +1681,9 @@ static esp_err_t send_audio_codec_v2_status(httpd_req_t *req, esp_err_t err)
              (err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
              audio_codec_v2_format_name(st.format),
+             st.worker_supported ? "true" : "false",
+             st.worker_active ? "true" : "false",
+             audio_codec_service_v2_worker_state_name(st.worker_state),
              (unsigned)NB_AUDIO_CODEC_V2_SAMPLE_RATE_HZ,
              (unsigned)NB_AUDIO_CODEC_V2_CHANNELS,
              (unsigned)NB_AUDIO_CODEC_V2_OPUS_FRAME_MS,
@@ -1720,9 +1725,11 @@ static esp_err_t handle_api_audio_codec_v2_drain(httpd_req_t *req)
         httpd_resp_set_status(req, "500 Internal Server Error");
     }
 
-    char buf[560];
+    char buf[700];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"format\":\"%s\","
+             "\"worker_supported\":%s,\"worker_active\":%s,"
+             "\"worker_state\":\"%s\","
              "\"sample_rate_hz\":%u,\"channels\":%u,"
              "\"opus_frame_ms\":%u,\"opus_frame_samples\":%u,"
              "\"opus_bitrate\":%u,\"max_queue_packets\":%u,"
@@ -1733,6 +1740,9 @@ static esp_err_t handle_api_audio_codec_v2_drain(httpd_req_t *req)
              (err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
              audio_codec_v2_format_name(st.format),
+             st.worker_supported ? "true" : "false",
+             st.worker_active ? "true" : "false",
+             audio_codec_service_v2_worker_state_name(st.worker_state),
              (unsigned)NB_AUDIO_CODEC_V2_SAMPLE_RATE_HZ,
              (unsigned)NB_AUDIO_CODEC_V2_CHANNELS,
              (unsigned)NB_AUDIO_CODEC_V2_OPUS_FRAME_MS,

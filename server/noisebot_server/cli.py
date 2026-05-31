@@ -574,6 +574,9 @@ def _format_codec_v2_status(payload: dict[str, object]) -> str:
             f"- OK: {payload.get('ok', False)}",
             f"- Inicializado: {payload.get('initialized', '')}",
             f"- Formato: {payload.get('format', '')}",
+            f"- Worker: {payload.get('worker_state', '')} "
+            f"(supported={payload.get('worker_supported', '')}, "
+            f"active={payload.get('worker_active', '')})",
             f"- Opus: {payload.get('opus_frame_ms', '')} ms / "
             f"{payload.get('opus_frame_samples', '')} samples / "
             f"{payload.get('opus_bitrate', '')} bps",

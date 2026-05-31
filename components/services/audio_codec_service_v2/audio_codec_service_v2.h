@@ -29,9 +29,16 @@ typedef enum {
     NB_AUDIO_CODEC_V2_FORMAT_OPUS,
 } nb_audio_codec_v2_format_t;
 
+typedef enum {
+    NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED = 0,
+} nb_audio_codec_v2_worker_state_t;
+
 typedef struct {
     bool initialized;
     nb_audio_codec_v2_format_t format;
+    nb_audio_codec_v2_worker_state_t worker_state;
+    bool worker_supported;
+    bool worker_active;
     uint32_t pcm_frames_in;
     uint32_t packets_out;
     uint32_t packet_drops;
@@ -51,6 +58,7 @@ typedef struct {
 esp_err_t audio_codec_service_v2_init(void);
 esp_err_t audio_codec_service_v2_deinit(void);
 bool audio_codec_service_v2_is_initialized(void);
+const char *audio_codec_service_v2_worker_state_name(nb_audio_codec_v2_worker_state_t state);
 void audio_codec_service_v2_get_status(nb_audio_codec_v2_status_t *out);
 esp_err_t audio_codec_service_v2_feed_pcm16(const int16_t *samples, uint16_t sample_count);
 esp_err_t audio_codec_service_v2_encode_test_once(void);
