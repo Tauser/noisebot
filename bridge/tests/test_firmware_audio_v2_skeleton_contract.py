@@ -109,7 +109,7 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "audio_codec_service_v2_worker_start(" in codec_c
     assert "audio_codec_service_v2_worker_stop(" in codec_c
     assert '"nb_codec_v2_worker"' in codec_c
-    assert "#define CODEC_WORKER_TASK_STACK OPUS_TEST_TASK_STACK" in codec_c
+    assert "#define CODEC_WORKER_TASK_STACK (2048U * 6U)" in codec_c
     assert "CODEC_WORKER_STOP_TIMEOUT_MS" in codec_c
     assert "s_status.worker_drained_packets++;" in codec_c
     assert "s_status.worker_opus_packets++;" in codec_c
