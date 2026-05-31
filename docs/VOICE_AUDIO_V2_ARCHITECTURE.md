@@ -654,8 +654,8 @@ Entregas:
 - status HTTP explicito em `GET /api/audio/codec-v2`;
 - contrato publicado: PCM16 default, Opus opt-in, 16 kHz mono, 60 ms,
   960 samples, 32 kbps e fila curta de ate 40 pacotes;
-- encoder worker dedicado em etapa posterior;
-- fila curta em etapa posterior;
+- worker dedicado opt-in para drenar a fila sintetica;
+- fila curta limitada e observavel;
 - HELLO/capabilities coerentes.
 
 Implementacao atual:
@@ -663,10 +663,10 @@ Implementacao atual:
 - `audio_codec_service_v2` continua inativo e nao e inicializado no boot;
 - `GET /api/audio/codec-v2` retorna constantes do contrato e contadores
   zerados do skeleton;
-- o status do codec v2 tambem expoe o contrato do worker futuro:
-  `worker_supported=false`, `worker_active=false` e
-  `worker_state=not_started`; esta etapa nao cria task, nao adiciona endpoints
-  de start/stop e nao ativa Opus real;
+- o status do codec v2 expoe o worker opt-in:
+  `worker_supported=true`, `worker_active=false`,
+  `worker_state=not_started` e `worker_drained_packets`; o boot nao cria task
+  e Opus real nao vira worker persistente;
 - `POST /api/audio/codec-v2/encode-test` executa um teste sintetico PCM16
   passthrough: incrementa `pcm_frames_in` e `packets_out`, mantendo
   `packet_drops=0` e sem fila pendente;
@@ -689,12 +689,22 @@ Implementacao atual:
 - `POST /api/audio/codec-v2/overflow-test` executa teste diagnostico
   autocontido: limpa estado no inicio, tenta enfileirar N pacotes completos,
   reporta aceitos/drops/pico de fila e limpa estado ao final;
+- `POST /api/audio/codec-v2/worker/start` cria a task FreeRTOS
+  `nb_codec_v2_worker` apenas sob comando explicito; ela consome a fila
+  sintetica, soma `worker_drained_packets` e nao toca captura, bridge,
+  playback ou Opus persistente;
+- `POST /api/audio/codec-v2/worker/stop` solicita parada, drena a fila
+  restante, aguarda confirmacao e deixa `worker_state=stopped`;
+- `reset` preserva o estado do worker quando ele esta ativo, evitando status
+  incoerente ou segunda task acidental;
 - o server expoe proxy diagnostico em `/api/device/audio/codec-v2`;
 - o server tambem expoe `/api/device/audio/codec-v2/encode-test`;
 - o server tambem expoe `/api/device/audio/codec-v2/drain`;
 - o server tambem expoe `/api/device/audio/codec-v2/reset`;
 - o server tambem expoe `/api/device/audio/codec-v2/opus-encode-test`;
 - o server tambem expoe `/api/device/audio/codec-v2/overflow-test`;
+- o server tambem expoe `/api/device/audio/codec-v2/worker/start`;
+- o server tambem expoe `/api/device/audio/codec-v2/worker/stop`;
 - CLI `noisebot_server debug codec-v2 status` consulta o endpoint do firmware;
 - CLI `noisebot_server debug codec-v2 encode-test` aciona o teste sintetico;
 - CLI `noisebot_server debug codec-v2 drain` drena a fila sintetica;
@@ -703,7 +713,9 @@ Implementacao atual:
   real diagnostico e isolado;
 - CLI `noisebot_server debug codec-v2 overflow-test --packets N` executa o
   teste de overflow autocontido;
-- o endpoint nao liga Opus, nao cria task e nao altera bridge/captura/playback;
+- CLI `noisebot_server debug codec-v2 worker-start` inicia o worker opt-in;
+- CLI `noisebot_server debug codec-v2 worker-stop` para o worker opt-in;
+- os endpoints nao ligam Opus persistente e nao alteram bridge/captura/playback;
 - o Opus operacional existente permanece no caminho opt-in atual
   `/api/audio/opus/transport/enable`, com PCM16 como fallback padrao.
 

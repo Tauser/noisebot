@@ -89,14 +89,16 @@ retorna metricas separadas (`accepted_packets`, `dropped_packets`,
 apos flash, `packets=40/41/45` retornaram respectivamente `0/1/5` drops,
 sempre com `peak_queue_count=40`, limpeza final em zero e `ESP_OK`; o status
 global do codec voltou limpo e `capture-v2` permaneceu desligado.
-O status do Codec v2 agora tambem explicita o worker futuro como contrato
-inativo: `worker_supported=false`, `worker_active=false` e
-`worker_state=not_started`. Isso nao cria task, nao adiciona start/stop, nao
-liga Opus real e nao altera bridge/captura/playback; a validacao local passou
-com teste focado de contrato, `server/tests`, `bridge/tests` e `idf.py build`.
-Em hardware apos flash, `codec-v2 status` confirmou o worker inativo,
-contadores zerados, `format=pcm16` e `ESP_OK`; `capture-v2 status` confirmou
-`real_capture_enabled=false`, `session_active=false` e `IDLE_SESSION`.
+O status do Codec v2 agora explicita o worker opt-in:
+`worker_supported=true`, `worker_active=false`, `worker_state=not_started` e
+`worker_drained_packets`. O boot nao cria task. `codec-v2 worker-start` cria a
+task FreeRTOS `nb_codec_v2_worker` apenas sob comando explicito; ela consome a
+fila sintetica e soma `worker_drained_packets`. `codec-v2 worker-stop` solicita
+parada, drena a fila restante e deixa `worker_state=stopped`. Isso ainda nao
+liga Opus persistente, bridge, captura ou playback v2; o PCM16/v1 segue como
+padrao. A validacao local passou com teste focado de contrato, `server/tests`,
+`bridge/tests` e `idf.py build`. Falta flash para validar o start/stop em
+hardware.
 O primeiro Opus real do Codec v2 entrou como diagnóstico isolado em
 `codec-v2 opus-encode-test`: o firmware cria uma task temporaria com stack
 proprio, abre o encoder Opus da Espressif, codifica um frame sintético de 960

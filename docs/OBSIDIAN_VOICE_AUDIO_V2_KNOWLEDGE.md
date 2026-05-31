@@ -747,23 +747,27 @@ Validacao:
   - Opus v2 segue opt-in e inativo;
   - contrato publicado: 16 kHz, mono, 60 ms, 960 samples, 32 kbps,
     fila curta de 40 pacotes;
-  - nenhum worker/task v2 e criado e o bridge atual nao muda.
+  - nenhum worker/task v2 e criado no boot e o bridge atual nao muda.
   - server proxy: `/api/device/audio/codec-v2`;
   - server proxy: `/api/device/audio/codec-v2/encode-test`;
   - server proxy: `/api/device/audio/codec-v2/drain`;
   - server proxy: `/api/device/audio/codec-v2/reset`;
   - server proxy: `/api/device/audio/codec-v2/opus-encode-test`;
   - server proxy: `/api/device/audio/codec-v2/overflow-test`;
+  - server proxy: `/api/device/audio/codec-v2/worker/start`;
+  - server proxy: `/api/device/audio/codec-v2/worker/stop`;
   - CLI: `noisebot_server debug codec-v2 status`;
   - CLI: `noisebot_server debug codec-v2 encode-test`;
   - CLI: `noisebot_server debug codec-v2 drain`;
   - CLI: `noisebot_server debug codec-v2 reset`;
   - CLI: `noisebot_server debug codec-v2 opus-encode-test`;
   - CLI: `noisebot_server debug codec-v2 overflow-test --packets N`;
-  - status atual tambem publica o contrato do worker futuro como inativo:
-    `worker_supported=false`, `worker_active=false` e
-    `worker_state=not_started`, sem criar task, endpoint de start/stop ou
-    Opus real;
+  - CLI: `noisebot_server debug codec-v2 worker-start`;
+  - CLI: `noisebot_server debug codec-v2 worker-stop`;
+  - status atual publica o worker opt-in:
+    `worker_supported=true`, `worker_active=false`,
+    `worker_state=not_started` e `worker_drained_packets`, sem criar task no
+    boot ou ligar Opus persistente;
   - `encode-test` e sintetico PCM16 passthrough: incrementa contadores de
     frame/pacote sem worker, sem Opus real, sem bridge e sem captura;
   - packetizer sintetico acumula chunks PCM16 de 256 samples ate frame de
@@ -784,6 +788,13 @@ Validacao:
     codifica um frame sintetico de 960 samples, fecha o encoder e reporta
     `encoded_bytes`, heap e `codec_error`, sem worker persistente, sem bridge,
     sem captura/playback e sem mudar o PCM16 como padrao;
+  - worker opt-in: `worker-start` cria a task FreeRTOS
+    `nb_codec_v2_worker` apenas sob comando explicito; ela consome a fila
+    sintetica, incrementa `worker_drained_packets` e nao toca captura, bridge,
+    playback ou Opus persistente; `worker-stop` solicita parada, drena o
+    restante e retorna `worker_state=stopped`;
+  - reset diagnostico preserva o estado do worker quando ele esta ativo, para
+    evitar status incoerente ou uma segunda task acidental;
   - validado em hardware apos flash:
     `initialized=false`, `format=pcm16`, `opus_frame_ms=60`,
     `opus_frame_samples=960`, `opus_bitrate=32000`,
@@ -810,6 +821,8 @@ Validacao:
   - validacao local do encode Opus real diagnostico: teste focado bridge 6,
     teste focado server 113, bridge completo 160, server completo 128 e
     `idf.py build`.
+  - validacao local do worker opt-in: teste focado bridge 6, teste focado
+    server 115, bridge completo 160, server completo 130 e `idf.py build`.
   - observacao de hardware: a tentativa inicial de rodar o encode Opus
     sincronamente no handler HTTP causou timeout e indisponibilidade HTTP; a
     correcao moveu o encode para task temporaria com stack proprio.
@@ -842,6 +855,11 @@ Validacao:
   - validacao em hardware do `encode-test` apos flash:
     `pcm_frames_in=1`, `packets_out=1`, `packet_drops=0`,
     `queue_count=0`, `pending_samples=64`, `error=ESP_OK`.
+  - precisa validar em hardware apos flash: `codec-v2 worker-start`,
+    `codec-v2 encode-test`, aguardar breve intervalo, `codec-v2 status` e
+    `codec-v2 worker-stop`; esperado: worker inicia, fila volta a zero,
+    `worker_drained_packets` aumenta, stop retorna `worker_state=stopped` e
+    `capture-v2 status` permanece desligado.
 - Packet drops zero em teste curto.
 - Transcript comparavel ao PCM16.
 - `server_codec_confirmed=true`.
