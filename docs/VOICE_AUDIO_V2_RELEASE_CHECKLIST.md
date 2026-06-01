@@ -199,6 +199,30 @@ Comando:
 noisebot_server --host 192.168.1.30 debug capture-v2 status --json
 ```
 
+## Gate 3.1 - Playback v2 Delta Limpo Antes de Handoff
+
+Verde:
+
+- `playback-v2 delta` passa durante um turno curto real.
+- `normal_path_clean=true`.
+- `queue_empty=true`.
+- `deltas.say_chunks_received > 0`.
+- `deltas.say_chunks_played > 0`.
+- `deltas.say_chunks_dropped == 0`.
+- `deltas.say_chunks_dropped_listening == 0`.
+
+Bloqueia release:
+
+- Drops novos no caminho normal.
+- Fila SAY final diferente de zero.
+- Cancel novo sem barge-in/cancelamento explicito.
+
+Comando:
+
+```powershell
+noisebot_server --host 192.168.1.30 debug playback-v2 delta --json
+```
+
 ## Gate 4 - PCM16 Rollback
 
 Verde:

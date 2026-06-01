@@ -186,6 +186,12 @@ rotas para `max_uri_handlers=64`; o firmware agora dimensiona esse limite pela
 propria tabela. Apos reflash, `/api/config/all` respondeu JSON e confirmou
 Capture v2 observador ligado com handoff real desligado
 (`voice_audio_v2_capture_tx_enabled=false`).
+Para evitar confundir drops acumulados antigos do Playback v2 com regressao
+nova, o server tambem ganhou o harness
+`noisebot_server --host 192.168.1.30 debug playback-v2 status|delta --json`.
+O modo `delta` compara snapshots antes/depois do turno e calcula deltas de
+chunks recebidos, tocados, dropados, dropados durante listening, cancelados e
+cancels; ele deve ficar limpo antes de qualquer handoff real adicional.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

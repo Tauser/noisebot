@@ -134,6 +134,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     capture_v2.add_argument("--no-prompt", action="store_true", help="Nao aguardar Enter no modo live")
     capture_v2.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    playback_v2 = debug_sub.add_parser("playback-v2")
+    playback_v2.add_argument(
+        "action",
+        choices=["status", "delta"],
+        nargs="?",
+        default="status",
+    )
+    playback_v2.add_argument("--firmware-url", default="")
+    playback_v2.add_argument("--no-prompt", action="store_true", help="Nao aguardar Enter no modo delta")
+    playback_v2.add_argument("--json", action="store_true", help="Emitir JSON")
+
     codec_v2 = debug_sub.add_parser("codec-v2")
     codec_v2.add_argument(
         "action",
@@ -582,6 +593,30 @@ def run_debug_command(args: argparse.Namespace) -> None:
         if not payload.get("ok", False):
             raise SystemExit(1)
         return
+    if args.debug_command == "playback-v2":
+        from .internal.ops.firmware_diag import FirmwareDiagClient
+
+        firmware_url = args.firmware_url or os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "")
+        if not firmware_url:
+            host = args.host or os.environ.get("NOISEBOT_HOST", "")
+            if host:
+                firmware_url = f"http://{host}"
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+
+        client = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=1.5)
+        if args.action == "delta":
+            payload = _run_playback_v2_delta(client, no_prompt=args.no_prompt)
+        else:
+            payload = client.audio_playback_v2_status()
+
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(_format_playback_v2_status(payload))
+        if not payload.get("ok", False):
+            raise SystemExit(1)
+        return
     if args.debug_command == "codec-v2":
         from .internal.ops.firmware_diag import FirmwareDiagClient
 
@@ -696,6 +731,87 @@ def _format_codec_v2_health(payload: dict[str, object]) -> str:
             f"- Rollback: {payload.get('rollback_hint', '')}",
         ]
     )
+
+
+def _playback_v2_counter_delta(before: dict[str, object],
+                               after: dict[str, object],
+                               key: str) -> int:
+    try:
+        return int(after.get(key, 0) or 0) - int(before.get(key, 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _run_playback_v2_delta(client, *, no_prompt: bool) -> dict[str, object]:
+    before = client.audio_playback_v2_status()
+    if not no_prompt:
+        input(
+            "Snapshot inicial feito. Acione o wake/fale uma frase real e "
+            "pressione Enter quando o turno terminar: "
+        )
+    after = client.audio_playback_v2_status()
+    delta_keys = [
+        "say_chunks_received",
+        "say_chunks_played",
+        "say_chunks_dropped",
+        "say_chunks_dropped_listening",
+        "say_chunks_cancelled",
+        "say_cancel_count",
+    ]
+    deltas = {
+        key: _playback_v2_counter_delta(before, after, key)
+        for key in delta_keys
+    }
+    ok = bool(after.get("ok", False)) and deltas["say_chunks_dropped"] == 0
+    return {
+        "ok": ok,
+        "before": before,
+        "after": after,
+        "deltas": deltas,
+        "queue_empty": int(after.get("say_queue_count", 0) or 0) == 0,
+        "normal_path_clean": (
+            deltas["say_chunks_dropped"] == 0 and
+            deltas["say_chunks_dropped_listening"] == 0
+        ),
+    }
+
+
+def _format_playback_v2_status(payload: dict[str, object]) -> str:
+    if "deltas" in payload:
+        after = payload.get("after")
+        deltas = payload.get("deltas")
+        if not isinstance(after, dict):
+            after = {}
+        if not isinstance(deltas, dict):
+            deltas = {}
+        return "\n".join([
+            "Playback v2 delta:",
+            f"- ok: {payload.get('ok')}",
+            f"- queue_empty: {payload.get('queue_empty')}",
+            f"- normal_path_clean: {payload.get('normal_path_clean')}",
+            f"- delta.received: {deltas.get('say_chunks_received')}",
+            f"- delta.played: {deltas.get('say_chunks_played')}",
+            f"- delta.dropped: {deltas.get('say_chunks_dropped')}",
+            f"- delta.dropped_listening: {deltas.get('say_chunks_dropped_listening')}",
+            f"- delta.cancelled: {deltas.get('say_chunks_cancelled')}",
+            f"- after.queue_count: {after.get('say_queue_count')}",
+            f"- after.error: {after.get('error')}",
+        ])
+    return "\n".join([
+        "Playback v2:",
+        f"- ok: {payload.get('ok')}",
+        f"- observer: {payload.get('bridge_say_observer')}",
+        f"- queue_owner: {payload.get('bridge_say_queue_owner')}",
+        f"- playing: {payload.get('playing')}",
+        f"- queue: {payload.get('say_queue_count')}/{payload.get('say_queue_depth')}",
+        f"- received/played: {payload.get('say_chunks_received')}/"
+        f"{payload.get('say_chunks_played')}",
+        f"- dropped/listening: {payload.get('say_chunks_dropped')}/"
+        f"{payload.get('say_chunks_dropped_listening')}",
+        f"- cancelled/cancel_count: {payload.get('say_chunks_cancelled')}/"
+        f"{payload.get('say_cancel_count')}",
+        f"- error: {payload.get('error')}",
+    ])
 
 
 def _format_capture_v2_status(payload: dict[str, object]) -> str:

@@ -999,6 +999,82 @@ def test_server_cli_runs_capture_v2_live_with_rollback(monkeypatch, capsys) -> N
     assert toggles == [True, False]
 
 
+def test_server_cli_parses_playback_v2_delta_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "playback-v2",
+        "delta",
+        "--no-prompt",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "playback-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "delta"
+    assert args.no_prompt
+    assert args.json
+
+
+def test_server_cli_runs_playback_v2_delta_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+    snapshots = [
+        {
+            "ok": True,
+            "say_queue_count": 0,
+            "say_queue_depth": 16,
+            "say_chunks_received": 100,
+            "say_chunks_played": 100,
+            "say_chunks_dropped": 3,
+            "say_chunks_dropped_listening": 1,
+            "say_chunks_cancelled": 2,
+            "say_cancel_count": 1,
+            "error": "ESP_OK",
+        },
+        {
+            "ok": True,
+            "say_queue_count": 0,
+            "say_queue_depth": 16,
+            "say_chunks_received": 180,
+            "say_chunks_played": 180,
+            "say_chunks_dropped": 3,
+            "say_chunks_dropped_listening": 1,
+            "say_chunks_cancelled": 2,
+            "say_cancel_count": 1,
+            "error": "ESP_OK",
+        },
+    ]
+
+    def fake_status(self):
+        calls["base_url"] = self.base_url
+        return snapshots.pop(0)
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_playback_v2_status", fake_status)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "playback-v2",
+        "delta",
+        "--no-prompt",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"ok": true' in captured.out
+    assert '"say_chunks_received": 80' in captured.out
+    assert '"say_chunks_dropped": 0' in captured.out
+    assert '"normal_path_clean": true' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
+
+
 def test_server_cli_parses_codec_v2_debug_command() -> None:
     cli = importlib.import_module("noisebot_server.cli")
 

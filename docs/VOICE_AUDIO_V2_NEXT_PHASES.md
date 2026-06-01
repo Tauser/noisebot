@@ -466,6 +466,13 @@ Entregas:
   `shadow_audio_samples=34560` e zero drops; Codec v2 voltou `status=ok`.
   Playback v2 esta operacional, mas seus drops sao cumulativos de interacoes
   anteriores e devem ser medidos por delta antes do proximo handoff real.
+- Para essa medicao, o server agora expoe o harness
+  `noisebot_server --host 192.168.1.30 debug playback-v2 status|delta --json`.
+  O modo `delta` captura snapshots antes/depois de um turno real e calcula
+  deltas de recebidos, tocados, drops normais, drops durante listening,
+  cancelados e cancels. Sanity check local em hardware, sem turno entre
+  snapshots, retornou `queue_empty=true`, `normal_path_clean=true` e todos os
+  deltas zero.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

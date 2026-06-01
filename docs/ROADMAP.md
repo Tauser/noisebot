@@ -2218,6 +2218,12 @@ Implementação:
   `voice_alert=null`, Capture v2 com gate verde e TX legado, e Codec v2
   `status=ok`. Observacao: Playback v2 ainda carrega drops cumulativos de
   interacoes anteriores; acompanhar deltas antes do proximo handoff real.
+- [x] Harness server de delta para Playback v2: novo CLI
+  `noisebot_server --host 192.168.1.30 debug playback-v2 status|delta --json`
+  consulta `/api/audio/playback-v2` e calcula deltas de
+  `say_chunks_received/played/dropped/dropped_listening/cancelled` entre dois
+  snapshots. Sanity check em hardware pos-reboot retornou contadores zerados,
+  `queue_empty=true` e `normal_path_clean=true` sem turno entre snapshots.
 
 ---
 
