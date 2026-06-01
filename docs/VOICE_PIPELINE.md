@@ -1048,7 +1048,12 @@ O roadmap detalhado das fases restantes esta em
    e build ESP-IDF limpos; em hardware apos flash, shadow de 1000 ms registrou
    63 frames de silencio com `silence_run_max_frames=63`,
    `speech_run_max_frames=0`, Playback v2 fila zero, Capture v2 desligado e
-   `codec-v2 health` ok. Nota operacional: se o server subir sem
+   `codec-v2 health` ok. A validacao real seguinte rodou shadow de 30 s
+   durante `ww -> me conte uma historia curta`: Activity v2 registrou
+   `session_frames=384`, `muted_frames=334`, `speech_frames=45`,
+   `speech_run_max_frames=7` e `silence_run_max_frames=521`, enquanto o turno
+   teve transcript bom, TTS completo, zero drops novos em Playback v2, Capture
+   v2 desligado e Codec v2 ok. Nota operacional: se o server subir sem
    `NOISEBOT_HOST` ou `--host`, ele fica
    vivo mas sem transporte (`connected=false`), o que parece queda de voz. O
    `.env` local deve conter `NOISEBOT_HOST=192.168.1.30` junto de

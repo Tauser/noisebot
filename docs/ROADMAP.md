@@ -2133,6 +2133,12 @@ Implementação:
   silencio, com `silence_run_frames=63`, `silence_run_max_frames=63`,
   `speech_run_max_frames=0`, Playback v2 fila zero, Capture v2 desligado e
   `codec-v2 health` ok apos reativar Opus v2.
+- [x] Fase J validada em turno real com shadow de 30 s: `ww -> me conte uma
+  historia curta` gerou transcript bom, `tts_completed=true`,
+  `tts_say_end_sent=true`, 253 chunks TTS e zero alerta. Activity v2 registrou
+  `session_frames=384`, `muted_frames=334`, `speech_frames=45`,
+  `speech_run_max_frames=7` e `silence_run_max_frames=521`. Playback v2
+  terminou com fila zero e zero drops novos; Capture v2 desligado e Codec v2 ok.
 
 ---
 

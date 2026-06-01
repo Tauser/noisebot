@@ -312,6 +312,17 @@ Entregas:
   `silence_run_max_frames=63`, `idle_frames=63`, `unmuted_frames=63`,
   `last_error=ESP_OK`. Playback v2 ficou com fila zero, Capture v2 desligado e
   `codec-v2 health` `status=ok` apos reativar Opus v2.
+- Validacao real de 30 s durante turno por wake: shadow rodou durante
+  `ww -> me conte uma historia curta`, e `/ai/metrics` confirmou transcript
+  `Me conte uma história curta.`, `outcome=llm`, `tts_completed=true`,
+  `tts_say_end_sent=true`, `tts_chunks_sent=253` e `voice_alert=null`.
+  Activity v2 encerrou com `observed_frames=1875`, `session_frames=384`,
+  `idle_frames=1491`, `muted_frames=334`, `unmuted_frames=1541`,
+  `speech_frames=45`, `silence_frames=1830`, `speech_run_max_frames=7` e
+  `silence_run_max_frames=521`, provando que os runs enxergam fala/silencio,
+  sessao e playback mutado em turno real. Playback v2 ficou com fila zero e
+  zero drops novos (`received=1030`, `played=1030`, `dropped=0`), Capture v2
+  permaneceu desligado e `codec-v2 health` ficou `status=ok`.
 - Gate explicito: AEC device-side bloqueado se `input_reference=false`.
 
 Aceite:
