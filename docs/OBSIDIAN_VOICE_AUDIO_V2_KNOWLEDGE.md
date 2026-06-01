@@ -319,6 +319,10 @@ Faz:
   cadencia real de 16 ms por chunk. Pausas entre sentencas do TTS nao devem
   gerar rajadas de catch-up, porque isso enche a fila SAY e causa engasgos
   mesmo com `tts_completed=true` e `SAY_END`.
+- Validacao real da correcao de pacing: apos restart do server, uma resposta
+  curta gerou 398 chunks TTS e `SAY_END`; `/api/audio/playback-v2` saiu de
+  `received=494/played=494/dropped=154` para
+  `received=892/played=892/dropped=154`, confirmando zero drops novos.
 
 Nao faz:
 

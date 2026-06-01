@@ -76,7 +76,12 @@ os contadores mostraram `say_chunks_dropped` crescendo em 143 enquanto
 o `OutputScheduler` tentava compensar pausas de sintese entre sentencas com
 rajadas SAY. O scheduler agora limita o prebuffer e envia chunks extras em
 cadencia de 16 ms, sem catch-up agressivo. Validacao local: `server/tests`
-com 155 testes verdes. Essa correcao e server-only e nao exige flash.
+com 155 testes verdes. Essa correcao e server-only e nao exige flash. Validacao
+real apos restart do server: baseline `received=494`, `played=494`,
+`dropped=154`; apos `ww -> me conte uma historia curta`, o status ficou
+`received=892`, `played=892`, `dropped=154`, ou seja, +398 chunks recebidos e
+tocados com zero drops novos. `/ai/metrics` confirmou `tts_completed=true`,
+`tts_say_end_sent=true`, `tts_chunks_sent=398` e `voice_alert=null`.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o

@@ -162,6 +162,11 @@ Bloqueia release:
   e de rajadas SAY entre sentencas, antes de culpar Opus ou STT.
 - Audio antigo toca depois de cancelamento.
 
+Validacao de referencia pos-correcao do pacing: em 2026-06-01, apos restart do
+server, `ww -> me conte uma historia curta` enviou 398 chunks TTS e
+`/api/audio/playback-v2` cresceu de `received=494/played=494/dropped=154` para
+`received=892/played=892/dropped=154`. Zero drops novos no caminho normal.
+
 Nota: `/api/profile/test-voice` pode gerar drops por nao passar pelo
 `OutputScheduler` conversacional. Para aceite de release, use turno real pelo
 orquestrador ou `debug transcript`.

@@ -159,6 +159,12 @@ Segundo incremento implementado:
   o `OutputScheduler` fazia catch-up em rajada depois de pausas entre sentencas
   do TTS. Correcao server-only: manter prebuffer curto e enviar chunks extras
   em cadencia de 16 ms, sem rajada. Validacao local: `server/tests` 155 verdes.
+- Validacao real apos restart do server confirmou a correcao: baseline
+  `/api/audio/playback-v2` em `received=494`, `played=494`, `dropped=154`;
+  depois de `ww -> me conte uma historia curta`, o endpoint ficou em
+  `received=892`, `played=892`, `dropped=154`. O turno teve 398 chunks TTS,
+  `tts_completed=true`, `tts_say_end_sent=true`, `voice_alert=null`, Capture v2
+  desligado e Codec v2 sem drops apos `egress-drain`.
 
 Aceite:
 
