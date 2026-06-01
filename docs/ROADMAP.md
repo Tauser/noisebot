@@ -2170,6 +2170,11 @@ Implementação:
   drops e Codec v2 ok. Ajuste local seguinte corrige tambem
   `shadow_audio_chunks`/`speech_elapsed_ms` para unidades Opus quando o shadow
   recebe pacotes de 960 samples.
+- [x] Revalidacao final do shadow TX Opus: `shadow_audio_chunks=58` bateu com
+  `chunk_count=58`, `shadow_audio_samples=55680` ficou alinhado com
+  `total_samples=55664`, `speech_elapsed_ms=3480`, Playback v2 zero drops,
+  Codec v2 ok e `voice_alert=null`. Capture v2 segue shadow/observador:
+  `bridge_tx_owner=false`.
 
 ---
 

@@ -151,6 +151,12 @@ Depois do flash dessa correcao, o reteste real alinhou
 de 16 samples e de alinhamento. Em seguida, o shadow foi refinado para fazer
 `shadow_audio_chunks` e `speech_elapsed_ms` seguirem unidades/tempo de frame
 Opus quando recebe pacotes de 960 samples.
+Revalidacao final apos flash confirmou a telemetria Opus: no turno real
+`Me diga uma curiosidade curta.`, `shadow_audio_chunks=58` bateu com
+`chunk_count=58`, `shadow_audio_samples=55680` ficou alinhado com
+`total_samples=55664`, `speech_elapsed_ms=3480`, Playback v2 teve zero drops e
+Codec v2 ficou ok. Capture v2 permanece shadow/observador com
+`bridge_tx_owner=false`.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

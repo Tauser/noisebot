@@ -394,6 +394,16 @@ Entregas:
   `shadow_audio_chunks` e `speech_elapsed_ms` ainda refletiam chamadas do loop
   de 16 ms; correcao local seguinte passou a contabilizar unidades de frame
   Opus e elapsed por `sample_count`.
+- Revalidacao final apos flash do refinamento de unidades: turno real
+  `ww -> me diga uma curiosidade curta` retornou `transcript_quality=good`,
+  `outcome=local_intent`, `voice_alert=null`, Playback v2 recebeu/tocou 205
+  chunks SAY com zero drops, Codec v2 `status=ok`, e Capture v2 ficou
+  `DONE` com `bridge_tx_owner=false`, `legacy_audio_service_tx_owner=true`,
+  `shadow_audio_chunks=58` contra `chunk_count=58`,
+  `shadow_audio_samples=55680` contra `total_samples=55664`,
+  `speech_elapsed_ms=3480` e `shadow_audio_dropped_chunks=0`. A diferenca de
+  16 samples permanece apenas alinhamento de frame; o shadow TX Opus esta
+  coerente.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve
