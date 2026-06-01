@@ -96,6 +96,13 @@ A repeticao fisica apos esse ajuste validou o novo default: o turno
 novos em Playback v2 (`received=2569/played=2566/dropped=56` para
 `received=2895/played=2892/dropped=56`). Codec v2 permaneceu saudavel e
 Capture v2 desligado.
+Resposta longa tambem passou com o prebuffer 6: 825 chunks TTS completos,
+`SAY_END`, `voice_alert=null` e zero drops novos em Playback v2. Barge-in
+fisico passou com `discard_reason=barge_in` e cancelamento em 3,3 ms; drops
+novos ficaram restritos a `say_chunks_dropped_listening`, como descarte de
+audio antigo durante a nova escuta. Ponto corrigido no firmware: ao receber
+`SPEECH_CANCEL` ou `LISTEN_START`, o `behavior_engine` agora limpa o texto
+visual antigo com `ui_overlay_clear_text()` antes de mostrar `Ouvindo...`.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o

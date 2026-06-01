@@ -556,6 +556,7 @@ static void bridge_on_event(const nb_event_t *evt)
         audio_play_stop();
         s_bridge_say_started = false;
         esp_timer_stop(s_bridge_resp_timer);
+        ui_overlay_clear_text();
         if (!audio_service_is_listening()) {
             if (audio_service_begin_listen_session(NB_LISTEN_SOURCE_BARGE_IN) == ESP_OK) {
                 ui_overlay_listening_set(true);
@@ -584,6 +585,7 @@ static void bridge_on_event(const nb_event_t *evt)
         if (!payload) break;
 
         if (strstr(payload, "\"event\":\"LISTEN_START\"")) {
+            ui_overlay_clear_text();
             ui_overlay_listening_set(true);
             ui_overlay_show_toast("Ouvindo...", NB_UI_OVERLAY_INFO, 2200U);
         } else if (strstr(payload, "\"event\":\"LISTEN_STOP\"") ||

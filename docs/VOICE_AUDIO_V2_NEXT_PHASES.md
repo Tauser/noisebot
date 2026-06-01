@@ -261,6 +261,22 @@ Entregas:
   `received=2895/played=2892/dropped=56`, ou seja, +326 chunks recebidos e
   tocados com zero drops novos. `codec-v2 health` ficou `healthy=true/status=ok`
   e `capture-v2` permaneceu desligado em `IDLE_SESSION`.
+- Validacao fisica de resposta mais longa: `ww -> me conte uma história um
+  pouco mais longa` gerou `tts_chunks_sent=825`, `tts_completed=true`,
+  `tts_say_end_sent=true`, `voice_alert=null` e 7 paginas visuais. Playback v2
+  saiu de `received=2895/played=2892/dropped=56` para
+  `received=3720/played=3717/dropped=56`, ou seja, +825 chunks recebidos e
+  tocados com zero drops novos. O health do Codec v2 apontou 1 pacote egress
+  pendente, drenado por `codec-v2 egress-drain`, e voltou `status=ok`.
+- Validacao fisica de barge-in: `ww -> me conte uma história longa -> ww ->
+  pare` registrou `outcome=interrupted`, `discard_reason=barge_in` e
+  `interruption_cancel=3.3 ms`. Playback v2 terminou com fila zero,
+  `say_cancel_count` +1 e `say_chunks_cancelled` +5; os +6 drops ocorreram em
+  `say_chunks_dropped_listening`, ou seja, descarte esperado de audio antigo
+  durante a nova escuta. Observacao visual descoberta: apos o cancelamento, o
+  display ainda podia manter texto da resposta anterior. Correcao firmware:
+  `SPEECH_CANCEL` e `LISTEN_START` limpam `ui_overlay_clear_text()` antes de
+  mostrar `Ouvindo...`.
 - Observacao operacional: a queda percebida do server nesta rodada nao apontou
   para crash do `OutputScheduler`. O log mostrou um start sem
   `NOISEBOT_HOST`, que deixa `/ai/status` em `connected=false` e o server sem
