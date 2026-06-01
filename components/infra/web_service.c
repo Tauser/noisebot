@@ -4003,7 +4003,7 @@ static void web_service_start(void)
 
     httpd_config_t cfg    = HTTPD_DEFAULT_CONFIG();
     cfg.max_open_sockets  = 3;
-    cfg.max_uri_handlers  = 64;   /* APIs registradas + margem */
+    cfg.max_uri_handlers  = (uint16_t)((sizeof(k_uris) / sizeof(k_uris[0])) + 4U);
     cfg.server_port       = 80;
     cfg.stack_size        = HTTPD_TASK_STACK_SIZE;
     cfg.recv_wait_timeout = 5;
@@ -4019,7 +4019,11 @@ static void web_service_start(void)
     }
 
     for (size_t i = 0; i < sizeof(k_uris) / sizeof(k_uris[0]); i++) {
-        httpd_register_uri_handler(s_server, &k_uris[i]);
+        esp_err_t reg_err = httpd_register_uri_handler(s_server, &k_uris[i]);
+        if (reg_err != ESP_OK) {
+            NB_LOGW(TAG, "falha ao registrar rota %s: %s",
+                    k_uris[i].uri, esp_err_to_name(reg_err));
+        }
     }
 
     NB_LOGI(TAG, "HTTP API iniciado na porta 80");

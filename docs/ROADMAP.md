@@ -2200,6 +2200,15 @@ Implementação:
   `bridge_tx_handoff_enabled` e no CLI `capture-v2 tx-enable|tx-disable`.
   Este passo nao altera o TX real; apenas cria o arm/disarm separado da flag
   de observacao.
+- [x] Validacao pos-flash da flag de handoff: default desligado confirmado,
+  `tx-enable`/`tx-disable` alternaram NVS, e turno real com a flag desligada
+  manteve TX legado (`bridge_tx_owner=false`,
+  `legacy_audio_service_tx_owner=true`) com gate verde, zero drops e
+  `voice_end_reason=silence`. O health do Codec v2 voltou `status=ok` apos
+  drenar 1 pacote egress pendente.
+- [ ] Reflash da correcao de infraestrutura HTTP e validar `/api/config/all`:
+  havia 98 rotas para `max_uri_handlers=64`, entao APIs no fim da tabela podiam
+  responder 404. O firmware agora dimensiona o limite a partir de `k_uris`.
 
 ---
 

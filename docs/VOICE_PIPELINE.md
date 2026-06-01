@@ -178,6 +178,12 @@ O passo local seguinte prepara o armamento operacional do handoff real:
 `/api/config`, `/api/config/all`, `/api/audio/capture-v2` e no CLI
 `capture-v2 tx-enable|tx-disable`. Ela ainda nao muda o TX real; serve para o
 proximo incremento poder ligar/desligar a troca de ownership sem reflash.
+Pos-flash, o default desligado e os comandos `tx-enable`/`tx-disable` foram
+confirmados; um turno real com a flag desligada manteve `audio_service` como
+dono do TX, com gate verde, zero drops e fim por silencio. Ao tentar validar
+`/api/config/all`, o hardware respondeu 404 porque a tabela HTTP ja tinha 98
+rotas para `max_uri_handlers=64`; o firmware agora dimensiona esse limite pela
+propria tabela, pendente de reflash para confirmar o endpoint.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

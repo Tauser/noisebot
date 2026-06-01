@@ -441,6 +441,19 @@ Entregas:
   nao altera o envio real de `VOICE_START/AUDIO_CHUNK/VOICE_END`; ele apenas
   cria o arm/disarm operacional separado da flag de observacao
   `voice_audio_v2_capture_enabled`.
+- Validacao pos-flash da flag de handoff: default novo apareceu desligado
+  (`bridge_tx_handoff_enabled=false`), `tx-enable` e `tx-disable` alternaram a
+  NVS corretamente, e um turno real curto com a flag novamente desligada manteve
+  `bridge_tx_owner=false`, `legacy_audio_service_tx_owner=true`,
+  `bridge_tx_candidate=true`, `bridge_tx_handoff_ready=true`,
+  `handoff_block_reason=NONE`, zero drops em Capture/Playback e transcript
+  `Que horas sao?` com `voice_end_reason=silence`. Um pacote egress Opus
+  pendente foi drenado e `codec-v2 health` voltou `status=ok`.
+- Correcao local de infraestrutura HTTP: o firmware tinha 98 rotas mas
+  `max_uri_handlers=64`, fazendo APIs tardias como `/api/config/all` poderem
+  responder 404 apesar de existirem na tabela. O limite agora deriva de
+  `k_uris` com margem e loga falha de registro por rota. Requer flash para
+  confirmar `/api/config/all` no hardware.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve
