@@ -404,6 +404,14 @@ Entregas:
   `speech_elapsed_ms=3480` e `shadow_audio_dropped_chunks=0`. A diferenca de
   16 samples permanece apenas alinhamento de frame; o shadow TX Opus esta
   coerente.
+- Incremento local seguinte: `/api/audio/capture-v2` passa a expor o gate de
+  handoff `bridge_tx_candidate`, `bridge_tx_handoff_ready` e
+  `handoff_block_reason`. Esses campos sao apenas status: indicam quando uma
+  sessao real observada pela Capture v2 estaria pronta para virar candidata ao
+  ownership de `VOICE_START/AUDIO_CHUNK/VOICE_END`, ou por que ainda nao esta
+  (`NOT_REAL_CAPTURE`, `SESSION_ACTIVE`, `NO_AUDIO`, `DROPPED_AUDIO`,
+  `END_REASON`, `ALREADY_OWNER`). O bridge TX real continua no
+  `audio_service`.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

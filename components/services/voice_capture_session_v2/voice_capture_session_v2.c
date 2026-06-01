@@ -22,6 +22,35 @@ static nb_voice_capture_v2_status_t s_status = {
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_next_session_id = 1U;
 
+static void update_handoff_gate_locked(void)
+{
+    s_status.bridge_tx_candidate = s_status.real_capture &&
+                                   s_status.legacy_audio_service_tx_owner &&
+                                   !s_status.bridge_tx_owner;
+    s_status.bridge_tx_handoff_ready = false;
+    s_status.handoff_block_reason = NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_NONE;
+
+    if (s_status.bridge_tx_owner) {
+        s_status.handoff_block_reason = NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_ALREADY_OWNER;
+    } else if (!s_status.real_capture) {
+        s_status.handoff_block_reason = NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_NOT_REAL_CAPTURE;
+    } else if (s_status.session_active) {
+        s_status.handoff_block_reason = NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_SESSION_ACTIVE;
+    } else if (s_status.end_reason != NB_VOICE_CAPTURE_V2_END_SPEECH_COMPLETE) {
+        s_status.handoff_block_reason = NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_END_REASON;
+    } else if (!s_status.shadow_voice_start_sent ||
+               !s_status.shadow_voice_end_sent ||
+               s_status.shadow_audio_chunks == 0U ||
+               s_status.shadow_audio_samples == 0U) {
+        s_status.handoff_block_reason = NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_NO_AUDIO;
+    } else if (s_status.shadow_audio_dropped_chunks > 0U ||
+               s_status.dropped_frames > 0U) {
+        s_status.handoff_block_reason = NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_DROPPED_AUDIO;
+    } else {
+        s_status.bridge_tx_handoff_ready = true;
+    }
+}
+
 static void reset_runtime_locked(bool keep_initialized)
 {
     bool initialized = keep_initialized && s_status.initialized;
@@ -33,6 +62,7 @@ static void reset_runtime_locked(bool keep_initialized)
     s_status.bridge_tx_owner = false;
     s_status.legacy_audio_service_tx_owner = true;
     s_status.last_error = ESP_OK;
+    update_handoff_gate_locked();
 }
 
 esp_err_t voice_capture_session_v2_init(void)
@@ -77,6 +107,7 @@ void voice_capture_session_v2_get_status(nb_voice_capture_v2_status_t *out)
     }
 
     taskENTER_CRITICAL(&s_mux);
+    update_handoff_gate_locked();
     *out = s_status;
     taskEXIT_CRITICAL(&s_mux);
 }

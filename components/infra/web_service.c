@@ -244,6 +244,20 @@ static const char *capture_v2_end_reason_name(nb_voice_capture_v2_end_reason_t r
     }
 }
 
+static const char *capture_v2_handoff_block_name(nb_voice_capture_v2_handoff_block_t reason)
+{
+    switch (reason) {
+        case NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_NONE:             return "NONE";
+        case NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_NOT_REAL_CAPTURE: return "NOT_REAL_CAPTURE";
+        case NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_SESSION_ACTIVE:   return "SESSION_ACTIVE";
+        case NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_NO_AUDIO:         return "NO_AUDIO";
+        case NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_DROPPED_AUDIO:    return "DROPPED_AUDIO";
+        case NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_END_REASON:       return "END_REASON";
+        case NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_ALREADY_OWNER:    return "ALREADY_OWNER";
+        default:                                                 return "UNKNOWN";
+    }
+}
+
 static const char *activity_v2_state_name(nb_voice_activity_v2_state_t state)
 {
     switch (state) {
@@ -2583,11 +2597,13 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
     nb_voice_capture_v2_status_t st;
     voice_capture_session_v2_get_status(&st);
 
-    char buf[1152];
+    char buf[1400];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
              "\"real_capture_enabled\":%s,\"real_capture\":%s,"
              "\"bridge_tx_owner\":%s,\"legacy_audio_service_tx_owner\":%s,"
+             "\"bridge_tx_candidate\":%s,\"bridge_tx_handoff_ready\":%s,"
+             "\"handoff_block_reason\":\"%s\","
              "\"state\":\"%s\",\"source\":\"%s\",\"end_reason\":\"%s\","
              "\"session_id\":%lu,"
              "\"voice_start_sent\":%s,\"voice_audio_sent\":%s,"
@@ -2609,6 +2625,9 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
              st.real_capture ? "true" : "false",
              st.bridge_tx_owner ? "true" : "false",
              st.legacy_audio_service_tx_owner ? "true" : "false",
+             st.bridge_tx_candidate ? "true" : "false",
+             st.bridge_tx_handoff_ready ? "true" : "false",
+             capture_v2_handoff_block_name(st.handoff_block_reason),
              capture_v2_state_name(st.state),
              capture_v2_source_name(st.source),
              capture_v2_end_reason_name(st.end_reason),

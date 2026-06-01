@@ -346,15 +346,26 @@ def test_voice_capture_v2_replay_is_explicit_and_does_not_touch_bridge():
     assert "bool real_capture;" in capture_h
     assert "bool bridge_tx_owner;" in capture_h
     assert "bool legacy_audio_service_tx_owner;" in capture_h
+    assert "bool bridge_tx_candidate;" in capture_h
+    assert "bool bridge_tx_handoff_ready;" in capture_h
     assert "bool shadow_voice_start_sent;" in capture_h
     assert "uint32_t shadow_audio_chunks;" in capture_h
     assert "uint32_t shadow_audio_samples;" in capture_h
     assert "uint32_t shadow_audio_dropped_chunks;" in capture_h
     assert "nb_voice_capture_v2_end_reason_t end_reason;" in capture_h
+    assert "nb_voice_capture_v2_handoff_block_t handoff_block_reason;" in capture_h
+    assert "NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_NOT_REAL_CAPTURE" in capture_h
+    assert "NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_DROPPED_AUDIO" in capture_h
     assert '\\"real_capture\\":%s,' in web
     assert '\\"end_reason\\":\\"%s\\"' in web
+    assert '\\"bridge_tx_candidate\\":%s' in web
+    assert '\\"bridge_tx_handoff_ready\\":%s' in web
+    assert '\\"handoff_block_reason\\":\\"%s\\"' in web
     assert '\\"shadow_audio_chunks\\":%lu' in web
     assert "capture_v2_end_reason_name" in web
+    assert "capture_v2_handoff_block_name" in web
+    assert "update_handoff_gate_locked();" in capture_c
+    assert "s_status.bridge_tx_handoff_ready = true;" in capture_c
     assert "NB_VOICE_CAPTURE_V2_END_SPEECH_COMPLETE" in capture_c
     assert "NB_VOICE_CAPTURE_V2_END_NO_SPEECH" in capture_c
     assert "NB_VOICE_CAPTURE_V2_END_CANCELLED" in capture_c

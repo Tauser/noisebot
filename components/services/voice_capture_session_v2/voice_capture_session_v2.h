@@ -44,12 +44,24 @@ typedef enum {
     NB_VOICE_CAPTURE_V2_END_ERROR,
 } nb_voice_capture_v2_end_reason_t;
 
+typedef enum {
+    NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_NONE = 0,
+    NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_NOT_REAL_CAPTURE,
+    NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_SESSION_ACTIVE,
+    NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_NO_AUDIO,
+    NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_DROPPED_AUDIO,
+    NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_END_REASON,
+    NB_VOICE_CAPTURE_V2_HANDOFF_BLOCK_ALREADY_OWNER,
+} nb_voice_capture_v2_handoff_block_t;
+
 typedef struct {
     bool initialized;
     bool session_active;
     bool real_capture;
     bool bridge_tx_owner;
     bool legacy_audio_service_tx_owner;
+    bool bridge_tx_candidate;
+    bool bridge_tx_handoff_ready;
     bool voice_start_sent;
     bool voice_audio_sent;
     bool voice_end_sent;
@@ -58,6 +70,7 @@ typedef struct {
     nb_voice_capture_v2_state_t state;
     nb_voice_capture_v2_source_t source;
     nb_voice_capture_v2_end_reason_t end_reason;
+    nb_voice_capture_v2_handoff_block_t handoff_block_reason;
     uint32_t session_id;
     uint32_t replay_duration_ms;
     uint32_t replay_elapsed_ms;

@@ -2175,6 +2175,12 @@ Implementação:
   `total_samples=55664`, `speech_elapsed_ms=3480`, Playback v2 zero drops,
   Codec v2 ok e `voice_alert=null`. Capture v2 segue shadow/observador:
   `bridge_tx_owner=false`.
+- [x] Gate local de handoff da Capture v2 adicionado ao status:
+  `/api/audio/capture-v2` agora expoe `bridge_tx_candidate`,
+  `bridge_tx_handoff_ready` e `handoff_block_reason`. O gate apenas classifica
+  a sessao observada e nao transfere bridge TX; `audio_service` continua dono
+  real de `VOICE_START/AUDIO_CHUNK/VOICE_END`. Validacao local: contrato
+  focado, `bridge/tests`, `server/tests` e `idf.py build`.
 
 ---
 

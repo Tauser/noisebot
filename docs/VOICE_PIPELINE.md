@@ -157,6 +157,12 @@ Revalidacao final apos flash confirmou a telemetria Opus: no turno real
 `total_samples=55664`, `speech_elapsed_ms=3480`, Playback v2 teve zero drops e
 Codec v2 ficou ok. Capture v2 permanece shadow/observador com
 `bridge_tx_owner=false`.
+O incremento local seguinte adiciona o gate de handoff no mesmo endpoint:
+`bridge_tx_candidate`, `bridge_tx_handoff_ready` e `handoff_block_reason`.
+Esses campos so classificam a sessao observada e nao transferem ownership. O
+handoff so pode ser considerado pronto quando a sessao real terminou com
+`SPEECH_COMPLETE`, teve start/end shadow, audio shadow nao vazio e zero drops;
+caso contrario o status explica o bloqueio.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

@@ -399,6 +399,11 @@ Faz:
   `shadow_voice_start_sent`, `shadow_voice_end_sent`, `shadow_audio_chunks`,
   `shadow_audio_samples` e `shadow_audio_dropped_chunks`, para comparar o que
   o Capture v2 emitiria sem assumir o envio real.
+- expor gate status-only de handoff:
+  `bridge_tx_candidate`, `bridge_tx_handoff_ready` e
+  `handoff_block_reason`, para registrar quando uma sessao real observada
+  estaria pronta para virar candidata a ownership de bridge TX. Isso nao muda
+  envio real, bridge, wake, VAD, codec, playback ou HAL.
 
 Nao faz:
 

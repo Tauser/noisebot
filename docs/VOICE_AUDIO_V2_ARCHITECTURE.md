@@ -329,6 +329,11 @@ Responsabilidade:
   `shadow_audio_samples`, `shadow_audio_dropped_chunks`) para comparar o que o
   Capture v2 emitiria contra o caminho legado. O bridge TX real continua no
   `audio_service`.
+- O gate local de handoff tambem e apenas observabilidade: `bridge_tx_candidate`,
+  `bridge_tx_handoff_ready` e `handoff_block_reason` dizem se uma sessao real
+  observada pelo Capture v2 ja cumpre as condicoes minimas para virar candidata
+  a ownership de bridge TX. Nenhum `VOICE_START`, `AUDIO_CHUNK` ou `VOICE_END`
+  passa a ser enviado pelo Capture v2 neste passo.
 
 Parametros iniciais preservados:
 
