@@ -5,7 +5,13 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from noisebot_server.internal.agent.playback import CHUNK_BYTES, OutputScheduler
+from noisebot_server.internal.agent import playback as playback_module
+from noisebot_server.internal.agent.playback import (
+    CHUNK_BYTES,
+    CHUNK_DURATION_S,
+    FIRMWARE_SAY_QUEUE,
+    OutputScheduler,
+)
 
 
 class AdapterProbe:
@@ -71,6 +77,35 @@ async def test_output_scheduler_sends_exact_chunk_without_padding() -> None:
     assert stats.pcm_bytes_sent == CHUNK_BYTES
     assert stats.padding_bytes == 0
     assert stats.say_end_sent is True
+
+
+@pytest.mark.asyncio
+async def test_output_scheduler_does_not_catch_up_with_bursts(monkeypatch) -> None:
+    adapter = AdapterProbe()
+    scheduler = OutputScheduler()
+    source = b"\x55" * CHUNK_BYTES * (FIRMWARE_SAY_QUEUE + 3)
+    sleeps: list[float] = []
+    now = 1000.0
+
+    def monotonic() -> float:
+        return now
+
+    async def fake_sleep(delay: float) -> None:
+        nonlocal now
+        sleeps.append(delay)
+        if delay > 0:
+            now += delay
+
+    monkeypatch.setattr(playback_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(playback_module.asyncio, "sleep", fake_sleep)
+
+    stats = await scheduler.run(10, _iter_chunks(source), adapter)
+
+    paced_sleeps = [delay for delay in sleeps if delay > 0]
+    assert len(adapter.chunks) == FIRMWARE_SAY_QUEUE + 3
+    assert stats.chunks_sent == FIRMWARE_SAY_QUEUE + 3
+    assert len(paced_sleeps) == 3
+    assert all(delay == pytest.approx(CHUNK_DURATION_S) for delay in paced_sleeps)
 
 
 @pytest.mark.asyncio

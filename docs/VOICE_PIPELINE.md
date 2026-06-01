@@ -35,6 +35,10 @@ ela piorou a transcrição e aumentou risco de watchdog.
 - O server rechunkeia a saída TTS para frames exatos de 512 bytes antes de
   enviar `SAY`; chunks maiores vindos do gerador de áudio nunca cruzam o
   contrato TCP com o firmware.
+- O `OutputScheduler` do server pode fazer um prebuffer curto, mas depois deve
+  respeitar a cadencia de 16 ms por chunk. Pausas entre sentencas do TTS nao
+  podem gerar rajadas de catch-up, porque isso enche a fila SAY do firmware e
+  causa engasgos mesmo quando `tts_completed=true` e `SAY_END` foi enviado.
 
 ## Contrato v2
 
@@ -66,6 +70,13 @@ tambem o barge-in real: `ww -> que horas sao?` respondeu como `local_time`, e
 `outcome=interrupted`, `discard_reason=barge_in`, cancelamento p50 2,6 ms /
 p95 3,2 ms, fila final zero, `say_cancel_count=2`,
 `say_chunks_cancelled=28` e `ESP_OK`.
+Depois de uma resposta curta com 395 chunks TTS, o usuario percebeu engasgos e
+os contadores mostraram `say_chunks_dropped` crescendo em 143 enquanto
+`tts_completed=true` e `tts_say_end_sent=true`. A causa foi pacing server-side:
+o `OutputScheduler` tentava compensar pausas de sintese entre sentencas com
+rajadas SAY. O scheduler agora limita o prebuffer e envia chunks extras em
+cadencia de 16 ms, sem catch-up agressivo. Validacao local: `server/tests`
+com 155 testes verdes. Essa correcao e server-only e nao exige flash.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o

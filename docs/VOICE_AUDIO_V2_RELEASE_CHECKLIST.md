@@ -157,6 +157,9 @@ Bloqueia release:
 - Chunks SAY recebidos sem contagem correspondente de tocados no turno normal.
 - Fila SAY permanece nao-zero apos `SAY_END`.
 - Drops aparecem no caminho do orquestrador sem motivo de cancel/listening.
+- `tts_completed=true` e `tts_say_end_sent=true`, mas `say_chunks_dropped`
+  cresce durante fala normal. Primeiro suspeitar do pacing do `OutputScheduler`
+  e de rajadas SAY entre sentencas, antes de culpar Opus ou STT.
 - Audio antigo toca depois de cancelamento.
 
 Nota: `/api/profile/test-voice` pode gerar drops por nao passar pelo

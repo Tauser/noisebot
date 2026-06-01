@@ -45,6 +45,7 @@ class OutputScheduler:
     def __init__(self) -> None:
         self._chunks_sent = 0
         self._t_first: float | None = None
+        self._next_send_at: float | None = None
 
     async def run(
         self,
@@ -56,6 +57,7 @@ class OutputScheduler:
     ) -> PlaybackStats:
         self._chunks_sent = 0
         self._t_first = None
+        self._next_send_at = None
         pcm_bytes_in = 0
         pcm_bytes_sent = 0
         padding_bytes = 0
@@ -143,13 +145,7 @@ class OutputScheduler:
                 if inspect.isawaitable(result):
                     await result
 
-        elapsed = time.monotonic() - self._t_first
-        chunks_played = int(elapsed / CHUNK_DURATION_S)
-        buffer_fill = self._chunks_sent - chunks_played
-
-        if buffer_fill >= FIRMWARE_SAY_QUEUE:
-            sleep_s = (buffer_fill - FIRMWARE_SAY_QUEUE + 1) * CHUNK_DURATION_S
-            await asyncio.sleep(sleep_s)
+        await self._pace_chunk()
 
         if adapter is not None:
             try:
@@ -168,6 +164,21 @@ class OutputScheduler:
         if on_audio_progress is not None:
             on_audio_progress(turn_id)
         return say_begin_sent
+
+    async def _pace_chunk(self) -> None:
+        now = time.monotonic()
+        if self._chunks_sent < FIRMWARE_SAY_QUEUE:
+            self._next_send_at = now + CHUNK_DURATION_S
+            return
+
+        if self._next_send_at is None or self._next_send_at < now:
+            self._next_send_at = now
+
+        sleep_s = self._next_send_at - now
+        if sleep_s > 0:
+            await asyncio.sleep(sleep_s)
+
+        self._next_send_at += CHUNK_DURATION_S
 
 
 async def _maybe_call_adapter(adapter: Any, method_name: str, *args: Any) -> bool:

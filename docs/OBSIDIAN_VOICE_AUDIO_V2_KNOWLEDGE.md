@@ -315,6 +315,10 @@ Faz:
 - volume;
 - cancel/stop;
 - descarte de fila velha.
+- O `OutputScheduler` do server deve enviar SAY com prebuffer curto e depois
+  cadencia real de 16 ms por chunk. Pausas entre sentencas do TTS nao devem
+  gerar rajadas de catch-up, porque isso enche a fila SAY e causa engasgos
+  mesmo com `tts_completed=true` e `SAY_END`.
 
 Nao faz:
 
@@ -469,6 +473,7 @@ Nunca:
 | TTS velho toca depois do cancel | fila SAY nao limpa | playback queue, bridge SAY drop | mexer no STT |
 | Opus piora transcript | codec/janela/volume | codec-ab, packet drops, duration | mexer no VAD sem evidencia |
 | Resposta falada corta antes do fim | TTS/streaming/chunk/playback queue | SAY chunks, TTS stop, playback queue, text length | culpar Opus sem A/B |
+| Resposta falada engasga mas TTS completou | rajada SAY por pacing server-side ou fila firmware cheia | `say_chunks_dropped`, `tts_chunks_sent`, `tts_completed`, `SAY_END` | aumentar fila ou culpar Opus antes de checar pacing |
 | AEC probe falha | sem referencia/heap | processor status | forcar AEC device-side |
 | Crash I2S/ISR | I/O/recovery | audio_hal, task stack, DMA | adicionar processamento no ISR |
 | STT audio_curto | VOICE_START/END errado | session state, total_samples | culpar LLM |

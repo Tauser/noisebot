@@ -152,6 +152,13 @@ Segundo incremento implementado:
   com `bridge_say_queue_owner=true`, `say_queue_count=0`,
   `say_cancel_count=2`, `say_chunks_cancelled=28` e `last_error=ESP_OK`.
   O usuario confirmou audivelmente que funcionou perfeitamente.
+- Observacao pos-handoff: uma resposta curta com 395 chunks TTS gerou engasgos
+  audiveis. `/ai/metrics` mostrou TTS completo (`tts_completed=true`,
+  `tts_say_end_sent=true`), enquanto `/api/audio/playback-v2` mostrou 252
+  chunks aceitos/tocados e 143 drops novos. A causa ficou no pacing do server:
+  o `OutputScheduler` fazia catch-up em rajada depois de pausas entre sentencas
+  do TTS. Correcao server-only: manter prebuffer curto e enviar chunks extras
+  em cadencia de 16 ms, sem rajada. Validacao local: `server/tests` 155 verdes.
 
 Aceite:
 
