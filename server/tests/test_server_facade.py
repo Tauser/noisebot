@@ -4143,6 +4143,19 @@ def test_server_agent_local_intent_answers_curiosity_in_pt_br() -> None:
     assert result.expression_id == 4
 
 
+def test_server_agent_local_intent_handles_bare_stop_without_llm() -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("Pare.", turn_id=45)
+
+    assert result.intent_name == "local_stop"
+    assert result.reply_text == "Pronto, parei."
+    assert result.expression_id == 2
+
+
 def test_server_agent_llm_and_intents_are_server_owned() -> None:
     _ensure_bridgev2_path()
 

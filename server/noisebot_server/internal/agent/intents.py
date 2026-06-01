@@ -60,6 +60,22 @@ _CANCEL_TERMS = (
     "remover",
 )
 
+_STOP_ONLY_PHRASES = {
+    "pare",
+    "para",
+    "parar",
+    "pare agora",
+    "para agora",
+    "pode parar",
+    "cancela",
+    "cancelar",
+    "cancele",
+    "cancele isso",
+    "cancela isso",
+    "fica quieto",
+    "silencio",
+}
+
 
 def _parse_duration_s(text: str) -> int | None:
     match = re.search(r"\b(\d+)\s*(segundos?|minutos?|horas?)\b", text)
@@ -396,6 +412,18 @@ class LocalIntentProvider:
         now = now or datetime.now()
         context = context or {}
         status = context.get("status", {})
+
+        # -- Controle direto --------------------------------------------------
+        # Um "ww -> pare" depois de barge-in e comando de controle, nao prompt LLM.
+        if norm in _STOP_ONLY_PHRASES:
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_stop",
+                reply_text="Pronto, parei.",
+                expression_id=_EXPR_NEUTRAL,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_NEUTRAL,
+            )
 
         # -- Alertas locais ---------------------------------------------------
         if _has(norm, "silencia", "silenciar", "para de tocar",
