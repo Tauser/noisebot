@@ -423,6 +423,16 @@ Entregas:
   `opus_codec_error=0`. Ponto amarelo: o server encerrou o turno por timeout
   (`duration_ms=9479`, `voice_end_reason=timeout`), nao por silencio; antes do
   handoff real, repetir pelo menos um turno curto que finalize por silencio.
+- Repeticao curta por silencio passou: `ww -> que horas sao` gerou transcript
+  `Que horas são?`, `voice_end_reason=silence`, `duration_ms=3719`,
+  `chunk_count=62`, `total_samples=59504`, `tts_completed=true`,
+  `tts_say_end_sent=true` e `voice_alert=null`. Capture v2 ficou
+  `bridge_tx_candidate=true`, `bridge_tx_handoff_ready=true`,
+  `handoff_block_reason=NONE`, `shadow_audio_chunks=62`,
+  `shadow_audio_samples=59520`, zero drops; Playback v2 somou 404 chunks
+  recebidos/tocados sem drops novos. Codec v2 apontou 1 pacote egress pendente
+  sem erro/drop, `egress-drain` drenou esse pacote e `codec-v2 health` voltou
+  `status=ok`.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

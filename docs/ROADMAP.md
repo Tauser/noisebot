@@ -2188,6 +2188,12 @@ Implementação:
   ok. Observacao para o proximo gate: esse turno curto encerrou no server por
   timeout (`voice_end_reason=timeout`, `duration_ms=9479`), entao repetir
   validacao curta por silencio antes de transferir TX real.
+- [x] Repeticao curta por silencio do gate de handoff: `ww -> que horas sao`
+  retornou transcript correto, `voice_end_reason=silence`, `duration_ms=3719`,
+  `bridge_tx_handoff_ready=true`, `handoff_block_reason=NONE`,
+  `shadow_audio_chunks=62`, `shadow_audio_samples=59520`, zero drops,
+  Playback v2 com +404 chunks recebidos/tocados sem drops novos e Codec v2
+  limpo apos drenar 1 pacote egress pendente.
 
 ---
 

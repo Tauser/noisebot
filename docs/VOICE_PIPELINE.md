@@ -169,6 +169,10 @@ candidato (`NOT_REAL_CAPTURE`), enquanto um turno real por wake ficou
 `handoff_block_reason=NONE`, com Playback v2 sem drops e Codec v2 saudavel.
 Como o mesmo turno encerrou por timeout no server, repetir um turno curto com
 fim por silencio antes de qualquer handoff real de TX.
+Essa repeticao tambem passou: `ww -> que horas sao` fechou com
+`voice_end_reason=silence`, transcript correto, gate verde, zero drops na
+Capture v2 e Playback v2, TTS completo e `SAY_END`. Um pacote egress Opus
+ficou pendente sem erro/drop e foi drenado; o health voltou `status=ok`.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após
