@@ -181,6 +181,14 @@ Entregas:
   `POST /api/audio/activity-v2/shadow/stop`. Ele mede RMS/peak, fala/silencio
   por limiares conservadores, frames mutados por playback e sessao ativa,
   mas nao abre sessao, nao chama bridge, nao chama wake e nao acessa HAL.
+- Validacao em hardware apos flash: status inicial de `/api/audio/activity-v2`
+  retornou `initialized=true`, `shadow_running=false` e `ESP_OK`. Um shadow de
+  1000 ms observou 63 frames, encerrou sozinho em 1008 ms, classificou
+  silencio (`speech_frames=0`, `silence_frames=63`), registrou `rms_max=584`,
+  `peak_max=1120`, `muted_frames=0` e manteve `session_active=false`. Playback
+  v2 seguiu com fila SAY zero e capture-v2 desligado. Apos reativar Opus v2
+  pos-flash, `codec-v2 health` voltou `healthy=true/status=ok`, worker
+  `running`, zero drops e `opus_codec_error=0`.
 - `voice_activity_service_v2` com status, probes e comparacao entre VAD atual,
   AFE/VAD e metricas RMS/ZCR/espectral.
 - Modo shadow que observa a sessao real sem decidir wake nem fim de fala.

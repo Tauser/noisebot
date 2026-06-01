@@ -2107,8 +2107,10 @@ Implementação:
   `audio_service`, expoe `/api/audio/activity-v2` e shadow start/stop, mede
   RMS/peak/fala/silencio/mute/sessao ativa e nao altera wake, captura, bridge,
   codec, Playback v2 ou HAL. Validacao local: contrato focado Voice Audio v2 e
-  build ESP-IDF limpos. Precisa de verificacao: flash e leitura do endpoint em
-  hardware.
+  build ESP-IDF limpos. Validacao em hardware apos flash: shadow de 1000 ms
+  observou 63 frames, encerrou sozinho em 1008 ms, classificou silencio sem
+  sessao ativa, `ESP_OK`; Playback v2 fila SAY zero, capture-v2 desligado e
+  `codec-v2 health` ok apos reativar Opus v2.
 
 ---
 

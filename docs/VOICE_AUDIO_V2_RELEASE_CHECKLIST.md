@@ -291,3 +291,14 @@ O primeiro incremento da Fase J e apenas shadow/probe:
   `/api/audio/playback-v2` depois do probe.
 - Qualquer ajuste de threshold so entra depois de replay/harness ou evidencia
   numerica comparavel; nao calibrar por percepcao solta.
+
+Resultado em hardware apos flash:
+
+- `/api/audio/activity-v2`: `initialized=true`, `ESP_OK`.
+- Shadow de 1000 ms: `observed_frames=63`, `shadow_elapsed_ms=1008`,
+  `speech_frames=0`, `silence_frames=63`, `muted_frames=0`, `rms_max=584`,
+  `peak_max=1120`, `session_active=false`.
+- `/api/audio/playback-v2`: fila SAY zero, `bridge_say_queue_owner=true`.
+- `/api/audio/capture-v2`: `real_capture_enabled=false`, `IDLE_SESSION`.
+- `codec-v2 health`: apos `transport-enable` pos-flash, `healthy=true`,
+  `status=ok`, worker `running`, zero drops e `opus_codec_error=0`.

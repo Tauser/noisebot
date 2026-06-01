@@ -264,6 +264,10 @@ Responsabilidade:
   que ja passa pelo `audio_service`, expondo `/api/audio/activity-v2` e
   shadow start/stop para medir RMS/peak, fala/silencio, frames mutados e
   sessao ativa sem alterar wake, captura, bridge, codec ou playback.
+- Validacao em hardware pos-flash confirmou o contrato passivo: shadow de
+  1000 ms observou 63 frames, encerrou sozinho, classificou silencio e manteve
+  `session_active=false`; `capture-v2` permaneceu desligado, Playback v2 ficou
+  com fila SAY zero e `codec-v2 health` voltou ok apos reativar Opus v2.
 - Classificar fala/silencio dentro de sessao ja aberta.
 - Usar ESP-SR VAD como caminho principal.
 - Manter RMS/ZCR/espectral como telemetria e fallback de bancada.
