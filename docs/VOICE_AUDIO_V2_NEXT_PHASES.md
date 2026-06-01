@@ -297,6 +297,14 @@ Entregas:
 - Modo shadow que observa a sessao real sem decidir wake nem fim de fala.
 - Eventos internos de `speech_start`, `speech_end`, `silence`, `discard_reason`
   apenas quando existe sessao aberta.
+- Incremento local atual: Activity v2 agora expõe sequencias consecutivas
+  passivas de fala/silencio no shadow (`speech_run_frames`,
+  `silence_run_frames`, `speech_run_max_frames`,
+  `silence_run_max_frames`). Esses campos servem para comparar estabilidade de
+  VAD/end-of-speech em testes futuros; nao abrem sessao, nao alteram wake, nao
+  enviam bridge e nao chamam HAL. Validacao local: contrato focado
+  `test_voice_activity_v2_shadow_is_explicit_and_passive` passou e
+  `idf.py build` ficou limpo, com 34% livre na menor particao.
 - Gate explicito: AEC device-side bloqueado se `input_reference=false`.
 
 Aceite:

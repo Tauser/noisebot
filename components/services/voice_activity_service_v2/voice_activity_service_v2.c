@@ -243,9 +243,19 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
     }
     if (speech) {
         s_status.speech_frames++;
+        s_status.speech_run_frames++;
+        s_status.silence_run_frames = 0U;
+        if (s_status.speech_run_frames > s_status.speech_run_max_frames) {
+            s_status.speech_run_max_frames = s_status.speech_run_frames;
+        }
         s_status.state = NB_VOICE_ACTIVITY_V2_STATE_SPEECH;
     } else {
         s_status.silence_frames++;
+        s_status.silence_run_frames++;
+        s_status.speech_run_frames = 0U;
+        if (s_status.silence_run_frames > s_status.silence_run_max_frames) {
+            s_status.silence_run_max_frames = s_status.silence_run_frames;
+        }
         s_status.state = NB_VOICE_ACTIVITY_V2_STATE_SILENCE;
     }
 

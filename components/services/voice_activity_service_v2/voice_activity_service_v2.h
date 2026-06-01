@@ -32,6 +32,10 @@ typedef struct {
     uint32_t observed_frames;
     uint32_t speech_frames;
     uint32_t silence_frames;
+    uint32_t speech_run_frames;
+    uint32_t silence_run_frames;
+    uint32_t speech_run_max_frames;
+    uint32_t silence_run_max_frames;
     uint32_t session_frames;
     uint32_t idle_frames;
     uint32_t rms_last;

@@ -2124,6 +2124,11 @@ Implementação:
   Validacao em hardware apos flash: shadow de 1000 ms com 63 frames,
   `zcr_last_permille=98`, `zcr_max_permille=141`, silencio, sem sessao ativa e
   `codec-v2 health` ok apos reativar Opus v2.
+- [x] Fase J ganhou contadores passivos de runs no shadow: Activity v2 expoe
+  `speech_run_frames`, `silence_run_frames`, `speech_run_max_frames` e
+  `silence_run_max_frames`. Esses campos preparam comparacao futura de
+  VAD/end-of-speech, sem alterar wake, captura, Playback v2, codec, bridge ou
+  HAL. Validacao local: contrato focado Voice Audio v2 e build ESP-IDF limpos.
 
 ---
 

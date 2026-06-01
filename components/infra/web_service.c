@@ -2371,13 +2371,16 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
     nb_voice_activity_v2_status_t st;
     voice_activity_service_v2_get_status(&st);
 
-    char buf[1024];
+    char buf[1280];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
              "\"shadow_running\":%s,\"state\":\"%s\","
              "\"shadow_duration_ms\":%lu,\"shadow_elapsed_ms\":%lu,"
              "\"observed_frames\":%lu,\"speech_frames\":%lu,"
-             "\"silence_frames\":%lu,\"session_frames\":%lu,"
+             "\"silence_frames\":%lu,"
+             "\"speech_run_frames\":%lu,\"silence_run_frames\":%lu,"
+             "\"speech_run_max_frames\":%lu,\"silence_run_max_frames\":%lu,"
+             "\"session_frames\":%lu,"
              "\"idle_frames\":%lu,\"muted_frames\":%lu,"
              "\"unmuted_frames\":%lu,"
              "\"rms_last\":%lu,\"peak_last\":%lu,\"zcr_last_permille\":%lu,"
@@ -2397,6 +2400,10 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.observed_frames,
              (unsigned long)st.speech_frames,
              (unsigned long)st.silence_frames,
+             (unsigned long)st.speech_run_frames,
+             (unsigned long)st.silence_run_frames,
+             (unsigned long)st.speech_run_max_frames,
+             (unsigned long)st.silence_run_max_frames,
              (unsigned long)st.session_frames,
              (unsigned long)st.idle_frames,
              (unsigned long)st.muted_frames,

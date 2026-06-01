@@ -1040,8 +1040,13 @@ O roadmap detalhado das fases restantes esta em
    fisico ainda pode gerar drops na fila SAY (+18 drops em uma resposta curta
    completa), entao o prebuffer padrao do server foi reduzido para 6 chunks
    antes de nova validacao. A validacao fisica seguinte confirmou +326 chunks
-   recebidos/tocados e zero drops novos com TTS completo. Nota
-   operacional: se o server subir sem `NOISEBOT_HOST` ou `--host`, ele fica
+   recebidos/tocados e zero drops novos com TTS completo. O incremento local
+   seguinte adiciona contadores passivos de sequencias
+   consecutivas de fala/silencio (`speech_run_*`, `silence_run_*`) ao shadow
+   para futura comparacao de VAD/end-of-speech, ainda sem mudar wake, captura,
+   playback, codec ou bridge. Validacao local: contrato focado Voice Audio v2
+   e build ESP-IDF limpos. Nota operacional: se o server subir sem
+   `NOISEBOT_HOST` ou `--host`, ele fica
    vivo mas sem transporte (`connected=false`), o que parece queda de voz. O
    `.env` local deve conter `NOISEBOT_HOST=192.168.1.30` junto de
    `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`.
