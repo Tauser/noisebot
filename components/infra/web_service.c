@@ -708,6 +708,9 @@ static esp_err_t handle_api_config_post(httpd_req_t *req)
     else if (strcmp(key, "voice_audio_v2_capture_enabled") == 0) {
         err = config_set_voice_audio_v2_capture_enabled(val != 0.0);
     }
+    else if (strcmp(key, "voice_audio_v2_capture_tx_enabled") == 0) {
+        err = config_set_voice_audio_v2_capture_tx_enabled(val != 0.0);
+    }
     else if (strcmp(key, "brightness")   == 0) err = config_set_brightness((uint8_t)val);
     else if (strcmp(key, "touch_sens")   == 0) err = config_set_touch_sensitivity((uint8_t)val);
     else if (strcmp(key, "idle_timeout") == 0) err = config_set_idle_timeout_s((uint32_t)val);
@@ -2600,7 +2603,8 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
     char buf[1400];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
-             "\"real_capture_enabled\":%s,\"real_capture\":%s,"
+             "\"real_capture_enabled\":%s,\"bridge_tx_handoff_enabled\":%s,"
+             "\"real_capture\":%s,"
              "\"bridge_tx_owner\":%s,\"legacy_audio_service_tx_owner\":%s,"
              "\"bridge_tx_candidate\":%s,\"bridge_tx_handoff_ready\":%s,"
              "\"handoff_block_reason\":\"%s\","
@@ -2622,6 +2626,7 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
              st.initialized ? "true" : "false",
              st.session_active ? "true" : "false",
              config_get_voice_audio_v2_capture_enabled() ? "true" : "false",
+             config_get_voice_audio_v2_capture_tx_enabled() ? "true" : "false",
              st.real_capture ? "true" : "false",
              st.bridge_tx_owner ? "true" : "false",
              st.legacy_audio_service_tx_owner ? "true" : "false",
@@ -3157,10 +3162,11 @@ static esp_err_t handle_api_wifi_delete(httpd_req_t *req)
 
 static esp_err_t handle_api_config_all(httpd_req_t *req)
 {
-    char buf[512];
+    char buf[640];
     snprintf(buf, sizeof(buf),
         "{\"volume\":%u,\"brightness\":%u,\"touch_sens\":%u,"
         "\"idle_timeout\":%lu,\"voice_audio_v2_capture_enabled\":%s,"
+        "\"voice_audio_v2_capture_tx_enabled\":%s,"
         "\"srv1_min\":%d,\"srv1_max\":%d,\"srv1_ctr\":%d,"
         "\"srv2_min\":%d,\"srv2_max\":%d,\"srv2_ctr\":%d,"
         "\"last_emotion\":%u,\"persona_seed\":%lu}",
@@ -3169,6 +3175,7 @@ static esp_err_t handle_api_config_all(httpd_req_t *req)
         (unsigned)config_get_touch_sensitivity(),
         (unsigned long)config_get_idle_timeout_s(),
         config_get_voice_audio_v2_capture_enabled() ? "true" : "false",
+        config_get_voice_audio_v2_capture_tx_enabled() ? "true" : "false",
         (int)config_get_servo_limit_min(1),
         (int)config_get_servo_limit_max(1),
         (int)config_get_servo_center(1),

@@ -75,6 +75,8 @@ esp_err_t config_set_volume(uint8_t level);
 
 bool      config_get_voice_audio_v2_capture_enabled(void);
 esp_err_t config_set_voice_audio_v2_capture_enabled(bool enabled);
+bool      config_get_voice_audio_v2_capture_tx_enabled(void);
+esp_err_t config_set_voice_audio_v2_capture_tx_enabled(bool enabled);
 
 /* ── Display ─────────────────────────────────────────────────────────────── */
 

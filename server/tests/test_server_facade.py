@@ -750,6 +750,8 @@ def test_server_firmware_diag_client_exposes_capture_v2_endpoints(monkeypatch) -
     assert client.audio_capture_v2_cancel()["ok"]
     assert client.set_voice_audio_v2_capture_enabled(True)["ok"]
     assert client.set_voice_audio_v2_capture_enabled(False)["ok"]
+    assert client.set_voice_audio_v2_capture_tx_enabled(True)["ok"]
+    assert client.set_voice_audio_v2_capture_tx_enabled(False)["ok"]
 
     assert get_paths == ["api/audio/capture-v2"]
     assert post_calls == [
@@ -757,6 +759,8 @@ def test_server_firmware_diag_client_exposes_capture_v2_endpoints(monkeypatch) -
         ("api/audio/capture-v2/cancel", None),
         ("api/config", {"key": "voice_audio_v2_capture_enabled", "value": 1}),
         ("api/config", {"key": "voice_audio_v2_capture_enabled", "value": 0}),
+        ("api/config", {"key": "voice_audio_v2_capture_tx_enabled", "value": 1}),
+        ("api/config", {"key": "voice_audio_v2_capture_tx_enabled", "value": 0}),
     ]
 
 
@@ -898,6 +902,7 @@ def test_server_cli_runs_capture_v2_debug_command(monkeypatch, capsys) -> None:
         return {
             "ok": True,
             "real_capture_enabled": False,
+            "bridge_tx_handoff_enabled": False,
             "real_capture": False,
             "state": "DONE",
             "end_reason": "SPEECH_COMPLETE",
@@ -945,6 +950,7 @@ def test_server_cli_runs_capture_v2_live_with_rollback(monkeypatch, capsys) -> N
         return {
             "ok": True,
             "real_capture_enabled": bool(toggles and toggles[-1]),
+            "bridge_tx_handoff_enabled": False,
             "real_capture": bool(toggles and toggles[-1]),
             "state": "DONE",
             "end_reason": "SPEECH_COMPLETE",

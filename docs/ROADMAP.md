@@ -2194,6 +2194,12 @@ Implementação:
   `shadow_audio_chunks=62`, `shadow_audio_samples=59520`, zero drops,
   Playback v2 com +404 chunks recebidos/tocados sem drops novos e Codec v2
   limpo apos drenar 1 pacote egress pendente.
+- [x] Preparacao local do handoff real: adicionada flag NVS
+  `voice_audio_v2_capture_tx_enabled` (`v2cap_tx_en`, default off), exposta em
+  `/api/config`, `/api/config/all`, `/api/audio/capture-v2` como
+  `bridge_tx_handoff_enabled` e no CLI `capture-v2 tx-enable|tx-disable`.
+  Este passo nao altera o TX real; apenas cria o arm/disarm separado da flag
+  de observacao.
 
 ---
 

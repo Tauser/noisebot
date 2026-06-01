@@ -114,7 +114,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     capture_v2 = debug_sub.add_parser("capture-v2")
     capture_v2.add_argument(
         "action",
-        choices=["status", "replay", "cancel", "enable", "disable", "live"],
+        choices=[
+            "status",
+            "replay",
+            "cancel",
+            "enable",
+            "disable",
+            "tx-enable",
+            "tx-disable",
+            "live",
+        ],
         nargs="?",
         default="status",
     )
@@ -557,6 +566,10 @@ def run_debug_command(args: argparse.Namespace) -> None:
             payload = client.set_voice_audio_v2_capture_enabled(True)
         elif args.action == "disable":
             payload = client.set_voice_audio_v2_capture_enabled(False)
+        elif args.action == "tx-enable":
+            payload = client.set_voice_audio_v2_capture_tx_enabled(True)
+        elif args.action == "tx-disable":
+            payload = client.set_voice_audio_v2_capture_tx_enabled(False)
         elif args.action == "live":
             payload = _run_capture_v2_live(client, no_prompt=args.no_prompt)
         else:
@@ -697,6 +710,7 @@ def _format_capture_v2_status(payload: dict[str, object]) -> str:
             "Capture v2 live:",
             f"- ok: {payload.get('ok')}",
             f"- after.real_capture_enabled: {after.get('real_capture_enabled')}",
+            f"- after.bridge_tx_handoff_enabled: {after.get('bridge_tx_handoff_enabled')}",
             f"- after.real_capture: {after.get('real_capture')}",
             f"- after.state: {after.get('state')}",
             f"- after.end_reason: {after.get('end_reason')}",
@@ -722,6 +736,7 @@ def _format_capture_v2_status(payload: dict[str, object]) -> str:
         "Capture v2:",
         f"- ok: {payload.get('ok')}",
         f"- real_capture_enabled: {payload.get('real_capture_enabled')}",
+        f"- bridge_tx_handoff_enabled: {payload.get('bridge_tx_handoff_enabled')}",
         f"- real_capture: {payload.get('real_capture')}",
         f"- session_active: {payload.get('session_active')}",
         f"- state: {payload.get('state')}",

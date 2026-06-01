@@ -334,6 +334,11 @@ Responsabilidade:
   observada pelo Capture v2 ja cumpre as condicoes minimas para virar candidata
   a ownership de bridge TX. Nenhum `VOICE_START`, `AUDIO_CHUNK` ou `VOICE_END`
   passa a ser enviado pelo Capture v2 neste passo.
+- O armamento operacional do handoff real fica em flag separada:
+  `voice_audio_v2_capture_tx_enabled` (`v2cap_tx_en`), default desligado. A
+  flag aparece como `bridge_tx_handoff_enabled` no status de Capture v2, mas
+  so passa a alterar o TX quando um incremento posterior conectar a troca de
+  ownership.
 
 Parametros iniciais preservados:
 

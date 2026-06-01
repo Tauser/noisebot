@@ -433,6 +433,14 @@ Entregas:
   recebidos/tocados sem drops novos. Codec v2 apontou 1 pacote egress pendente
   sem erro/drop, `egress-drain` drenou esse pacote e `codec-v2 health` voltou
   `status=ok`.
+- Incremento local de preparacao do handoff real: nova flag NVS
+  `voice_audio_v2_capture_tx_enabled`, default `false`, exposta em
+  `/api/config`, `/api/config/all`, `/api/audio/capture-v2` como
+  `bridge_tx_handoff_enabled` e no CLI
+  `noisebot_server debug capture-v2 tx-enable|tx-disable`. Este passo ainda
+  nao altera o envio real de `VOICE_START/AUDIO_CHUNK/VOICE_END`; ele apenas
+  cria o arm/disarm operacional separado da flag de observacao
+  `voice_audio_v2_capture_enabled`.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

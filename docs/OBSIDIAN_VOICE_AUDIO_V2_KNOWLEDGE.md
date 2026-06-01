@@ -404,6 +404,10 @@ Faz:
   `handoff_block_reason`, para registrar quando uma sessao real observada
   estaria pronta para virar candidata a ownership de bridge TX. Isso nao muda
   envio real, bridge, wake, VAD, codec, playback ou HAL.
+- expor flag separada de armamento do handoff real:
+  `voice_audio_v2_capture_tx_enabled` (`v2cap_tx_en`, default off), visivel
+  como `bridge_tx_handoff_enabled`. A flag ainda nao transfere TX neste passo;
+  ela prepara rollback operacional sem reflash para o incremento seguinte.
 
 Nao faz:
 

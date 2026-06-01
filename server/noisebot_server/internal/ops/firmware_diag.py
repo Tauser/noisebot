@@ -240,6 +240,15 @@ class FirmwareDiagClient:
             },
         )
 
+    def set_voice_audio_v2_capture_tx_enabled(self, enabled: bool) -> dict[str, Any]:
+        return self._post_json(
+            "api/config",
+            {
+                "key": "voice_audio_v2_capture_tx_enabled",
+                "value": 1 if enabled else 0,
+            },
+        )
+
 
 def _env_float(key: str, default: float) -> float:
     try:

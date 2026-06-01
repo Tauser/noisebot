@@ -173,6 +173,11 @@ Essa repeticao tambem passou: `ww -> que horas sao` fechou com
 `voice_end_reason=silence`, transcript correto, gate verde, zero drops na
 Capture v2 e Playback v2, TTS completo e `SAY_END`. Um pacote egress Opus
 ficou pendente sem erro/drop e foi drenado; o health voltou `status=ok`.
+O passo local seguinte prepara o armamento operacional do handoff real:
+`voice_audio_v2_capture_tx_enabled` nasce desligada por padrao e aparece em
+`/api/config`, `/api/config/all`, `/api/audio/capture-v2` e no CLI
+`capture-v2 tx-enable|tx-disable`. Ela ainda nao muda o TX real; serve para o
+proximo incremento poder ligar/desligar a troca de ownership sem reflash.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

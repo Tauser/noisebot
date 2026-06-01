@@ -391,13 +391,19 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
     config_keys = CONFIG_KEYS.read_text(encoding="utf-8")
 
     assert '#define NB_CFG_KEY_V2_CAP_EN  "v2cap_en"' in config_keys
+    assert '#define NB_CFG_KEY_V2_CAP_TX  "v2cap_tx_en"' in config_keys
     assert "#define NB_CFG_DEFAULT_V2_CAP_EN          0" in config_keys
+    assert "#define NB_CFG_DEFAULT_V2_CAP_TX          0" in config_keys
     assert "NB_CFG_SCHEMA_VERSION  3U" in config_keys
     assert "bool      config_get_voice_audio_v2_capture_enabled(void);" in config_h
     assert "esp_err_t config_set_voice_audio_v2_capture_enabled(bool enabled);" in config_h
+    assert "bool      config_get_voice_audio_v2_capture_tx_enabled(void);" in config_h
+    assert "esp_err_t config_set_voice_audio_v2_capture_tx_enabled(bool enabled);" in config_h
     assert "ensure_voice_audio_v2_defaults" in config_c
     assert "voice_audio_v2_capture_enabled" in web
+    assert "voice_audio_v2_capture_tx_enabled" in web
     assert '\\"real_capture_enabled\\":%s,' in web
+    assert '\\"bridge_tx_handoff_enabled\\":%s,' in web
     assert "voice_capture_session_v2_is_active()" in web
     assert "audio_service_end_listen_session(NB_LISTEN_END_CANCELLED)" in web
     assert "config_get_voice_audio_v2_capture_enabled()" in audio_service
