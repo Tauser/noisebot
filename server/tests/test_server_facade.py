@@ -4156,6 +4156,20 @@ def test_server_agent_local_intent_handles_bare_stop_without_llm() -> None:
     assert result.expression_id == 2
 
 
+def test_server_agent_local_intent_treats_vale_as_stop_only_after_barge_in() -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    normal = provider.match("Vale.", turn_id=45, context={"recent_barge_in": False})
+    after_barge = provider.match("Vale.", turn_id=46, context={"recent_barge_in": True})
+
+    assert normal.intent_name is None
+    assert after_barge.intent_name == "local_stop"
+    assert after_barge.reply_text == "Pronto, parei."
+
+
 def test_server_agent_llm_and_intents_are_server_owned() -> None:
     _ensure_bridgev2_path()
 

@@ -103,6 +103,12 @@ novos ficaram restritos a `say_chunks_dropped_listening`, como descarte de
 audio antigo durante a nova escuta. Ponto corrigido no firmware: ao receber
 `SPEECH_CANCEL` ou `LISTEN_START`, o `behavior_engine` agora limpa o texto
 visual antigo com `ui_overlay_clear_text()` antes de mostrar `Ouvindo...`.
+Ponto corrigido no server apos validacao fisica: quando o usuario tenta
+`ww -> pare` logo apos barge-in, o STT pode confundir o comando curto com
+`Vale.`. O `LocalIntentProvider` agora trata esse mishear como `local_stop`
+somente dentro da janela curta de barge-in recente, respondendo
+`Pronto, parei.` sem chamar a LLM; fora desse contexto, `Vale.` continua sem
+ser forçado para stop.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o

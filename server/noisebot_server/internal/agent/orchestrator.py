@@ -514,7 +514,14 @@ class Orchestrator:
         session.mark("thinking_start")
 
         # Resolve intent local (< 5 ms, sem I/O)
-        context: dict = {"status": self._last_status}
+        recent_barge_in = (
+            self._t_barge_in is not None
+            and (time.monotonic() - self._t_barge_in) <= 20.0
+        )
+        context: dict = {
+            "status": self._last_status,
+            "recent_barge_in": recent_barge_in,
+        }
         t_intent_start = time.monotonic()
         intent = self._intent.match(
             text=event.text,
@@ -1212,6 +1219,7 @@ class Orchestrator:
             return
 
         t_barge = time.monotonic()
+        self._t_barge_in = t_barge
         log.info("Barge-in no turno %d (estado=%s)", event.turn_id, self._fsm.state.name)
 
         adapter = self.adapter

@@ -384,6 +384,11 @@ _CURIOSITY_REPLIES = (
     "Curiosidade: o mel quase nao estraga quando fica bem fechado.",
 )
 
+_STOP_AFTER_BARGE_MISHEARS = frozenset({
+    "vale",
+    "valeu",
+})
+
 
 class LocalIntentProvider:
     """Provider de intents locais PT-BR, determinístico, sem I/O.
@@ -415,7 +420,10 @@ class LocalIntentProvider:
 
         # -- Controle direto --------------------------------------------------
         # Um "ww -> pare" depois de barge-in e comando de controle, nao prompt LLM.
-        if norm in _STOP_ONLY_PHRASES:
+        recent_barge_in = bool(context.get("recent_barge_in"))
+        if norm in _STOP_ONLY_PHRASES or (
+            recent_barge_in and norm in _STOP_AFTER_BARGE_MISHEARS
+        ):
             return IntentResolved(
                 turn_id=turn_id,
                 intent_name="local_stop",
