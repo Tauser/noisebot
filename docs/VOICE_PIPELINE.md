@@ -141,6 +141,7 @@ Follow-up automatico permanece fora do caminho default: `NOISEBOT_FOLLOWUP_ENABL
 fica falso por padrao, e `NOISEBOT_FOLLOWUP_WINDOW_MS` limita a janela entre
 1s e 30s quando o recurso for explicitamente ligado. Isso preserva wake manual
 como contrato normal e evita loops de reescuta por pergunta gerada pelo robo.
+O dashboard mostra esses valores como leitura para auditar a politica ativa.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o

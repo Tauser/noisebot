@@ -592,7 +592,8 @@ Entregas:
   opt-in por `NOISEBOT_FOLLOWUP_ENABLED=false` por padrao, com janela limitada
   por `NOISEBOT_FOLLOWUP_WINDOW_MS` (1s-30s, default 8s quando ligado). Assim o
   robo nao rearma escuta por pergunta da propria resposta sem modo
-  explicitamente habilitado.
+  explicitamente habilitado. O dashboard operacional mostra o estado efetivo do
+  follow-up e a janela configurada como leitura, sem habilitar o recurso por UI.
 - Contrato explicito entre `voice_controller`, state machine e sessao v2.
 - Follow-up automatico apenas como opt-in com janela curta, telemetria e
   abort/cancel claros.

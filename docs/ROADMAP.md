@@ -2308,7 +2308,8 @@ Implementação:
 - [x] Fase L tornou follow-up automatico opt-in: `NOISEBOT_FOLLOWUP_ENABLED`
   fica falso por padrao e `NOISEBOT_FOLLOWUP_WINDOW_MS` limita a janela entre
   1s e 30s quando o recurso for ligado explicitamente. Com default-off, uma
-  pergunta da propria resposta nao rearma escuta sozinha.
+  pergunta da propria resposta nao rearma escuta sozinha. O dashboard mostra o
+  estado e a janela efetivos como leitura para reduzir ambiguidade em teste.
 
 ---
 

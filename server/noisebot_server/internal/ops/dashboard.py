@@ -304,6 +304,12 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
           Aplicar Modo
         </button>
       </div>
+      <hr style="margin:10px 0;border:none;border-top:1px solid var(--border)">
+      <div class="form-row">
+        <label>Follow-up</label>
+        <span id="cfg-followup-enabled" class="pill pill-off">Desligado</span>
+        <span id="cfg-followup-window" class="age">janela: —</span>
+      </div>
       <div class="warn-box">
         🔒 API keys nunca aqui. Use variáveis de ambiente ou arquivo
         <code style="font-family:var(--mono)">.env</code> fora do repositório.
@@ -664,6 +670,7 @@ function renderErrors(data) {
 
 function populateConfigForm(cfg) {
   const llm = cfg.llm || {};
+  const conversation = cfg.conversation || {};
   const p = llm.provider || 'openai';
   const sel = document.getElementById('cfg-provider');
   if (sel.value !== p) sel.value = p;
@@ -672,6 +679,12 @@ function populateConfigForm(cfg) {
   if (!mt.matches(':focus') && llm.max_output_tokens) mt.value = llm.max_output_tokens;
   const ms = document.getElementById('cfg-mode');
   if (cfg.pipeline_mode) ms.value = cfg.pipeline_mode;
+  const followup = document.getElementById('cfg-followup-enabled');
+  const enabled = conversation.followup_enabled === true;
+  followup.className = 'pill ' + (enabled ? 'pill-ok' : 'pill-off');
+  followup.textContent = enabled ? 'Ligado' : 'Desligado';
+  document.getElementById('cfg-followup-window').textContent =
+    'janela: ' + safeStr(conversation.followup_window_ms || '—') + ' ms';
 }
 
 function onProviderChange() {
