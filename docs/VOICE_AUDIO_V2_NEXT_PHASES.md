@@ -473,6 +473,15 @@ Entregas:
   cancelados e cancels. Sanity check local em hardware, sem turno entre
   snapshots, retornou `queue_empty=true`, `normal_path_clean=true` e todos os
   deltas zero.
+- Incremento local de handoff real opt-in: quando
+  `voice_audio_v2_capture_enabled=true` e
+  `voice_audio_v2_capture_tx_enabled=true`, o `audio_service` continua dono do
+  HAL/mic e do condicionamento de audio, mas roteia `VOICE_START`,
+  `AUDIO_CHUNK` PCM16/Opus e `VOICE_END` por funcoes explicitas de
+  `voice_capture_session_v2`. Com a flag de TX desligada, o caminho legado
+  permanece exatamente como antes e o Capture v2 segue shadow. Validacao local:
+  contrato focado Voice Audio v2 e build ESP-IDF limpos. Falta flash e teste
+  fisico antes de considerar o handoff validado.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

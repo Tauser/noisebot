@@ -5,4 +5,6 @@ idf_component_register(
     REQUIRES
         esp_common
         freertos
+    PRIV_REQUIRES
+        infra
 )

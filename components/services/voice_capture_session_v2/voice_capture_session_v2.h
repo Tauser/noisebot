@@ -94,8 +94,16 @@ esp_err_t voice_capture_session_v2_replay_start(nb_voice_capture_v2_source_t sou
                                                 uint32_t speech_ms,
                                                 uint32_t trailing_silence_ms);
 esp_err_t voice_capture_session_v2_begin_real_pcm16(nb_voice_capture_v2_source_t source);
+esp_err_t voice_capture_session_v2_set_bridge_tx_owner(bool enabled);
 void voice_capture_session_v2_note_voice_start(void);
 void voice_capture_session_v2_note_audio_chunk(uint16_t sample_count, bool accepted);
+esp_err_t voice_capture_session_v2_send_voice_start(void);
+esp_err_t voice_capture_session_v2_send_audio_chunk(const int16_t *samples, uint16_t sample_count);
+esp_err_t voice_capture_session_v2_send_opus_packet(const uint8_t *packet,
+                                                    uint16_t packet_len);
+esp_err_t voice_capture_session_v2_send_voice_end(uint32_t reason,
+                                                  bool cancelled,
+                                                  bool flush_before_end);
 void voice_capture_session_v2_finish(bool cancelled);
 esp_err_t voice_capture_session_v2_cancel(void);
 bool voice_capture_session_v2_is_active(void);

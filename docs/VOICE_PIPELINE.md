@@ -192,6 +192,14 @@ nova, o server tambem ganhou o harness
 O modo `delta` compara snapshots antes/depois do turno e calcula deltas de
 chunks recebidos, tocados, dropados, dropados durante listening, cancelados e
 cancels; ele deve ficar limpo antes de qualquer handoff real adicional.
+O handoff real opt-in agora esta preparado localmente: quando
+`voice_audio_v2_capture_enabled` e `voice_audio_v2_capture_tx_enabled` estao
+ligadas juntas, o `audio_service` continua dono do HAL/mic/condicionamento,
+mas roteia o TX logico `VOICE_START/AUDIO_CHUNK/VOICE_END` por
+`voice_capture_session_v2`. Com a flag de TX desligada, o legado permanece dono
+do TX real e o Capture v2 segue shadow. Validacao local passou com contrato
+focado e build ESP-IDF; falta flash e teste fisico antes de considerar este
+handoff validado.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

@@ -2224,6 +2224,14 @@ Implementação:
   `say_chunks_received/played/dropped/dropped_listening/cancelled` entre dois
   snapshots. Sanity check em hardware pos-reboot retornou contadores zerados,
   `queue_empty=true` e `normal_path_clean=true` sem turno entre snapshots.
+- [x] Handoff real opt-in preparado localmente para Capture v2: com
+  `voice_audio_v2_capture_enabled=true` e
+  `voice_audio_v2_capture_tx_enabled=true`, o `audio_service` preserva o HAL e
+  o condicionamento de audio, mas passa o envio logico de
+  `VOICE_START/AUDIO_CHUNK/VOICE_END` para `voice_capture_session_v2`. Com a
+  flag de TX desligada, o caminho legado segue ativo. Validacao local: contrato
+  focado Voice Audio v2 e build ESP-IDF limpos. Pendente: flash e validacao
+  fisica antes de marcar como aprovado em hardware.
 
 ---
 

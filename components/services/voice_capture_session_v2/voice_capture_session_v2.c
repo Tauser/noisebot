@@ -3,8 +3,10 @@
  */
 
 #include "voice_capture_session_v2.h"
+#include "bridge_service.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
+#include "esp_timer.h"
 #include <string.h>
 
 #define CAPTURE_REPLAY_FRAME_MS        16U
@@ -224,6 +226,21 @@ esp_err_t voice_capture_session_v2_begin_real_pcm16(nb_voice_capture_v2_source_t
     return ESP_OK;
 }
 
+esp_err_t voice_capture_session_v2_set_bridge_tx_owner(bool enabled)
+{
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.session_active || !s_status.real_capture) {
+        taskEXIT_CRITICAL(&s_mux);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    s_status.bridge_tx_owner = enabled;
+    s_status.legacy_audio_service_tx_owner = !enabled;
+    update_handoff_gate_locked();
+    taskEXIT_CRITICAL(&s_mux);
+    return ESP_OK;
+}
+
 void voice_capture_session_v2_note_voice_start(void)
 {
     taskENTER_CRITICAL(&s_mux);
@@ -267,6 +284,125 @@ void voice_capture_session_v2_note_audio_chunk(uint16_t sample_count, bool accep
         }
     }
     taskEXIT_CRITICAL(&s_mux);
+}
+
+esp_err_t voice_capture_session_v2_send_voice_start(void)
+{
+    taskENTER_CRITICAL(&s_mux);
+    bool can_send = s_status.session_active &&
+                    s_status.real_capture &&
+                    s_status.bridge_tx_owner &&
+                    !s_status.voice_start_sent;
+    taskEXIT_CRITICAL(&s_mux);
+
+    if (!can_send) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!bridge_service_is_connected()) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    bridge_service_flush_tx();
+    nb_event_t marker = {
+        .type         = NB_EVT_VOICE_ACTIVITY_START,
+        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+    };
+    esp_err_t rc = bridge_service_send_event(&marker);
+    if (rc != ESP_OK) {
+        return rc;
+    }
+
+    voice_capture_session_v2_note_voice_start();
+    return ESP_OK;
+}
+
+esp_err_t voice_capture_session_v2_send_audio_chunk(const int16_t *samples,
+                                                    uint16_t sample_count)
+{
+    taskENTER_CRITICAL(&s_mux);
+    bool can_send = s_status.session_active &&
+                    s_status.real_capture &&
+                    s_status.bridge_tx_owner &&
+                    s_status.voice_start_sent;
+    taskEXIT_CRITICAL(&s_mux);
+
+    if (!can_send) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t rc = bridge_service_send_audio_chunk(samples, sample_count);
+    voice_capture_session_v2_note_audio_chunk(sample_count, rc == ESP_OK);
+    return rc;
+}
+
+esp_err_t voice_capture_session_v2_send_opus_packet(const uint8_t *packet,
+                                                    uint16_t packet_len)
+{
+    taskENTER_CRITICAL(&s_mux);
+    bool can_send = s_status.session_active &&
+                    s_status.real_capture &&
+                    s_status.bridge_tx_owner &&
+                    s_status.voice_start_sent;
+    taskEXIT_CRITICAL(&s_mux);
+
+    if (!can_send) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t rc = bridge_service_send_opus_packet(packet, packet_len);
+    voice_capture_session_v2_note_audio_chunk(NB_BRIDGE_OPUS_FRAME_SAMPLES,
+                                              rc == ESP_OK);
+    return rc;
+}
+
+esp_err_t voice_capture_session_v2_send_voice_end(uint32_t reason,
+                                                  bool cancelled,
+                                                  bool flush_before_end)
+{
+    taskENTER_CRITICAL(&s_mux);
+    bool can_send = s_status.session_active &&
+                    s_status.real_capture &&
+                    s_status.bridge_tx_owner &&
+                    s_status.voice_start_sent &&
+                    (s_status.voice_audio_sent || cancelled);
+    taskEXIT_CRITICAL(&s_mux);
+
+    if (!can_send) {
+        voice_capture_session_v2_finish(cancelled);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (flush_before_end) {
+        bridge_service_flush_tx();
+    }
+
+    nb_event_t marker = {
+        .type         = NB_EVT_VOICE_ACTIVITY_END,
+        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+        .data.u32     = reason,
+    };
+    esp_err_t rc = bridge_service_send_event(&marker);
+
+    taskENTER_CRITICAL(&s_mux);
+    if (s_status.session_active) {
+        s_status.session_active = false;
+        s_status.state = cancelled
+            ? NB_VOICE_CAPTURE_V2_CANCELLED
+            : NB_VOICE_CAPTURE_V2_DONE;
+        s_status.voice_end_sent = (rc == ESP_OK);
+        s_status.shadow_voice_end_sent = s_status.voice_end_sent;
+        if (rc == ESP_OK) {
+            s_status.end_reason = cancelled
+                ? NB_VOICE_CAPTURE_V2_END_CANCELLED
+                : NB_VOICE_CAPTURE_V2_END_SPEECH_COMPLETE;
+        } else {
+            s_status.end_reason = NB_VOICE_CAPTURE_V2_END_ERROR;
+        }
+        s_status.last_error = rc;
+        update_handoff_gate_locked();
+    }
+    taskEXIT_CRITICAL(&s_mux);
+    return rc;
 }
 
 void voice_capture_session_v2_finish(bool cancelled)

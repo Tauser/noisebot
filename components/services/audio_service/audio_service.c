@@ -231,6 +231,7 @@ static struct {
     bool                 listen_voice_detected;       /* VAD ativou na sessão    */
     bool                 listen_skip_preroll;         /* barge-in nao envia TTS antigo */
     bool                 listen_capture_v2_active;    /* contrato v2 opt-in ativo */
+    bool                 listen_capture_v2_tx_owner;  /* v2 envia VOICE_START/CHUNK/END */
 } s;
 
 #define BRIDGE_SAY_IDLE_END_MS  1200U
@@ -280,7 +281,7 @@ static void bridge_feed_opus_pcm(const int16_t *pcm, uint16_t samples)
     }
 }
 
-static uint8_t bridge_drain_opus_packets_if_enabled(void)
+static uint8_t bridge_drain_opus_packets_if_enabled(bool capture_v2_tx_owner)
 {
     if (!bridge_service_opus_is_enabled()) {
         return 0;
@@ -297,7 +298,9 @@ static uint8_t bridge_drain_opus_packets_if_enabled(void)
         if (read_rc != ESP_OK) {
             break;
         }
-        esp_err_t tx_rc = bridge_service_send_opus_packet(s_opus_packet_buf, packet_len);
+        esp_err_t tx_rc = capture_v2_tx_owner
+            ? voice_capture_session_v2_send_opus_packet(s_opus_packet_buf, packet_len)
+            : bridge_service_send_opus_packet(s_opus_packet_buf, packet_len);
         if (tx_rc != ESP_OK) {
             break;
         }
@@ -614,13 +617,17 @@ static bool listen_start_bridge_capture(void)
         return false;
     }
 
-    bridge_service_flush_tx();
-
-    nb_event_t marker = {
-        .type         = NB_EVT_VOICE_ACTIVITY_START,
-        .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
-    };
-    esp_err_t start_rc = bridge_service_send_event(&marker);
+    esp_err_t start_rc = s.listen_capture_v2_tx_owner
+        ? voice_capture_session_v2_send_voice_start()
+        : ESP_OK;
+    if (!s.listen_capture_v2_tx_owner) {
+        bridge_service_flush_tx();
+        nb_event_t marker = {
+            .type         = NB_EVT_VOICE_ACTIVITY_START,
+            .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+        };
+        start_rc = bridge_service_send_event(&marker);
+    }
     s.bridge_start_sent = (start_rc == ESP_OK);
     if (!s.bridge_start_sent) {
         ESP_LOGW(TAG, "VOICE_START nao entrou na fila da bridge: %s",
@@ -645,24 +652,29 @@ static bool listen_start_bridge_capture(void)
                                     &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
             if (bridge_service_opus_is_enabled()) {
                 bridge_feed_opus_pcm(s_bridge_buf, NB_AUDIO_CHUNK_FRAMES);
-                uint8_t sent_packets = bridge_drain_opus_packets_if_enabled();
+                uint8_t sent_packets = bridge_drain_opus_packets_if_enabled(
+                    s.listen_capture_v2_tx_owner);
                 if (sent_packets > 0U) {
                     s.bridge_audio_sent = true;
-                    if (s.listen_capture_v2_active) {
+                    if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
                         voice_capture_session_v2_note_audio_chunk(
                             (uint16_t)sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES,
                             true);
                     }
                 }
             } else {
-                if (bridge_service_send_audio_chunk(s_bridge_buf,
-                                                    NB_AUDIO_CHUNK_FRAMES) == ESP_OK) {
+                esp_err_t tx_rc = s.listen_capture_v2_tx_owner
+                    ? voice_capture_session_v2_send_audio_chunk(s_bridge_buf,
+                                                                NB_AUDIO_CHUNK_FRAMES)
+                    : bridge_service_send_audio_chunk(s_bridge_buf,
+                                                      NB_AUDIO_CHUNK_FRAMES);
+                if (tx_rc == ESP_OK) {
                     bridge_feed_opus_pcm(s_bridge_buf, NB_AUDIO_CHUNK_FRAMES);
                     s.bridge_audio_sent = true;
-                    if (s.listen_capture_v2_active) {
+                    if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
                         voice_capture_session_v2_note_audio_chunk(NB_AUDIO_CHUNK_FRAMES, true);
                     }
-                } else if (s.listen_capture_v2_active) {
+                } else if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
                     voice_capture_session_v2_note_audio_chunk(NB_AUDIO_CHUNK_FRAMES, false);
                 }
             }
@@ -672,7 +684,7 @@ static bool listen_start_bridge_capture(void)
     }
 
     s.bridge_tx_active = true;
-    if (s.listen_capture_v2_active) {
+    if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
         voice_capture_session_v2_note_voice_start();
     }
     ESP_LOGD(TAG, "bridge captura iniciada preroll=%u", (unsigned)pr_count);
@@ -695,6 +707,7 @@ static nb_voice_capture_v2_source_t capture_v2_source_from_listen(nb_listen_sour
 
 static bool begin_capture_v2_if_enabled(nb_listen_source_t source)
 {
+    s.listen_capture_v2_tx_owner = false;
     if (!config_get_voice_audio_v2_capture_enabled()) {
         return false;
     }
@@ -704,6 +717,17 @@ static bool begin_capture_v2_if_enabled(nb_listen_source_t source)
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "capture v2 real iniciado source=%s",
                  listen_source_name(source));
+        if (config_get_voice_audio_v2_capture_tx_enabled()) {
+            esp_err_t owner_rc = voice_capture_session_v2_set_bridge_tx_owner(true);
+            if (owner_rc == ESP_OK) {
+                s.listen_capture_v2_tx_owner = true;
+                ESP_LOGI(TAG, "capture v2 bridge TX owner armado source=%s",
+                         listen_source_name(source));
+            } else {
+                ESP_LOGW(TAG, "capture v2 TX owner indisponivel (%s); mantendo TX legado",
+                         esp_err_to_name(owner_rc));
+            }
+        }
     } else {
         ESP_LOGW(TAG, "capture v2 real indisponivel (%s); usando v1 source=%s",
                  esp_err_to_name(err), listen_source_name(source));
@@ -719,6 +743,8 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
                 && (s.bridge_audio_sent || reason == NB_LISTEN_END_CANCELLED);
     listen_phase_t phase = s.listen_phase;
     uint32_t speech_elapsed_ms = s.listen_speech_elapsed_ms;
+    bool capture_v2_active = s.listen_capture_v2_active;
+    bool capture_v2_tx_owner = s.listen_capture_v2_tx_owner;
 
     s.listen_session_active    = false;
     s.listen_phase             = LISTEN_PHASE_IDLE;
@@ -730,24 +756,34 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
     s.vad_enter_count          = 0;
     s.vad_silence_start_us     = 0;
     audio_processor_service_bridge_capture_end();
-    if (s.listen_capture_v2_active) {
+    if (capture_v2_active && !capture_v2_tx_owner) {
         voice_capture_session_v2_finish(reason == NB_LISTEN_END_CANCELLED);
-        s.listen_capture_v2_active = false;
     }
+    s.listen_capture_v2_active = false;
+    s.listen_capture_v2_tx_owner = false;
 
     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_VOICE_END,
                                NB_AUDIO_EVT_DATA_SESSION);
 
     if (can_end && bridge_service_is_connected()) {
-        if (s.bridge_flush_before_end || reason == NB_LISTEN_END_CANCELLED) {
+        bool flush_before_end = s.bridge_flush_before_end ||
+                                reason == NB_LISTEN_END_CANCELLED;
+        if (flush_before_end && !capture_v2_tx_owner) {
             bridge_service_flush_tx();
         }
-        nb_event_t marker = {
-            .type         = NB_EVT_VOICE_ACTIVITY_END,
-            .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
-            .data.u32     = (uint32_t)reason,
-        };
-        esp_err_t end_rc = bridge_service_send_event(&marker);
+        esp_err_t end_rc = capture_v2_tx_owner
+            ? voice_capture_session_v2_send_voice_end((uint32_t)reason,
+                                                       reason == NB_LISTEN_END_CANCELLED,
+                                                       flush_before_end)
+            : ESP_OK;
+        if (!capture_v2_tx_owner) {
+            nb_event_t marker = {
+                .type         = NB_EVT_VOICE_ACTIVITY_END,
+                .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
+                .data.u32     = (uint32_t)reason,
+            };
+            end_rc = bridge_service_send_event(&marker);
+        }
         if (end_rc != ESP_OK) {
             ESP_LOGW(TAG, "VOICE_END nao entrou na fila da bridge: %s",
                      esp_err_to_name(end_rc));
@@ -760,6 +796,9 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
                  listen_end_reason_name(reason), listen_phase_name(phase),
                  (int)s.bridge_start_sent, (int)s.bridge_audio_sent,
                  (int)bridge_service_is_connected());
+        if (capture_v2_active && capture_v2_tx_owner) {
+            voice_capture_session_v2_finish(reason == NB_LISTEN_END_CANCELLED);
+        }
     }
 
     ESP_LOGI(TAG, "sessao listen encerrada reason=%s phase=%s speech_ms=%u can_end=%d",
@@ -1229,10 +1268,11 @@ static void audio_task(void *arg)
                                     &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
             if (bridge_service_opus_is_enabled()) {
                 bridge_feed_opus_pcm(s_bridge_buf, (uint16_t)mic_n);
-                uint8_t sent_packets = bridge_drain_opus_packets_if_enabled();
+                uint8_t sent_packets = bridge_drain_opus_packets_if_enabled(
+                    s.listen_capture_v2_tx_owner);
                 if (sent_packets > 0U) {
                     s.bridge_audio_sent = true;
-                    if (s.listen_capture_v2_active) {
+                    if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
                         voice_capture_session_v2_note_audio_chunk(
                             (uint16_t)sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES,
                             true);
@@ -1250,11 +1290,13 @@ static void audio_task(void *arg)
                     }
                 }
             } else {
-                esp_err_t tx_rc = bridge_service_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n);
+                esp_err_t tx_rc = s.listen_capture_v2_tx_owner
+                    ? voice_capture_session_v2_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n)
+                    : bridge_service_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n);
                 if (tx_rc == ESP_OK) {
                     bridge_feed_opus_pcm(s_bridge_buf, (uint16_t)mic_n);
                     s.bridge_audio_sent = true;
-                    if (s.listen_capture_v2_active) {
+                    if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
                         voice_capture_session_v2_note_audio_chunk((uint16_t)mic_n, true);
                     }
                     s.bridge_tx_fail_count = 0;
@@ -1270,7 +1312,7 @@ static void audio_task(void *arg)
                                  (unsigned)mic_n);
                     }
                 } else {
-                    if (s.listen_capture_v2_active) {
+                    if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
                         voice_capture_session_v2_note_audio_chunk((uint16_t)mic_n, false);
                     }
                     if (tx_rc == ESP_ERR_INVALID_STATE) {

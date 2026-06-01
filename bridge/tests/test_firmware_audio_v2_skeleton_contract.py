@@ -328,7 +328,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "audio_hal_" not in playback_c
 
 
-def test_voice_capture_v2_replay_is_explicit_and_does_not_touch_bridge():
+def test_voice_capture_v2_replay_is_explicit_and_bridge_tx_is_owner_gated():
     web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
     capture_c = (
         COMPONENTS / "voice_capture_session_v2" / "voice_capture_session_v2.c"
@@ -343,6 +343,11 @@ def test_voice_capture_v2_replay_is_explicit_and_does_not_touch_bridge():
     assert "audio_service_is_busy()" in web
     assert "esp_err_t voice_capture_session_v2_replay_start(" in capture_h
     assert "esp_err_t voice_capture_session_v2_cancel(void);" in capture_h
+    assert "esp_err_t voice_capture_session_v2_set_bridge_tx_owner(bool enabled);" in capture_h
+    assert "esp_err_t voice_capture_session_v2_send_voice_start(void);" in capture_h
+    assert "esp_err_t voice_capture_session_v2_send_audio_chunk(" in capture_h
+    assert "esp_err_t voice_capture_session_v2_send_opus_packet(" in capture_h
+    assert "esp_err_t voice_capture_session_v2_send_voice_end(" in capture_h
     assert "bool real_capture;" in capture_h
     assert "bool bridge_tx_owner;" in capture_h
     assert "bool legacy_audio_service_tx_owner;" in capture_h
@@ -372,10 +377,12 @@ def test_voice_capture_v2_replay_is_explicit_and_does_not_touch_bridge():
     assert "s_status.speech_elapsed_ms += elapsed_ms;" in capture_c
     assert "s_status.shadow_audio_chunks += frame_units;" in capture_c
     assert "s_status.shadow_audio_samples += sample_count;" in capture_c
-    assert "bridge_service" not in capture_c
-    assert "VOICE_START" not in capture_c
-    assert "AUDIO_CHUNK" not in capture_c
-    assert "VOICE_END" not in capture_c
+    assert "bridge_service_send_audio_chunk(" in capture_c
+    assert "bridge_service_send_opus_packet(" in capture_c
+    assert "bridge_service_send_event(&marker)" in capture_c
+    assert "bridge_service_flush_tx();" in capture_c
+    assert "s_status.bridge_tx_owner = enabled;" in capture_c
+    assert "s_status.legacy_audio_service_tx_owner = !enabled;" in capture_c
 
 
 def test_voice_capture_v2_real_path_is_opt_in_config_flag():
@@ -408,10 +415,17 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
     assert "voice_capture_session_v2_is_active()" in web
     assert "audio_service_end_listen_session(NB_LISTEN_END_CANCELLED)" in web
     assert "config_get_voice_audio_v2_capture_enabled()" in audio_service
+    assert "config_get_voice_audio_v2_capture_tx_enabled()" in audio_service
     assert "voice_capture_session_v2_begin_real_pcm16(" in audio_service
+    assert "voice_capture_session_v2_set_bridge_tx_owner(true)" in audio_service
+    assert "s.listen_capture_v2_tx_owner" in audio_service
+    assert "voice_capture_session_v2_send_voice_start()" in audio_service
+    assert "voice_capture_session_v2_send_audio_chunk(" in audio_service
+    assert "voice_capture_session_v2_send_opus_packet(" in capture_c
+    assert "voice_capture_session_v2_send_voice_end(" in audio_service
     assert "s_status.real_capture = true;" in capture_c
     assert "voice_capture_session_v2_note_voice_start();" in audio_service
     assert "voice_capture_session_v2_note_audio_chunk(" in audio_service
-    assert "static uint8_t bridge_drain_opus_packets_if_enabled(void)" in audio_service
+    assert "static uint8_t bridge_drain_opus_packets_if_enabled(bool capture_v2_tx_owner)" in audio_service
     assert "sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES" in audio_service
     assert "voice_capture_session_v2_finish(" in audio_service
