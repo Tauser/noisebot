@@ -2154,6 +2154,12 @@ Implementação:
   `shadow_audio_samples` e `shadow_audio_dropped_chunks` para espelhar onde o
   Capture v2 emitiria `VOICE_START/AUDIO_CHUNK/VOICE_END`, mantendo
   `bridge_tx_owner=false` e o envio real no `audio_service`.
+- [x] Shadow TX validado em hardware apos flash: replay diagnostico retornou
+  `shadow_voice_start_sent=true`, `shadow_voice_end_sent=true`,
+  `shadow_audio_chunks=40`, `shadow_audio_samples=10240`,
+  `shadow_audio_dropped_chunks=0`, `captured_samples=10240`,
+  `dropped_frames=0`, `bridge_tx_owner=false` e Codec v2 ok apos reativar
+  Opus.
 
 ---
 

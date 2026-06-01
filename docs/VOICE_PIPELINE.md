@@ -137,6 +137,10 @@ O incremento local seguinte adiciona contadores shadow de TX ao mesmo status:
 `shadow_audio_samples` e `shadow_audio_dropped_chunks`. Eles espelham o caminho
 legado para dizer quando o Capture v2 emitiria os eventos/chunks, sem enviar
 nada ao bridge e sem mudar ownership.
+Validacao em hardware apos flash do shadow TX confirmou o replay diagnostico
+com `shadow_audio_chunks=40`, `shadow_audio_samples=10240`,
+`shadow_audio_dropped_chunks=0`, start/end shadow verdadeiros,
+`bridge_tx_owner=false`; Opus v2 foi reativado e `codec-v2 health` ficou ok.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

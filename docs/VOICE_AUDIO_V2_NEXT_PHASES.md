@@ -369,6 +369,15 @@ Entregas:
   `shadow_audio_dropped_chunks`). Esses campos contam o ponto em que o Capture
   v2 emitiria `VOICE_START/AUDIO_CHUNK/VOICE_END`, mas o envio real continua
   100% no `audio_service`; `bridge_tx_owner` permanece `false`.
+- Validacao em hardware apos flash do shadow TX: replay diagnostico
+  `speech_ms=640`, `silence_ms=900` retornou `state=DONE`,
+  `end_reason=SPEECH_COMPLETE`, `shadow_voice_start_sent=true`,
+  `shadow_voice_end_sent=true`, `shadow_audio_chunks=40`,
+  `shadow_audio_samples=10240`, `shadow_audio_dropped_chunks=0`,
+  `captured_samples=10240`, `dropped_frames=0`, `bridge_tx_owner=false` e
+  `legacy_audio_service_tx_owner=true`. Opus v2 foi reativado em seguida e
+  `codec-v2 health` voltou `status=ok`, worker `running`, zero drops e fila
+  egress zero.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve
