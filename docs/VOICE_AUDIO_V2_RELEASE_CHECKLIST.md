@@ -150,6 +150,12 @@ Verde:
   seguinte reconheceu `Pare.`. Playback v2 terminou com `say_queue_count=0`,
   `say_cancel_count=2`, `say_chunks_cancelled=28`, `last_error=ESP_OK`, e
   `/ai/status` confirmou Opus ativo.
+- Rodada fisica posterior validou o caso real de STT curto imperfeito:
+  `ww -> historia longa -> ww -> pare` transcreveu o comando final como
+  `Vale.`, mas o contexto de barge-in recente roteou para `local_stop` sem LLM.
+  Evidencias: `last_outcome=local_intent`, `intent_name=local_stop`,
+  `last_reply="Pronto, parei."`, `tts_completed=true`, `tts_say_end_sent=true`;
+  Playback v2 ficou com fila final zero e `ESP_OK`.
 - `last_error=ESP_OK`.
 
 Bloqueia release:

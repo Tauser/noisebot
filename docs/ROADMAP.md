@@ -2102,6 +2102,12 @@ Implementação:
   com `discard_reason=barge_in`, cancelamento p50 2,6 ms / p95 3,2 ms,
   Playback v2 com `say_queue_count=0`, `say_cancel_count=2`,
   `say_chunks_cancelled=28` e `ESP_OK`.
+- [x] Stop curto pos-barge-in robustecido no server: em teste fisico, o STT
+  confundiu `pare` com `Vale.`, mas o contexto de barge-in recente roteou para
+  `local_stop` e respondeu `Pronto, parei.` sem LLM. O mesmo contrato cobre
+  `Tchau.` como mishear apenas nessa janela; fora dela, despedida continua
+  despedida normal. Playback v2 terminou com fila zero, Capture v2 desligado e
+  `codec-v2 health` ok apos dreno de 1 pacote egress pendente.
 - [x] Fase J iniciada localmente como shadow probe passivo: o
   `voice_activity_service_v2` recebe copia do PCM condicionado do
   `audio_service`, expoe `/api/audio/activity-v2` e shadow start/stop, mede

@@ -105,10 +105,14 @@ audio antigo durante a nova escuta. Ponto corrigido no firmware: ao receber
 visual antigo com `ui_overlay_clear_text()` antes de mostrar `Ouvindo...`.
 Ponto corrigido no server apos validacao fisica: quando o usuario tenta
 `ww -> pare` logo apos barge-in, o STT pode confundir o comando curto com
-`Vale.`. O `LocalIntentProvider` agora trata esse mishear como `local_stop`
-somente dentro da janela curta de barge-in recente, respondendo
+`Vale.` ou `Tchau.`. O `LocalIntentProvider` agora trata esses mishears como
+`local_stop` somente dentro da janela curta de barge-in recente, respondendo
 `Pronto, parei.` sem chamar a LLM; fora desse contexto, `Vale.` continua sem
-ser forçado para stop.
+ser forçado para stop e `Tchau.` segue como despedida normal. Validacao final:
+apos `ww -> historia longa -> ww -> pare`, `/ai/metrics` registrou
+`intent_name=local_stop`, transcript `Vale.`, `tts_completed=true`,
+`tts_say_end_sent=true`, Playback v2 com fila zero e `codec-v2 health` ok apos
+`egress-drain`.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o

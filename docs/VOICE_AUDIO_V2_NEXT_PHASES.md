@@ -277,6 +277,17 @@ Entregas:
   display ainda podia manter texto da resposta anterior. Correcao firmware:
   `SPEECH_CANCEL` e `LISTEN_START` limpam `ui_overlay_clear_text()` antes de
   mostrar `Ouvindo...`.
+- Validacao fisica pos-correcao do stop curto: ao repetir
+  `ww -> historia longa -> ww -> pare`, o STT ainda confundiu o comando final
+  com `Vale.`, mas o server tratou corretamente como `local_stop` por estar
+  dentro da janela de barge-in recente. `/ai/status` retornou
+  `last_outcome=local_intent`, `last_reply="Pronto, parei."`; `/ai/metrics`
+  confirmou `intent_name=local_stop`, `tts_completed=true`,
+  `tts_say_end_sent=true`, `discard_reason=null` no turno de stop e o turno
+  anterior como `outcome=interrupted` / `discard_reason=barge_in`. Playback v2
+  ficou com `say_queue_count=0`, `last_error=ESP_OK`; `capture-v2` seguiu
+  desligado e `codec-v2 health` voltou `status=ok` apos drenar 1 pacote egress
+  pendente.
 - Observacao operacional: a queda percebida do server nesta rodada nao apontou
   para crash do `OutputScheduler`. O log mostrou um start sem
   `NOISEBOT_HOST`, que deixa `/ai/status` em `connected=false` e o server sem
