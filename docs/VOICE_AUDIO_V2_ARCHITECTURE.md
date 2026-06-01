@@ -529,6 +529,10 @@ Implementacao atual:
 - `audio_play_stop()` tambem cancela o probe v2 se ele estiver tocando.
 - O endpoint de probe recusa iniciar se `audio_service_is_busy()` indicar
   escuta, WAV, SAY ou outro playback ativo.
+- Pos-Opus, o primeiro incremento da Fase I fez o playback v2 observar o
+  downlink SAY real: `audio_service` notifica enqueue/play/drop/cancel/idle,
+  e `/api/audio/playback-v2` passou a expor contadores de fila SAY. Isso ainda
+  nao troca a fila, nao toca HAL e nao altera o caminho de audio.
 
 Aceite:
 
@@ -549,6 +553,14 @@ Validacao:
     `POST /api/audio/playback-v2/stop`, resultado `playing=false`,
     `queued_chunks=0`, `cancel_count=1`, `dropped_chunks=0`;
   - pos-probe: robo voltou a `IDLE`, `health=100`.
+- Incremento pos-Opus de observabilidade SAY:
+  - campos novos no status: `bridge_say_observer`, `say_queue_depth`,
+    `say_queue_count`, `say_chunks_received`, `say_chunks_played`,
+    `say_chunks_dropped`, `say_chunks_dropped_listening`,
+    `say_chunks_cancelled` e `say_cancel_count`;
+  - validacao local: contrato bridge focado, server facade, `bridge/tests` e
+    build ESP-IDF;
+  - validacao em hardware pendente apos flash.
 
 ### Fase E - Capture Session v2 com PCM16
 

@@ -52,6 +52,10 @@ opt-in no firmware. As fases restantes pos-Opus estao em
 `docs/VOICE_AUDIO_V2_NEXT_PHASES.md`.
 
 Status v2 atual: Audio I/O e playback ja possuem probes explicitos validados.
+Playback v2 tambem iniciou a Fase I pos-Opus como observador do downlink SAY:
+`audio_service` continua dono da fila e do speaker, mas notifica o v2 sobre
+chunks recebidos, tocados, descartados, cancelados e profundidade de fila.
+Esses campos aparecem em `/api/audio/playback-v2` e ainda nao mudam audio real.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o

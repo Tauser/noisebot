@@ -117,6 +117,14 @@ Ordem atual:
 Regra: nao reabrir wake threshold, follow-up automatico, AEC ou barge-in sem
 wake dentro da mesma mudanca de playback/captura/codec.
 
+Incremento atual da Fase I:
+
+- Playback v2 observa o downlink SAY real sem assumir a fila nem o HAL.
+- `/api/audio/playback-v2` expoe contadores `say_*` para recebidos, tocados,
+  drops, drops durante escuta, cancelamentos e profundidade de fila.
+- O caminho real continua no `audio_service`; esta e observabilidade para o
+  proximo handoff seguro.
+
 ### Wake Word
 
 - Nao refazer agora.

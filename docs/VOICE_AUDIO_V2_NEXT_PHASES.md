@@ -75,6 +75,22 @@ Entregas:
 - Janela clara para descartar chunks SAY antigos depois de cancel.
 - Nenhum acesso direto do v2 ao HAL antes do handoff planejado.
 
+Primeiro incremento implementado:
+
+- `audio_playback_service_v2` agora observa o downlink SAY real do
+  `audio_service` sem assumir a fila nem o HAL.
+- O status de `/api/audio/playback-v2` expoe `bridge_say_observer`,
+  `say_queue_depth`, `say_queue_count`, `say_chunks_received`,
+  `say_chunks_played`, `say_chunks_dropped`,
+  `say_chunks_dropped_listening`, `say_chunks_cancelled` e
+  `say_cancel_count`.
+- `audio_service` continua dono da fila `bridge_say_q` e do speaker; o v2
+  apenas recebe notas de enqueue/play/drop/cancel/idle.
+- Validacao local: contrato bridge focado, `server/tests/test_server_facade.py`,
+  `bridge/tests` completo e `idf.py build`.
+- Hardware ainda precisa de flash para validar os novos campos em
+  `/api/audio/playback-v2` durante uma resposta real.
+
 Aceite:
 
 - TTS normal fala ate `SAY_END` e volta a `IDLE`.

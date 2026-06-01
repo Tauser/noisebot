@@ -2083,6 +2083,10 @@ Implementação:
   Capture Session v2 por flag e policy conversacional avancada. Sem mexer em
   wake threshold, AEC device-side, follow-up automatico ou barge-in sem wake
   junto com essas fases.
+- [x] Fase I iniciada com observabilidade de downlink: Playback v2 agora
+  observa a fila SAY real via notas do `audio_service` e expõe contadores
+  `say_*` em `/api/audio/playback-v2`, sem assumir HAL, sem trocar a fila e sem
+  alterar wake/captura/codec.
 
 ---
 
