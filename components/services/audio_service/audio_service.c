@@ -29,7 +29,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-#include "freertos/queue.h"
 
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -215,7 +214,6 @@ static struct {
 
     /* Bridge (Etapa 12.2) */
     bool                 bridge_tx_active;   /* true = streaming mic para bridge */
-    QueueHandle_t        bridge_say_q;       /* chunks SAY vindos do bridge      */
     bool                 bridge_say_playing; /* true = play_state == PLAY_BRIDGE_SAY */
     uint32_t             bridge_say_empty_ms;/* tolera jitter antes de encerrar  */
 
@@ -234,19 +232,8 @@ static struct {
     bool                 listen_capture_v2_active;    /* contrato v2 opt-in ativo */
 } s;
 
-/* ── Fila estática de SAY chunks (sem malloc) ─────────────────────────────── */
-
-#define BRIDGE_SAY_QUEUE_DEPTH  16U
 #define BRIDGE_SAY_IDLE_END_MS  1200U
-
-typedef struct {
-    int16_t  samples[NB_BRIDGE_AUDIO_CHUNK_SAMPLES];
-    uint16_t count;
-} bridge_say_item_t;
-
-static uint8_t          s_bridge_say_q_storage[BRIDGE_SAY_QUEUE_DEPTH * sizeof(bridge_say_item_t)];
-static StaticQueue_t    s_bridge_say_q_static;
-static bridge_say_item_t s_bridge_say_chunk; /* buffer de saída para o speaker */
+static nb_audio_playback_v2_say_chunk_t s_bridge_say_chunk; /* buffer para o speaker */
 static uint32_t         s_bridge_say_drop_count;
 static uint32_t         s_bridge_say_rx_count;
 static uint32_t         s_bridge_say_play_count;
@@ -1020,11 +1007,7 @@ static void audio_task(void *arg)
                 fclose(wav_file);
                 wav_file = NULL;
             }
-            if (s.bridge_say_q) {
-                audio_playback_service_v2_note_say_cancelled(
-                    (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q));
-                xQueueReset(s.bridge_say_q);
-            }
+            (void)audio_playback_service_v2_say_cancel();
             (void)audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES, 0);
             if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
             xSemaphoreTake(s.mutex, portMAX_DELAY);
@@ -1112,10 +1095,8 @@ static void audio_task(void *arg)
 
         /* ── Bridge SAY playback ─────────────────────────────────────────── */
         else if (play_state == PLAY_BRIDGE_SAY) {
-            if (xQueueReceive(s.bridge_say_q, &s_bridge_say_chunk, 0) == pdTRUE) {
+            if (audio_playback_service_v2_say_dequeue(&s_bridge_say_chunk)) {
                 s.bridge_say_empty_ms = 0;
-                audio_playback_service_v2_note_say_played(
-                    (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q));
                 uint16_t n = s_bridge_say_chunk.count;
                 if (n > NB_BRIDGE_AUDIO_CHUNK_SAMPLES) n = NB_BRIDGE_AUDIO_CHUNK_SAMPLES;
                 uint32_t mult = ((uint32_t)s.volume * 256U) / 100U;
@@ -1130,7 +1111,7 @@ static void audio_task(void *arg)
                 if ((++s_bridge_say_play_count % 64U) == 1U) {
                     ESP_LOGI(TAG, "Bridge SAY playback chunks=%lu q=%u",
                              (unsigned long)s_bridge_say_play_count,
-                             (unsigned)uxQueueMessagesWaiting(s.bridge_say_q));
+                             (unsigned)audio_playback_service_v2_say_pending_count());
                 }
                 wrote_audio = true;
             } else {
@@ -1384,9 +1365,17 @@ esp_err_t audio_service_init(void)
         return ESP_FAIL;
     }
 
+    err = audio_playback_service_v2_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "audio_playback_service_v2_init falhou: %s", esp_err_to_name(err));
+        audio_hal_deinit();
+        return err;
+    }
+
     s.mutex = xSemaphoreCreateMutex();
     if (!s.mutex) {
         ESP_LOGE(TAG, "xSemaphoreCreateMutex falhou");
+        (void)audio_playback_service_v2_deinit();
         audio_hal_deinit();
         return ESP_ERR_NO_MEM;
     }
@@ -1429,21 +1418,6 @@ esp_err_t audio_service_init(void)
     s_bridge_say_drop_count       = 0;
     s_bridge_say_rx_count         = 0;
     s_bridge_say_play_count       = 0;
-    s.bridge_say_q = xQueueCreateStatic(BRIDGE_SAY_QUEUE_DEPTH,
-                                         sizeof(bridge_say_item_t),
-                                         s_bridge_say_q_storage,
-                                         &s_bridge_say_q_static);
-    audio_playback_service_v2_note_say_queue_depth(BRIDGE_SAY_QUEUE_DEPTH);
-    if (!s.bridge_say_q) {
-        if (s.esp_vad) {
-            vad_destroy(s.esp_vad);
-            s.esp_vad = NULL;
-            s.esp_vad_enabled = false;
-        }
-        vSemaphoreDelete(s.mutex);
-        audio_hal_deinit();
-        return ESP_ERR_NO_MEM;
-    }
 
     BaseType_t rc = xTaskCreatePinnedToCore(
         audio_task, "audio_task",
@@ -1458,8 +1432,7 @@ esp_err_t audio_service_init(void)
             s.esp_vad = NULL;
             s.esp_vad_enabled = false;
         }
-        vQueueDelete(s.bridge_say_q);
-        s.bridge_say_q = NULL;
+        (void)audio_playback_service_v2_deinit();
         vSemaphoreDelete(s.mutex);
         audio_hal_deinit();
         return ESP_ERR_NO_MEM;
@@ -1512,11 +1485,7 @@ esp_err_t audio_play_stop(void)
         s.play_state = PLAY_STOP;
         s.bridge_say_playing = false;
         s.bridge_say_empty_ms = 0;
-        if (s.bridge_say_q) {
-            audio_playback_service_v2_note_say_cancelled(
-                (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q));
-            xQueueReset(s.bridge_say_q);
-        }
+        (void)audio_playback_service_v2_say_cancel();
     }
     xSemaphoreGive(s.mutex);
     return ESP_OK;
@@ -1695,11 +1664,7 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         s.play_state = PLAY_IDLE;
         s.bridge_say_playing = false;
         s.bridge_say_empty_ms = 0;
-        if (s.bridge_say_q) {
-            audio_playback_service_v2_note_say_cancelled(
-                (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q));
-            xQueueReset(s.bridge_say_q);
-        }
+        (void)audio_playback_service_v2_say_cancel();
     }
     xSemaphoreGive(s.mutex);
 
@@ -1713,10 +1678,6 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         return;
     }
 
-    bridge_say_item_t item;
-    item.count = count;
-    memcpy(item.samples, samples, count * sizeof(int16_t));
-
     if (!s.bridge_say_playing) {
         xSemaphoreTake(s.mutex, portMAX_DELAY);
         s.play_state      = PLAY_BRIDGE_SAY;
@@ -1727,19 +1688,15 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         wake_service_rearm();
         ESP_LOGI(TAG, "Bridge SAY iniciado");
     }
-    if (xQueueSend(s.bridge_say_q, &item, 0) == pdTRUE) {
-        audio_playback_service_v2_note_say_enqueued(
-            (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q));
+    if (audio_playback_service_v2_say_enqueue(samples, count) == ESP_OK) {
         if ((++s_bridge_say_rx_count % 64U) == 1U) {
             ESP_LOGI(TAG, "Bridge SAY recebido chunks=%lu q=%u",
                      (unsigned long)s_bridge_say_rx_count,
-                     (unsigned)uxQueueMessagesWaiting(s.bridge_say_q));
+                     (unsigned)audio_playback_service_v2_say_pending_count());
         }
         s.bridge_say_empty_ms = 0;
     } else {
         s_bridge_say_drop_count++;
-        audio_playback_service_v2_note_say_dropped(
-            (uint32_t)uxQueueMessagesWaiting(s.bridge_say_q), false);
         if ((s_bridge_say_drop_count % 32U) == 1U) {
             ESP_LOGW(TAG, "Bridge SAY dropado: fila cheia drops=%lu",
                      (unsigned long)s_bridge_say_drop_count);

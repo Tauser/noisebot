@@ -2364,6 +2364,7 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
+             "\"bridge_say_queue_owner\":%s,"
              "\"probe_duration_ms\":%lu,"
              "\"probe_elapsed_ms\":%lu,\"queued_chunks\":%lu,"
              "\"played_chunks\":%lu,\"dropped_chunks\":%lu,"
@@ -2379,6 +2380,7 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              st.playing ? "true" : "false",
              st.stop_requested ? "true" : "false",
              st.bridge_say_observer ? "true" : "false",
+             st.bridge_say_queue_owner ? "true" : "false",
              (unsigned long)st.probe_duration_ms,
              (unsigned long)st.probe_elapsed_ms,
              (unsigned long)st.queued_chunks,

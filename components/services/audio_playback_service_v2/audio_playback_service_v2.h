@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-#define NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS  8U
+#define NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS  16U
 #define NB_AUDIO_PLAYBACK_V2_SAMPLE_RATE_HZ 16000U
 #define NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES  256U
 #define NB_AUDIO_PLAYBACK_V2_PROBE_HZ       440U
@@ -26,6 +26,7 @@ typedef struct {
     bool playing;
     bool stop_requested;
     bool bridge_say_observer;
+    bool bridge_say_queue_owner;
     uint32_t probe_duration_ms;
     uint32_t probe_elapsed_ms;
     uint32_t queued_chunks;
@@ -44,6 +45,11 @@ typedef struct {
     esp_err_t last_error;
 } nb_audio_playback_v2_status_t;
 
+typedef struct {
+    int16_t samples[NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES];
+    uint16_t count;
+} nb_audio_playback_v2_say_chunk_t;
+
 esp_err_t audio_playback_service_v2_init(void);
 esp_err_t audio_playback_service_v2_deinit(void);
 bool audio_playback_service_v2_is_initialized(void);
@@ -53,6 +59,11 @@ esp_err_t audio_playback_service_v2_probe_start(uint32_t duration_ms, uint16_t a
 esp_err_t audio_playback_service_v2_probe_stop(void);
 bool audio_playback_service_v2_is_playing(void);
 bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_count);
+
+esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t count);
+bool audio_playback_service_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out);
+uint32_t audio_playback_service_v2_say_cancel(void);
+uint32_t audio_playback_service_v2_say_pending_count(void);
 
 void audio_playback_service_v2_note_say_queue_depth(uint32_t depth);
 void audio_playback_service_v2_note_say_enqueued(uint32_t queue_count);
