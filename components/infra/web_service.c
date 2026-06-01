@@ -709,7 +709,11 @@ static esp_err_t handle_api_config_post(httpd_req_t *req)
         err = config_set_voice_audio_v2_capture_enabled(val != 0.0);
     }
     else if (strcmp(key, "voice_audio_v2_capture_tx_enabled") == 0) {
-        err = config_set_voice_audio_v2_capture_tx_enabled(val != 0.0);
+        bool tx_enabled = val != 0.0;
+        err = config_set_voice_audio_v2_capture_tx_enabled(tx_enabled);
+        if (err == ESP_OK && !tx_enabled) {
+            (void)voice_capture_session_v2_set_bridge_tx_owner(false);
+        }
     }
     else if (strcmp(key, "brightness")   == 0) err = config_set_brightness((uint8_t)val);
     else if (strcmp(key, "touch_sens")   == 0) err = config_set_touch_sensitivity((uint8_t)val);

@@ -508,6 +508,12 @@ Entregas:
   nova escuta. Codec v2 permaneceu `status=ok`. A flag experimental de TX foi
   desligada ao fim e `/api/config/all` confirmou
   `voice_audio_v2_capture_tx_enabled=false`.
+- Endurecimento operacional local: desligar
+  `voice_audio_v2_capture_tx_enabled` agora tambem libera o ownership interno
+  do Capture v2 mesmo em idle, para que o rollback nao deixe o status parado em
+  `bridge_tx_owner=true` da ultima sessao. Ligar ownership continua exigindo
+  sessao real ativa. Validacao local: contrato focado Voice Audio v2 e build
+  ESP-IDF limpos; falta flash para validar o status pos-rollback no hardware.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

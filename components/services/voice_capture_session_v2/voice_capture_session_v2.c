@@ -229,7 +229,7 @@ esp_err_t voice_capture_session_v2_begin_real_pcm16(nb_voice_capture_v2_source_t
 esp_err_t voice_capture_session_v2_set_bridge_tx_owner(bool enabled)
 {
     taskENTER_CRITICAL(&s_mux);
-    if (!s_status.session_active || !s_status.real_capture) {
+    if (enabled && (!s_status.session_active || !s_status.real_capture)) {
         taskEXIT_CRITICAL(&s_mux);
         return ESP_ERR_INVALID_STATE;
     }

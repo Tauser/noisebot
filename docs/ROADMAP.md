@@ -2256,6 +2256,13 @@ Implementação:
   velho durante a nova escuta. Codec v2 permaneceu `status=ok`; a flag de TX
   foi desligada ao fim e `/api/config/all` confirmou
   `voice_audio_v2_capture_tx_enabled=false`.
+- [x] Endurecimento local do rollback do handoff: ao desligar
+  `voice_audio_v2_capture_tx_enabled`, o firmware tambem libera o ownership
+  interno do Capture v2 em idle, evitando que `/api/audio/capture-v2` continue
+  mostrando `bridge_tx_owner=true` apenas por causa da ultima sessao. Ativar
+  ownership continua permitido somente durante sessao real ativa. Validacao
+  local: contrato focado Voice Audio v2 e build ESP-IDF limpos. Pendente:
+  flash e confirmacao do status pos-rollback em hardware.
 
 ---
 

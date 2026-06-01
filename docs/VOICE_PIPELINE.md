@@ -218,6 +218,10 @@ com fila final zero; os drops novos apareceram apenas como
 `say_chunks_dropped_listening`, coerentes com descarte de audio antigo durante a
 nova escuta. Codec v2 permaneceu `status=ok` e a flag experimental voltou a
 `false`.
+Para deixar o rollback mais claro, desligar `voice_audio_v2_capture_tx_enabled`
+tambem libera o ownership interno do Capture v2 em idle; assim o status nao
+fica preso no `bridge_tx_owner=true` da ultima sessao validada. Ativar
+ownership ainda exige sessao real ativa.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após
