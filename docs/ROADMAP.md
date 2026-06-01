@@ -2289,6 +2289,10 @@ Implementação:
   Fora da janela de barge-in, `Tchau.`/`Bye.` seguem como despedida normal.
   Isso nao altera wake, VAD, AEC, Capture v2, Playback v2, Codec v2, bridge nem
   firmware. Validacao local: intents focados e `server/tests` completos.
+- [x] Fase L ampliou comandos diretos de cancelamento: `corta`, `corta isso`,
+  `para de falar`, `chega disso`, `nao quero mais` e `encerra` agora viram
+  `local_stop` mesmo fora de barge-in, junto de `pare`/`cancela`. Validacao
+  local: intents focados e `server/tests` completos.
 
 ---
 

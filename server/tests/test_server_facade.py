@@ -4260,6 +4260,29 @@ def test_server_agent_local_intent_handles_bare_stop_without_llm() -> None:
     assert result.expression_id == 2
 
 
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Corta.",
+        "Corta isso.",
+        "Para de falar.",
+        "Chega disso.",
+        "Nao quero mais.",
+        "Encerra.",
+    ],
+)
+def test_server_agent_local_intent_handles_expanded_stop_phrases(phrase: str) -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match(phrase, turn_id=46)
+
+    assert result.intent_name == "local_stop"
+    assert result.reply_text == "Pronto, parei."
+
+
 def test_server_agent_local_intent_treats_vale_as_stop_only_after_barge_in() -> None:
     _ensure_bridgev2_path()
 

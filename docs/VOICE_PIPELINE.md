@@ -121,6 +121,11 @@ despedida social, o server passou a tratar termos curtos como `bye`, `tchau`,
 `adeus`, `chega` e `pronto` como `local_stop` apenas dentro da janela curta de
 barge-in recente. Fora dessa janela, despedidas continuam despedidas. Validacao
 local: intents focados e suite `server/tests` completos.
+O vocabulario direto de cancelamento tambem foi expandido: `corta`,
+`corta isso`, `para de falar`, `chega disso`, `nao quero mais` e `encerra`
+agora entram como `local_stop` mesmo fora de barge-in, junto de
+`pare`/`cancela`. Isso e server-only e nao altera firmware nem o pipeline de
+audio.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o
