@@ -2181,6 +2181,13 @@ Implementação:
   a sessao observada e nao transfere bridge TX; `audio_service` continua dono
   real de `VOICE_START/AUDIO_CHUNK/VOICE_END`. Validacao local: contrato
   focado, `bridge/tests`, `server/tests` e `idf.py build`.
+- [x] Validacao em hardware do gate de handoff: replay diagnostico bloqueou
+  corretamente por `NOT_REAL_CAPTURE`; turno real por wake ficou com
+  `bridge_tx_candidate=true`, `bridge_tx_handoff_ready=true`,
+  `handoff_block_reason=NONE`, zero drops, Playback v2 fila zero e Codec v2
+  ok. Observacao para o proximo gate: esse turno curto encerrou no server por
+  timeout (`voice_end_reason=timeout`, `duration_ms=9479`), entao repetir
+  validacao curta por silencio antes de transferir TX real.
 
 ---
 

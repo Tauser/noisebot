@@ -412,6 +412,17 @@ Entregas:
   (`NOT_REAL_CAPTURE`, `SESSION_ACTIVE`, `NO_AUDIO`, `DROPPED_AUDIO`,
   `END_REASON`, `ALREADY_OWNER`). O bridge TX real continua no
   `audio_service`.
+- Validacao em hardware apos flash do gate: replay diagnostico ficou bloqueado
+  corretamente por `handoff_block_reason=NOT_REAL_CAPTURE`; em seguida, turno
+  real `ww -> me diga uma curiosidade curta` ficou `DONE` com
+  `real_capture=true`, `bridge_tx_candidate=true`,
+  `bridge_tx_handoff_ready=true`, `handoff_block_reason=NONE`,
+  `shadow_audio_chunks=158`, `shadow_audio_samples=151680`,
+  `shadow_audio_dropped_chunks=0`, Playback v2 com 254 chunks
+  recebidos/tocados e zero drops, Codec v2 `status=ok` e
+  `opus_codec_error=0`. Ponto amarelo: o server encerrou o turno por timeout
+  (`duration_ms=9479`, `voice_end_reason=timeout`), nao por silencio; antes do
+  handoff real, repetir pelo menos um turno curto que finalize por silencio.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

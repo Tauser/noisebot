@@ -163,6 +163,12 @@ Esses campos so classificam a sessao observada e nao transferem ownership. O
 handoff so pode ser considerado pronto quando a sessao real terminou com
 `SPEECH_COMPLETE`, teve start/end shadow, audio shadow nao vazio e zero drops;
 caso contrario o status explica o bloqueio.
+Validacao em hardware apos flash confirmou o gate: replay diagnostico nao vira
+candidato (`NOT_REAL_CAPTURE`), enquanto um turno real por wake ficou
+`bridge_tx_candidate=true`, `bridge_tx_handoff_ready=true` e
+`handoff_block_reason=NONE`, com Playback v2 sem drops e Codec v2 saudavel.
+Como o mesmo turno encerrou por timeout no server, repetir um turno curto com
+fim por silencio antes de qualquer handoff real de TX.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após
