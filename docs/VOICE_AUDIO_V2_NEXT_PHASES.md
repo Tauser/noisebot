@@ -305,6 +305,13 @@ Entregas:
   enviam bridge e nao chamam HAL. Validacao local: contrato focado
   `test_voice_activity_v2_shadow_is_explicit_and_passive` passou e
   `idf.py build` ficou limpo, com 34% livre na menor particao.
+  Validacao em hardware apos flash: status inicial mostrou os novos campos
+  zerados; shadow padrao de 1000 ms encerrou em 1008 ms com 63 frames,
+  `state=SILENCE`, `speech_frames=0`, `silence_frames=63`,
+  `speech_run_max_frames=0`, `silence_run_frames=63`,
+  `silence_run_max_frames=63`, `idle_frames=63`, `unmuted_frames=63`,
+  `last_error=ESP_OK`. Playback v2 ficou com fila zero, Capture v2 desligado e
+  `codec-v2 health` `status=ok` apos reativar Opus v2.
 - Gate explicito: AEC device-side bloqueado se `input_reference=false`.
 
 Aceite:

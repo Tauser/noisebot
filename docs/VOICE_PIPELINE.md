@@ -1045,7 +1045,10 @@ O roadmap detalhado das fases restantes esta em
    consecutivas de fala/silencio (`speech_run_*`, `silence_run_*`) ao shadow
    para futura comparacao de VAD/end-of-speech, ainda sem mudar wake, captura,
    playback, codec ou bridge. Validacao local: contrato focado Voice Audio v2
-   e build ESP-IDF limpos. Nota operacional: se o server subir sem
+   e build ESP-IDF limpos; em hardware apos flash, shadow de 1000 ms registrou
+   63 frames de silencio com `silence_run_max_frames=63`,
+   `speech_run_max_frames=0`, Playback v2 fila zero, Capture v2 desligado e
+   `codec-v2 health` ok. Nota operacional: se o server subir sem
    `NOISEBOT_HOST` ou `--host`, ele fica
    vivo mas sem transporte (`connected=false`), o que parece queda de voz. O
    `.env` local deve conter `NOISEBOT_HOST=192.168.1.30` junto de

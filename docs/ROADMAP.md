@@ -2129,6 +2129,10 @@ Implementação:
   `silence_run_max_frames`. Esses campos preparam comparacao futura de
   VAD/end-of-speech, sem alterar wake, captura, Playback v2, codec, bridge ou
   HAL. Validacao local: contrato focado Voice Audio v2 e build ESP-IDF limpos.
+  Validacao em hardware apos flash: shadow de 1000 ms observou 63 frames de
+  silencio, com `silence_run_frames=63`, `silence_run_max_frames=63`,
+  `speech_run_max_frames=0`, Playback v2 fila zero, Capture v2 desligado e
+  `codec-v2 health` ok apos reativar Opus v2.
 
 ---
 
