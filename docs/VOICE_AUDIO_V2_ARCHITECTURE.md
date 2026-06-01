@@ -336,9 +336,21 @@ Responsabilidade:
   passa a ser enviado pelo Capture v2 neste passo.
 - O armamento operacional do handoff real fica em flag separada:
   `voice_audio_v2_capture_tx_enabled` (`v2cap_tx_en`), default desligado. A
-  flag aparece como `bridge_tx_handoff_enabled` no status de Capture v2, mas
-  so passa a alterar o TX quando um incremento posterior conectar a troca de
-  ownership.
+  flag aparece como `bridge_tx_handoff_enabled` no status de Capture v2. Quando
+  ela esta ligada junto com `voice_audio_v2_capture_enabled`, o `audio_service`
+  preserva HAL/mic/condicionamento, mas entrega o TX logico
+  `VOICE_START/AUDIO_CHUNK/VOICE_END` a `voice_capture_session_v2`. Quando a
+  flag e desligada, o caminho legado volta a ser dono do TX real e o status
+  limpa `bridge_tx_owner` mesmo em idle.
+- Validacao de aceite em hardware: o handoff real opt-in passou em turno curto
+  por silencio e em barge-in. No turno curto, Capture v2 ficou dono do TX real
+  com zero drops e Playback v2 recebeu/tocou todos os chunks SAY com fila final
+  zero. No barge-in, Capture v2 reportou `source=BARGE_IN`,
+  `bridge_tx_owner=true`, `legacy_audio_service_tx_owner=false` e zero drops; os
+  drops do Playback v2 ficaram apenas em `say_chunks_dropped_listening`, como
+  descarte esperado de audio antigo. A repeticao final reconheceu o comando de
+  parada como `local_farewell` em vez de `local_stop`, anotado como detalhe de
+  policy/STT fora do ownership da captura.
 
 Parametros iniciais preservados:
 

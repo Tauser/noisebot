@@ -198,8 +198,11 @@ ligadas juntas, o `audio_service` continua dono do HAL/mic/condicionamento,
 mas roteia o TX logico `VOICE_START/AUDIO_CHUNK/VOICE_END` por
 `voice_capture_session_v2`. Com a flag de TX desligada, o legado permanece dono
 do TX real e o Capture v2 segue shadow. Validacao local passou com contrato
-focado e build ESP-IDF; falta flash e teste fisico antes de considerar este
-handoff validado.
+focado e build ESP-IDF; as validacoes fisicas abaixo fecharam o handoff opt-in.
+O endurecimento do rollback tambem foi validado apos flash: desligar
+`voice_audio_v2_capture_tx_enabled` limpa o ownership interno mesmo em idle,
+deixando `bridge_tx_handoff_enabled=false`, `bridge_tx_owner=false` e
+`legacy_audio_service_tx_owner=true`.
 Validacao fisica apos flash tambem passou: com Opus ativo e
 `capture-v2 tx-enable`, o turno `ww -> que horas sao` fechou como local time
 com transcript correto, `voice_end_reason=silence`, TTS completo e
@@ -218,6 +221,19 @@ com fila final zero; os drops novos apareceram apenas como
 `say_chunks_dropped_listening`, coerentes com descarte de audio antigo durante a
 nova escuta. Codec v2 permaneceu `status=ok` e a flag experimental voltou a
 `false`.
+Aceite final da Fase K: apos o ultimo flash, `capture-v2 tx-enable` foi
+rearmado e o turno curto `turn_id=54` fechou por silencio com Capture v2 dono
+do TX real, 78 chunks / 74880 samples e zero drops; Playback v2 recebeu/tocou
+401 chunks SAY com fila final zero e zero drops; `codec-v2 health` ficou
+`healthy=true/status=ok`. A repeticao final de barge-in interrompeu a historia
+em `turn_id=57` (`discard_reason=barge_in`) e Capture v2 ficou dono do TX no
+barge-in (`source=BARGE_IN`, `bridge_tx_owner=true`,
+`legacy_audio_service_tx_owner=false`), com 113 chunks / 108480 samples e zero
+drops. Playback v2 encerrou com fila zero; 6 drops ficaram classificados como
+`say_chunks_dropped_listening`, ou seja, descarte esperado de audio antigo
+durante a nova escuta. O comando final dessa repeticao foi reconhecido como
+`local_farewell` em vez de `local_stop`, detalhe registrado para policy/STT.
+Depois de `capture-v2 tx-disable`, o status voltou para `bridge_tx_owner=false`.
 Para deixar o rollback mais claro, desligar `voice_audio_v2_capture_tx_enabled`
 tambem libera o ownership interno do Capture v2 em idle; assim o status nao
 fica preso no `bridge_tx_owner=true` da ultima sessao validada. Ativar

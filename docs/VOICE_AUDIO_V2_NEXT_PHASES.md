@@ -513,7 +513,28 @@ Entregas:
   do Capture v2 mesmo em idle, para que o rollback nao deixe o status parado em
   `bridge_tx_owner=true` da ultima sessao. Ligar ownership continua exigindo
   sessao real ativa. Validacao local: contrato focado Voice Audio v2 e build
-  ESP-IDF limpos; falta flash para validar o status pos-rollback no hardware.
+  ESP-IDF limpos; validacao pos-flash confirmou rollback limpo com
+  `bridge_tx_handoff_enabled=false`, `bridge_tx_owner=false` e
+  `legacy_audio_service_tx_owner=true`.
+- Aceite final do handoff opt-in da Fase K: apos o flash do endurecimento,
+  `capture-v2 tx-enable` foi rearmado com Opus ativo. Um turno curto
+  `ww -> que horas sao` gerou `turn_id=54`, `voice_end_reason=silence`,
+  `tts_completed=true`, `tts_say_end_sent=true`, Capture v2 como dono real do
+  TX (`bridge_tx_owner=true`, `legacy_audio_service_tx_owner=false`), 78 chunks
+  / 74880 samples e zero drops; Playback v2 recebeu/tocou 401 chunks SAY com
+  fila final zero e zero drops; `codec-v2 health` ficou `healthy=true/status=ok`.
+- Revalidacao final de barge-in com handoff real: o turno da historia
+  (`turn_id=57`) ficou `outcome=interrupted` com `discard_reason=barge_in`;
+  o Capture v2 reportou `source=BARGE_IN`, `bridge_tx_owner=true`,
+  `legacy_audio_service_tx_owner=false`, `end_reason=SPEECH_COMPLETE`, 113
+  chunks / 108480 samples e zero drops. Playback v2 terminou com fila zero,
+  2 cancelamentos, 12 chunks cancelados e 6 drops apenas em
+  `say_chunks_dropped_listening`, coerentes com descarte de audio antigo
+  durante a nova escuta. O comando final desta repeticao foi reconhecido como
+  `local_farewell` em vez de `local_stop`; isso fica registrado como detalhe de
+  policy/STT, nao como bloqueio da arquitetura de captura. `codec-v2 health`
+  permaneceu `healthy=true/status=ok`, e `capture-v2 tx-disable` confirmou
+  rollback para `bridge_tx_owner=false`.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

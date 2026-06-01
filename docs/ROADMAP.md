@@ -2230,8 +2230,8 @@ Implementação:
   o condicionamento de audio, mas passa o envio logico de
   `VOICE_START/AUDIO_CHUNK/VOICE_END` para `voice_capture_session_v2`. Com a
   flag de TX desligada, o caminho legado segue ativo. Validacao local: contrato
-  focado Voice Audio v2 e build ESP-IDF limpos. Pendente: flash e validacao
-  fisica antes de marcar como aprovado em hardware.
+  focado Voice Audio v2 e build ESP-IDF limpos; as validacoes fisicas
+  seguintes aprovaram o handoff opt-in em hardware.
 - [x] Validacao fisica do handoff real opt-in: apos flash, Opus reativado e
   `capture-v2 tx-enable`, um turno curto `ww -> que horas sao` fechou com
   `turn_id=47`, transcript correto, `voice_end_reason=silence`,
@@ -2261,8 +2261,28 @@ Implementação:
   interno do Capture v2 em idle, evitando que `/api/audio/capture-v2` continue
   mostrando `bridge_tx_owner=true` apenas por causa da ultima sessao. Ativar
   ownership continua permitido somente durante sessao real ativa. Validacao
-  local: contrato focado Voice Audio v2 e build ESP-IDF limpos. Pendente:
-  flash e confirmacao do status pos-rollback em hardware.
+  local: contrato focado Voice Audio v2 e build ESP-IDF limpos. Apos flash,
+  `capture-v2 tx-disable` confirmou rollback operacional com
+  `bridge_tx_handoff_enabled=false`, `bridge_tx_owner=false` e
+  `legacy_audio_service_tx_owner=true`.
+- [x] Aceite final do Capture v2 TX opt-in em hardware: com Opus ativo e
+  `capture-v2 tx-enable`, o turno curto `ww -> que horas sao` fechou em
+  `turn_id=54` por silencio, com TTS completo, `SAY_END`, Capture v2 dono do
+  TX real (`bridge_tx_owner=true`, `legacy_audio_service_tx_owner=false`), 78
+  chunks / 74880 samples e zero drops. Playback v2 recebeu/tocou 401 chunks
+  SAY com fila final zero e zero drops; Codec v2 ficou
+  `healthy=true/status=ok`.
+- [x] Revalidacao final de barge-in com handoff real opt-in: o turno da
+  historia (`turn_id=57`) foi interrompido por `barge_in`; Capture v2 reportou
+  `source=BARGE_IN`, `bridge_tx_owner=true`,
+  `legacy_audio_service_tx_owner=false`, 113 chunks / 108480 samples e zero
+  drops. Playback v2 encerrou com fila zero, 2 cancelamentos, 12 chunks
+  cancelados e 6 drops apenas em `say_chunks_dropped_listening`, isto e,
+  descarte esperado de audio velho durante a nova escuta. O comando final desta
+  repeticao caiu como `local_farewell` em vez de `local_stop`, registrado como
+  detalhe de policy/STT fora do escopo estrutural da Fase K. Codec v2
+  permaneceu `healthy=true/status=ok`, e o rollback final por
+  `capture-v2 tx-disable` voltou a `bridge_tx_owner=false`.
 
 ---
 
