@@ -2242,6 +2242,20 @@ Implementação:
   unico pacote egress Opus pendente foi drenado e `codec-v2 health` voltou
   `status=ok`. A flag experimental foi desligada depois e `/api/config/all`
   confirmou `voice_audio_v2_capture_tx_enabled=false`.
+- [x] Validacao fisica de barge-in com handoff real opt-in: com
+  `capture-v2 tx-enable`, o roteiro
+  `ww -> me conte uma historia longa -> ww -> pare` interrompeu a historia
+  longa (`turn_id=49`, `outcome=interrupted`,
+  `discard_reason=barge_in`) e reconheceu `Pare.` como `local_stop`
+  (`turn_id=50`, resposta `Pronto, parei.`, TTS completo e `SAY_END`). Capture
+  v2 ficou dono do TX no barge-in (`source=BARGE_IN`,
+  `bridge_tx_owner=true`, `legacy_audio_service_tx_owner=false`), com
+  67 chunks, 64320 samples e zero drops. Playback v2 encerrou com fila zero,
+  1 cancelamento, 3 chunks cancelados e 7 drops apenas em
+  `say_chunks_dropped_listening`, classificados como descarte correto de audio
+  velho durante a nova escuta. Codec v2 permaneceu `status=ok`; a flag de TX
+  foi desligada ao fim e `/api/config/all` confirmou
+  `voice_audio_v2_capture_tx_enabled=false`.
 
 ---
 

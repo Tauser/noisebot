@@ -208,6 +208,16 @@ com transcript correto, `voice_end_reason=silence`, TTS completo e
 zero drops. Playback v2 terminou com fila zero e zero drops. Apos drenar 1
 pacote egress Opus pendente, `codec-v2 health` voltou `status=ok`. A flag de
 TX foi desligada em seguida, confirmada em `/api/config/all`.
+O mesmo handoff tambem passou em barge-in: no roteiro
+`ww -> me conte uma historia longa -> ww -> pare`, o turno da historia foi
+interrompido por `barge_in` e o comando `Pare.` virou `local_stop`, com
+resposta curta `Pronto, parei.` em vez de LLM aleatoria. Capture v2 ficou dono
+do TX no barge-in (`source=BARGE_IN`, `bridge_tx_owner=true`,
+`legacy_audio_service_tx_owner=false`), sem drops de captura. Playback v2 ficou
+com fila final zero; os drops novos apareceram apenas como
+`say_chunks_dropped_listening`, coerentes com descarte de audio antigo durante a
+nova escuta. Codec v2 permaneceu `status=ok` e a flag experimental voltou a
+`false`.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

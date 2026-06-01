@@ -493,6 +493,21 @@ Entregas:
   zero drops; Codec v2 teve 1 pacote egress pendente sem erro/drop, foi drenado
   e voltou `status=ok`. A flag experimental de TX foi desligada em seguida;
   `/api/config/all` confirmou `voice_audio_v2_capture_tx_enabled=false`.
+- Validacao fisica de barge-in com handoff real opt-in tambem passou: com
+  `capture-v2 tx-enable`, o roteiro
+  `ww -> me conte uma historia longa -> ww -> pare` gerou o turno 49 como
+  `outcome=interrupted`, `discard_reason=barge_in` e transcript
+  `Me conte uma história longa.`; em seguida o turno 50 reconheceu `Pare.`
+  como `intent_name=local_stop`, respondeu `Pronto, parei.`, completou TTS e
+  enviou `SAY_END`. O status do Capture v2 durante o barge-in ficou
+  `source=BARGE_IN`, `bridge_tx_owner=true`,
+  `legacy_audio_service_tx_owner=false`, `end_reason=SPEECH_COMPLETE`,
+  67 chunks / 64320 samples e zero drops. Playback v2 terminou com fila zero,
+  1 cancelamento, 3 chunks cancelados e 7 drops classificados como
+  `say_chunks_dropped_listening`, ou seja, descarte de audio velho durante a
+  nova escuta. Codec v2 permaneceu `status=ok`. A flag experimental de TX foi
+  desligada ao fim e `/api/config/all` confirmou
+  `voice_audio_v2_capture_tx_enabled=false`.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve
