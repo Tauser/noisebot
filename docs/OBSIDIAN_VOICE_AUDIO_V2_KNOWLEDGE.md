@@ -326,6 +326,12 @@ Faz:
   curta gerou 398 chunks TTS e `SAY_END`; `/api/audio/playback-v2` saiu de
   `received=494/played=494/dropped=154` para
   `received=892/played=892/dropped=154`, confirmando zero drops novos.
+- Repeticoes fisicas por wake apos o pacing mostraram um caso ainda amarelo:
+  uma rodada gerou +222 chunks SAY e zero drops novos, mas transcript diferente
+  do comando esperado; a rodada seguinte ouviu `Me fala em historia curta.`,
+  completou TTS e `SAY_END`, mas Playback v2 tocou +274 chunks com +18 drops.
+  O ajuste atual e server-only: default de `NOISEBOT_TTS_QUEUE_TARGET` reduzido
+  para 6 chunks, deixando mais headroom na fila SAY de 16 chunks do firmware.
 
 Nao faz:
 
@@ -352,7 +358,9 @@ Faz:
   `unmuted_frames=1397`, Opus v2 saudavel, Capture v2 desligado; ponto amarelo
   separado em Playback v2 com 14 drops SAY no turno; repeticao controlada via
   `/debug/transcript` depois de restart correto do server teve +292 SAY
-  recebidos/tocados e zero drops novos;
+  recebidos/tocados e zero drops novos; repeticao fisica posterior reproduziu
+  drops no caminho real (+18), entao o proximo teste deve validar o prebuffer
+  server-side reduzido para 6 chunks;
 - ESP-SR VAD primario;
 - RMS/ZCR/espectral como telemetria;
 - AFE/NS opcional;

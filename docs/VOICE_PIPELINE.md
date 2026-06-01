@@ -82,6 +82,14 @@ real apos restart do server: baseline `received=494`, `played=494`,
 `received=892`, `played=892`, `dropped=154`, ou seja, +398 chunks recebidos e
 tocados com zero drops novos. `/ai/metrics` confirmou `tts_completed=true`,
 `tts_say_end_sent=true`, `tts_chunks_sent=398` e `voice_alert=null`.
+Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
++222 chunks sem drops novos, mas transcript diferente do comando esperado; a
+rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,
+mas Playback v2 acumulou +18 drops enquanto tocava +274 chunks. O ponto
+amarelo atual e a transicao fisica wake -> resposta, nao o codec nem o caminho
+controlado. O prebuffer padrao do `OutputScheduler` foi reduzido de 12 para 6
+chunks via default de `NOISEBOT_TTS_QUEUE_TARGET`, deixando mais espaco livre
+na fila SAY de 16 chunks antes de novo handoff.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o
@@ -1005,7 +1013,10 @@ O roadmap detalhado das fases restantes esta em
    Playback v2 contou 14 drops SAY no turno e deve ser repetido antes do
    proximo handoff. Repeticao controlada via `/debug/transcript` apos restart
    correto do server enviou 292 chunks TTS com zero drops novos em Playback v2
-   e `codec-v2 health` ok; ainda falta repetir por wake fisico. Nota
+   e `codec-v2 health` ok. Repeticoes fisicas por wake mostraram que o caminho
+   fisico ainda pode gerar drops na fila SAY (+18 drops em uma resposta curta
+   completa), entao o prebuffer padrao do server foi reduzido para 6 chunks
+   antes de nova validacao. Nota
    operacional: se o server subir sem `NOISEBOT_HOST` ou `--host`, ele fica
    vivo mas sem transporte (`connected=false`), o que parece queda de voz. O
    `.env` local deve conter `NOISEBOT_HOST=192.168.1.30` junto de

@@ -241,8 +241,18 @@ Entregas:
   `voice_alert=null`, `codec-v2 health` ok e `capture-v2` desligado. Playback
   v2 saiu de `received=1139/played=1138/dropped=38` para
   `received=1431/played=1430/dropped=38`, ou seja, +292 recebidos/tocados e
-  zero drops novos. Ainda falta uma repeticao fisica por wake antes de liberar
-  novo handoff.
+  zero drops novos.
+- Repeticoes fisicas por wake: uma repeticao curta gerou +222 chunks SAY e
+  zero drops novos, mas transcreveu `E ai?` em vez do comando pretendido. A
+  repeticao seguinte transcreveu `Me fala em historia curta.`, respondeu com
+  292 chunks TTS completos e `SAY_END`, mas Playback v2 saiu de
+  `received=2295/played=2292/dropped=38` para
+  `received=2569/played=2566/dropped=56`, ou seja, +274 chunks tocados e
+  +18 drops. Conclusao: o caminho controlado esta limpo, mas o caminho fisico
+  ainda pode encher a fila SAY na transicao wake -> resposta. Ajuste
+  server-only atual: reduzir o prebuffer padrao `NOISEBOT_TTS_QUEUE_TARGET`
+  de 12 para 6 chunks, deixando mais headroom na fila de 16 chunks do
+  firmware antes de liberar novo handoff.
 - Observacao operacional: a queda percebida do server nesta rodada nao apontou
   para crash do `OutputScheduler`. O log mostrou um start sem
   `NOISEBOT_HOST`, que deixa `/ai/status` em `connected=false` e o server sem

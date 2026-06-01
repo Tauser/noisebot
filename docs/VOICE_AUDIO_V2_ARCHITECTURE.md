@@ -284,7 +284,14 @@ Responsabilidade:
   rechecado antes de novo handoff. Repeticao controlada via `/debug/transcript`
   depois de restart correto do server confirmou o caminho do orquestrador sem
   drops novos: +292 chunks SAY recebidos/tocados e `say_chunks_dropped`
-  inalterado.
+  inalterado. Repeticoes fisicas por wake mostraram que o caso real ainda
+  precisa de headroom: uma rodada teve +222 chunks sem drops, mas transcript
+  diferente do comando esperado; a rodada seguinte ouviu
+  `Me fala em historia curta.`, completou TTS e `SAY_END`, porem somou
+  +18 drops enquanto tocava +274 chunks. O ajuste atual e server-only:
+  reduzir o prebuffer default do `OutputScheduler` para 6 chunks
+  (`NOISEBOT_TTS_QUEUE_TARGET`), sem alterar firmware, wake, captura, codec ou
+  HAL.
 - Validacao em hardware pos-flash confirmou o contrato passivo: shadow de
   1000 ms observou 63 frames, encerrou sozinho, classificou silencio e manteve
   `session_active=false`; `capture-v2` permaneceu desligado, Playback v2 ficou

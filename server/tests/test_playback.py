@@ -35,6 +35,10 @@ class SpeechCancelAdapter(AdapterProbe):
         raise ConnectionError("SPEECH_CANCEL")
 
 
+def test_output_scheduler_default_prebuffer_leaves_firmware_queue_headroom() -> None:
+    assert FIRMWARE_SAY_QUEUE == 6
+
+
 async def _iter_chunks(*chunks: bytes) -> AsyncIterator[bytes]:
     for chunk in chunks:
         yield chunk
