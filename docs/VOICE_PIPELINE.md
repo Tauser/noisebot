@@ -1003,7 +1003,9 @@ O roadmap detalhado das fases restantes esta em
    `idle_frames=1607`, `muted_frames=478`, `unmuted_frames=1397`,
    `tts_completed=true`, `SAY_END` e `codec-v2 health` ok. Ponto amarelo:
    Playback v2 contou 14 drops SAY no turno e deve ser repetido antes do
-   proximo handoff.
+   proximo handoff. Repeticao controlada via `/debug/transcript` apos restart
+   correto do server enviou 292 chunks TTS com zero drops novos em Playback v2
+   e `codec-v2 health` ok; ainda falta repetir por wake fisico.
 4. Capture Session v2 assumindo upstream por flag.
 5. Policy conversacional avancada somente depois de no-echo/captura estaveis.
 

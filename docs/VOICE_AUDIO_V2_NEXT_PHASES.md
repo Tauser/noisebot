@@ -235,6 +235,14 @@ Entregas:
   playback. Ponto amarelo: Playback v2 registrou 384 chunks SAY
   recebidos/tocados e 14 drops no turno; repetir antes de qualquer novo handoff
   de playback/captura.
+- Repeticao controlada via orquestrador apos restart correto do server com
+  `NOISEBOT_HOST=192.168.1.30` e Opus v2 ativo: `/debug/transcript` com
+  `me conte uma historia curta` enviou 292 chunks TTS, `SAY_END=true`,
+  `voice_alert=null`, `codec-v2 health` ok e `capture-v2` desligado. Playback
+  v2 saiu de `received=1139/played=1138/dropped=38` para
+  `received=1431/played=1430/dropped=38`, ou seja, +292 recebidos/tocados e
+  zero drops novos. Ainda falta uma repeticao fisica por wake antes de liberar
+  novo handoff.
 - Modo shadow que observa a sessao real sem decidir wake nem fim de fala.
 - Eventos internos de `speech_start`, `speech_end`, `silence`, `discard_reason`
   apenas quando existe sessao aberta.

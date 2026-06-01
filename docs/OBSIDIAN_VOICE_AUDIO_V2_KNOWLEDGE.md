@@ -347,7 +347,9 @@ Faz:
 - validacao em hardware do shadow 30 s: 1875 frames em 30000 ms,
   `session_frames=268`, `idle_frames=1607`, `muted_frames=478`,
   `unmuted_frames=1397`, Opus v2 saudavel, Capture v2 desligado; ponto amarelo
-  separado em Playback v2 com 14 drops SAY no turno;
+  separado em Playback v2 com 14 drops SAY no turno; repeticao controlada via
+  `/debug/transcript` depois de restart correto do server teve +292 SAY
+  recebidos/tocados e zero drops novos;
 - ESP-SR VAD primario;
 - RMS/ZCR/espectral como telemetria;
 - AFE/NS opcional;

@@ -281,7 +281,10 @@ Responsabilidade:
   `session_frames=268`, `idle_frames=1607`, `muted_frames=478`,
   `unmuted_frames=1397`, com Opus v2 saudavel e Capture v2 desligado. O mesmo
   turno registrou 14 drops SAY em Playback v2, entao playback deve ser
-  rechecado antes de novo handoff.
+  rechecado antes de novo handoff. Repeticao controlada via `/debug/transcript`
+  depois de restart correto do server confirmou o caminho do orquestrador sem
+  drops novos: +292 chunks SAY recebidos/tocados e `say_chunks_dropped`
+  inalterado.
 - Validacao em hardware pos-flash confirmou o contrato passivo: shadow de
   1000 ms observou 63 frames, encerrou sozinho, classificou silencio e manteve
   `session_active=false`; `capture-v2` permaneceu desligado, Playback v2 ficou
