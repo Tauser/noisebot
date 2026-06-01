@@ -2371,15 +2371,21 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
     nb_voice_activity_v2_status_t st;
     voice_activity_service_v2_get_status(&st);
 
-    char buf[768];
+    char buf[1024];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
              "\"shadow_running\":%s,\"state\":\"%s\","
              "\"shadow_duration_ms\":%lu,\"shadow_elapsed_ms\":%lu,"
              "\"observed_frames\":%lu,\"speech_frames\":%lu,"
-             "\"silence_frames\":%lu,\"muted_frames\":%lu,"
+             "\"silence_frames\":%lu,\"session_frames\":%lu,"
+             "\"idle_frames\":%lu,\"muted_frames\":%lu,"
+             "\"unmuted_frames\":%lu,"
              "\"rms_last\":%lu,\"peak_last\":%lu,\"zcr_last_permille\":%lu,"
              "\"rms_max\":%lu,\"peak_max\":%lu,\"zcr_max_permille\":%lu,"
+             "\"muted_rms_max\":%lu,\"muted_peak_max\":%lu,"
+             "\"muted_zcr_max_permille\":%lu,"
+             "\"unmuted_rms_max\":%lu,\"unmuted_peak_max\":%lu,"
+             "\"unmuted_zcr_max_permille\":%lu,"
              "\"last_error\":\"%s\",\"error\":\"%s\"}",
              (err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
@@ -2391,13 +2397,22 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.observed_frames,
              (unsigned long)st.speech_frames,
              (unsigned long)st.silence_frames,
+             (unsigned long)st.session_frames,
+             (unsigned long)st.idle_frames,
              (unsigned long)st.muted_frames,
+             (unsigned long)st.unmuted_frames,
              (unsigned long)st.rms_last,
              (unsigned long)st.peak_last,
              (unsigned long)st.zcr_last_permille,
              (unsigned long)st.rms_max,
              (unsigned long)st.peak_max,
              (unsigned long)st.zcr_max_permille,
+             (unsigned long)st.muted_rms_max,
+             (unsigned long)st.muted_peak_max,
+             (unsigned long)st.muted_zcr_max_permille,
+             (unsigned long)st.unmuted_rms_max,
+             (unsigned long)st.unmuted_peak_max,
+             (unsigned long)st.unmuted_zcr_max_permille,
              esp_err_to_name(st.last_error),
              esp_err_to_name(err));
     httpd_resp_set_type(req, "application/json");

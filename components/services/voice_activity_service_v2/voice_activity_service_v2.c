@@ -201,6 +201,11 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
 
     s_status.session_active = session_active;
     s_status.observed_frames++;
+    if (session_active) {
+        s_status.session_frames++;
+    } else {
+        s_status.idle_frames++;
+    }
     s_status.rms_last = rms;
     s_status.peak_last = peak;
     s_status.zcr_last_permille = zcr;
@@ -215,6 +220,26 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
     }
     if (muted) {
         s_status.muted_frames++;
+        if (rms > s_status.muted_rms_max) {
+            s_status.muted_rms_max = rms;
+        }
+        if (peak > s_status.muted_peak_max) {
+            s_status.muted_peak_max = peak;
+        }
+        if (zcr > s_status.muted_zcr_max_permille) {
+            s_status.muted_zcr_max_permille = zcr;
+        }
+    } else {
+        s_status.unmuted_frames++;
+        if (rms > s_status.unmuted_rms_max) {
+            s_status.unmuted_rms_max = rms;
+        }
+        if (peak > s_status.unmuted_peak_max) {
+            s_status.unmuted_peak_max = peak;
+        }
+        if (zcr > s_status.unmuted_zcr_max_permille) {
+            s_status.unmuted_zcr_max_permille = zcr;
+        }
     }
     if (speech) {
         s_status.speech_frames++;

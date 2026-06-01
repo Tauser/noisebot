@@ -32,6 +32,8 @@ typedef struct {
     uint32_t observed_frames;
     uint32_t speech_frames;
     uint32_t silence_frames;
+    uint32_t session_frames;
+    uint32_t idle_frames;
     uint32_t rms_last;
     uint32_t peak_last;
     uint32_t zcr_last_permille;
@@ -39,6 +41,13 @@ typedef struct {
     uint32_t peak_max;
     uint32_t zcr_max_permille;
     uint32_t muted_frames;
+    uint32_t unmuted_frames;
+    uint32_t muted_rms_max;
+    uint32_t muted_peak_max;
+    uint32_t muted_zcr_max_permille;
+    uint32_t unmuted_rms_max;
+    uint32_t unmuted_peak_max;
+    uint32_t unmuted_zcr_max_permille;
     esp_err_t last_error;
 } nb_voice_activity_v2_status_t;
 

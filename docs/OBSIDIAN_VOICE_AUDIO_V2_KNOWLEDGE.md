@@ -330,7 +330,10 @@ Faz:
 
 - shadow probe passivo em `/api/audio/activity-v2`;
 - receber copia de PCM condicionado do `audio_service`, sem HAL proprio;
-- medir RMS/peak, fala/silencio, frames mutados e sessao ativa;
+- medir RMS/peak/ZCR, fala/silencio, frames mutados e sessao ativa;
+- separar telemetria por contexto (`session_frames`, `idle_frames`, frames
+  mutados/nao mutados e maximos RMS/peak/ZCR por bucket) para comparar fala real
+  e vazamento de playback sem promover decisao ativa;
 - ESP-SR VAD primario;
 - RMS/ZCR/espectral como telemetria;
 - AFE/NS opcional;

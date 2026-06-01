@@ -267,6 +267,10 @@ Responsabilidade:
 - O shadow tambem expoe ZCR em `zcr_last_permille` e `zcr_max_permille`,
   calculado sem float/no malloc, como telemetria comparativa. ZCR ainda nao
   participa de threshold nem de decisao de wake/fim de fala.
+- O shadow separa a telemetria por contexto: `session_frames` vs `idle_frames`
+  e maximos RMS/peak/ZCR para frames `muted` e `unmuted`. Esses campos existem
+  para comparar fala real, silencio e vazamento do playback durante testes
+  `ww -> resposta -> ww`; nao alteram wake, captura, bridge, codec ou playback.
 - Validacao em hardware pos-flash confirmou o contrato passivo: shadow de
   1000 ms observou 63 frames, encerrou sozinho, classificou silencio e manteve
   `session_active=false`; `capture-v2` permaneceu desligado, Playback v2 ficou

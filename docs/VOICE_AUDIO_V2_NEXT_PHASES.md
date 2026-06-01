@@ -199,6 +199,12 @@ Entregas:
   encerrou sozinho em 1008 ms, manteve `session_active=false`, classificou
   silencio, registrou `zcr_last_permille=98` e `zcr_max_permille=141`; `codec-v2
   health` voltou `healthy=true/status=ok` apos reativar Opus v2.
+- Incremento local seguinte: Activity v2 passou a separar a telemetria do
+  shadow por contexto, expondo `session_frames`, `idle_frames`,
+  `muted_frames`, `unmuted_frames` e maximos RMS/peak/ZCR separados para frames
+  mutados por playback e nao mutados. Isso prepara a validacao comparativa
+  durante `ww -> resposta -> ww`, sem transformar o shadow em decisor de
+  wake, fim de fala, captura ou cancelamento.
 - Modo shadow que observa a sessao real sem decidir wake nem fim de fala.
 - Eventos internos de `speech_start`, `speech_end`, `silence`, `discard_reason`
   apenas quando existe sessao aberta.

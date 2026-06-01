@@ -264,12 +264,19 @@ def test_voice_activity_v2_shadow_is_explicit_and_passive():
     assert '{ .uri = "/api/audio/activity-v2/shadow/stop"' in web
     assert '\\"shadow_running\\":%s' in web
     assert "zcr_last_permille" in web
+    assert "session_frames" in web
+    assert "muted_rms_max" in web
+    assert "unmuted_rms_max" in web
     assert "esp_err_t voice_activity_service_v2_shadow_start(" in activity_h
     assert "void voice_activity_service_v2_feed_frame(" in activity_h
     assert "zcr_last_permille" in activity_h
+    assert "session_frames" in activity_h
+    assert "muted_rms_max" in activity_h
+    assert "unmuted_rms_max" in activity_h
     assert "SHADOW_SPEECH_RMS_THRESHOLD" in activity_c
     assert "zcr_permille(" in activity_c
     assert "session_active" in activity_c
+    assert "unmuted_frames" in activity_c
     assert "bridge_service" not in activity_c
     assert "wake_service" not in activity_c
     assert "audio_hal_" not in activity_c
