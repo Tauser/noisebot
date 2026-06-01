@@ -141,6 +141,11 @@ Validacao em hardware apos flash do shadow TX confirmou o replay diagnostico
 com `shadow_audio_chunks=40`, `shadow_audio_samples=10240`,
 `shadow_audio_dropped_chunks=0`, start/end shadow verdadeiros,
 `bridge_tx_owner=false`; Opus v2 foi reativado e `codec-v2 health` ficou ok.
+No primeiro turno real com a flag ligada, o comportamento ficou saudavel
+(`voice_alert=null`, Playback v2 sem drops, Codec v2 ok), mas a telemetria
+mostrou que, em Opus, `shadow_audio_samples` somava 256 samples por pacote
+drenado. A correcao local faz o shadow somar 960 samples por pacote Opus
+drenado, mantendo o TX real no `audio_service`.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

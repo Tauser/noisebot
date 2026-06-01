@@ -2160,6 +2160,11 @@ Implementação:
   `shadow_audio_dropped_chunks=0`, `captured_samples=10240`,
   `dropped_frames=0`, `bridge_tx_owner=false` e Codec v2 ok apos reativar
   Opus.
+- [x] Turno real com Capture v2 ligado validou comportamento e revelou ajuste
+  de unidade: `shadow_audio_chunks=158` acompanhou `chunk_count=158`, mas
+  `shadow_audio_samples` somava chunks de 256 em vez de frames Opus de 960.
+  Correcao local aplicada para contar `sent_packets *
+  NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES`; build ESP-IDF e `bridge/tests` limpos.
 
 ---
 

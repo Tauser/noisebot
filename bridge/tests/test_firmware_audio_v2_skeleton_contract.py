@@ -393,4 +393,6 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
     assert "s_status.real_capture = true;" in capture_c
     assert "voice_capture_session_v2_note_voice_start();" in audio_service
     assert "voice_capture_session_v2_note_audio_chunk(" in audio_service
+    assert "static uint8_t bridge_drain_opus_packets_if_enabled(void)" in audio_service
+    assert "sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES" in audio_service
     assert "voice_capture_session_v2_finish(" in audio_service

@@ -280,14 +280,14 @@ static void bridge_feed_opus_pcm(const int16_t *pcm, uint16_t samples)
     }
 }
 
-static bool bridge_drain_opus_packets_if_enabled(void)
+static uint8_t bridge_drain_opus_packets_if_enabled(void)
 {
     if (!bridge_service_opus_is_enabled()) {
-        return false;
+        return 0;
     }
 
     bool use_codec_v2 = bridge_use_codec_v2_opus_worker();
-    bool sent = false;
+    uint8_t sent_packets = 0;
     for (uint8_t i = 0; i < 4U; i++) {
         uint16_t packet_len = 0;
         esp_err_t read_rc = use_codec_v2
@@ -301,9 +301,9 @@ static bool bridge_drain_opus_packets_if_enabled(void)
         if (tx_rc != ESP_OK) {
             break;
         }
-        sent = true;
+        sent_packets++;
     }
-    return sent;
+    return sent_packets;
 }
 
 static void audio_service_recover_hal(const char *where, esp_err_t err)
@@ -645,10 +645,13 @@ static bool listen_start_bridge_capture(void)
                                     &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
             if (bridge_service_opus_is_enabled()) {
                 bridge_feed_opus_pcm(s_bridge_buf, NB_AUDIO_CHUNK_FRAMES);
-                if (bridge_drain_opus_packets_if_enabled()) {
+                uint8_t sent_packets = bridge_drain_opus_packets_if_enabled();
+                if (sent_packets > 0U) {
                     s.bridge_audio_sent = true;
                     if (s.listen_capture_v2_active) {
-                        voice_capture_session_v2_note_audio_chunk(NB_AUDIO_CHUNK_FRAMES, true);
+                        voice_capture_session_v2_note_audio_chunk(
+                            (uint16_t)sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES,
+                            true);
                     }
                 }
             } else {
@@ -1226,10 +1229,13 @@ static void audio_task(void *arg)
                                     &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
             if (bridge_service_opus_is_enabled()) {
                 bridge_feed_opus_pcm(s_bridge_buf, (uint16_t)mic_n);
-                if (bridge_drain_opus_packets_if_enabled()) {
+                uint8_t sent_packets = bridge_drain_opus_packets_if_enabled();
+                if (sent_packets > 0U) {
                     s.bridge_audio_sent = true;
                     if (s.listen_capture_v2_active) {
-                        voice_capture_session_v2_note_audio_chunk((uint16_t)mic_n, true);
+                        voice_capture_session_v2_note_audio_chunk(
+                            (uint16_t)sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES,
+                            true);
                     }
                     s.bridge_tx_fail_count = 0;
                     if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {

@@ -378,6 +378,14 @@ Entregas:
   `legacy_audio_service_tx_owner=true`. Opus v2 foi reativado em seguida e
   `codec-v2 health` voltou `status=ok`, worker `running`, zero drops e fila
   egress zero.
+- Validacao real inicial com `voice_audio_v2_capture_enabled=true` confirmou
+  que o caminho legado continuou dono do TX (`bridge_tx_owner=false`) e o
+  turno concluiu com `voice_alert=null`, Playback v2 sem drops e Codec v2 ok.
+  A mesma rodada revelou um desvio de unidade no shadow Opus: os 158 eventos
+  batiam com `chunk_count=158`, mas `shadow_audio_samples` somava 158 * 256 em
+  vez dos 158 pacotes Opus * 960 samples recebidos pelo server. Correcao local:
+  `bridge_drain_opus_packets_if_enabled()` agora retorna quantidade de pacotes
+  drenados e o shadow soma `sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES`.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve
