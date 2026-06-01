@@ -342,6 +342,8 @@ Faz:
 - separar telemetria por contexto (`session_frames`, `idle_frames`, frames
   mutados/nao mutados e maximos RMS/peak/ZCR por bucket) para comparar fala real
   e vazamento de playback sem promover decisao ativa;
+- aceitar shadow de ate 30 s e receber contexto explicito de playback do
+  `audio_service` apenas para bucket de telemetria;
 - ESP-SR VAD primario;
 - RMS/ZCR/espectral como telemetria;
 - AFE/NS opcional;

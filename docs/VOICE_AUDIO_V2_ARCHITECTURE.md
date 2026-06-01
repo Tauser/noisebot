@@ -271,6 +271,11 @@ Responsabilidade:
   e maximos RMS/peak/ZCR para frames `muted` e `unmuted`. Esses campos existem
   para comparar fala real, silencio e vazamento do playback durante testes
   `ww -> resposta -> ww`; nao alteram wake, captura, bridge, codec ou playback.
+- A janela maxima do shadow agora e 30 s para cobrir um ciclo fisico completo
+  `ww -> STT -> LLM -> TTS -> barge-in/idle`. O contexto de playback enviado
+  ao Activity v2 e explicito (`wrote_audio`, estado de playback e fila SAY v2),
+  mas continua sendo usado somente para bucket de telemetria; VAD, wake,
+  captura, codec, Playback v2 e HAL permanecem nos caminhos ja validados.
 - Validacao em hardware pos-flash confirmou o contrato passivo: shadow de
   1000 ms observou 63 frames, encerrou sozinho, classificou silencio e manteve
   `session_active=false`; `capture-v2` permaneceu desligado, Playback v2 ficou

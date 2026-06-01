@@ -218,6 +218,14 @@ Entregas:
   mutados por playback e nao mutados. Isso prepara a validacao comparativa
   durante `ww -> resposta -> ww`, sem transformar o shadow em decisor de
   wake, fim de fala, captura ou cancelamento.
+- Incremento local seguinte: a validacao manual em turno real mostrou que a
+  janela de 10 s e o mute baseado apenas no chunk escrito no speaker podiam
+  deixar o shadow classificar tudo como `idle/unmuted`, mesmo com resposta
+  falada. O limite do shadow subiu para 30 s e o `audio_service` agora passa ao
+  Activity v2 um contexto explicito de playback (`wrote_audio`, estado
+  `PLAY_ACTIVE/PLAY_BRIDGE_SAY`, `bridge_say_playing` e fila SAY v2 tocando).
+  Essa informacao alimenta apenas os buckets de telemetria; VAD, wake,
+  captura, codec, Playback v2 e HAL nao mudam.
 - Modo shadow que observa a sessao real sem decidir wake nem fim de fala.
 - Eventos internos de `speech_start`, `speech_end`, `silence`, `discard_reason`
   apenas quando existe sessao aberta.

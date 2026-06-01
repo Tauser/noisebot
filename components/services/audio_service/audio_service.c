@@ -1183,10 +1183,21 @@ static void audio_task(void *arg)
         sound_analysis_tick(s_sa_buf, mic_n);
         audio_processor_service_feed_shadow(s_sa_buf, (uint16_t)mic_n);
         audio_io_service_v2_probe_feed_rx_frame(s_sa_buf, (uint16_t)mic_n);
+        bool activity_session_context = false;
+        bool activity_bridge_say_context = false;
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        activity_session_context = s.listen_session_active;
+        activity_bridge_say_context = s.bridge_say_playing;
+        xSemaphoreGive(s.mutex);
+        bool activity_playback_context = wrote_audio ||
+                                         play_state == PLAY_ACTIVE ||
+                                         play_state == PLAY_BRIDGE_SAY ||
+                                         activity_bridge_say_context ||
+                                         audio_playback_service_v2_is_playing();
         voice_activity_service_v2_feed_frame(s_sa_buf,
                                              (uint16_t)mic_n,
-                                             s.listen_session_active,
-                                             wrote_audio);
+                                             activity_session_context,
+                                             activity_playback_context);
 
         /* ── 4. VAD ─────────────────────────────────────────────────────── */
         vad_update(s_mic_proc, s_sa_buf, mic_n, wrote_audio);

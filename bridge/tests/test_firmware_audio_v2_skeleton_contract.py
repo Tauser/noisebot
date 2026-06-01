@@ -259,6 +259,9 @@ def test_voice_activity_v2_shadow_is_explicit_and_passive():
     ).read_text(encoding="utf-8")
 
     assert "voice_activity_service_v2_feed_frame(" in audio_service
+    assert "activity_session_context" in audio_service
+    assert "activity_playback_context" in audio_service
+    assert "audio_playback_service_v2_is_playing()" in audio_service
     assert '{ .uri = "/api/audio/activity-v2"' in web
     assert '{ .uri = "/api/audio/activity-v2/shadow"' in web
     assert '{ .uri = "/api/audio/activity-v2/shadow/stop"' in web
@@ -274,6 +277,7 @@ def test_voice_activity_v2_shadow_is_explicit_and_passive():
     assert "muted_rms_max" in activity_h
     assert "unmuted_rms_max" in activity_h
     assert "SHADOW_SPEECH_RMS_THRESHOLD" in activity_c
+    assert "#define SHADOW_MAX_DURATION_MS          30000U" in activity_c
     assert "zcr_permille(" in activity_c
     assert "session_active" in activity_c
     assert "unmuted_frames" in activity_c
