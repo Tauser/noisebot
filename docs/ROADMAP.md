@@ -2232,6 +2232,16 @@ Implementação:
   flag de TX desligada, o caminho legado segue ativo. Validacao local: contrato
   focado Voice Audio v2 e build ESP-IDF limpos. Pendente: flash e validacao
   fisica antes de marcar como aprovado em hardware.
+- [x] Validacao fisica do handoff real opt-in: apos flash, Opus reativado e
+  `capture-v2 tx-enable`, um turno curto `ww -> que horas sao` fechou com
+  `turn_id=47`, transcript correto, `voice_end_reason=silence`,
+  `tts_completed=true`, `tts_say_end_sent=true`, `voice_alert=null` e Capture
+  v2 como dono real do TX (`bridge_tx_owner=true`,
+  `legacy_audio_service_tx_owner=false`). Capture v2 contou 104 chunks,
+  99840 samples e zero drops; Playback v2 ficou com fila zero e zero drops; o
+  unico pacote egress Opus pendente foi drenado e `codec-v2 health` voltou
+  `status=ok`. A flag experimental foi desligada depois e `/api/config/all`
+  confirmou `voice_audio_v2_capture_tx_enabled=false`.
 
 ---
 

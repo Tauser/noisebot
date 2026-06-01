@@ -200,6 +200,14 @@ mas roteia o TX logico `VOICE_START/AUDIO_CHUNK/VOICE_END` por
 do TX real e o Capture v2 segue shadow. Validacao local passou com contrato
 focado e build ESP-IDF; falta flash e teste fisico antes de considerar este
 handoff validado.
+Validacao fisica apos flash tambem passou: com Opus ativo e
+`capture-v2 tx-enable`, o turno `ww -> que horas sao` fechou como local time
+com transcript correto, `voice_end_reason=silence`, TTS completo e
+`SAY_END`. Capture v2 assumiu o TX real (`bridge_tx_owner=true`,
+`legacy_audio_service_tx_owner=false`), registrou 104 chunks / 99840 samples e
+zero drops. Playback v2 terminou com fila zero e zero drops. Apos drenar 1
+pacote egress Opus pendente, `codec-v2 health` voltou `status=ok`. A flag de
+TX foi desligada em seguida, confirmada em `/api/config/all`.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

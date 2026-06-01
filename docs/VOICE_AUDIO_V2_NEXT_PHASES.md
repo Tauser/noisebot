@@ -482,6 +482,17 @@ Entregas:
   permanece exatamente como antes e o Capture v2 segue shadow. Validacao local:
   contrato focado Voice Audio v2 e build ESP-IDF limpos. Falta flash e teste
   fisico antes de considerar o handoff validado.
+- Validacao fisica apos flash do handoff real opt-in passou em turno curto:
+  apos reativar Opus e ligar `capture-v2 tx-enable`, `ww -> que horas sao`
+  gerou `turn_id=47`, transcript `Que horas são?`, `voice_end_reason=silence`,
+  `chunk_count=104`, `total_samples=99824`, `tts_completed=true`,
+  `tts_say_end_sent=true` e `voice_alert=null`. O status do Capture v2 ficou
+  `bridge_tx_owner=true`, `legacy_audio_service_tx_owner=false`,
+  `end_reason=SPEECH_COMPLETE`, `shadow_audio_chunks=104`,
+  `shadow_audio_samples=99840` e zero drops. Playback v2 ficou com fila zero e
+  zero drops; Codec v2 teve 1 pacote egress pendente sem erro/drop, foi drenado
+  e voltou `status=ok`. A flag experimental de TX foi desligada em seguida;
+  `/api/config/all` confirmou `voice_audio_v2_capture_tx_enabled=false`.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve
