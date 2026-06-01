@@ -194,7 +194,7 @@ class OllamaProvider(StreamingLLMProvider):
 
     def __init__(
         self,
-        model: str = "qwen2.5:7b",
+        model: str = "qwen3.5:9b",
         base_url: str = "http://127.0.0.1:11434",
         temperature: float = _DEFAULT_TEMPERATURE,
         max_tokens: int = _DEFAULT_MAX_TOKENS,

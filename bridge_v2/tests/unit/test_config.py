@@ -34,7 +34,7 @@ class TestLoadConfig:
         assert cfg.transport.port == 9000
         assert cfg.transport.host is None
         assert cfg.llm.provider == LlmProvider.OLLAMA
-        assert cfg.llm.model == "qwen2.5:7b"
+        assert cfg.llm.model == "qwen3.5:9b"
         assert cfg.pipeline_mode == PipelineMode.NORMAL
         assert cfg.stt.model == "small"
         assert cfg.dry_run is False

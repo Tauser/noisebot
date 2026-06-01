@@ -32,6 +32,7 @@ PROVIDER_CATALOG: dict[str, list[str]] = {
         "gemini-2.5-pro",
     ],
     "ollama": [
+        "qwen3.5:9b",
         "qwen2.5:7b", "qwen2.5:14b",
         "llama3.1:8b", "llama3.2:3b",
         "mistral:7b",
