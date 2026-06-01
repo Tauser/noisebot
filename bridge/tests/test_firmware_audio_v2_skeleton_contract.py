@@ -246,6 +246,32 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "void audio_io_service_v2_probe_feed_rx_frame(" in io_h
 
 
+def test_voice_activity_v2_shadow_is_explicit_and_passive():
+    audio_service = (COMPONENTS / "audio_service" / "audio_service.c").read_text(
+        encoding="utf-8"
+    )
+    web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+    activity_c = (
+        COMPONENTS / "voice_activity_service_v2" / "voice_activity_service_v2.c"
+    ).read_text(encoding="utf-8")
+    activity_h = (
+        COMPONENTS / "voice_activity_service_v2" / "voice_activity_service_v2.h"
+    ).read_text(encoding="utf-8")
+
+    assert "voice_activity_service_v2_feed_frame(" in audio_service
+    assert '{ .uri = "/api/audio/activity-v2"' in web
+    assert '{ .uri = "/api/audio/activity-v2/shadow"' in web
+    assert '{ .uri = "/api/audio/activity-v2/shadow/stop"' in web
+    assert '\\"shadow_running\\":%s' in web
+    assert "esp_err_t voice_activity_service_v2_shadow_start(" in activity_h
+    assert "void voice_activity_service_v2_feed_frame(" in activity_h
+    assert "SHADOW_SPEECH_RMS_THRESHOLD" in activity_c
+    assert "session_active" in activity_c
+    assert "bridge_service" not in activity_c
+    assert "wake_service" not in activity_c
+    assert "audio_hal_" not in activity_c
+
+
 def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     audio_service = (COMPONENTS / "audio_service" / "audio_service.c").read_text(
         encoding="utf-8"

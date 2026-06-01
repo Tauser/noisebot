@@ -43,6 +43,7 @@
 #include "audio_processor_service.h"
 #include "audio_io_service_v2.h"
 #include "audio_playback_service_v2.h"
+#include "voice_activity_service_v2.h"
 #include "voice_capture_session_v2.h"
 #include "audio_codec_service_v2.h"
 #include "audio_service.h"
@@ -228,6 +229,16 @@ static const char *capture_v2_source_name(nb_voice_capture_v2_source_t source)
         case NB_VOICE_CAPTURE_V2_SOURCE_FOLLOWUP:  return "FOLLOWUP";
         case NB_VOICE_CAPTURE_V2_SOURCE_DEBUG:     return "DEBUG";
         default:                                   return "UNKNOWN";
+    }
+}
+
+static const char *activity_v2_state_name(nb_voice_activity_v2_state_t state)
+{
+    switch (state) {
+        case NB_VOICE_ACTIVITY_V2_STATE_SILENCE: return "SILENCE";
+        case NB_VOICE_ACTIVITY_V2_STATE_SPEECH:  return "SPEECH";
+        case NB_VOICE_ACTIVITY_V2_STATE_UNKNOWN:
+        default:                                return "UNKNOWN";
     }
 }
 
@@ -2355,6 +2366,83 @@ static esp_err_t handle_api_audio_io_v2_probe_stop(httpd_req_t *req)
     return send_audio_io_v2_status(req, err);
 }
 
+static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
+{
+    nb_voice_activity_v2_status_t st;
+    voice_activity_service_v2_get_status(&st);
+
+    char buf[768];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
+             "\"shadow_running\":%s,\"state\":\"%s\","
+             "\"shadow_duration_ms\":%lu,\"shadow_elapsed_ms\":%lu,"
+             "\"observed_frames\":%lu,\"speech_frames\":%lu,"
+             "\"silence_frames\":%lu,\"muted_frames\":%lu,"
+             "\"rms_last\":%lu,\"peak_last\":%lu,"
+             "\"rms_max\":%lu,\"peak_max\":%lu,"
+             "\"last_error\":\"%s\",\"error\":\"%s\"}",
+             (err == ESP_OK) ? "true" : "false",
+             st.initialized ? "true" : "false",
+             st.session_active ? "true" : "false",
+             st.shadow_running ? "true" : "false",
+             activity_v2_state_name(st.state),
+             (unsigned long)st.shadow_duration_ms,
+             (unsigned long)st.shadow_elapsed_ms,
+             (unsigned long)st.observed_frames,
+             (unsigned long)st.speech_frames,
+             (unsigned long)st.silence_frames,
+             (unsigned long)st.muted_frames,
+             (unsigned long)st.rms_last,
+             (unsigned long)st.peak_last,
+             (unsigned long)st.rms_max,
+             (unsigned long)st.peak_max,
+             esp_err_to_name(st.last_error),
+             esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_voice_activity_v2_status(httpd_req_t *req)
+{
+    return send_voice_activity_v2_status(req, ESP_OK);
+}
+
+static esp_err_t handle_api_voice_activity_v2_shadow(httpd_req_t *req)
+{
+    uint32_t duration_ms = 1000U;
+    char body[MAX_BODY_LEN];
+    int body_len = 0;
+    if (recv_body(req, body, sizeof(body), &body_len) && body_len > 0) {
+        cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+        if (!root) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
+            return ESP_OK;
+        }
+        uint32_t requested = get_json_u32(root, "duration_ms");
+        if (requested > 0U) {
+            duration_ms = requested;
+        }
+        cJSON_Delete(root);
+    }
+
+    esp_err_t err = voice_activity_service_v2_shadow_start(duration_ms);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_ARG
+                                   ? "400 Bad Request"
+                                   : "409 Conflict");
+    }
+    return send_voice_activity_v2_status(req, err);
+}
+
+static esp_err_t handle_api_voice_activity_v2_shadow_stop(httpd_req_t *req)
+{
+    esp_err_t err = voice_activity_service_v2_shadow_stop();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "409 Conflict");
+    }
+    return send_voice_activity_v2_status(req, err);
+}
+
 static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
 {
     nb_audio_playback_v2_status_t st;
@@ -3755,6 +3843,9 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/io-v2", .method = HTTP_GET, .handler = handle_api_audio_io_v2_status },
     { .uri = "/api/audio/io-v2/probe", .method = HTTP_POST, .handler = handle_api_audio_io_v2_probe },
     { .uri = "/api/audio/io-v2/probe/stop", .method = HTTP_POST, .handler = handle_api_audio_io_v2_probe_stop },
+    { .uri = "/api/audio/activity-v2", .method = HTTP_GET, .handler = handle_api_voice_activity_v2_status },
+    { .uri = "/api/audio/activity-v2/shadow", .method = HTTP_POST, .handler = handle_api_voice_activity_v2_shadow },
+    { .uri = "/api/audio/activity-v2/shadow/stop", .method = HTTP_POST, .handler = handle_api_voice_activity_v2_shadow_stop },
     { .uri = "/api/audio/playback-v2", .method = HTTP_GET, .handler = handle_api_audio_playback_v2_status },
     { .uri = "/api/audio/playback-v2/probe", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_probe },
     { .uri = "/api/audio/playback-v2/stop", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_stop },

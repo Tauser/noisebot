@@ -23,6 +23,7 @@
 #include "audio_codec_service_v2.h"
 #include "audio_processor_service.h"
 #include "audio_io_service_v2.h"
+#include "voice_activity_service_v2.h"
 #include "voice_capture_session_v2.h"
 #include "config_manager.h"
 
@@ -1182,6 +1183,10 @@ static void audio_task(void *arg)
         sound_analysis_tick(s_sa_buf, mic_n);
         audio_processor_service_feed_shadow(s_sa_buf, (uint16_t)mic_n);
         audio_io_service_v2_probe_feed_rx_frame(s_sa_buf, (uint16_t)mic_n);
+        voice_activity_service_v2_feed_frame(s_sa_buf,
+                                             (uint16_t)mic_n,
+                                             s.listen_session_active,
+                                             wrote_audio);
 
         /* ── 4. VAD ─────────────────────────────────────────────────────── */
         vad_update(s_mic_proc, s_sa_buf, mic_n, wrote_audio);
@@ -1372,9 +1377,18 @@ esp_err_t audio_service_init(void)
         return err;
     }
 
+    err = voice_activity_service_v2_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE(TAG, "voice_activity_service_v2_init falhou: %s", esp_err_to_name(err));
+        (void)audio_playback_service_v2_deinit();
+        audio_hal_deinit();
+        return err;
+    }
+
     s.mutex = xSemaphoreCreateMutex();
     if (!s.mutex) {
         ESP_LOGE(TAG, "xSemaphoreCreateMutex falhou");
+        (void)voice_activity_service_v2_deinit();
         (void)audio_playback_service_v2_deinit();
         audio_hal_deinit();
         return ESP_ERR_NO_MEM;
@@ -1433,6 +1447,7 @@ esp_err_t audio_service_init(void)
             s.esp_vad_enabled = false;
         }
         (void)audio_playback_service_v2_deinit();
+        (void)voice_activity_service_v2_deinit();
         vSemaphoreDelete(s.mutex);
         audio_hal_deinit();
         return ESP_ERR_NO_MEM;
