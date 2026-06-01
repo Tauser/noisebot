@@ -2212,6 +2212,12 @@ Implementação:
   Pos-flash, `/api/config/all` respondeu JSON e confirmou
   `voice_audio_v2_capture_enabled=true` com
   `voice_audio_v2_capture_tx_enabled=false`.
+- [x] Turno curto real apos reflash da correcao HTTP: `ww -> que horas sao`
+  retornou transcript correto, `voice_end_reason=silence`, `duration_ms=2159`,
+  `chunk_count=36`, `total_samples=34544`, TTS completo com `SAY_END`,
+  `voice_alert=null`, Capture v2 com gate verde e TX legado, e Codec v2
+  `status=ok`. Observacao: Playback v2 ainda carrega drops cumulativos de
+  interacoes anteriores; acompanhar deltas antes do proximo handoff real.
 
 ---
 

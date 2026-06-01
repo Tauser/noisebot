@@ -456,6 +456,16 @@ Entregas:
   `/api/config/all` voltou a responder JSON e confirmou
   `voice_audio_v2_capture_enabled=true` com
   `voice_audio_v2_capture_tx_enabled=false`.
+- Turno curto real apos esse reflash tambem passou: `ww -> que horas sao`
+  gerou transcript `Que horas são?`, `voice_end_reason=silence`,
+  `duration_ms=2159`, `chunk_count=36`, `total_samples=34544`,
+  `tts_completed=true`, `tts_say_end_sent=true` e `voice_alert=null`.
+  Capture v2 ficou com `bridge_tx_owner=false`,
+  `legacy_audio_service_tx_owner=true`, `bridge_tx_handoff_ready=true`,
+  `handoff_block_reason=NONE`, `shadow_audio_chunks=36`,
+  `shadow_audio_samples=34560` e zero drops; Codec v2 voltou `status=ok`.
+  Playback v2 esta operacional, mas seus drops sao cumulativos de interacoes
+  anteriores e devem ser medidos por delta antes do proximo handoff real.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve
