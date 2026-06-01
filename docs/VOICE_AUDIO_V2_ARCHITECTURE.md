@@ -1,18 +1,20 @@
 # Voice Audio v2 Architecture
 
 Data: 2026-05-30
-Status: proposta tecnica para refactor paralelo, sem substituir o pipeline atual.
+Status: arquitetura vigente do refactor paralelo, sem substituir o rollback PCM16.
 Branch de trabalho: `voice-reference-architecture`.
 
-Este documento fixa o mapa de referencia para refazer o subsistema de voz do
-NoiseBot usando Xiaozhi/StackChan como base tecnica, mas sem perder o que ja
-funciona no hardware atual.
+Este documento fixa o mapa tecnico para refazer o subsistema de voz do NoiseBot
+sem perder o que ja funciona no hardware atual.
 
 Versao para consulta rapida em Obsidian/IA:
 `docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md`.
 
 Roadmap operacional das fases restantes apos o fechamento do Opus:
 `docs/VOICE_AUDIO_V2_NEXT_PHASES.md`.
+
+Checklist/health de release da Fase M parcial:
+`docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md`.
 
 O objetivo nao e "reescrever tudo". O objetivo e retirar do `audio_service.c`
 as responsabilidades que foram acumuladas ao longo da migracao e criar um
@@ -30,20 +32,7 @@ pipeline PCM16 atual.
   AEC server-side. Nao promover AEC device-side sem canal de referencia.
 - Cada fase deve gerar commit proprio, build limpo e criterio de rollback.
 
-## Fontes de Referencia
-
-### Xiaozhi
-
-Arquivos analisados:
-
-- `D:\Projetos\Xiaozhi-for-XiaoESP32S3-master\Source\xiaozhi-esp32-2.2.2\main\audio\audio_service.h`
-- `D:\Projetos\Xiaozhi-for-XiaoESP32S3-master\Source\xiaozhi-esp32-2.2.2\main\audio\audio_service.cc`
-- `D:\Projetos\Xiaozhi-for-XiaoESP32S3-master\Source\xiaozhi-esp32-2.2.2\main\audio\processors\afe_audio_processor.cc`
-- `D:\Projetos\Xiaozhi-for-XiaoESP32S3-master\Source\xiaozhi-esp32-2.2.2\main\application.cc`
-- `D:\Projetos\Xiaozhi-for-XiaoESP32S3-master\Source\xiaozhi-esp32-2.2.2\main\protocols\websocket_protocol.cc`
-- `D:\Projetos\Xiaozhi-for-XiaoESP32S3-master\Source\xiaozhi-esp32-2.2.2\docs\websocket.md`
-
-Pontos tecnicos absorvidos:
+## Premissas Tecnicas
 
 - Fluxo separado:
   - mic -> processor -> encode queue -> Opus encoder -> send queue -> server.
@@ -87,26 +76,6 @@ Pontos tecnicos absorvidos:
   - AGC desligado;
   - alocacao preferencial em PSRAM.
 
-### StackChan
-
-Arquivos analisados:
-
-- `D:\Projetos\StackChan\firmware\main\CMakeLists.txt`
-- `D:\Projetos\StackChan\firmware\main\hal\board\config.h`
-- `D:\Projetos\StackChan\firmware\main\hal\board\stackchan.cc`
-- `D:\Projetos\StackChan\firmware\main\hal\board\cores3_audio_codec.cc`
-- `D:\Projetos\StackChan\firmware\main\hal\board\cores3_audio_codec.h`
-
-Pontos tecnicos absorvidos:
-
-- StackChan reaproveita o core Xiaozhi, nao reimplementa tudo do zero.
-- CoreS3 usa codec ES7210 para microfone e AW88298 para speaker.
-- `AUDIO_INPUT_REFERENCE = true` no CoreS3.
-- Input e output do CoreS3 rodam a 24 kHz no board analisado.
-- O codec CoreS3 abre entrada com canal de referencia quando disponivel:
-  `input_channels = input_reference ? 2 : 1`.
-- O caminho de AEC do StackChan depende dessa referencia de playback no input.
-
 ## Divergencias do NoiseBot
 
 Hardware atual:
@@ -114,15 +83,15 @@ Hardware atual:
 - ESP32-S3 N16R8.
 - INMP441 como microfone digital I2S.
 - MAX98357A como speaker I2S.
-- Sem codec ES7210.
-- Sem AW88298.
+- Sem codec externo dedicado para microfone.
+- Sem codec externo dedicado para speaker.
 - Sem canal limpo de referencia de speaker no input.
 - I2S atual em 16 kHz, mono logico, com fio 32-bit/stereo no HAL.
 
 Consequencias:
 
-- Podemos copiar a arquitetura Xiaozhi/StackChan.
-- Nao podemos copiar diretamente o AEC device-side do CoreS3.
+- A arquitetura pode separar I/O, playback, captura, codec e policy.
+- Nao podemos promover AEC device-side sem referencia limpa de playback.
 - AFE sem referencia pode ser usado para VAD/NS, mas nao deve ser vendido como
   AEC real.
 - Server-side AEC so faz sentido se adicionarmos timestamps de playback e
@@ -291,6 +260,10 @@ Invariantes:
 
 Responsabilidade:
 
+- No incremento inicial da Fase J, observar passivamente o PCM condicionado
+  que ja passa pelo `audio_service`, expondo `/api/audio/activity-v2` e
+  shadow start/stop para medir RMS/peak, fala/silencio, frames mutados e
+  sessao ativa sem alterar wake, captura, bridge, codec ou playback.
 - Classificar fala/silencio dentro de sessao ja aberta.
 - Usar ESP-SR VAD como caminho principal.
 - Manter RMS/ZCR/espectral como telemetria e fallback de bancada.
@@ -353,7 +326,8 @@ Perfil Opus inicial:
 
 Justificativa:
 
-- 60 ms e filas curtas seguem Xiaozhi/StackChan.
+- 60 ms e filas curtas foram validados no contexto do NoiseBot como bom
+  equilibrio entre latencia, overhead e previsibilidade de fila.
 - 32 kbps foi escolhido por diagnostico offline em WAVs reais do NoiseBot:
   melhor SNR/correlacao do que 16/24 kbps.
 - PCM16 continua padrao porque o A/B live ainda mostrou variacao semantica.
@@ -374,35 +348,34 @@ Nao deve:
 - Ajustar ganho de mic.
 - Corrigir janela de captura.
 
-## Mapeamento Referencia -> NoiseBot
+## Mapeamento Arquitetural do NoiseBot
 
-| Tema | Xiaozhi/StackChan | NoiseBot v2 |
-| --- | --- | --- |
-| Codec upstream | Opus 16 kHz mono 60 ms | Opus opt-in 16 kHz mono 60 ms 32 kbps |
-| Fallback | Nativo no ecossistema Xiaozhi | PCM16 mantido como padrao seguro |
-| Input task | Task dedicada `audio_input` | `audio_io_service_v2` input path |
-| Output task | Task dedicada `audio_output` | `audio_playback_service_v2`/output path |
-| Codec task | Task `opus_codec`, stack grande, prioridade baixa | `audio_codec_service_v2`, worker dedicado |
-| Processor | AFE/NoAudioProcessor plugavel | `voice_activity_service_v2` + AFE opcional |
-| Wake | AFE/ESP wake word plugavel | preservar `wake_service` atual |
-| Barge-in | wake durante speaking aborta fala | preservar caminho atual por wake word |
-| AEC device | depende de input reference | nao promover sem referencia |
-| AEC server | timestamps no protocolo binario v2 | futuro, se criarmos timestamps/playback ref |
-| Downlink | Opus decode + resample se necessario | manter SAY PCM atual; Opus downlink e fase futura |
-| Estado | Idle/Connecting/Listening/Speaking | mapear para IDLE/ATTENTIVE/RESPONDING sem reescrever state machine |
+| Tema | NoiseBot v2 |
+| --- | --- |
+| Codec upstream | Opus opt-in 16 kHz mono, 60 ms, 32 kbps |
+| Fallback | PCM16 mantido como rollback operacional |
+| Input task | `audio_io_service_v2` como caminho futuro de entrada |
+| Output task | `audio_playback_service_v2` como caminho gradual de downlink |
+| Codec task | `audio_codec_service_v2` com worker dedicado e stack em PSRAM |
+| Processor | `voice_activity_service_v2` + AFE/VAD/NS opcional |
+| Wake | Preservar `wake_service` atual |
+| Barge-in | Preservar caminho por wake word |
+| AEC device | Nao promover sem referencia limpa de playback |
+| AEC server | Futuro, se houver timestamps e referencia de playback |
+| Downlink | SAY PCM atual, com handoff gradual para playback v2 |
+| Estado | Mapear para IDLE/ATTENTIVE/RESPONDING sem reescrever state machine |
 
-## O Que Nao Podemos Copiar Diretamente
+## O Que Nao Entra Nesta Fase
 
-- ES7210/AW88298: o NoiseBot usa INMP441/MAX98357A.
-- `AUDIO_INPUT_REFERENCE=true`: nao existe canal de referencia limpo no hardware
-  atual.
+- Codec externo dedicado: o NoiseBot atual usa INMP441/MAX98357A.
+- `AUDIO_INPUT_REFERENCE=true`: nao existe canal limpo de referencia no
+  hardware atual.
 - AEC device-side: sem referencia, vira consumo de memoria sem garantia.
-- Input 24 kHz do CoreS3: nosso caminho atual e 16 kHz; STT e Opus upstream ja
+- Input 24 kHz como requisito: o caminho atual e 16 kHz; STT e Opus upstream ja
   estao em 16 kHz.
-- WebSocket/MQTT Xiaozhi completo: nosso bridge TCP local ja funciona e possui
-  testes. Copiar transporte inteiro aumentaria risco.
-- C++/std::vector/deque do Xiaozhi: o firmware NoiseBot e C17; usar filas
-  FreeRTOS e buffers estaticos/PSRAM.
+- Troca completa de transporte: o bridge TCP local ja funciona e possui testes.
+- C++/STL fora do display: o firmware NoiseBot e C17; usar filas FreeRTOS e
+  buffers estaticos/PSRAM.
 
 ## Riscos e Contramedidas
 
@@ -1149,9 +1122,21 @@ fechamento do Opus fique misturado com o restante da decomposicao de audio.
 Resumo:
 
 - Fase I: `audio_playback_service_v2` assume gradualmente o downlink
-  SAY/playback, com cancel/drain/status e sem HAL direto ate o handoff.
+  SAY/playback, com cancel/drain/status e sem HAL direto ate o handoff. A fila
+  SAY real ja saiu do `audio_service` e passou para
+  `audio_playback_service_v2`; o `audio_service` ainda drena os chunks e escreve
+  no speaker para preservar o ownership seguro do HAL. Validacao pos-restart
+  em hardware confirmou Opus ativo, turno `local_time`, barge-in por wake
+  durante fala longa, fila final zero, cancelamento p50 2,6 ms / p95 3,2 ms e
+  `ESP_OK`.
+- Fase M parcial: checklist/health de release em
+  `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md`, protegendo Opus v2, Playback v2
+  dono da fila SAY, Capture v2 desligado, barge/no-echo e completude TTS/texto,
+  sem alterar firmware C.
 - Fase J: `voice_activity_service_v2` entra como processor shadow/opt-in para
-  VAD/NS/AFE, sem AEC device-side no hardware atual.
+  VAD/NS/AFE, sem AEC device-side no hardware atual. Primeiro passo local:
+  shadow probe passivo em `/api/audio/activity-v2`, alimentado por copia de
+  PCM do `audio_service` e sem posse de HAL/bridge/wake/captura.
 - Fase K: `voice_capture_session_v2` assume gradualmente pre-roll, timeouts,
   discard reasons e `VOICE_START/AUDIO_CHUNK/VOICE_END` por flag.
 - Fase L: policy conversacional avancada, incluindo follow-up opt-in e
@@ -1184,6 +1169,9 @@ Hardware/manual assistido:
 - `noisebot_server debug barge-live`;
 - `noisebot_server debug no-echo-live`;
 - `noisebot_server debug opus-quality`;
+- `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md` para gates de release local,
+  incluindo `codec-v2 health`, Playback v2 SAY, Capture v2 desligado,
+  rollback PCM16, barge/no-echo e completude TTS/texto;
 - teste ambiente real:
   - TV ligada;
   - conversa distante;
@@ -1219,8 +1207,8 @@ Metricas obrigatorias:
 - AEC device-side nao e promovivel no hardware atual sem referencia de playback.
 - Follow-up automatico fica em standby ate a base de audio v2 estar estavel.
 - Barge-in sem wake por VAD fica fora ate AEC/AFE e no-echo estarem robustos.
-- Nao copiar WebSocket Xiaozhi inteiro agora.
-- Nao copiar C++/std::vector para firmware C17 do NoiseBot.
+- Nao trocar o bridge TCP inteiro agora.
+- Nao usar C++/STL fora das excecoes ja permitidas pelo projeto.
 
 ## Fechamento da Migracao Opus v2
 

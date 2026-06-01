@@ -2087,6 +2087,28 @@ Implementação:
   observa a fila SAY real via notas do `audio_service` e expõe contadores
   `say_*` em `/api/audio/playback-v2`, sem assumir HAL, sem trocar a fila e sem
   alterar wake/captura/codec.
+- [x] Fase I avancou para handoff parcial: `audio_playback_service_v2` assumiu
+  a fila estatica SAY de 16 chunks e o `audio_service` ficou como consumidor
+  seguro que drena para o HAL. `/api/audio/playback-v2` expoe
+  `bridge_say_queue_owner=true`. Validado em hardware apos flash com 283
+  chunks SAY recebidos/tocados, fila final zero, zero drops e `SAY_END`
+  confirmado.
+- [x] Regressao assistida de barge-in pos-handoff registrada em hardware:
+  `/ai/metrics` mostrou `outcome=interrupted`, `discard_reason=barge_in` e
+  cancelamento em 3,5 ms; Playback v2 terminou com fila SAY zero e `ESP_OK`.
+- [x] Rodada controlada pos-restart confirmou a Fase I em hardware: server
+  limpo, Opus v2 ativo, `ww -> que horas sao?` respondeu como `local_time` e
+  `ww -> me conte uma historia longa -> ww -> pare` interrompeu a fala velha
+  com `discard_reason=barge_in`, cancelamento p50 2,6 ms / p95 3,2 ms,
+  Playback v2 com `say_queue_count=0`, `say_cancel_count=2`,
+  `say_chunks_cancelled=28` e `ESP_OK`.
+- [x] Fase J iniciada localmente como shadow probe passivo: o
+  `voice_activity_service_v2` recebe copia do PCM condicionado do
+  `audio_service`, expoe `/api/audio/activity-v2` e shadow start/stop, mede
+  RMS/peak/fala/silencio/mute/sessao ativa e nao altera wake, captura, bridge,
+  codec, Playback v2 ou HAL. Validacao local: contrato focado Voice Audio v2 e
+  build ESP-IDF limpos. Precisa de verificacao: flash e leitura do endpoint em
+  hardware.
 
 ---
 

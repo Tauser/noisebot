@@ -36,26 +36,36 @@ ela piorou a transcrição e aumentou risco de watchdog.
   enviar `SAY`; chunks maiores vindos do gerador de áudio nunca cruzam o
   contrato TCP com o firmware.
 
-## Referência Xiaozhi/StackChan
+## Contrato v2
 
-O Xiaozhi usa Opus 16 kHz mono com frames de 60 ms, filas curtas e processamento
-de voz via AFE/AEC quando o hardware informa capacidades reais. StackChan/CoreS3
-tem codec e referência de áudio mais favoráveis que o INMP441 + MAX98357A atual
-do NoiseBot. O que absorvemos agora é: Opus como codec negociado, capacidades
-explícitas no protocolo e AEC como modo condicionado a referência limpa, não
-como feature universal do ESP32-S3.
+O NoiseBot usa Opus 16 kHz mono com frames de 60 ms, filas curtas e
+processamento de voz condicionado às capacidades reais do hardware. O que esta
+fixado agora e: Opus como codec negociado, capacidades explícitas no protocolo
+e AEC como modo condicionado a referência limpa, não como feature universal do
+ESP32-S3.
 
 O plano completo para refazer o subsistema de voz de forma paralela e segura
 esta em `docs/VOICE_AUDIO_V2_ARCHITECTURE.md`. Ele separa Audio I/O, playback,
 captura de sessao, VAD/AFE, codec e bridge, com PCM16 como fallback e Opus
 opt-in no firmware. As fases restantes pos-Opus estao em
 `docs/VOICE_AUDIO_V2_NEXT_PHASES.md`.
+O checklist/health de release da Fase M parcial fica em
+`docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md`.
 
 Status v2 atual: Audio I/O e playback ja possuem probes explicitos validados.
-Playback v2 tambem iniciou a Fase I pos-Opus como observador do downlink SAY:
-`audio_service` continua dono da fila e do speaker, mas notifica o v2 sobre
-chunks recebidos, tocados, descartados, cancelados e profundidade de fila.
-Esses campos aparecem em `/api/audio/playback-v2` e ainda nao mudam audio real.
+Playback v2 tambem fechou o handoff parcial da Fase I pos-Opus no downlink SAY real:
+`audio_playback_service_v2` agora e dono da fila estatica SAY de 16 chunks e
+expoe `enqueue/dequeue/cancel/status`; `audio_service` continua dono do
+speaker/HAL e drena essa fila pelo contrato v2. Os campos aparecem em
+`/api/audio/playback-v2`, incluindo `bridge_say_queue_owner`, e preservam o
+audio real pelo mesmo caminho de escrita no HAL. Validacao em hardware apos
+flash confirmou 283 chunks SAY recebidos/tocados, fila final zero, zero drops,
+`SAY_END` confirmado e `ESP_OK`. Uma rodada controlada pos-restart confirmou
+tambem o barge-in real: `ww -> que horas sao?` respondeu como `local_time`, e
+`ww -> me conte uma historia longa -> ww -> pare` registrou
+`outcome=interrupted`, `discard_reason=barge_in`, cancelamento p50 2,6 ms /
+p95 3,2 ms, fila final zero, `say_cancel_count=2`,
+`say_chunks_cancelled=28` e `ESP_OK`.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o
@@ -529,7 +539,7 @@ Correção de timeout pós-barge-in em 2026-05-27:
 - Esse ajuste cobre o caso observado em que a fala era interrompida, mas a
   conversa parecia falhar depois por ausência de áudio no turno seguinte.
 
-Objetivo: absorver a parte mais valiosa do Xiaozhi: processamento de voz no ESP,
+Objetivo: evoluir o processamento de voz no ESP,
 mas sem sacrificar câmera, TTS e estabilidade.
 
 Mudanças:
@@ -623,7 +633,7 @@ orchestrator. O fake firmware do server aceita `--audio-format opus`, anuncia
 O `/ai/status` agora expõe `audio`, `codecs`, `features` e `firmware.*`, então
 o harness `opus-live` consegue confirmar `opus_tx` depois da renegociação.
 
-Objetivo: reduzir banda e aproximar o protocolo do Xiaozhi quando fizer sentido.
+Objetivo: reduzir banda e aproximar o protocolo do NoiseBot quando fizer sentido.
 
 Mudanças:
 
@@ -711,8 +721,8 @@ Validação atual:
     24/32 kbps; a perda semântica vista no A/B live provavelmente está mais
     ligada a janela de captura/VAD/tempo de fala ou volume do teste do que a
     corrupção básica do Opus.
-- Perfil adotado para o próximo teste live: manter a estrutura Xiaozhi/StackChan
-  de Opus 16 kHz mono com frame de 60 ms, mas fixar o encoder do firmware em
+- Perfil adotado para o próximo teste live: manter Opus 16 kHz mono com frame
+  de 60 ms, mas fixar o encoder do firmware em
   32 kbps (`OPUS_TARGET_BITRATE=32000`) porque foi o melhor resultado offline
   nas amostras reais do NoiseBot. PCM16 continua sendo o padrão seguro; Opus
   continua opt-in por API.
@@ -815,8 +825,8 @@ Mudanças:
   `noisebot_server debug no-echo-live "me conte uma historia longa" --json`.
   O comando espera uma resposta real, abre uma janela de silêncio e falha se
   surgir turno extra em `/ai/metrics` sem fala do usuário.
-- O AEC agora tem probe próprio em `/api/audio/processor/aec/probe`: alinhado
-  ao Xiaozhi, ele cria um AFE `MR` de voz (`AFE_TYPE_VC` +
+- O AEC agora tem probe próprio em `/api/audio/processor/aec/probe`: ele cria
+  um AFE `MR` de voz (`AFE_TYPE_VC` +
   `AEC_MODE_VOIP_HIGH_PERF`), mede PSRAM/heap interno/DMA e destrói antes de
   retornar. O caminho principal não ativa AEC se a margem de heap estiver
   baixa.
@@ -906,6 +916,11 @@ Mudanças:
   `noisebot_bridge --dry-run --replay-dir voice_samples --replay-json`.
 - Rodar validação única de release de voz:
   `python bridge/voice_check.py`.
+- Para releases locais pos-Opus, aplicar tambem
+  `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md`, que exige gates para
+  `codec-v2 health`, Playback v2 dono da fila SAY, `capture-v2 status`
+  desligado, rollback PCM16, `barge-live`, `no-echo-live` e completude
+  TTS/texto em `/ai/metrics`.
 
 Critérios de aceite:
 
@@ -950,8 +965,13 @@ O roadmap detalhado das fases restantes esta em
 
 1. Playback v2 como dono gradual do downlink.
 2. Checklist/health de release para proteger Opus, PCM16, texto visual e
-   turn-taking.
+   turn-taking. A Fase M parcial esta documentada em
+   `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md` e nao altera firmware C.
 3. Voice Activity v2 em shadow/opt-in, sem AEC device-side.
+   Primeiro incremento local: endpoint firmware `/api/audio/activity-v2` com
+   shadow probe passivo alimentado pelo `audio_service`, apenas para telemetria
+   RMS/peak/fala/silencio/mute/sessao ativa; nao muda wake, captura, playback,
+   codec ou bridge.
 4. Capture Session v2 assumindo upstream por flag.
 5. Policy conversacional avancada somente depois de no-echo/captura estaveis.
 

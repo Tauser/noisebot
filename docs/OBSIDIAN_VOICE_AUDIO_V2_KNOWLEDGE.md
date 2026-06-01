@@ -7,8 +7,6 @@ tags:
   - noisebot
   - voice
   - audio-v2
-  - xiaozhi
-  - stackchan
   - esp32s3
   - opus
   - vad
@@ -20,7 +18,8 @@ tags:
 
 Esta nota e feita para Obsidian e para consulta por IAs futuras. Ela resume o
 conhecimento tecnico consolidado sobre a migracao de voz do NoiseBot, com base
-no que foi levantado em Xiaozhi, StackChan e no proprio firmware atual.
+no firmware, server, bridge, testes locais e validacoes em hardware do proprio
+projeto.
 
 Use esta nota como entrada rapida antes de alterar qualquer parte de audio,
 captura, reproducao, VAD, Opus, bridge, wake word ou barge-in.
@@ -29,9 +28,9 @@ captura, reproducao, VAD, Opus, bridge, wake word ou barge-in.
 
 - [[VOICE_AUDIO_V2_ARCHITECTURE]]
 - [[VOICE_AUDIO_V2_NEXT_PHASES]]
+- [[VOICE_AUDIO_V2_RELEASE_CHECKLIST]]
 - [[VOICE_PIPELINE]]
 - [[ROADMAP]]
-- [[REFERENCE_ARCHITECTURES]]
 - [[ARCHITECTURE]]
 - [[HARDWARE]]
 
@@ -48,11 +47,6 @@ Arquivos fonte centrais no NoiseBot:
 - `components/behavior/voice_controller/voice_controller.c`
 - `components/services/wake_service/wake_service.c`
 
-Referencias externas locais:
-
-- `D:\Projetos\Xiaozhi-for-XiaoESP32S3-master\Source\xiaozhi-esp32-2.2.2`
-- `D:\Projetos\StackChan`
-
 ## Resumo Executivo
 
 O NoiseBot precisa refazer o subsistema de voz em uma arquitetura v2 paralela,
@@ -67,7 +61,7 @@ Meta da arquitetura v2:
 - Manter Opus como capability opt-in no firmware e default local do server apos
   validacao, sempre com rollback PCM16.
 - Manter wake word e barge-in atuais intactos enquanto a base v2 nasce.
-- Usar Xiaozhi/StackChan como referencia de arquitetura, nao como copia cega.
+- Evoluir por fases pequenas, com testes locais, hardware e rollback claro.
 
 Regra principal:
 
@@ -98,7 +92,8 @@ Regra principal:
   - FEC: off;
   - DTX: on;
   - VBR: on.
-- 60 ms vem de Xiaozhi/StackChan.
+- 60 ms foi mantido porque funcionou bem para latencia, overhead e filas
+  curtas no NoiseBot.
 - 32 kbps vem do diagnostico offline nos WAVs reais do NoiseBot.
 
 ### Proximas Fases Pos-Opus
@@ -117,13 +112,29 @@ Ordem atual:
 Regra: nao reabrir wake threshold, follow-up automatico, AEC ou barge-in sem
 wake dentro da mesma mudanca de playback/captura/codec.
 
+Fase M parcial:
+
+- `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md` fixa gates de release local sem
+  alterar firmware C.
+- Proteger antes de novos refactors: Opus v2 por `codec-v2 health`, Playback v2
+  dono da fila SAY, Capture v2 desligado, PCM16 rollback, `barge-live`,
+  `no-echo-live` e completude TTS/texto.
+- Fora do escopo: wake, VAD, AEC, follow-up, `audio_service.c` e HAL.
+
 Incremento atual da Fase I:
 
-- Playback v2 observa o downlink SAY real sem assumir a fila nem o HAL.
+- Playback v2 ja assumiu a fila curta estatica do downlink SAY real
+  (`bridge_say_queue_owner=true`), enquanto `audio_service` continua como dono
+  seguro do HAL/speaker e drena a fila pelo contrato v2.
 - `/api/audio/playback-v2` expoe contadores `say_*` para recebidos, tocados,
-  drops, drops durante escuta, cancelamentos e profundidade de fila.
-- O caminho real continua no `audio_service`; esta e observabilidade para o
-  proximo handoff seguro.
+  drops, drops durante escuta, cancelamentos, profundidade de fila e ownership
+  da fila.
+- Validacao de hardware fechou o incremento: turno real teve 283 chunks SAY
+  recebidos/tocados, fila final zero, zero drops e `SAY_END`; rodada
+  controlada pos-restart confirmou Opus ativo, `Que horas são?` como
+  `local_time`, barge-in em historia longa com `discard_reason=barge_in`,
+  cancelamento p50 2,6 ms / p95 3,2 ms, `say_queue_count=0`,
+  `say_cancel_count=2`, `say_chunks_cancelled=28` e `ESP_OK`.
 
 ### Wake Word
 
@@ -147,142 +158,21 @@ Incremento atual da Fase I:
 
 ### AEC
 
-- StackChan/CoreS3 tem `AUDIO_INPUT_REFERENCE=true` e codec ES7210/AW88298.
 - NoiseBot atual nao tem canal limpo de referencia de speaker.
 - AEC device-side nao deve ser promovido no hardware atual.
 - AFE pode ser usado para VAD/NS sem prometer AEC.
 - Server-side AEC so depois de timestamps de playback e desenho explicito.
 
-## O Que Aprendemos do Xiaozhi
+## Principios Operacionais
 
-Fontes principais:
-
-- `main/audio/audio_service.h`
-- `main/audio/audio_service.cc`
-- `main/audio/processors/afe_audio_processor.cc`
-- `main/application.cc`
-- `main/protocols/websocket_protocol.cc`
-- `docs/websocket.md`
-
-Arquitetura do Xiaozhi:
-
-```text
-MIC -> Processor -> Encode Queue -> Opus Encoder -> Send Queue -> Server
-Server -> Decode Queue -> Opus Decoder -> Playback Queue -> Speaker
-```
-
-Pontos importantes:
-
-- Audio input task separada.
-- Audio output task separada.
-- Opus codec task separada.
-- Filas curtas.
-- Audio processor plugavel.
-- Wake word plugavel.
-- Protocolo anuncia `audio_params`.
-- Estados de conversa sao explicitos.
-
-Parametros Xiaozhi relevantes:
-
-```text
-OPUS_FRAME_DURATION_MS = 60
-MAX_DECODE_PACKETS_IN_QUEUE = 2400 / 60 = 40
-MAX_SEND_PACKETS_IN_QUEUE = 2400 / 60 = 40
-Opus sample rate = 16000
-Opus channels = 1
-Opus complexity = 0
-Opus FEC = false
-Opus DTX = true
-Opus VBR = true
-```
-
-Tasks Xiaozhi relevantes:
-
-```text
-audio_input  priority 8
-audio_output priority 4
-opus_codec   priority 2, stack 2048 * 12
-audio_communication AFE priority 3, stack 4096
-```
-
-Protocolo Xiaozhi:
-
-```json
-{
-  "type": "hello",
-  "version": 1,
-  "audio_params": {
-    "format": "opus",
-    "sample_rate": 16000,
-    "channels": 1,
-    "frame_duration": 60
-  }
-}
-```
-
-Fluxo de estado Xiaozhi:
-
-```text
-Idle -> Connecting -> Listening -> Speaking -> Listening/Idle
-Listening/Speaking -> abort/close -> Idle
-```
-
-Wake durante fala:
-
-- Detectou wake durante speaking.
-- Aborta speaking.
-- Reabre listening.
-
-## O Que Aprendemos do StackChan
-
-StackChan reaproveita o core Xiaozhi. Ele nao e um projeto totalmente separado
-de voz. Isso importa: a licao e copiar a arquitetura validada, nao inventar uma
-segunda stack de audio.
-
-Fontes principais:
-
-- `firmware/main/CMakeLists.txt`
-- `firmware/main/hal/board/config.h`
-- `firmware/main/hal/board/cores3_audio_codec.cc`
-- `firmware/main/hal/board/stackchan.cc`
-
-Hardware StackChan/CoreS3:
-
-```text
-AUDIO_INPUT_REFERENCE = true
-AUDIO_INPUT_SAMPLE_RATE = 24000
-AUDIO_OUTPUT_SAMPLE_RATE = 24000
-Input codec = ES7210
-Output codec = AW88298
-```
-
-Consequencia:
-
-- StackChan consegue ter referencia de playback no input.
-- Isso viabiliza AEC device-side de forma mais realista.
-- NoiseBot com INMP441 + MAX98357A nao tem essa referencia limpa hoje.
-
-## O Que Nao Copiar
-
-Nao copiar diretamente:
-
-- ES7210/AW88298.
-- `AUDIO_INPUT_REFERENCE=true`.
-- AEC device-side como se fosse universal.
-- WebSocket/MQTT inteiro do Xiaozhi.
-- C++/`std::vector`/`std::deque` para o firmware C17.
-- Reamostragem 24 kHz do CoreS3 como requisito imediato.
-
-Copiar como principio:
-
-- Separacao de responsabilidades.
-- Filas curtas.
-- Codec task dedicada.
-- Audio input/output separados.
-- `hello` com capabilities claras.
-- Estados de conversa explicitos.
-- Abort/cancel limpo.
-- AFE como modulo plugavel.
+- I/O de audio separado de codec e de policy.
+- Task dedicada para codec Opus, com filas curtas.
+- Processor plugavel entre microfone e codec.
+- Estados explicitos de conversa: idle, listening, speaking, abort/cancel.
+- Abort/cancel limpo quando wake acontece durante fala.
+- Capabilities de audio explicitas no protocolo.
+- AEC device-side bloqueado enquanto nao houver referencia limpa de playback.
+- Firmware C17, com C++ restrito as excecoes ja permitidas pelo projeto.
 
 ## Estado Atual do NoiseBot
 
@@ -420,12 +310,15 @@ Faz:
 - WAV local;
 - PCM raw local;
 - SAY do bridge;
+- fila SAY estatica de 16 chunks;
+- enqueue/dequeue/cancel/drain;
 - volume;
 - cancel/stop;
 - descarte de fila velha.
 
 Nao faz:
 
+- HAL/speaker direto neste incremento;
 - captura;
 - VAD;
 - STT;
@@ -435,6 +328,9 @@ Nao faz:
 
 Faz:
 
+- shadow probe passivo em `/api/audio/activity-v2`;
+- receber copia de PCM condicionado do `audio_service`, sem HAL proprio;
+- medir RMS/peak, fala/silencio, frames mutados e sessao ativa;
 - ESP-SR VAD primario;
 - RMS/ZCR/espectral como telemetria;
 - AFE/NS opcional;
@@ -445,6 +341,7 @@ Nao faz:
 - abrir sessao em IDLE;
 - mandar bridge;
 - decidir wake.
+- tocar playback ou mudar codec/captura.
 
 #### `voice_capture_session_v2`
 
@@ -632,6 +529,16 @@ Capture v2 status/replay:
 python -m noisebot_server --host 192.168.1.30 debug capture-v2 status --json
 python -m noisebot_server --host 192.168.1.30 debug capture-v2 replay --speech-ms 640 --silence-ms 900 --json
 python -m noisebot_server --host 192.168.1.30 debug capture-v2 live --json
+```
+
+Release local Voice Audio v2:
+
+```powershell
+python -m noisebot_server --host 192.168.1.30 debug codec-v2 health --json
+python -m noisebot_server --host 192.168.1.30 debug capture-v2 status --json
+python -m noisebot_server --host 192.168.1.30 debug codec-ab --repeat 3 "me diga uma curiosidade" --json
+python -m noisebot_server --host 192.168.1.30 debug barge-live "me conte uma historia longa" --codec opus-v2 --json
+python -m noisebot_server --host 192.168.1.30 debug no-echo-live "me conte uma historia longa" --codec opus-v2 --json
 ```
 
 ## Criterios de Aceite por Etapa
@@ -1218,8 +1125,9 @@ Antes de qualquer alteracao, a IA deve responder:
 6. Barge-in sera afetado?
 7. Existe teste automatico ou harness manual para validar?
 8. Qual e o rollback?
-9. Essa mudanca copia um principio do Xiaozhi/StackChan ou so adiciona remendo?
-10. O hardware NoiseBot suporta a feature ou estou assumindo recurso do CoreS3?
+9. Essa mudanca copia um principio do NoiseBot ou so adiciona remendo?
+10. O hardware NoiseBot suporta a feature ou estou assumindo um recurso que a
+    placa atual nao possui?
 
 Se alguma resposta for incerta, pare e investigue.
 
@@ -1232,7 +1140,7 @@ Leia docs/OBSIDIAN_VOICE_AUDIO_V2_KNOWLEDGE.md e
 docs/VOICE_AUDIO_V2_ARCHITECTURE.md antes de sugerir qualquer mudanca.
 Nao altere wake word, VAD thresholds, state machine, barge-in ou follow-up sem
 justificativa direta. Preserve PCM16 como fallback. O objetivo atual e construir
-audio v2 paralelo, por fases, usando Xiaozhi/StackChan como referencia de
+audio v2 paralelo, por fases, usando NoiseBot como referencia de
 arquitetura, nao como copia cega de hardware.
 ```
 
@@ -1256,6 +1164,7 @@ arquitetura, nao como copia cega de hardware.
 
 - [[VOICE_AUDIO_V2_ARCHITECTURE]]
 - [[VOICE_AUDIO_V2_NEXT_PHASES]]
+- [[VOICE_AUDIO_V2_RELEASE_CHECKLIST]]
 - [[VOICE_PIPELINE]]
 - [[VOICE_OPUS_QUALITY]]
 - [[VOICE_AB_PHASE5]]
