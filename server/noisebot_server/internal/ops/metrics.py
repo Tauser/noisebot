@@ -140,8 +140,15 @@ def _voice_diagnosis(session: dict, alert: dict | None) -> dict | None:
     title = alert["title"] if alert else "Turno de voz concluído"
     detail = alert["detail"] if alert else "sem alerta"
     next_check = "Comparar duração, qualidade STT e latência até o primeiro áudio."
+    decision = str(session.get("turn_taking_decision") or "")
 
-    if "audio_curto" in lower_reason:
+    if alert is None and decision == "post_barge_stop":
+        detail = "comando curto tratado como stop contextual após barge-in"
+        next_check = "Confirmar SPEECH_CANCEL, fila SAY zerada e ausência de resposta LLM."
+    elif alert is None and decision == "direct_stop":
+        detail = "comando direto de stop/cancelamento resolvido localmente"
+        next_check = "Confirmar resposta curta e sem chamada LLM."
+    elif "audio_curto" in lower_reason:
         detail = "áudio útil abaixo do mínimo para STT"
         next_check = "Verificar wake sem fala, limiar de VAD e distância do microfone."
     elif "audio_longo" in lower_reason:

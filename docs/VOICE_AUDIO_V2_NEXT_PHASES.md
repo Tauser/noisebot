@@ -579,9 +579,11 @@ Entregas:
   `turn_taking_policy` (`normal` ou `post_barge_in`). Em seguida, a telemetria
   ganhou `turn_taking_decision` (`direct_stop`, `post_barge_stop`,
   `local_intent` ou `llm`), deixando auditavel por que uma
-  despedida/confirmacao curta foi tratada como controle de interrupcao, sem
-  alterar wake, audio, codec, playback, captura ou firmware. Validacao local:
-  testes focados de metricas/orquestrador e `server/tests` completos.
+  despedida/confirmacao curta foi tratada como controle de interrupcao. O
+  `voice_diagnosis` tambem traduz `direct_stop` e `post_barge_stop` em
+  diagnostico operacional, sem alterar wake, audio, codec, playback, captura ou
+  firmware. Validacao local: testes focados de metricas/orquestrador/diagnostico
+  e `server/tests` completos.
 - Contrato explicito entre `voice_controller`, state machine e sessao v2.
 - Follow-up automatico apenas como opt-in com janela curta, telemetria e
   abort/cancel claros.

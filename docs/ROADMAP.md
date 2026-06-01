@@ -2298,8 +2298,9 @@ Implementação:
   `post_barge_in`) em `last_voice_session`. A telemetria tambem inclui
   `turn_taking_decision` (`direct_stop`, `post_barge_stop`, `local_intent` ou
   `llm`), tornando auditavel por que um comando curto foi roteado como stop
-  contextual. Validacao local: testes focados de metricas/orquestrador e
-  `server/tests` completos.
+  contextual. `voice_diagnosis` agora traduz stops diretos/contextuais em
+  diagnostico operacional sem alerta falso. Validacao local: testes focados de
+  metricas/orquestrador/diagnostico e `server/tests` completos.
 
 ---
 

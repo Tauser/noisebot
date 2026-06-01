@@ -3449,6 +3449,58 @@ def test_server_metrics_reports_paginated_text_scroll() -> None:
     }
 
 
+def test_server_metrics_diagnoses_post_barge_stop_decision() -> None:
+    metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
+    api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    store = status_module.StatusStore()
+    store.record_voice_session({
+        "turn_id": 12,
+        "outcome": "local_intent",
+        "intent_name": "local_stop",
+        "recent_barge_in": True,
+        "turn_taking_policy": "post_barge_in",
+        "turn_taking_decision": "post_barge_stop",
+        "tts_completed": True,
+    })
+
+    payload = api_module.MetricsApi(metrics_module.MetricsRegistry(), store).get_metrics()
+
+    assert payload["voice_alert"] is None
+    assert payload["voice_diagnosis"] == {
+        "title": "Turno de voz concluído",
+        "detail": "comando curto tratado como stop contextual após barge-in",
+        "next_check": "Confirmar SPEECH_CANCEL, fila SAY zerada e ausência de resposta LLM.",
+    }
+
+
+def test_server_metrics_diagnoses_direct_stop_decision() -> None:
+    metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
+    api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    store = status_module.StatusStore()
+    store.record_voice_session({
+        "turn_id": 13,
+        "outcome": "local_intent",
+        "intent_name": "local_stop",
+        "recent_barge_in": False,
+        "turn_taking_policy": "normal",
+        "turn_taking_decision": "direct_stop",
+        "tts_completed": True,
+    })
+
+    payload = api_module.MetricsApi(metrics_module.MetricsRegistry(), store).get_metrics()
+
+    assert payload["voice_alert"] is None
+    assert payload["voice_diagnosis"] == {
+        "title": "Turno de voz concluído",
+        "detail": "comando direto de stop/cancelamento resolvido localmente",
+        "next_check": "Confirmar resposta curta e sem chamada LLM.",
+    }
+
+
 def test_server_metrics_accepts_good_transcript_quality() -> None:
     metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
     api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
