@@ -2378,8 +2378,8 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
              "\"shadow_duration_ms\":%lu,\"shadow_elapsed_ms\":%lu,"
              "\"observed_frames\":%lu,\"speech_frames\":%lu,"
              "\"silence_frames\":%lu,\"muted_frames\":%lu,"
-             "\"rms_last\":%lu,\"peak_last\":%lu,"
-             "\"rms_max\":%lu,\"peak_max\":%lu,"
+             "\"rms_last\":%lu,\"peak_last\":%lu,\"zcr_last_permille\":%lu,"
+             "\"rms_max\":%lu,\"peak_max\":%lu,\"zcr_max_permille\":%lu,"
              "\"last_error\":\"%s\",\"error\":\"%s\"}",
              (err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
@@ -2394,8 +2394,10 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.muted_frames,
              (unsigned long)st.rms_last,
              (unsigned long)st.peak_last,
+             (unsigned long)st.zcr_last_permille,
              (unsigned long)st.rms_max,
              (unsigned long)st.peak_max,
+             (unsigned long)st.zcr_max_permille,
              esp_err_to_name(st.last_error),
              esp_err_to_name(err));
     httpd_resp_set_type(req, "application/json");

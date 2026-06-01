@@ -264,6 +264,9 @@ Responsabilidade:
   que ja passa pelo `audio_service`, expondo `/api/audio/activity-v2` e
   shadow start/stop para medir RMS/peak, fala/silencio, frames mutados e
   sessao ativa sem alterar wake, captura, bridge, codec ou playback.
+- O shadow tambem expoe ZCR em `zcr_last_permille` e `zcr_max_permille`,
+  calculado sem float/no malloc, como telemetria comparativa. ZCR ainda nao
+  participa de threshold nem de decisao de wake/fim de fala.
 - Validacao em hardware pos-flash confirmou o contrato passivo: shadow de
   1000 ms observou 63 frames, encerrou sozinho, classificou silencio e manteve
   `session_active=false`; `capture-v2` permaneceu desligado, Playback v2 ficou

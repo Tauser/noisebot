@@ -970,8 +970,8 @@ O roadmap detalhado das fases restantes esta em
 3. Voice Activity v2 em shadow/opt-in, sem AEC device-side.
    Primeiro incremento local: endpoint firmware `/api/audio/activity-v2` com
    shadow probe passivo alimentado pelo `audio_service`, apenas para telemetria
-   RMS/peak/fala/silencio/mute/sessao ativa; nao muda wake, captura, playback,
-   codec ou bridge. Validado em hardware apos flash com shadow de 1000 ms:
+   RMS/peak/ZCR/fala/silencio/mute/sessao ativa; nao muda wake, captura,
+   playback, codec ou bridge. Validado em hardware apos flash com shadow de 1000 ms:
    63 frames observados, silencio classificado, `ESP_OK`, capture-v2 desligado,
    Playback v2 fila zero e `codec-v2 health` ok apos reativar Opus v2.
 4. Capture Session v2 assumindo upstream por flag.

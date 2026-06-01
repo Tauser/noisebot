@@ -2111,6 +2111,10 @@ Implementação:
   observou 63 frames, encerrou sozinho em 1008 ms, classificou silencio sem
   sessao ativa, `ESP_OK`; Playback v2 fila SAY zero, capture-v2 desligado e
   `codec-v2 health` ok apos reativar Opus v2.
+- [x] Fase J ganhou telemetria ZCR passiva: `/api/audio/activity-v2` expoe
+  `zcr_last_permille` e `zcr_max_permille` calculados sem float/no malloc. A
+  metrica e apenas comparativa e nao muda wake, VAD, fim de fala, captura,
+  playback, codec ou bridge. Validacao local: contrato focado e build ESP-IDF.
 
 ---
 

@@ -40,6 +40,29 @@ static uint32_t isqrt_u64(uint64_t value)
     return (uint32_t)result;
 }
 
+static uint32_t zcr_permille(const int16_t *samples, uint16_t sample_count)
+{
+    if (samples == NULL || sample_count < 2U) {
+        return 0U;
+    }
+
+    int8_t prev_sign = 0;
+    uint32_t crossings = 0;
+    for (uint16_t i = 0; i < sample_count; i++) {
+        int16_t sample = samples[i];
+        int8_t sign = (sample > 0) ? 1 : ((sample < 0) ? -1 : 0);
+        if (sign == 0) {
+            continue;
+        }
+        if (prev_sign != 0 && sign != prev_sign) {
+            crossings++;
+        }
+        prev_sign = sign;
+    }
+
+    return (crossings * 1000U) / (uint32_t)(sample_count - 1U);
+}
+
 esp_err_t voice_activity_service_v2_init(void)
 {
     taskENTER_CRITICAL(&s_mux);
@@ -165,6 +188,7 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
     }
 
     uint32_t rms = isqrt_u64(sum_sq / sample_count);
+    uint32_t zcr = zcr_permille(samples, sample_count);
     bool speech = !muted &&
                   (rms >= SHADOW_SPEECH_RMS_THRESHOLD ||
                    peak >= SHADOW_SPEECH_PEAK_THRESHOLD);
@@ -179,11 +203,15 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
     s_status.observed_frames++;
     s_status.rms_last = rms;
     s_status.peak_last = peak;
+    s_status.zcr_last_permille = zcr;
     if (rms > s_status.rms_max) {
         s_status.rms_max = rms;
     }
     if (peak > s_status.peak_max) {
         s_status.peak_max = peak;
+    }
+    if (zcr > s_status.zcr_max_permille) {
+        s_status.zcr_max_permille = zcr;
     }
     if (muted) {
         s_status.muted_frames++;

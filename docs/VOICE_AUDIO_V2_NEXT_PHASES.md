@@ -191,6 +191,10 @@ Entregas:
   `running`, zero drops e `opus_codec_error=0`.
 - `voice_activity_service_v2` com status, probes e comparacao entre VAD atual,
   AFE/VAD e metricas RMS/ZCR/espectral.
+- Incremento local seguinte: Activity v2 passou a expor `zcr_last_permille` e
+  `zcr_max_permille` no status do shadow. O calculo usa cruzamentos de zero
+  por mil amostras, sem float e sem alocacao, apenas como telemetria para
+  futura comparacao de fala/ruido; nao entra em politica de wake/fim de fala.
 - Modo shadow que observa a sessao real sem decidir wake nem fim de fala.
 - Eventos internos de `speech_start`, `speech_end`, `silence`, `discard_reason`
   apenas quando existe sessao aberta.
