@@ -385,8 +385,11 @@ _CURIOSITY_REPLIES = (
 )
 
 _STOP_AFTER_BARGE_MISHEARS = frozenset({
+    "chau",
+    "tchau",
     "vale",
     "valeu",
+    "xau",
 })
 
 
