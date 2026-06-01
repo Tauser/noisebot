@@ -2192,6 +2192,137 @@ def test_server_cli_runs_no_echo_live_debug_command(monkeypatch, capsys) -> None
     assert calls["quiet_window_s"] == 6.0
 
 
+def test_server_cli_parses_voice_release_check_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "voice-release-check",
+        "--server-url",
+        "http://127.0.0.1:8765",
+        "--timeout-s",
+        "2.5",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "voice-release-check"
+    assert args.host == "192.168.1.30"
+    assert args.server_url == "http://127.0.0.1:8765"
+    assert args.timeout_s == 2.5
+    assert args.json
+
+
+def test_server_voice_release_check_accepts_clean_preflight(monkeypatch) -> None:
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+
+    class FakeFirmware:
+        def __init__(self, base_url: str, timeout_s: float = 1.5) -> None:
+            self.base_url = base_url
+            self.timeout_s = timeout_s
+
+        def audio_codec_v2_health(self) -> dict:
+            return {
+                "ok": True,
+                "healthy": True,
+                "status": "ok",
+                "format": "opus",
+                "worker_state": "running",
+                "packet_drops": 0,
+                "opus_egress_packet_drops": 0,
+                "issues": [],
+                "warnings": [],
+            }
+
+        def audio_capture_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "real_capture_enabled": False,
+                "session_active": False,
+                "state": "IDLE_SESSION",
+                "last_error": "ESP_OK",
+            }
+
+        def audio_playback_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "bridge_say_observer": True,
+                "bridge_say_queue_owner": True,
+                "say_queue_count": 0,
+                "say_chunks_received": 40,
+                "say_chunks_played": 40,
+                "say_chunks_dropped": 0,
+                "say_chunks_dropped_listening": 0,
+                "last_error": "ESP_OK",
+            }
+
+    monkeypatch.setattr(release_check, "FirmwareDiagClient", FakeFirmware)
+    monkeypatch.setattr(
+        release_check,
+        "get_json",
+        lambda _url: {
+            "last_voice_session": {
+                "turn_id": 10,
+                "outcome": "llm",
+                "turn_taking_decision": "llm",
+                "tts_completed": True,
+                "tts_say_end_sent": True,
+                "text_scroll_pages": 2,
+                "text_scroll_pages_sent": 2,
+            }
+        },
+    )
+
+    check = release_check.run_release_check(
+        firmware_url="http://192.168.1.30",
+        server_url="http://127.0.0.1:8765",
+    )
+
+    assert check.ok is True
+    assert [gate.name for gate in check.gates] == [
+        "Codec v2 / Opus",
+        "Capture v2 default-off",
+        "Playback v2 SAY",
+        "Métricas de voz",
+    ]
+    assert "Status: OK" in release_check.format_release_check_markdown(check)
+
+
+def test_server_cli_runs_voice_release_check_json(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+
+    def fake_run_release_check(**kwargs):
+        assert kwargs["firmware_url"] == "http://192.168.1.30"
+        assert kwargs["server_url"] == "http://127.0.0.1:8765"
+        return release_check.ReleaseCheck(
+            ok=True,
+            gates=(
+                release_check.ReleaseGate("Codec v2 / Opus", True, "ok"),
+            ),
+            codec_v2={"healthy": True},
+            capture_v2={"real_capture_enabled": False},
+            playback_v2={"bridge_say_queue_owner": True},
+            metrics={"last_voice_session": {"turn_id": 1}},
+        )
+
+    monkeypatch.setattr(release_check, "run_release_check", fake_run_release_check)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "voice-release-check",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"ok": true' in captured.out
+    assert '"Codec v2 / Opus"' in captured.out
+
+
 def test_server_no_echo_live_pcm16_tracks_response_turn(monkeypatch) -> None:
     no_echo = importlib.import_module("noisebot_server.internal.ops.no_echo_live")
     codec_v2_live = importlib.import_module("noisebot_server.internal.ops.codec_v2_live")

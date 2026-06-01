@@ -631,6 +631,8 @@ Entregas:
 - Checklist unico de voz para release local.
 - Health gates para `codec-v2`, captura, playback, barge/no-echo e completude
   TTS/texto.
+- Preflight agregado `voice-release-check` para consultar Codec v2, Capture v2,
+  Playback v2 e `/ai/metrics` antes dos testes interativos.
 - Replays com amostras reais boas e ruins.
 - Testes de reconexao/cancelamento explicito no bridge.
 - Registro claro de codec ativo, drops, filas, STT, TTS, SAY e estado final.
@@ -639,6 +641,7 @@ Comandos base:
 
 ```powershell
 noisebot_server debug codec-v2 health --json
+noisebot_server debug voice-release-check --json
 noisebot_server debug codec-ab --repeat 3 "me diga uma curiosidade" --json
 noisebot_server debug barge-live "me conte uma historia longa" --codec opus-v2 --json
 noisebot_server debug no-echo-live "me conte uma historia longa" --codec opus-v2 --json

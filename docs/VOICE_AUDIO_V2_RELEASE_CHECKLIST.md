@@ -62,6 +62,7 @@ server ja esta rodando em Opus v2, estes comandos nao devem mudar firmware C.
 ```powershell
 noisebot_server --host 192.168.1.30 debug codec-v2 health --json
 noisebot_server --host 192.168.1.30 debug capture-v2 status --json
+noisebot_server --host 192.168.1.30 debug voice-release-check --json
 noisebot_server --host 192.168.1.30 debug codec-ab --repeat 3 "me diga uma curiosidade" --json
 noisebot_server --host 192.168.1.30 debug barge-live "me conte uma historia longa" --codec opus-v2 --json
 noisebot_server --host 192.168.1.30 debug no-echo-live "me conte uma historia longa" --codec opus-v2 --json
@@ -176,6 +177,30 @@ server, `ww -> me conte uma historia curta` enviou 398 chunks TTS e
 Nota: `/api/profile/test-voice` pode gerar drops por nao passar pelo
 `OutputScheduler` conversacional. Para aceite de release, use turno real pelo
 orquestrador ou `debug transcript`.
+
+## Gate 2.1 - Preflight Agregado Server/Firmware
+
+Verde:
+
+- `voice-release-check` retorna `ok=true`.
+- Gate `Codec v2 / Opus` esta `ok=true`.
+- Gate `Capture v2 default-off` confirma captura desligada e idle.
+- Gate `Playback v2 SAY` confirma observador/dono SAY, fila final zero e
+  `ESP_OK`.
+- Gate `Métricas de voz` nao encontra `tts_completed=false`,
+  `tts_say_end_sent=false` ou paginacao incompleta.
+
+Bloqueia release:
+
+- Qualquer gate agregado `ok=false`.
+- O comando nao substitui `barge-live`/`no-echo-live`; ele e um preflight
+  rapido para reduzir ambiguidade antes dos testes interativos.
+
+Comando:
+
+```powershell
+noisebot_server --host 192.168.1.30 debug voice-release-check --json
+```
 
 ## Gate 3 - Capture v2 Desligado
 

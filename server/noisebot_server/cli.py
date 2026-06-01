@@ -106,6 +106,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     no_echo_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     no_echo_live.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    release_check = debug_sub.add_parser("voice-release-check")
+    release_check.add_argument("--server-url", default="http://127.0.0.1:8765")
+    release_check.add_argument("--firmware-url", default="")
+    release_check.add_argument("--timeout-s", type=float, default=1.5)
+    release_check.add_argument("--output", help="Arquivo Markdown/JSON de saida")
+    release_check.add_argument("--json", action="store_true", help="Emitir JSON")
+
     aec_live = debug_sub.add_parser("aec-live")
     aec_live.add_argument("--firmware-url", default="")
     aec_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
@@ -525,6 +532,30 @@ def run_debug_command(args: argparse.Namespace) -> None:
         else:
             print(text)
         if not trial.ok:
+            raise SystemExit(1)
+        return
+    if args.debug_command == "voice-release-check":
+        from .internal.ops.release_check import (
+            format_release_check_json,
+            format_release_check_markdown,
+            run_release_check,
+        )
+
+        firmware_url = _resolve_firmware_url(args)
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+        check = run_release_check(
+            firmware_url=firmware_url,
+            server_url=args.server_url,
+            timeout_s=args.timeout_s,
+        )
+        text = format_release_check_json(check) if args.json else format_release_check_markdown(check)
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        if not check.ok:
             raise SystemExit(1)
         return
     if args.debug_command == "aec-live":
