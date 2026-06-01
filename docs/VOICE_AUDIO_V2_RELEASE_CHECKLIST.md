@@ -302,3 +302,6 @@ Resultado em hardware apos flash:
 - `/api/audio/capture-v2`: `real_capture_enabled=false`, `IDLE_SESSION`.
 - `codec-v2 health`: apos `transport-enable` pos-flash, `healthy=true`,
   `status=ok`, worker `running`, zero drops e `opus_codec_error=0`.
+- ZCR apos flash seguinte: shadow de 1000 ms com 63 frames,
+  `zcr_last_permille=98`, `zcr_max_permille=141`, silencio, sem sessao ativa e
+  `codec-v2 health` ok apos reativar Opus v2.

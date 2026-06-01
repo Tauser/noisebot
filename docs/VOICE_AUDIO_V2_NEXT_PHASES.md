@@ -195,6 +195,10 @@ Entregas:
   `zcr_max_permille` no status do shadow. O calculo usa cruzamentos de zero
   por mil amostras, sem float e sem alocacao, apenas como telemetria para
   futura comparacao de fala/ruido; nao entra em politica de wake/fim de fala.
+- Validacao em hardware apos flash do ZCR: shadow de 1000 ms observou 63 frames,
+  encerrou sozinho em 1008 ms, manteve `session_active=false`, classificou
+  silencio, registrou `zcr_last_permille=98` e `zcr_max_permille=141`; `codec-v2
+  health` voltou `healthy=true/status=ok` apos reativar Opus v2.
 - Modo shadow que observa a sessao real sem decidir wake nem fim de fala.
 - Eventos internos de `speech_start`, `speech_end`, `silence`, `discard_reason`
   apenas quando existe sessao aberta.

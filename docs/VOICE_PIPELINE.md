@@ -973,7 +973,9 @@ O roadmap detalhado das fases restantes esta em
    RMS/peak/ZCR/fala/silencio/mute/sessao ativa; nao muda wake, captura,
    playback, codec ou bridge. Validado em hardware apos flash com shadow de 1000 ms:
    63 frames observados, silencio classificado, `ESP_OK`, capture-v2 desligado,
-   Playback v2 fila zero e `codec-v2 health` ok apos reativar Opus v2.
+   Playback v2 fila zero e `codec-v2 health` ok apos reativar Opus v2. O campo
+   ZCR tambem foi validado em hardware com `zcr_last_permille=98` e
+   `zcr_max_permille=141` em shadow silencioso de 1000 ms.
 4. Capture Session v2 assumindo upstream por flag.
 5. Policy conversacional avancada somente depois de no-echo/captura estaveis.
 

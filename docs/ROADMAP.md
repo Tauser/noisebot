@@ -2115,6 +2115,9 @@ Implementação:
   `zcr_last_permille` e `zcr_max_permille` calculados sem float/no malloc. A
   metrica e apenas comparativa e nao muda wake, VAD, fim de fala, captura,
   playback, codec ou bridge. Validacao local: contrato focado e build ESP-IDF.
+  Validacao em hardware apos flash: shadow de 1000 ms com 63 frames,
+  `zcr_last_permille=98`, `zcr_max_permille=141`, silencio, sem sessao ativa e
+  `codec-v2 health` ok apos reativar Opus v2.
 
 ---
 
