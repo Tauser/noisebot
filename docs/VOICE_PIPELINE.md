@@ -113,6 +113,14 @@ apos `ww -> historia longa -> ww -> pare`, `/ai/metrics` registrou
 `intent_name=local_stop`, transcript `Vale.`, `tts_completed=true`,
 `tts_say_end_sent=true`, Playback v2 com fila zero e `codec-v2 health` ok apos
 `egress-drain`.
+Inicio da Fase L apos o fechamento da Capture v2: a repeticao final de
+barge-in com handoff real mostrou um comando curto reconhecido como
+`Tchup! Bye!` e classificado como `local_farewell`. Como esse tipo de frase
+logo apos barge-in e mais provavelmente controle de interrupcao do que
+despedida social, o server passou a tratar termos curtos como `bye`, `tchau`,
+`adeus`, `chega` e `pronto` como `local_stop` apenas dentro da janela curta de
+barge-in recente. Fora dessa janela, despedidas continuam despedidas. Validacao
+local: intents focados e suite `server/tests` completos.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o

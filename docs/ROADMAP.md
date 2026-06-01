@@ -2283,6 +2283,12 @@ Implementação:
   detalhe de policy/STT fora do escopo estrutural da Fase K. Codec v2
   permaneceu `healthy=true/status=ok`, e o rollback final por
   `capture-v2 tx-disable` voltou a `bridge_tx_owner=false`.
+- [x] Fase L iniciada no server: a classificacao local agora trata variantes
+  curtas de despedida/confirmacao apos barge-in recente como comando de
+  interrupcao (`local_stop`), incluindo a transcricao real `Tchup! Bye!`.
+  Fora da janela de barge-in, `Tchau.`/`Bye.` seguem como despedida normal.
+  Isso nao altera wake, VAD, AEC, Capture v2, Playback v2, Codec v2, bridge nem
+  firmware. Validacao local: intents focados e `server/tests` completos.
 
 ---
 

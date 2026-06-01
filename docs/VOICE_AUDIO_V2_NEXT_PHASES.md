@@ -561,6 +561,14 @@ ambiente.
 
 Entregas:
 
+- Primeiro incremento server-only: o `LocalIntentProvider` ampliou a janela de
+  controle apos barge-in recente. Variantes curtas de despedida/confirmacao
+  dentro dessa janela, incluindo a transcricao real `Tchup! Bye!`, agora viram
+  `local_stop` e respondem `Pronto, parei.` sem chamar a LLM. Fora do contexto
+  de barge-in, `Tchau.`/`Bye.` continuam despedida normal. Isso nao altera
+  wake, VAD, AEC, Capture v2, Playback v2, Codec v2, bridge ou firmware.
+  Validacao local: `server/tests/test_server_facade.py -k local_intent` e
+  `server/tests` completos passaram.
 - Contrato explicito entre `voice_controller`, state machine e sessao v2.
 - Follow-up automatico apenas como opt-in com janela curta, telemetria e
   abort/cancel claros.

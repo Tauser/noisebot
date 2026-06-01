@@ -392,6 +392,14 @@ _STOP_AFTER_BARGE_MISHEARS = frozenset({
     "xau",
 })
 
+_STOP_AFTER_BARGE_TERMS = (
+    "adeus",
+    "bye",
+    "chega",
+    "pronto",
+    "tchau",
+)
+
 
 class LocalIntentProvider:
     """Provider de intents locais PT-BR, determinístico, sem I/O.
@@ -424,8 +432,15 @@ class LocalIntentProvider:
         # -- Controle direto --------------------------------------------------
         # Um "ww -> pare" depois de barge-in e comando de controle, nao prompt LLM.
         recent_barge_in = bool(context.get("recent_barge_in"))
-        if norm in _STOP_ONLY_PHRASES or (
-            recent_barge_in and norm in _STOP_AFTER_BARGE_MISHEARS
+        if (
+            norm in _STOP_ONLY_PHRASES
+            or (
+                recent_barge_in
+                and (
+                    norm in _STOP_AFTER_BARGE_MISHEARS
+                    or _has(norm, *_STOP_AFTER_BARGE_TERMS)
+                )
+            )
         ):
             return IntentResolved(
                 turn_id=turn_id,
