@@ -187,6 +187,8 @@ def _sanitize_session(value: dict) -> dict:
         "no_speech_prob",
         "avg_logprob",
         "compression_ratio",
+        "recent_barge_in",
+        "turn_taking_policy",
         "intent_name",
         "reply",
         "reply_chars",

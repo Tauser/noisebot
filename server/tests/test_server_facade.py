@@ -3092,6 +3092,8 @@ def test_server_metrics_exposes_last_voice_session() -> None:
         "tts_pcm_bytes_sent": 11776,
         "tts_completed": True,
         "text_scroll_truncated": True,
+        "recent_barge_in": True,
+        "turn_taking_policy": "post_barge_in",
         "secret": "nao deve aparecer",
     })
 
@@ -3107,6 +3109,8 @@ def test_server_metrics_exposes_last_voice_session() -> None:
         "tts_pcm_bytes_sent": 11776,
         "tts_completed": True,
         "text_scroll_truncated": True,
+        "recent_barge_in": True,
+        "turn_taking_policy": "post_barge_in",
     }
     assert payload["recent_voice_sessions"] == [payload["last_voice_session"]]
     assert payload["voice_alert"] == {
@@ -3119,6 +3123,35 @@ def test_server_metrics_exposes_last_voice_session() -> None:
         "detail": "STT rejeitou ou degradou a transcrição",
         "next_check": "Comparar RMS, peak, clipping e amostra enviada ao STT.",
     }
+
+
+def test_server_orchestrator_records_turn_taking_policy() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    bus = runtime.EventBus(default_maxsize=512)
+    store = status_module.StatusStore()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: None,
+        status_store=store,
+    )
+    session = runtime.SessionContext(turn_id=77)
+    session.final_text = "Tchup! Bye!"
+    session.intent_name = "local_stop"
+    session.reply_text = "Pronto, parei."
+    session.meta["outcome"] = "local_intent"
+    session.meta["recent_barge_in"] = True
+    session.meta["turn_taking_policy"] = "post_barge_in"
+
+    orchestrator._record_voice_session(session)
+
+    assert store.last_voice_session["recent_barge_in"] is True
+    assert store.last_voice_session["turn_taking_policy"] == "post_barge_in"
 
 
 def test_server_metrics_preserves_full_reply_for_tts_diagnostics() -> None:

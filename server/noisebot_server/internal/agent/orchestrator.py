@@ -518,6 +518,10 @@ class Orchestrator:
             self._t_barge_in is not None
             and (time.monotonic() - self._t_barge_in) <= 20.0
         )
+        session.meta["recent_barge_in"] = recent_barge_in
+        session.meta["turn_taking_policy"] = (
+            "post_barge_in" if recent_barge_in else "normal"
+        )
         context: dict = {
             "status": self._last_status,
             "recent_barge_in": recent_barge_in,
@@ -1456,6 +1460,8 @@ class Orchestrator:
             "no_speech_prob": session.meta.get("no_speech_prob"),
             "avg_logprob": session.meta.get("avg_logprob"),
             "compression_ratio": session.meta.get("compression_ratio"),
+            "recent_barge_in": session.meta.get("recent_barge_in"),
+            "turn_taking_policy": session.meta.get("turn_taking_policy"),
             "intent_name": session.intent_name,
             "reply": session.reply_text,
             "reply_chars": len(session.reply_text or ""),

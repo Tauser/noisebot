@@ -2293,6 +2293,11 @@ Implementação:
   `para de falar`, `chega disso`, `nao quero mais` e `encerra` agora viram
   `local_stop` mesmo fora de barge-in, junto de `pare`/`cancela`. Validacao
   local: intents focados e `server/tests` completos.
+- [x] Fase L ganhou observabilidade de turn-taking: `/ai/metrics` agora
+  registra `recent_barge_in` e `turn_taking_policy` (`normal` ou
+  `post_barge_in`) em `last_voice_session`, tornando auditavel por que um
+  comando curto foi roteado como stop contextual. Validacao local: testes
+  focados de metricas/orquestrador e `server/tests` completos.
 
 ---
 

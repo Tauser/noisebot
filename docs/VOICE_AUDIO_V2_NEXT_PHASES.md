@@ -574,6 +574,12 @@ Entregas:
   `nao quero mais` e `encerra`, alem de `pare`/`cancela`. Essas frases viram
   `local_stop` mesmo fora de barge-in; despedidas ambiguas continuam
   contextuais. Validacao local: intents focados e `server/tests` completos.
+- Incremento server-only de observabilidade: cada turno agora registra em
+  `/ai/metrics.last_voice_session` os campos `recent_barge_in` e
+  `turn_taking_policy` (`normal` ou `post_barge_in`). Isso deixa auditavel por
+  que uma despedida/confirmacao curta foi tratada como controle de interrupcao,
+  sem alterar wake, audio, codec, playback, captura ou firmware. Validacao
+  local: testes focados de metricas/orquestrador e `server/tests` completos.
 - Contrato explicito entre `voice_controller`, state machine e sessao v2.
 - Follow-up automatico apenas como opt-in com janela curta, telemetria e
   abort/cancel claros.
