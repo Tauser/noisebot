@@ -386,6 +386,14 @@ Entregas:
   vez dos 158 pacotes Opus * 960 samples recebidos pelo server. Correcao local:
   `bridge_drain_opus_packets_if_enabled()` agora retorna quantidade de pacotes
   drenados e o shadow soma `sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES`.
+- Revalidacao apos flash da correcao de samples: turno real
+  `ww -> me diga uma curiosidade curta` retornou `transcript_quality=good`,
+  `voice_alert=null`, Playback v2 sem drops, Codec v2 ok,
+  `shadow_audio_samples=52800` contra `total_samples=52784` no server
+  (diferenca de 16 samples por alinhamento). A telemetria mostrou que
+  `shadow_audio_chunks` e `speech_elapsed_ms` ainda refletiam chamadas do loop
+  de 16 ms; correcao local seguinte passou a contabilizar unidades de frame
+  Opus e elapsed por `sample_count`.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

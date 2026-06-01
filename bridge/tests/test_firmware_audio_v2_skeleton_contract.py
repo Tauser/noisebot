@@ -358,7 +358,8 @@ def test_voice_capture_v2_replay_is_explicit_and_does_not_touch_bridge():
     assert "NB_VOICE_CAPTURE_V2_END_SPEECH_COMPLETE" in capture_c
     assert "NB_VOICE_CAPTURE_V2_END_NO_SPEECH" in capture_c
     assert "NB_VOICE_CAPTURE_V2_END_CANCELLED" in capture_c
-    assert "s_status.shadow_audio_chunks++" in capture_c
+    assert "s_status.speech_elapsed_ms += elapsed_ms;" in capture_c
+    assert "s_status.shadow_audio_chunks += frame_units;" in capture_c
     assert "s_status.shadow_audio_samples += sample_count;" in capture_c
     assert "bridge_service" not in capture_c
     assert "VOICE_START" not in capture_c

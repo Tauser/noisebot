@@ -146,6 +146,11 @@ No primeiro turno real com a flag ligada, o comportamento ficou saudavel
 mostrou que, em Opus, `shadow_audio_samples` somava 256 samples por pacote
 drenado. A correcao local faz o shadow somar 960 samples por pacote Opus
 drenado, mantendo o TX real no `audio_service`.
+Depois do flash dessa correcao, o reteste real alinhou
+`shadow_audio_samples=52800` com `total_samples=52784` no server; a diferenca
+de 16 samples e de alinhamento. Em seguida, o shadow foi refinado para fazer
+`shadow_audio_chunks` e `speech_elapsed_ms` seguirem unidades/tempo de frame
+Opus quando recebe pacotes de 960 samples.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

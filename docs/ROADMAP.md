@@ -2165,6 +2165,11 @@ Implementação:
   `shadow_audio_samples` somava chunks de 256 em vez de frames Opus de 960.
   Correcao local aplicada para contar `sent_packets *
   NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES`; build ESP-IDF e `bridge/tests` limpos.
+- [x] Revalidacao em hardware apos flash confirmou samples alinhados:
+  `shadow_audio_samples=52800` contra `total_samples=52784`, Playback v2 sem
+  drops e Codec v2 ok. Ajuste local seguinte corrige tambem
+  `shadow_audio_chunks`/`speech_elapsed_ms` para unidades Opus quando o shadow
+  recebe pacotes de 960 samples.
 
 ---
 

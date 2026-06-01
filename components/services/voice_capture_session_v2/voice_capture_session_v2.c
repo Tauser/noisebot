@@ -210,15 +210,25 @@ void voice_capture_session_v2_note_audio_chunk(uint16_t sample_count, bool accep
         return;
     }
 
+    uint32_t frame_units = 1U;
+    uint32_t elapsed_ms = ((uint32_t)sample_count * 1000U) /
+                          CAPTURE_REPLAY_SAMPLE_RATE_HZ;
+    if (elapsed_ms == 0U) {
+        elapsed_ms = CAPTURE_REPLAY_FRAME_MS;
+    }
+    if (sample_count >= 960U && (sample_count % 960U) == 0U) {
+        frame_units = (uint32_t)sample_count / 960U;
+    }
+
     taskENTER_CRITICAL(&s_mux);
     if (s_status.session_active) {
         if (accepted) {
             s_status.voice_audio_sent = true;
             s_status.captured_samples += sample_count;
-            s_status.speech_frames++;
-            s_status.speech_elapsed_ms += CAPTURE_REPLAY_FRAME_MS;
-            s_status.replay_elapsed_ms += CAPTURE_REPLAY_FRAME_MS;
-            s_status.shadow_audio_chunks++;
+            s_status.speech_frames += frame_units;
+            s_status.speech_elapsed_ms += elapsed_ms;
+            s_status.replay_elapsed_ms += elapsed_ms;
+            s_status.shadow_audio_chunks += frame_units;
             s_status.shadow_audio_samples += sample_count;
         } else {
             s_status.dropped_frames++;
