@@ -121,6 +121,10 @@ contabiliza start/chunks/fim/cancelamento, enquanto o envio
 `VOICE_START/AUDIO_CHUNK/VOICE_END` ao bridge permanece no caminho validado do
 `audio_service`. O status HTTP de captura expõe `real_capture_enabled` para a
 flag e `real_capture` para diferenciar replay de uma sessao PCM16 real.
+Inicio da Fase K: o status tambem expoe `end_reason`, `bridge_tx_owner=false`
+e `legacy_audio_service_tx_owner=true`, tornando observavel que o Capture v2
+ainda nao assumiu o bridge TX real. Esse incremento e apenas contrato/status e
+nao altera wake, VAD, codec, playback, bridge real ou HAL.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

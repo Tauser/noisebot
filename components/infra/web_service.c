@@ -232,6 +232,18 @@ static const char *capture_v2_source_name(nb_voice_capture_v2_source_t source)
     }
 }
 
+static const char *capture_v2_end_reason_name(nb_voice_capture_v2_end_reason_t reason)
+{
+    switch (reason) {
+        case NB_VOICE_CAPTURE_V2_END_NONE:            return "NONE";
+        case NB_VOICE_CAPTURE_V2_END_SPEECH_COMPLETE: return "SPEECH_COMPLETE";
+        case NB_VOICE_CAPTURE_V2_END_NO_SPEECH:       return "NO_SPEECH";
+        case NB_VOICE_CAPTURE_V2_END_CANCELLED:       return "CANCELLED";
+        case NB_VOICE_CAPTURE_V2_END_ERROR:           return "ERROR";
+        default:                                      return "UNKNOWN";
+    }
+}
+
 static const char *activity_v2_state_name(nb_voice_activity_v2_state_t state)
 {
     switch (state) {
@@ -2571,11 +2583,13 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
     nb_voice_capture_v2_status_t st;
     voice_capture_session_v2_get_status(&st);
 
-    char buf[768];
+    char buf[896];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
              "\"real_capture_enabled\":%s,\"real_capture\":%s,"
-             "\"state\":\"%s\",\"source\":\"%s\",\"session_id\":%lu,"
+             "\"bridge_tx_owner\":%s,\"legacy_audio_service_tx_owner\":%s,"
+             "\"state\":\"%s\",\"source\":\"%s\",\"end_reason\":\"%s\","
+             "\"session_id\":%lu,"
              "\"voice_start_sent\":%s,\"voice_audio_sent\":%s,"
              "\"voice_end_sent\":%s,\"replay_duration_ms\":%lu,"
              "\"replay_elapsed_ms\":%lu,\"speech_elapsed_ms\":%lu,"
@@ -2588,8 +2602,11 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
              st.session_active ? "true" : "false",
              config_get_voice_audio_v2_capture_enabled() ? "true" : "false",
              st.real_capture ? "true" : "false",
+             st.bridge_tx_owner ? "true" : "false",
+             st.legacy_audio_service_tx_owner ? "true" : "false",
              capture_v2_state_name(st.state),
              capture_v2_source_name(st.source),
+             capture_v2_end_reason_name(st.end_reason),
              (unsigned long)st.session_id,
              st.voice_start_sent ? "true" : "false",
              st.voice_audio_sent ? "true" : "false",

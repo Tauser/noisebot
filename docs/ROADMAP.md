@@ -2139,6 +2139,11 @@ Implementação:
   `session_frames=384`, `muted_frames=334`, `speech_frames=45`,
   `speech_run_max_frames=7` e `silence_run_max_frames=521`. Playback v2
   terminou com fila zero e zero drops novos; Capture v2 desligado e Codec v2 ok.
+- [x] Fase K iniciada de forma contratual: `/api/audio/capture-v2` agora expoe
+  `end_reason`, `bridge_tx_owner=false` e
+  `legacy_audio_service_tx_owner=true`, deixando explicito que o Capture v2
+  ainda nao assumiu o bridge TX real. Validacao local: `server/tests`,
+  `bridge/tests` e `idf.py build` limpos.
 
 ---
 

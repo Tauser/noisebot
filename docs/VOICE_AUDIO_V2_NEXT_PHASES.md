@@ -350,6 +350,11 @@ quem pode abrir uma conversa.
 Entregas:
 
 - Handoff opt-in do `audio_service` para `voice_capture_session_v2`.
+- Primeiro incremento local: `capture-v2 status` ganhou `end_reason`,
+  `bridge_tx_owner` e `legacy_audio_service_tx_owner`, deixando explicito que
+  o Capture v2 ainda observa/acompanha a sessao enquanto o envio real ao bridge
+  permanece no `audio_service`. Isso nao altera wake, VAD, codec, playback,
+  bridge TX real nem HAL; prepara a troca de ownership com rollback claro.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

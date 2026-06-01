@@ -320,6 +320,10 @@ Responsabilidade:
 - Enviar `VOICE_START`.
 - Enviar audio.
 - Enviar `VOICE_END`.
+- Durante o inicio da Fase K, expor no status o motivo de fim
+  (`end_reason`) e o ownership real do TX (`bridge_tx_owner=false`,
+  `legacy_audio_service_tx_owner=true`) antes de assumir qualquer envio real ao
+  bridge. Esse primeiro passo e observabilidade/contrato, nao handoff ativo.
 
 Parametros iniciais preservados:
 

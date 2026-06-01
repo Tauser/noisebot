@@ -900,6 +900,9 @@ def test_server_cli_runs_capture_v2_debug_command(monkeypatch, capsys) -> None:
             "real_capture_enabled": False,
             "real_capture": False,
             "state": "DONE",
+            "end_reason": "SPEECH_COMPLETE",
+            "bridge_tx_owner": False,
+            "legacy_audio_service_tx_owner": True,
         }
 
     monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_capture_v2_replay", fake_replay)
@@ -936,6 +939,9 @@ def test_server_cli_runs_capture_v2_live_with_rollback(monkeypatch, capsys) -> N
             "real_capture_enabled": bool(toggles and toggles[-1]),
             "real_capture": bool(toggles and toggles[-1]),
             "state": "DONE",
+            "end_reason": "SPEECH_COMPLETE",
+            "bridge_tx_owner": False,
+            "legacy_audio_service_tx_owner": True,
             "voice_start_sent": True,
             "voice_audio_sent": True,
             "voice_end_sent": True,

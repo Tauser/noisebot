@@ -391,12 +391,17 @@ Faz:
 - `VOICE_START`;
 - `VOICE_END`;
 - razao de descarte.
+- no inicio da Fase K, expor `end_reason`, `bridge_tx_owner=false` e
+  `legacy_audio_service_tx_owner=true` em `/api/audio/capture-v2`, deixando
+  claro que a sessao v2 ainda observa/acompanha enquanto o bridge TX real segue
+  no `audio_service`.
 
 Nao faz:
 
 - codec;
 - DSP pesado;
 - playback.
+- bridge TX real neste incremento.
 
 #### `audio_codec_service_v2`
 

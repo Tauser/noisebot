@@ -29,6 +29,9 @@ static void reset_runtime_locked(bool keep_initialized)
     s_status.initialized = initialized;
     s_status.state = NB_VOICE_CAPTURE_V2_IDLE_SESSION;
     s_status.source = NB_VOICE_CAPTURE_V2_SOURCE_WAKE_WORD;
+    s_status.end_reason = NB_VOICE_CAPTURE_V2_END_NONE;
+    s_status.bridge_tx_owner = false;
+    s_status.legacy_audio_service_tx_owner = true;
     s_status.last_error = ESP_OK;
 }
 
@@ -144,6 +147,9 @@ esp_err_t voice_capture_session_v2_replay_start(nb_voice_capture_v2_source_t sou
     if (speech_frames == 0U) {
         s_status.voice_start_sent = false;
         s_status.voice_audio_sent = false;
+        s_status.end_reason = NB_VOICE_CAPTURE_V2_END_NO_SPEECH;
+    } else {
+        s_status.end_reason = NB_VOICE_CAPTURE_V2_END_SPEECH_COMPLETE;
     }
     s_status.voice_end_sent = speech_frames > 0U;
     s_status.session_active = false;
@@ -173,6 +179,7 @@ esp_err_t voice_capture_session_v2_begin_real_pcm16(nb_voice_capture_v2_source_t
     s_status.session_active = true;
     s_status.real_capture = true;
     s_status.state = NB_VOICE_CAPTURE_V2_WAITING_FOR_SPEECH;
+    s_status.end_reason = NB_VOICE_CAPTURE_V2_END_NONE;
     s_status.session_id = s_next_session_id++;
     if (s_next_session_id == 0U) {
         s_next_session_id = 1U;
@@ -225,9 +232,13 @@ void voice_capture_session_v2_finish(bool cancelled)
     if (cancelled) {
         s_status.state = NB_VOICE_CAPTURE_V2_CANCELLED;
         s_status.voice_end_sent = false;
+        s_status.end_reason = NB_VOICE_CAPTURE_V2_END_CANCELLED;
     } else {
         s_status.state = NB_VOICE_CAPTURE_V2_DONE;
         s_status.voice_end_sent = s_status.voice_start_sent && s_status.voice_audio_sent;
+        s_status.end_reason = s_status.voice_audio_sent
+                                  ? NB_VOICE_CAPTURE_V2_END_SPEECH_COMPLETE
+                                  : NB_VOICE_CAPTURE_V2_END_NO_SPEECH;
     }
     s_status.last_error = ESP_OK;
     taskEXIT_CRITICAL(&s_mux);
@@ -247,6 +258,7 @@ esp_err_t voice_capture_session_v2_cancel(void)
     s_status.session_active = false;
     s_status.state = NB_VOICE_CAPTURE_V2_CANCELLED;
     s_status.voice_end_sent = false;
+    s_status.end_reason = NB_VOICE_CAPTURE_V2_END_CANCELLED;
     s_status.last_error = ESP_OK;
     taskEXIT_CRITICAL(&s_mux);
     return ESP_OK;
