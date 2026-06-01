@@ -2144,6 +2144,11 @@ Implementação:
   `legacy_audio_service_tx_owner=true`, deixando explicito que o Capture v2
   ainda nao assumiu o bridge TX real. Validacao local: `server/tests`,
   `bridge/tests` e `idf.py build` limpos.
+- [x] Fase K validada em hardware apos flash: replay diagnostico de Capture v2
+  retornou `state=DONE`, `end_reason=SPEECH_COMPLETE`,
+  `captured_samples=10240`, `dropped_frames=0`, `bridge_tx_owner=false` e
+  `legacy_audio_service_tx_owner=true`. Opus v2 foi reativado e `codec-v2
+  health` voltou `status=ok`; Playback v2 ficou com fila SAY zero.
 
 ---
 

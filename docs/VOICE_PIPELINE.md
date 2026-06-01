@@ -125,6 +125,13 @@ Inicio da Fase K: o status tambem expoe `end_reason`, `bridge_tx_owner=false`
 e `legacy_audio_service_tx_owner=true`, tornando observavel que o Capture v2
 ainda nao assumiu o bridge TX real. Esse incremento e apenas contrato/status e
 nao altera wake, VAD, codec, playback, bridge real ou HAL.
+Validacao em hardware apos flash confirmou o contrato: replay diagnostico de
+640 ms de fala + 900 ms de silencio terminou com
+`end_reason=SPEECH_COMPLETE`, `voice_start_sent=true`,
+`voice_audio_sent=true`, `voice_end_sent=true`, `captured_samples=10240`,
+`dropped_frames=0`, `bridge_tx_owner=false` e
+`legacy_audio_service_tx_owner=true`; Opus v2 foi reativado e `codec-v2
+health` voltou ok.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

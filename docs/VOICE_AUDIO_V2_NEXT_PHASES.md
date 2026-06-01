@@ -355,6 +355,14 @@ Entregas:
   o Capture v2 ainda observa/acompanha a sessao enquanto o envio real ao bridge
   permanece no `audio_service`. Isso nao altera wake, VAD, codec, playback,
   bridge TX real nem HAL; prepara a troca de ownership com rollback claro.
+- Validacao em hardware apos flash: `/api/audio/capture-v2` expos os novos
+  campos; replay diagnostico `speech_ms=640`, `silence_ms=900` encerrou em
+  `DONE`, `end_reason=SPEECH_COMPLETE`, `voice_start_sent=true`,
+  `voice_audio_sent=true`, `voice_end_sent=true`, `captured_samples=10240`,
+  `dropped_frames=0`, `bridge_tx_owner=false` e
+  `legacy_audio_service_tx_owner=true`. Apos reativar Opus v2, `codec-v2
+  health` voltou `status=ok`, worker `running`, zero drops e fila egress zero;
+  Playback v2 permaneceu com fila SAY zero.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve
