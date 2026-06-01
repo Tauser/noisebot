@@ -19,9 +19,8 @@ frame, return it, and keep or close the session deliberately.
 - Snapshot capture is lazy and rejected while audio is busy: active listening,
   local playback or bridge SAY playback.
 - Once opened, the camera stays in a short "hot session" instead of being
-  initialized/deinitialized for every external dashboard/API click. This is intentionally
-  closer to StackChan's persistent video-device model and avoids repeated DMA
-  heap fragmentation.
+  initialized/deinitialized for every external dashboard/API click. This avoids
+  repeated DMA heap fragmentation.
 - The external dashboard explicitly closes the hot session when leaving the system view;
   otherwise the service closes it after a timeout.
 - A connected but idle bridge does not block camera diagnostics.
@@ -64,32 +63,21 @@ SD/SPI, I2S DMA, HTTP and camera DMA still need internal-capable memory. A DVP
 camera driver brought into the normal runtime can reserve enough internal memory
 to make unrelated services fail.
 
-## StackChan comparison
+## Camera Runtime Model
 
-StackChan is useful because it runs on a similar ESP32-S3 class device with more
-peripherals, but its camera strategy is more disciplined than a simple
-legacy one-shot camera initialization during product boot:
+The camera path is deliberately session-based instead of boot-owned:
 
-- It uses reduced WiFi buffer settings:
-  - `CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=3`
-  - `CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=6`
-  - `CONFIG_ESP_WIFI_RX_BA_WIN=3`
-- It uses a low internal-allocation threshold:
-  - `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=512`
-  - `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=65536`
-- It routes large buffers to PSRAM where possible.
-- Its camera path is board-specific and uses the ESP video/V4L2 stack for the
-  CoreS3 camera, with the video device opened once, mmapped driver buffers,
-  `VIDIOC_QBUF`/`VIDIOC_DQBUF`, and explicit frame ownership.
-- It shares board resources deliberately, especially I2C/SCCB, instead of letting
-  the camera own shared buses independently.
+- use reduced WiFi buffer settings appropriate for local control;
+- keep large buffers in PSRAM where possible;
+- leave camera frame allocation to the ESP video/V4L2 driver;
+- open the video device only for explicit diagnostics or vision observations;
+- reuse the open session for repeated captures until timeout or explicit close;
+- share board resources deliberately, especially SCCB/I2C ownership;
+- isolate camera work from conversational/audio paths.
 
-NoiseBot has a different board and an OV2640 DVP pinout, so the exact StackChan
-driver code should not be copied blindly. StackChan also keeps its camera code in
-C++, while NoiseBot's project rule allows C++ only in `nb_hal/display`; a direct
-copy would violate the firmware architecture. The architecture is what matters:
-feature-gate, open the video device as a session, measure memory, share buses
-deliberately, and isolate camera work from conversational/audio paths.
+NoiseBot has its own board, OV2640 DVP pinout and C17 component rules. Camera
+code must therefore stay inside the NoiseBot HAL/service boundaries instead of
+copying board-specific implementations from other products.
 
 ## Bring-up plan
 
@@ -109,8 +97,7 @@ deliberately, and isolate camera work from conversational/audio paths.
 8. Confirm snapshot is rejected during active listening or bridge SAY playback.
 9. Keep the camera session open across repeated captures and close it only by
    timeout or `/api/camera/session/close`.
-10. Keep the backend in C, not StackChan's C++ camera class, to respect
-    NoiseBot's component rules.
+10. Keep the backend in C and inside NoiseBot's component rules.
 
 ## Production acceptance criteria
 
@@ -121,18 +108,18 @@ deliberately, and isolate camera work from conversational/audio paths.
 - PSRAM free remains above 300 KB after capture and release.
 - Internal DMA headroom remains above the HAL threshold after camera deinit.
 - The robot remains fully usable with no camera present or with camera disabled.
-- Following StackChan's camera path, NoiseBot does not reject camera open based
-  on precomputed DMA/internal thresholds. Allocation success is left to the
-  camera driver. Once the session is open, subsequent captures reuse the
-  existing driver allocation instead of re-testing and reallocating the camera.
+- NoiseBot does not reject camera open based on precomputed DMA/internal
+  thresholds. Allocation success is left to the camera driver. Once the session
+  is open, subsequent captures reuse the existing driver allocation instead of
+  re-testing and reallocating the camera.
 
 ## Current diagnostic finding
 
 - The OV2640 is detected reliably through SCCB (`PID=0x26`).
 - The active backend is `esp_video`/V4L2, not `esp32-camera`.
-- The stable product-diagnostic path now captures 640x480 frames through the
-  StackChan-style session model: the first open pays the allocation cost, then
-  repeated captures reuse the same video session until timeout or explicit close.
+- The stable product-diagnostic path now captures 640x480 frames through a
+  session model: the first open pays the allocation cost, then repeated captures
+  reuse the same video session until timeout or explicit close.
 - `/api/camera/status` exposes session/memory/error counters for the external dashboard.
 - `/api/vision/observe` exposes the first behavior-facing observation:
   resolution, JPEG size, capture time, luma average/min/max, contrast and a

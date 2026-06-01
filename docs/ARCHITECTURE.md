@@ -116,8 +116,8 @@ No perfil atual:
 - sem canal limpo de referencia do speaker;
 - device-side AEC desabilitado por contrato.
 
-Isso segue a mesma ideia de `Board/GetAudioCodec` em XiaoZhi/StackChan, mas em
-C17 e respeitando as camadas do NoiseBot.
+Isso mantém a separação entre placa, HAL e serviços em C17 e respeitando as
+camadas do NoiseBot.
 
 ### Voice Controller
 

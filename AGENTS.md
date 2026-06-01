@@ -9,6 +9,14 @@ Este arquivo tem autoridade máxima sobre qualquer instrução geral.
 
 **Não usar skills GSD** (`/gsd:*`) neste projeto. Trabalhar diretamente — planejamento e execução inline sem subagentes ou orchestrators GSD.
 
+### Knowledge OS
+
+- O Personal Knowledge OS do projeto fica em `D:\base_conhecimento\projects\Noisebot`.
+- Ao fazer mudanças relevantes no projeto, atualizar também a base de conhecimento de forma ampla: `source/`, `wiki/`, `wiki/modules/`, `control/`, índices e logs afetados.
+- Não atualizar apenas a página diretamente relacionada; sincronizar overview, arquitetura, mapa de código, setup/operação, testes, dependências, integrações, riscos, glossário, status, decisões e auditoria quando forem impactados.
+- Toda atualização da base deve citar evidências do projeto original ou marcar claramente `Inferência da IA` / `Precisa de verificação`.
+- A política detalhada fica em `D:\base_conhecimento\projects\Noisebot\control\update-policy.md`.
+
 ---
 
 ## Projeto

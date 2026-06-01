@@ -3,8 +3,7 @@
 NoiseBot is an offline-first expressive desktop companion robot built on ESP32-S3,
 with a local bridge/app layer for heavier product features.
 
-The repository now follows the same product split idea used by StackChan, but
-only with the parts NoiseBot needs now:
+The repository follows NoiseBot-specific product boundaries:
 
 ```text
 Noisebot/
@@ -17,8 +16,8 @@ Noisebot/
 └── docs/       # Architecture, roadmap, hardware and integration docs
 ```
 
-`server/` keeps a StackChan-like separation (`api/`, `internal/`, `manifest/`,
-`resource/`) without copying modules NoiseBot does not have.
+`server/` keeps a clear separation (`api/`, `internal`, `manifest`,
+`resource`) without adding modules NoiseBot does not need.
 
 The firmware remains lean: no embedded dashboard, no firmware WebSocket UI, and
 no generic SD file manager. Rich diagnostics and operator UI belong in

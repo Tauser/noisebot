@@ -41,7 +41,10 @@ Fonte Raspberry Pi 4 Official PSU
 **Por que o boost é necessário:**
 O FE-TTLinker Mini V2 usa o regulador SP6205M5-L-5-0 (LDO, 500mA) com dropout típico de ~0.8V. A 5V de entrada, o LDO fica em dropout e entrega apenas ~4.2V nos servos — abaixo do mínimo especificado de 4.8V. Confirmado pelo suporte Feetech (maio 2026). A 6V de entrada, o LDO entrega ~5.2V, dentro do range operacional dos SCS0009.
 
-**Comparativo StackChan:** O StackChan não usa TTLinker externo. Tem rail de motor separado (VM EN) na PCB do corpo, controlado por PY32 IO Expander → MOSFET/load-switch dedicado. Hardware de servo projetado desde o início na placa. Não é comparável ao TTLinker solto — a função é equivalente, mas a implementação é integrada.
+**Nota de arquitetura:** uma revisão futura da placa pode integrar o rail dos
+servos com chaveamento dedicado na PCB. A revisão atual usa TTLinker externo,
+então qualquer rail integrado deve ser tratado apenas como referência funcional,
+não como requisito elétrico desta placa.
 
 **Regra:** A USB-C da placa Freenove serve para programação e debug. **Não é a fonte de alimentação do sistema.** Alimentação do sistema entra por pino dedicado de 5V externo.
 
