@@ -3343,6 +3343,8 @@ def test_server_dashboard_renders_voice_diagnostics_panel() -> None:
     assert "renderVoiceDiagnostics" in html
     assert "Histórico recente" in html
     assert "voice_end_to_stt_start_ms" in html
+    assert "turn_taking_policy" in html
+    assert "turn_taking_decision" in html
 
 
 def test_server_metrics_replaces_duplicate_voice_session_turn() -> None:

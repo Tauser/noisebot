@@ -133,6 +133,10 @@ inclui `recent_barge_in` e `turn_taking_policy` (`normal` ou
 curtos pode ser validada por telemetria, nao apenas por percepcao do dialogo. O
 `voice_diagnosis` agora tambem explica stops diretos e stops contextuais
 pos-barge-in como turnos de controle concluidos, sem gerar alerta falso.
+O dashboard operacional espelha essa politica: o diagnostico de voz mostra
+`turn_taking_policy` e `turn_taking_decision`, e o historico recente prioriza a
+decisao de turn-taking antes de motivos de descarte/intencao. Isso mantem a
+Fase L validavel visualmente, sem depender do JSON bruto.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o

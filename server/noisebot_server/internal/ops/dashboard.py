@@ -624,6 +624,8 @@ function renderVoiceDiagnostics(m) {
       cell('Chunks', safeStr(session.chunk_count ?? '—')) +
       cell('Amostras', safeStr(session.total_samples ?? '—')) +
       cell('Qualidade STT', safeStr(session.transcript_quality || '—')) +
+      cell('Política', safeStr(session.turn_taking_policy || '—')) +
+      cell('Decisão', safeStr(session.turn_taking_decision || '—')) +
       cell('Voz → STT', fmtValueMs(session.voice_end_to_stt_start_ms)) +
       cell('STT', fmtValueMs(session.stt_ms)) +
       cell('1º áudio', fmtValueMs(session.first_audio_out_ms)) +
@@ -826,10 +828,10 @@ function fmtValueMs(v) {
 }
 
 function voiceHistoryRow(s) {
+  const reason = s.turn_taking_decision || s.discard_reason || s.intent_name || s.outcome || '';
   return '<div class="voice-row">' +
     '<span>#' + safeStr(s.turn_id || '?') + '</span>' +
-    '<span title="' + safeStr(s.discard_reason || s.intent_name || s.outcome || '') + '">' +
-      safeStr(s.discard_reason || s.intent_name || s.outcome || '—') + '</span>' +
+    '<span title="' + safeStr(reason) + '">' + safeStr(reason || '—') + '</span>' +
     '<span>' + safeStr(s.transcript_quality || '—') + '</span>' +
     '<span>' + fmtValueMs(s.duration_ms) + '</span>' +
   '</div>';

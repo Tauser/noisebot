@@ -584,6 +584,10 @@ Entregas:
   diagnostico operacional, sem alterar wake, audio, codec, playback, captura ou
   firmware. Validacao local: testes focados de metricas/orquestrador/diagnostico
   e `server/tests` completos.
+- Incremento server-only de painel: o dashboard operacional agora exibe
+  `turn_taking_policy` e `turn_taking_decision` no diagnostico de voz, e o
+  historico recente prioriza `turn_taking_decision` antes de descarte/intencao.
+  Isso permite validar a Fase L sem abrir o JSON bruto de `/ai/metrics`.
 - Contrato explicito entre `voice_controller`, state machine e sessao v2.
 - Follow-up automatico apenas como opt-in com janela curta, telemetria e
   abort/cancel claros.

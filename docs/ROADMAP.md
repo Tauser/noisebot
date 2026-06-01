@@ -2301,6 +2301,10 @@ Implementação:
   contextual. `voice_diagnosis` agora traduz stops diretos/contextuais em
   diagnostico operacional sem alerta falso. Validacao local: testes focados de
   metricas/orquestrador/diagnostico e `server/tests` completos.
+- [x] Fase L ficou visivel no dashboard: o painel de diagnostico de voz exibe
+  `turn_taking_policy` e `turn_taking_decision`, e o historico recente prioriza
+  a decisao de turn-taking antes de descarte/intencao. Isso reduz a necessidade
+  de abrir `/ai/metrics` durante testes repetidos.
 
 ---
 
