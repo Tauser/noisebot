@@ -197,7 +197,8 @@ Bloqueia release:
   rapido para reduzir ambiguidade antes dos testes interativos.
 - O mesmo preflight tambem esta disponivel em
   `GET /api/release/voice-check` no Ops HTTP, usando o client de firmware ja
-  configurado pelo server e as metricas locais atuais.
+  configurado pelo server e as metricas locais atuais. O dashboard operacional
+  possui o botao `Release Check`, que chama esse endpoint e mostra os gates.
 
 Comando:
 

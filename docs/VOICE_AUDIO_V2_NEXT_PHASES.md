@@ -633,7 +633,8 @@ Entregas:
   TTS/texto.
 - Preflight agregado `voice-release-check` para consultar Codec v2, Capture v2,
   Playback v2 e `/ai/metrics` antes dos testes interativos. O mesmo agregado
-  esta exposto em `GET /api/release/voice-check` no Ops HTTP.
+  esta exposto em `GET /api/release/voice-check` no Ops HTTP e acionavel pelo
+  botao `Release Check` do dashboard.
 - Replays com amostras reais boas e ruins.
 - Testes de reconexao/cancelamento explicito no bridge.
 - Registro claro de codec ativo, drops, filas, STT, TTS, SAY e estado final.

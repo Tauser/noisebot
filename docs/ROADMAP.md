@@ -2866,7 +2866,8 @@ no protocolo.
 - [x] Preflight agregado de release: `noisebot_server debug voice-release-check`
       consulta Codec v2, Capture v2, Playback v2 e `/ai/metrics`, retornando
       gates estruturados antes dos testes interativos. O Ops HTTP tambem expoe
-      `GET /api/release/voice-check` para a mesma checagem.
+      `GET /api/release/voice-check` para a mesma checagem, acionavel pelo
+      dashboard operacional.
 - [ ] Reconexão TCP/UART coberta por teste automático.
 - [ ] Cancelamento explícito de fala (`SPEECH_CANCEL`/turn id no fio) coberto
       por teste antes de qualquer nova mudança no firmware.

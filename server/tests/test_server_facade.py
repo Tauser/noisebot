@@ -3555,6 +3555,8 @@ def test_server_dashboard_renders_voice_diagnostics_panel() -> None:
     assert "turn_taking_decision" in html
     assert "cfg-followup-enabled" in html
     assert "followup_window_ms" in html
+    assert "btn-release-check" in html
+    assert "runVoiceReleaseCheck" in html
 
 
 def test_server_metrics_replaces_duplicate_voice_session_turn() -> None:

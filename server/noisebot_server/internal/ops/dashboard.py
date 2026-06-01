@@ -320,12 +320,18 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
       <h2>Ações Operacionais</h2>
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="doRefresh()">⟳ Recarregar</button>
+        <button class="btn btn-primary" onclick="runVoiceReleaseCheck()" id="btn-release-check">
+          Release Check
+        </button>
         <button class="btn btn-warn" onclick="confirmRestart()" id="btn-restart">
           ⚡ Reinício Gracioso
         </button>
         <button class="btn btn-secondary" onclick="copyDiagnostic()">
           📋 Copiar JSON
         </button>
+      </div>
+      <div id="release-check-result" style="margin-top:10px">
+        <p class="empty-state">Preflight de release ainda não executado.</p>
       </div>
     </div>
   </div>
@@ -798,12 +804,59 @@ async function doRestart() {
   }
 }
 
+async function runVoiceReleaseCheck() {
+  const btn = document.getElementById('btn-release-check');
+  const root = document.getElementById('release-check-result');
+  btn.disabled = true;
+  root.innerHTML = '<p class="empty-state">Executando preflight...</p>';
+  try {
+    const data = await api('/api/release/voice-check');
+    rawSnapshot.release_check = data;
+    root.innerHTML = renderReleaseCheck(data);
+    showToast(data.ok ? 'Release check OK.' : 'Release check falhou.', !data.ok);
+  } catch (e) {
+    const body = e.body || {};
+    root.innerHTML = '<div class="voice-alert error"><h3>Release check falhou</h3>' +
+      '<div>' + safeStr(body.error || e.message) + '</div></div>';
+    showToast('✗ ' + (body.error || e.message), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function copyDiagnostic() {
   const text = JSON.stringify(rawSnapshot, null, 2);
   navigator.clipboard.writeText(text).then(
     () => showToast('JSON copiado para a área de transferência.'),
     () => showToast('Falha ao copiar — abra o painel Raw.', true),
   );
+}
+
+function renderReleaseCheck(data) {
+  const gates = Array.isArray(data.gates) ? data.gates : [];
+  const level = data.ok ? '' : 'error';
+  return '<div class="voice-alert ' + level + '">' +
+      '<h3>Release check: ' + (data.ok ? 'OK' : 'FALHOU') + '</h3>' +
+      '<div class="err-meta">Codec v2, Capture v2, Playback v2 e métricas de voz.</div>' +
+    '</div>' +
+    '<div class="voice-history">' +
+      gates.map(renderReleaseGate).join('') +
+    '</div>';
+}
+
+function renderReleaseGate(gate) {
+  const pill = gate.ok
+    ? '<span class="pill pill-ok">OK</span>'
+    : '<span class="pill pill-err">Falhou</span>';
+  const warnings = Array.isArray(gate.warnings) && gate.warnings.length
+    ? '<div class="err-meta">' + safeStr(gate.warnings.join(', ')) + '</div>'
+    : '';
+  return '<div class="voice-row">' +
+    '<span>' + pill + '</span>' +
+    '<span title="' + safeStr(gate.detail || '') + '">' + safeStr(gate.name || '—') + '</span>' +
+    '<span>' + safeStr(gate.detail || '—') + '</span>' +
+    '<span>' + warnings + '</span>' +
+  '</div>';
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
