@@ -183,7 +183,9 @@ confirmados; um turno real com a flag desligada manteve `audio_service` como
 dono do TX, com gate verde, zero drops e fim por silencio. Ao tentar validar
 `/api/config/all`, o hardware respondeu 404 porque a tabela HTTP ja tinha 98
 rotas para `max_uri_handlers=64`; o firmware agora dimensiona esse limite pela
-propria tabela, pendente de reflash para confirmar o endpoint.
+propria tabela. Apos reflash, `/api/config/all` respondeu JSON e confirmou
+Capture v2 observador ligado com handoff real desligado
+(`voice_audio_v2_capture_tx_enabled=false`).
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

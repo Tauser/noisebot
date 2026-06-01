@@ -452,8 +452,10 @@ Entregas:
 - Correcao local de infraestrutura HTTP: o firmware tinha 98 rotas mas
   `max_uri_handlers=64`, fazendo APIs tardias como `/api/config/all` poderem
   responder 404 apesar de existirem na tabela. O limite agora deriva de
-  `k_uris` com margem e loga falha de registro por rota. Requer flash para
-  confirmar `/api/config/all` no hardware.
+  `k_uris` com margem e loga falha de registro por rota. Pos-flash,
+  `/api/config/all` voltou a responder JSON e confirmou
+  `voice_audio_v2_capture_enabled=true` com
+  `voice_audio_v2_capture_tx_enabled=false`.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

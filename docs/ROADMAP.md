@@ -2206,9 +2206,12 @@ Implementação:
   `legacy_audio_service_tx_owner=true`) com gate verde, zero drops e
   `voice_end_reason=silence`. O health do Codec v2 voltou `status=ok` apos
   drenar 1 pacote egress pendente.
-- [ ] Reflash da correcao de infraestrutura HTTP e validar `/api/config/all`:
+- [x] Reflash da correcao de infraestrutura HTTP e validacao de `/api/config/all`:
   havia 98 rotas para `max_uri_handlers=64`, entao APIs no fim da tabela podiam
   responder 404. O firmware agora dimensiona o limite a partir de `k_uris`.
+  Pos-flash, `/api/config/all` respondeu JSON e confirmou
+  `voice_audio_v2_capture_enabled=true` com
+  `voice_audio_v2_capture_tx_enabled=false`.
 
 ---
 
