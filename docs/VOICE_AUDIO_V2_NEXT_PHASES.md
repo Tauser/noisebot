@@ -253,6 +253,14 @@ Entregas:
   server-only atual: reduzir o prebuffer padrao `NOISEBOT_TTS_QUEUE_TARGET`
   de 12 para 6 chunks, deixando mais headroom na fila de 16 chunks do
   firmware antes de liberar novo handoff.
+- Validacao fisica apos reduzir o prebuffer para 6 chunks: `ww -> me diga uma
+  fala com historia curta` transcreveu `Me diga uma fala com história curta.`,
+  `transcript_quality=good`, `tts_chunks_sent=326`, `tts_completed=true`,
+  `tts_say_end_sent=true`, `voice_alert=null` e texto visual completo em 3
+  paginas. Playback v2 saiu de `received=2569/played=2566/dropped=56` para
+  `received=2895/played=2892/dropped=56`, ou seja, +326 chunks recebidos e
+  tocados com zero drops novos. `codec-v2 health` ficou `healthy=true/status=ok`
+  e `capture-v2` permaneceu desligado em `IDLE_SESSION`.
 - Observacao operacional: a queda percebida do server nesta rodada nao apontou
   para crash do `OutputScheduler`. O log mostrou um start sem
   `NOISEBOT_HOST`, que deixa `/ai/status` em `connected=false` e o server sem

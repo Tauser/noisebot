@@ -90,6 +90,12 @@ amarelo atual e a transicao fisica wake -> resposta, nao o codec nem o caminho
 controlado. O prebuffer padrao do `OutputScheduler` foi reduzido de 12 para 6
 chunks via default de `NOISEBOT_TTS_QUEUE_TARGET`, deixando mais espaco livre
 na fila SAY de 16 chunks antes de novo handoff.
+A repeticao fisica apos esse ajuste validou o novo default: o turno
+`Me diga uma fala com história curta.` enviou 326 chunks TTS completos, com
+`SAY_END`, `voice_alert=null`, 3 paginas de texto visual completas e zero drops
+novos em Playback v2 (`received=2569/played=2566/dropped=56` para
+`received=2895/played=2892/dropped=56`). Codec v2 permaneceu saudavel e
+Capture v2 desligado.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o
@@ -1016,7 +1022,8 @@ O roadmap detalhado das fases restantes esta em
    e `codec-v2 health` ok. Repeticoes fisicas por wake mostraram que o caminho
    fisico ainda pode gerar drops na fila SAY (+18 drops em uma resposta curta
    completa), entao o prebuffer padrao do server foi reduzido para 6 chunks
-   antes de nova validacao. Nota
+   antes de nova validacao. A validacao fisica seguinte confirmou +326 chunks
+   recebidos/tocados e zero drops novos com TTS completo. Nota
    operacional: se o server subir sem `NOISEBOT_HOST` ou `--host`, ele fica
    vivo mas sem transporte (`connected=false`), o que parece queda de voz. O
    `.env` local deve conter `NOISEBOT_HOST=192.168.1.30` junto de

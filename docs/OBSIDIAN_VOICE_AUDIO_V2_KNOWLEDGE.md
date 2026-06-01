@@ -332,6 +332,11 @@ Faz:
   completou TTS e `SAY_END`, mas Playback v2 tocou +274 chunks com +18 drops.
   O ajuste atual e server-only: default de `NOISEBOT_TTS_QUEUE_TARGET` reduzido
   para 6 chunks, deixando mais headroom na fila SAY de 16 chunks do firmware.
+- Validacao fisica do default 6 chunks: `Me diga uma fala com história curta.`
+  teve `transcript_quality=good`, 326 chunks TTS, `tts_completed=true`,
+  `SAY_END`, `voice_alert=null`, texto visual em 3 paginas completas, Codec v2
+  saudavel, Capture v2 desligado e Playback v2 com +326 recebidos/tocados e
+  zero drops novos.
 
 Nao faz:
 
@@ -360,7 +365,8 @@ Faz:
   `/debug/transcript` depois de restart correto do server teve +292 SAY
   recebidos/tocados e zero drops novos; repeticao fisica posterior reproduziu
   drops no caminho real (+18), entao o proximo teste deve validar o prebuffer
-  server-side reduzido para 6 chunks;
+  server-side reduzido para 6 chunks; validacao fisica seguinte confirmou
+  +326 SAY recebidos/tocados e zero drops novos;
 - ESP-SR VAD primario;
 - RMS/ZCR/espectral como telemetria;
 - AFE/NS opcional;

@@ -291,7 +291,9 @@ Responsabilidade:
   +18 drops enquanto tocava +274 chunks. O ajuste atual e server-only:
   reduzir o prebuffer default do `OutputScheduler` para 6 chunks
   (`NOISEBOT_TTS_QUEUE_TARGET`), sem alterar firmware, wake, captura, codec ou
-  HAL.
+  HAL. Validacao fisica seguinte confirmou o ajuste: `Me diga uma fala com
+  história curta.` gerou 326 chunks TTS completos e Playback v2 recebeu/tocou
+  +326 chunks com `say_chunks_dropped` inalterado em 56.
 - Validacao em hardware pos-flash confirmou o contrato passivo: shadow de
   1000 ms observou 63 frames, encerrou sozinho, classificou silencio e manteve
   `session_active=false`; `capture-v2` permaneceu desligado, Playback v2 ficou
