@@ -324,6 +324,11 @@ Responsabilidade:
   (`end_reason`) e o ownership real do TX (`bridge_tx_owner=false`,
   `legacy_audio_service_tx_owner=true`) antes de assumir qualquer envio real ao
   bridge. Esse primeiro passo e observabilidade/contrato, nao handoff ativo.
+- O passo seguinte da Fase K adiciona espelhamento shadow de TX
+  (`shadow_voice_start_sent`, `shadow_voice_end_sent`, `shadow_audio_chunks`,
+  `shadow_audio_samples`, `shadow_audio_dropped_chunks`) para comparar o que o
+  Capture v2 emitiria contra o caminho legado. O bridge TX real continua no
+  `audio_service`.
 
 Parametros iniciais preservados:
 

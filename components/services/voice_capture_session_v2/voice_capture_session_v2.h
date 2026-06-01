@@ -53,6 +53,8 @@ typedef struct {
     bool voice_start_sent;
     bool voice_audio_sent;
     bool voice_end_sent;
+    bool shadow_voice_start_sent;
+    bool shadow_voice_end_sent;
     nb_voice_capture_v2_state_t state;
     nb_voice_capture_v2_source_t source;
     nb_voice_capture_v2_end_reason_t end_reason;
@@ -65,6 +67,9 @@ typedef struct {
     uint32_t silence_frames;
     uint32_t captured_samples;
     uint32_t dropped_frames;
+    uint32_t shadow_audio_chunks;
+    uint32_t shadow_audio_samples;
+    uint32_t shadow_audio_dropped_chunks;
     esp_err_t last_error;
 } nb_voice_capture_v2_status_t;
 

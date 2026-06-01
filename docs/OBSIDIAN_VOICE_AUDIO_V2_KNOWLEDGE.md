@@ -395,6 +395,10 @@ Faz:
   `legacy_audio_service_tx_owner=true` em `/api/audio/capture-v2`, deixando
   claro que a sessao v2 ainda observa/acompanha enquanto o bridge TX real segue
   no `audio_service`.
+- expor contadores shadow do TX legado:
+  `shadow_voice_start_sent`, `shadow_voice_end_sent`, `shadow_audio_chunks`,
+  `shadow_audio_samples` e `shadow_audio_dropped_chunks`, para comparar o que
+  o Capture v2 emitiria sem assumir o envio real.
 
 Nao faz:
 

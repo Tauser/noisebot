@@ -132,6 +132,11 @@ Validacao em hardware apos flash confirmou o contrato: replay diagnostico de
 `dropped_frames=0`, `bridge_tx_owner=false` e
 `legacy_audio_service_tx_owner=true`; Opus v2 foi reativado e `codec-v2
 health` voltou ok.
+O incremento local seguinte adiciona contadores shadow de TX ao mesmo status:
+`shadow_voice_start_sent`, `shadow_voice_end_sent`, `shadow_audio_chunks`,
+`shadow_audio_samples` e `shadow_audio_dropped_chunks`. Eles espelham o caminho
+legado para dizer quando o Capture v2 emitiria os eventos/chunks, sem enviar
+nada ao bridge e sem mudar ownership.
 `GET /api/audio/codec-v2` expõe o contrato do codec v2 sem ativar worker,
 bridge ou Opus como padrão: PCM16 default, Opus opt-in em 16 kHz mono,
 60 ms/960 samples, 32 kbps e fila curta de 40 pacotes. Em hardware, após

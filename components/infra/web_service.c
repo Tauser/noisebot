@@ -2583,7 +2583,7 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
     nb_voice_capture_v2_status_t st;
     voice_capture_session_v2_get_status(&st);
 
-    char buf[896];
+    char buf[1152];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
              "\"real_capture_enabled\":%s,\"real_capture\":%s,"
@@ -2591,11 +2591,16 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
              "\"state\":\"%s\",\"source\":\"%s\",\"end_reason\":\"%s\","
              "\"session_id\":%lu,"
              "\"voice_start_sent\":%s,\"voice_audio_sent\":%s,"
-             "\"voice_end_sent\":%s,\"replay_duration_ms\":%lu,"
+             "\"voice_end_sent\":%s,"
+             "\"shadow_voice_start_sent\":%s,\"shadow_voice_end_sent\":%s,"
+             "\"replay_duration_ms\":%lu,"
              "\"replay_elapsed_ms\":%lu,\"speech_elapsed_ms\":%lu,"
              "\"silence_elapsed_ms\":%lu,\"speech_frames\":%lu,"
              "\"silence_frames\":%lu,\"captured_samples\":%lu,"
-             "\"dropped_frames\":%lu,\"last_error\":\"%s\","
+             "\"dropped_frames\":%lu,\"shadow_audio_chunks\":%lu,"
+             "\"shadow_audio_samples\":%lu,"
+             "\"shadow_audio_dropped_chunks\":%lu,"
+             "\"last_error\":\"%s\","
              "\"error\":\"%s\"}",
              (err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
@@ -2611,6 +2616,8 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
              st.voice_start_sent ? "true" : "false",
              st.voice_audio_sent ? "true" : "false",
              st.voice_end_sent ? "true" : "false",
+             st.shadow_voice_start_sent ? "true" : "false",
+             st.shadow_voice_end_sent ? "true" : "false",
              (unsigned long)st.replay_duration_ms,
              (unsigned long)st.replay_elapsed_ms,
              (unsigned long)st.speech_elapsed_ms,
@@ -2619,6 +2626,9 @@ static esp_err_t send_voice_capture_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.silence_frames,
              (unsigned long)st.captured_samples,
              (unsigned long)st.dropped_frames,
+             (unsigned long)st.shadow_audio_chunks,
+             (unsigned long)st.shadow_audio_samples,
+             (unsigned long)st.shadow_audio_dropped_chunks,
              esp_err_to_name(st.last_error),
              esp_err_to_name(err));
     httpd_resp_set_type(req, "application/json");

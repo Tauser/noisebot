@@ -2149,6 +2149,11 @@ Implementação:
   `captured_samples=10240`, `dropped_frames=0`, `bridge_tx_owner=false` e
   `legacy_audio_service_tx_owner=true`. Opus v2 foi reativado e `codec-v2
   health` voltou `status=ok`; Playback v2 ficou com fila SAY zero.
+- [x] Fase K avancou para shadow TX local: `/api/audio/capture-v2` agora expoe
+  `shadow_voice_start_sent`, `shadow_voice_end_sent`, `shadow_audio_chunks`,
+  `shadow_audio_samples` e `shadow_audio_dropped_chunks` para espelhar onde o
+  Capture v2 emitiria `VOICE_START/AUDIO_CHUNK/VOICE_END`, mantendo
+  `bridge_tx_owner=false` e o envio real no `audio_service`.
 
 ---
 

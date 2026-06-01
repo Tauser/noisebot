@@ -363,6 +363,12 @@ Entregas:
   `legacy_audio_service_tx_owner=true`. Apos reativar Opus v2, `codec-v2
   health` voltou `status=ok`, worker `running`, zero drops e fila egress zero;
   Playback v2 permaneceu com fila SAY zero.
+- Incremento local seguinte: `capture-v2 status` passou a expor o espelho
+  shadow do TX legado (`shadow_voice_start_sent`, `shadow_voice_end_sent`,
+  `shadow_audio_chunks`, `shadow_audio_samples` e
+  `shadow_audio_dropped_chunks`). Esses campos contam o ponto em que o Capture
+  v2 emitiria `VOICE_START/AUDIO_CHUNK/VOICE_END`, mas o envio real continua
+  100% no `audio_service`; `bridge_tx_owner` permanece `false`.
 - Pre-roll v2 real com supressao correta em barge-in.
 - Timeouts e `end_reason` padronizados.
 - Regras preservadas: wake vazio nao envia STT; `VOICE_END` so sai se houve

@@ -346,13 +346,20 @@ def test_voice_capture_v2_replay_is_explicit_and_does_not_touch_bridge():
     assert "bool real_capture;" in capture_h
     assert "bool bridge_tx_owner;" in capture_h
     assert "bool legacy_audio_service_tx_owner;" in capture_h
+    assert "bool shadow_voice_start_sent;" in capture_h
+    assert "uint32_t shadow_audio_chunks;" in capture_h
+    assert "uint32_t shadow_audio_samples;" in capture_h
+    assert "uint32_t shadow_audio_dropped_chunks;" in capture_h
     assert "nb_voice_capture_v2_end_reason_t end_reason;" in capture_h
     assert '\\"real_capture\\":%s,' in web
     assert '\\"end_reason\\":\\"%s\\"' in web
+    assert '\\"shadow_audio_chunks\\":%lu' in web
     assert "capture_v2_end_reason_name" in web
     assert "NB_VOICE_CAPTURE_V2_END_SPEECH_COMPLETE" in capture_c
     assert "NB_VOICE_CAPTURE_V2_END_NO_SPEECH" in capture_c
     assert "NB_VOICE_CAPTURE_V2_END_CANCELLED" in capture_c
+    assert "s_status.shadow_audio_chunks++" in capture_c
+    assert "s_status.shadow_audio_samples += sample_count;" in capture_c
     assert "bridge_service" not in capture_c
     assert "VOICE_START" not in capture_c
     assert "AUDIO_CHUNK" not in capture_c

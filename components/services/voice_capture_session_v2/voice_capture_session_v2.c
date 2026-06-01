@@ -126,12 +126,15 @@ esp_err_t voice_capture_session_v2_replay_start(nb_voice_capture_v2_source_t sou
     if (speech_frames > 0U) {
         s_status.voice_start_sent = true;
         s_status.voice_audio_sent = true;
+        s_status.shadow_voice_start_sent = true;
         s_status.state = NB_VOICE_CAPTURE_V2_CAPTURING;
         s_status.speech_frames = speech_frames;
         s_status.speech_elapsed_ms = speech_frames * CAPTURE_REPLAY_FRAME_MS;
         s_status.captured_samples = speech_frames *
                                     CAPTURE_REPLAY_FRAME_MS *
                                     (CAPTURE_REPLAY_SAMPLE_RATE_HZ / 1000U);
+        s_status.shadow_audio_chunks = speech_frames;
+        s_status.shadow_audio_samples = s_status.captured_samples;
     }
 
     if (silence_frames > 0U) {
@@ -152,6 +155,7 @@ esp_err_t voice_capture_session_v2_replay_start(nb_voice_capture_v2_source_t sou
         s_status.end_reason = NB_VOICE_CAPTURE_V2_END_SPEECH_COMPLETE;
     }
     s_status.voice_end_sent = speech_frames > 0U;
+    s_status.shadow_voice_end_sent = s_status.voice_end_sent;
     s_status.session_active = false;
     s_status.state = NB_VOICE_CAPTURE_V2_DONE;
     taskEXIT_CRITICAL(&s_mux);
@@ -194,6 +198,7 @@ void voice_capture_session_v2_note_voice_start(void)
     taskENTER_CRITICAL(&s_mux);
     if (s_status.session_active && !s_status.voice_start_sent) {
         s_status.voice_start_sent = true;
+        s_status.shadow_voice_start_sent = true;
         s_status.state = NB_VOICE_CAPTURE_V2_CAPTURING;
     }
     taskEXIT_CRITICAL(&s_mux);
@@ -213,8 +218,11 @@ void voice_capture_session_v2_note_audio_chunk(uint16_t sample_count, bool accep
             s_status.speech_frames++;
             s_status.speech_elapsed_ms += CAPTURE_REPLAY_FRAME_MS;
             s_status.replay_elapsed_ms += CAPTURE_REPLAY_FRAME_MS;
+            s_status.shadow_audio_chunks++;
+            s_status.shadow_audio_samples += sample_count;
         } else {
             s_status.dropped_frames++;
+            s_status.shadow_audio_dropped_chunks++;
         }
     }
     taskEXIT_CRITICAL(&s_mux);
@@ -232,10 +240,12 @@ void voice_capture_session_v2_finish(bool cancelled)
     if (cancelled) {
         s_status.state = NB_VOICE_CAPTURE_V2_CANCELLED;
         s_status.voice_end_sent = false;
+        s_status.shadow_voice_end_sent = false;
         s_status.end_reason = NB_VOICE_CAPTURE_V2_END_CANCELLED;
     } else {
         s_status.state = NB_VOICE_CAPTURE_V2_DONE;
         s_status.voice_end_sent = s_status.voice_start_sent && s_status.voice_audio_sent;
+        s_status.shadow_voice_end_sent = s_status.voice_end_sent;
         s_status.end_reason = s_status.voice_audio_sent
                                   ? NB_VOICE_CAPTURE_V2_END_SPEECH_COMPLETE
                                   : NB_VOICE_CAPTURE_V2_END_NO_SPEECH;
@@ -258,6 +268,7 @@ esp_err_t voice_capture_session_v2_cancel(void)
     s_status.session_active = false;
     s_status.state = NB_VOICE_CAPTURE_V2_CANCELLED;
     s_status.voice_end_sent = false;
+    s_status.shadow_voice_end_sent = false;
     s_status.end_reason = NB_VOICE_CAPTURE_V2_END_CANCELLED;
     s_status.last_error = ESP_OK;
     taskEXIT_CRITICAL(&s_mux);
