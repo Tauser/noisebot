@@ -635,6 +635,9 @@ Entregas:
   Playback v2 e `/ai/metrics` antes dos testes interativos. O mesmo agregado
   esta exposto em `GET /api/release/voice-check` no Ops HTTP e acionavel pelo
   botao `Release Check` do dashboard.
+- Gate de cancelamento explicito coberto por testes automaticos: `SPEECH_CANCEL`
+  remove fala pendente da fila TX, nao remove frames nao relacionados a fala, e
+  o scheduler nao envia `SAY_END` artificial apos cancelamento.
 - Replays com amostras reais boas e ruins.
 - Testes de reconexao/cancelamento explicito no bridge.
 - Registro claro de codec ativo, drops, filas, STT, TTS, SAY e estado final.

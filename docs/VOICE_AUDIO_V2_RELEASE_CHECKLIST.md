@@ -207,6 +207,29 @@ noisebot_server --host 192.168.1.30 debug voice-release-check --json
 curl http://127.0.0.1:8765/api/release/voice-check
 ```
 
+## Gate 2.2 - Cancelamento Explicito De Fala
+
+Verde:
+
+- `FirmwareAdapter.send_speech_cancel(turn_id)` remove frames pendentes de fala
+  (`SAY`/`SAY_END`) antes de enfileirar `MSG_SPEECH_CANCEL`.
+- Frames nao relacionados a fala, como `EXPR`, permanecem na fila TX.
+- `OutputScheduler` trata `ConnectionError("SPEECH_CANCEL")` como
+  `CancelledError`, sem enviar `SAY_END` artificial.
+- Barge-in continua abrindo turno limpo mesmo se o envio do cancelamento falhar.
+
+Testes automaticos:
+
+```powershell
+cmd.exe /c "set PYTHONPATH=D:\Projetos\Noisebot\server&& C:\Users\Tauser\AppData\Local\Python\pythoncore-3.14-64\python.exe -m pytest server\tests\test_server_facade.py::test_server_firmware_adapter_drops_pending_speech_before_cancel server\tests\test_server_facade.py::test_server_barge_in_starts_clean_listening_turn_even_if_cancel_fails server\tests\test_playback.py::test_output_scheduler_treats_speech_cancel_as_cancellation"
+```
+
+Bloqueia release:
+
+- `SAY` antigo continua na fila depois de `SPEECH_CANCEL`.
+- `SAY_END` antigo e enviado depois do cancelamento.
+- Uma falha de envio do cancelamento impede a abertura do turno novo.
+
 ## Gate 3 - Capture v2 Desligado
 
 Verde:

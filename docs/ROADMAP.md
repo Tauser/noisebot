@@ -2869,8 +2869,10 @@ no protocolo.
       `GET /api/release/voice-check` para a mesma checagem, acionavel pelo
       dashboard operacional.
 - [ ] Reconexão TCP/UART coberta por teste automático.
-- [ ] Cancelamento explícito de fala (`SPEECH_CANCEL`/turn id no fio) coberto
-      por teste antes de qualquer nova mudança no firmware.
+- [x] Cancelamento explícito de fala (`SPEECH_CANCEL`/turn id no fio) coberto
+      por teste automático: fala pendente e `SAY_END` antigo sao descartados,
+      frames nao relacionados a fala sao preservados, o scheduler cancela sem
+      `SAY_END` artificial e barge-in abre turno limpo mesmo se o cancel falhar.
 
 ---
 
