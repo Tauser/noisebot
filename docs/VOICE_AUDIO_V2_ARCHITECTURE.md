@@ -1348,6 +1348,9 @@ Validacao de fechamento:
 - `/ai/status` confirmou server conectado, modelo `qwen3.5:9b` e audio ativo
   em Opus 16 kHz mono, 60 ms.
 - Server local continua com `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`.
+- Server local tambem precisa de `NOISEBOT_HOST=192.168.1.30` ou `--host
+  192.168.1.30`; sem isso, o processo pode subir sem transporte e aparecer como
+  `connected=false`, apesar da Ops API responder.
 - Rollback documentado: mudar env para `pcm16`, reiniciar server, ou chamar
   `codec-v2 transport-disable` para voltar o transporte ativo para PCM16.
 

@@ -243,6 +243,12 @@ Entregas:
   `received=1431/played=1430/dropped=38`, ou seja, +292 recebidos/tocados e
   zero drops novos. Ainda falta uma repeticao fisica por wake antes de liberar
   novo handoff.
+- Observacao operacional: a queda percebida do server nesta rodada nao apontou
+  para crash do `OutputScheduler`. O log mostrou um start sem
+  `NOISEBOT_HOST`, que deixa `/ai/status` em `connected=false` e o server sem
+  transporte TCP; o `.env` local ignorado pelo git foi corrigido com
+  `NOISEBOT_HOST=192.168.1.30`. Ao iniciar por comando manual, usar tambem
+  `--host 192.168.1.30` ou exportar a variavel.
 - Modo shadow que observa a sessao real sem decidir wake nem fim de fala.
 - Eventos internos de `speech_start`, `speech_end`, `silence`, `discard_reason`
   apenas quando existe sessao aberta.

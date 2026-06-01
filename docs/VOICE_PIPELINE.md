@@ -1005,7 +1005,11 @@ O roadmap detalhado das fases restantes esta em
    Playback v2 contou 14 drops SAY no turno e deve ser repetido antes do
    proximo handoff. Repeticao controlada via `/debug/transcript` apos restart
    correto do server enviou 292 chunks TTS com zero drops novos em Playback v2
-   e `codec-v2 health` ok; ainda falta repetir por wake fisico.
+   e `codec-v2 health` ok; ainda falta repetir por wake fisico. Nota
+   operacional: se o server subir sem `NOISEBOT_HOST` ou `--host`, ele fica
+   vivo mas sem transporte (`connected=false`), o que parece queda de voz. O
+   `.env` local deve conter `NOISEBOT_HOST=192.168.1.30` junto de
+   `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`.
 4. Capture Session v2 assumindo upstream por flag.
 5. Policy conversacional avancada somente depois de no-echo/captura estaveis.
 

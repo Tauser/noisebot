@@ -76,6 +76,9 @@ Regra principal:
 - O default local do server agora e Opus v2 via
   `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`, mas PCM16 continua disponivel por
   env `pcm16` ou `codec-v2 transport-disable`.
+- O server local precisa subir com `NOISEBOT_HOST=192.168.1.30` ou flag
+  equivalente `--host`; sem host, a Ops API inicia, mas o transporte TCP fica
+  ausente e `/ai/status` aparece `connected=false`.
 
 ### Opus
 
