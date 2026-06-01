@@ -438,16 +438,15 @@ class LocalIntentProvider:
         # -- Controle direto --------------------------------------------------
         # Um "ww -> pare" depois de barge-in e comando de controle, nao prompt LLM.
         recent_barge_in = bool(context.get("recent_barge_in"))
-        if (
-            norm in _STOP_ONLY_PHRASES
-            or (
-                recent_barge_in
-                and (
-                    norm in _STOP_AFTER_BARGE_MISHEARS
-                    or _has(norm, *_STOP_AFTER_BARGE_TERMS)
-                )
+        direct_stop = norm in _STOP_ONLY_PHRASES
+        post_barge_stop = (
+            recent_barge_in
+            and (
+                norm in _STOP_AFTER_BARGE_MISHEARS
+                or _has(norm, *_STOP_AFTER_BARGE_TERMS)
             )
-        ):
+        )
+        if direct_stop or post_barge_stop:
             return IntentResolved(
                 turn_id=turn_id,
                 intent_name="local_stop",
@@ -455,6 +454,7 @@ class LocalIntentProvider:
                 expression_id=_EXPR_NEUTRAL,
                 action_id=_ACTION_NONE,
                 emot_event_id=_EMOT_NEUTRAL,
+                resolution_reason="direct_stop" if direct_stop else "post_barge_stop",
             )
 
         # -- Alertas locais ---------------------------------------------------

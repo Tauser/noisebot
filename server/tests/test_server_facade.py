@@ -3094,6 +3094,7 @@ def test_server_metrics_exposes_last_voice_session() -> None:
         "text_scroll_truncated": True,
         "recent_barge_in": True,
         "turn_taking_policy": "post_barge_in",
+        "turn_taking_decision": "post_barge_stop",
         "secret": "nao deve aparecer",
     })
 
@@ -3111,6 +3112,7 @@ def test_server_metrics_exposes_last_voice_session() -> None:
         "text_scroll_truncated": True,
         "recent_barge_in": True,
         "turn_taking_policy": "post_barge_in",
+        "turn_taking_decision": "post_barge_stop",
     }
     assert payload["recent_voice_sessions"] == [payload["last_voice_session"]]
     assert payload["voice_alert"] == {
@@ -3147,11 +3149,41 @@ def test_server_orchestrator_records_turn_taking_policy() -> None:
     session.meta["outcome"] = "local_intent"
     session.meta["recent_barge_in"] = True
     session.meta["turn_taking_policy"] = "post_barge_in"
+    session.meta["turn_taking_decision"] = "post_barge_stop"
 
     orchestrator._record_voice_session(session)
 
     assert store.last_voice_session["recent_barge_in"] is True
     assert store.last_voice_session["turn_taking_policy"] == "post_barge_in"
+    assert store.last_voice_session["turn_taking_decision"] == "post_barge_stop"
+
+
+async def test_server_orchestrator_marks_post_barge_stop_decision() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    bus = runtime.EventBus(default_maxsize=512)
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: None,
+    )
+    session = runtime.SessionContext(turn_id=78)
+    orchestrator._session = session
+    orchestrator._t_barge_in = orchestrator_module.time.monotonic()
+    orchestrator._fsm.transition(runtime.TurnState.LISTENING, turn_id=session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.COMMITTING_TURN, turn_id=session.turn_id)
+
+    await orchestrator._on_final_transcript(
+        runtime.FinalTranscript(turn_id=session.turn_id, text="Tchup! Bye!")
+    )
+
+    assert session.intent_name == "local_stop"
+    assert session.meta["recent_barge_in"] is True
+    assert session.meta["turn_taking_policy"] == "post_barge_in"
+    assert session.meta["turn_taking_decision"] == "post_barge_stop"
 
 
 def test_server_metrics_preserves_full_reply_for_tts_diagnostics() -> None:
@@ -4291,6 +4323,7 @@ def test_server_agent_local_intent_handles_bare_stop_without_llm() -> None:
     assert result.intent_name == "local_stop"
     assert result.reply_text == "Pronto, parei."
     assert result.expression_id == 2
+    assert result.resolution_reason == "direct_stop"
 
 
 @pytest.mark.parametrize(
@@ -4314,6 +4347,7 @@ def test_server_agent_local_intent_handles_expanded_stop_phrases(phrase: str) ->
 
     assert result.intent_name == "local_stop"
     assert result.reply_text == "Pronto, parei."
+    assert result.resolution_reason == "direct_stop"
 
 
 def test_server_agent_local_intent_treats_vale_as_stop_only_after_barge_in() -> None:
@@ -4328,6 +4362,7 @@ def test_server_agent_local_intent_treats_vale_as_stop_only_after_barge_in() -> 
     assert normal.intent_name is None
     assert after_barge.intent_name == "local_stop"
     assert after_barge.reply_text == "Pronto, parei."
+    assert after_barge.resolution_reason == "post_barge_stop"
 
 
 def test_server_agent_local_intent_treats_farewell_as_stop_only_after_barge_in() -> None:
@@ -4342,6 +4377,7 @@ def test_server_agent_local_intent_treats_farewell_as_stop_only_after_barge_in()
     assert normal.intent_name == "local_farewell"
     assert after_barge.intent_name == "local_stop"
     assert after_barge.reply_text == "Pronto, parei."
+    assert after_barge.resolution_reason == "post_barge_stop"
 
 
 def test_server_agent_local_intent_treats_transcribed_bye_as_stop_after_barge_in() -> None:
@@ -4356,6 +4392,7 @@ def test_server_agent_local_intent_treats_transcribed_bye_as_stop_after_barge_in
     assert normal.intent_name == "local_farewell"
     assert after_barge.intent_name == "local_stop"
     assert after_barge.reply_text == "Pronto, parei."
+    assert after_barge.resolution_reason == "post_barge_stop"
 
 
 def test_server_agent_llm_and_intents_are_server_owned() -> None:

@@ -194,6 +194,7 @@ class IntentResolved:
     action_id: int | None = None
     emot_event_id: int | None = None
     device_command: dict[str, Any] | None = None
+    resolution_reason: str | None = None
     t: float = field(default_factory=_now)
 
     @property

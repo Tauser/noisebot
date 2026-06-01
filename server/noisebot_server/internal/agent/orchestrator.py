@@ -536,6 +536,12 @@ class Orchestrator:
         self._metrics.record("local_intent_ms", (t_intent_end - t_intent_start) * 1000.0)
 
         session.intent_name = intent.intent_name
+        if intent.resolution_reason:
+            session.meta["turn_taking_decision"] = intent.resolution_reason
+        elif intent.has_intent:
+            session.meta["turn_taking_decision"] = "local_intent"
+        else:
+            session.meta["turn_taking_decision"] = "llm"
         if intent.reply_text:
             session.reply_text = intent.reply_text
             if self._store:
@@ -1462,6 +1468,7 @@ class Orchestrator:
             "compression_ratio": session.meta.get("compression_ratio"),
             "recent_barge_in": session.meta.get("recent_barge_in"),
             "turn_taking_policy": session.meta.get("turn_taking_policy"),
+            "turn_taking_decision": session.meta.get("turn_taking_decision"),
             "intent_name": session.intent_name,
             "reply": session.reply_text,
             "reply_chars": len(session.reply_text or ""),

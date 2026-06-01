@@ -189,6 +189,7 @@ def _sanitize_session(value: dict) -> dict:
         "compression_ratio",
         "recent_barge_in",
         "turn_taking_policy",
+        "turn_taking_decision",
         "intent_name",
         "reply",
         "reply_chars",

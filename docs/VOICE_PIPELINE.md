@@ -128,8 +128,9 @@ agora entram como `local_stop` mesmo fora de barge-in, junto de
 audio.
 Para tornar essa decisao auditavel, `/ai/metrics.last_voice_session` agora
 inclui `recent_barge_in` e `turn_taking_policy` (`normal` ou
-`post_barge_in`). Assim a regressao de comandos curtos pode ser validada por
-telemetria, nao apenas por percepcao do dialogo.
+`post_barge_in`), alem de `turn_taking_decision` (`direct_stop`,
+`post_barge_stop`, `local_intent` ou `llm`). Assim a regressao de comandos
+curtos pode ser validada por telemetria, nao apenas por percepcao do dialogo.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o
