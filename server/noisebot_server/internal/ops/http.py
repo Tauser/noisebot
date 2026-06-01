@@ -40,6 +40,7 @@ from .dashboard import get_dashboard_html
 from .firmware_agenda import FirmwareAgendaClient, FirmwareAgendaError
 from .firmware_diag import FirmwareDiagClient, FirmwareDiagError
 from .log_buffer import install_recent_log_handler
+from .release_check import build_release_check
 from .security import check_token, load_or_create_token
 from .status import StatusStore
 from ..vision import VisionClient, VisionError
@@ -104,6 +105,7 @@ class OpsHttpServer:
         wa.router.add_post("/ai/mode",        self._post_ai_mode)
         wa.router.add_post("/ai/restart",     self._post_ai_restart)
         wa.router.add_post("/ai/metrics/reset", self._post_metrics_reset)
+        wa.router.add_get("/api/release/voice-check", self._get_release_voice_check)
         wa.router.add_post("/debug/transcript", self._post_debug_transcript)
         wa.router.add_post("/debug/voice-turn", self._post_debug_voice_turn)
         wa.router.add_get("/api/app/state", self._get_app_state)
@@ -531,6 +533,25 @@ class OpsHttpServer:
             self._firmware_diag_client.audio_codec_v2_health
             if self._firmware_diag_client is not None else None
         )
+
+    async def _get_release_voice_check(self, request: web.Request) -> web.Response:
+        if self._firmware_diag_client is None:
+            return _json(error_response("firmware HTTP nao configurado"), status=503)
+        try:
+            codec_v2, capture_v2, playback_v2 = await asyncio.gather(
+                asyncio.to_thread(self._firmware_diag_client.audio_codec_v2_health),
+                asyncio.to_thread(self._firmware_diag_client.audio_capture_v2_status),
+                asyncio.to_thread(self._firmware_diag_client.audio_playback_v2_status),
+            )
+        except FirmwareDiagError as exc:
+            return _json(error_response(str(exc)), status=503)
+        check = build_release_check(
+            codec_v2=codec_v2,
+            capture_v2=capture_v2,
+            playback_v2=playback_v2,
+            metrics=self._metrics_api.get_metrics(),
+        )
+        return _json(check.to_dict(), status=200 if check.ok else 500)
 
     async def _post_device_audio_codec_v2_encode_test(self, request: web.Request) -> web.Response:
         self._require_token(request)

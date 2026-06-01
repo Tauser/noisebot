@@ -2323,6 +2323,73 @@ def test_server_cli_runs_voice_release_check_json(monkeypatch, capsys) -> None:
     assert '"Codec v2 / Opus"' in captured.out
 
 
+async def test_server_ops_http_returns_voice_release_check() -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+
+    class FakeFirmware:
+        def audio_codec_v2_health(self) -> dict:
+            return {
+                "ok": True,
+                "healthy": True,
+                "status": "ok",
+                "format": "opus",
+                "worker_state": "running",
+                "packet_drops": 0,
+                "opus_egress_packet_drops": 0,
+                "issues": [],
+                "warnings": [],
+            }
+
+        def audio_capture_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "real_capture_enabled": False,
+                "session_active": False,
+                "state": "IDLE_SESSION",
+                "last_error": "ESP_OK",
+            }
+
+        def audio_playback_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "bridge_say_observer": True,
+                "bridge_say_queue_owner": True,
+                "say_queue_count": 0,
+                "say_chunks_received": 12,
+                "say_chunks_played": 12,
+                "last_error": "ESP_OK",
+            }
+
+    class FakeMetrics:
+        def get_metrics(self) -> dict:
+            return {
+                "last_voice_session": {
+                    "turn_id": 5,
+                    "outcome": "llm",
+                    "tts_completed": True,
+                    "tts_say_end_sent": True,
+                    "text_scroll_pages": 1,
+                    "text_scroll_pages_sent": 1,
+                }
+            }
+
+    server = http.OpsHttpServer.__new__(http.OpsHttpServer)
+    server._firmware_diag_client = FakeFirmware()
+    server._metrics_api = FakeMetrics()
+
+    response = await server._get_release_voice_check(None)
+    payload = json.loads(response.text)
+
+    assert response.status == 200
+    assert payload["ok"] is True
+    assert [gate["name"] for gate in payload["gates"]] == [
+        "Codec v2 / Opus",
+        "Capture v2 default-off",
+        "Playback v2 SAY",
+        "Métricas de voz",
+    ]
+
+
 def test_server_no_echo_live_pcm16_tracks_response_turn(monkeypatch) -> None:
     no_echo = importlib.import_module("noisebot_server.internal.ops.no_echo_live")
     codec_v2_live = importlib.import_module("noisebot_server.internal.ops.codec_v2_live")

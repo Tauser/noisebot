@@ -195,11 +195,15 @@ Bloqueia release:
 - Qualquer gate agregado `ok=false`.
 - O comando nao substitui `barge-live`/`no-echo-live`; ele e um preflight
   rapido para reduzir ambiguidade antes dos testes interativos.
+- O mesmo preflight tambem esta disponivel em
+  `GET /api/release/voice-check` no Ops HTTP, usando o client de firmware ja
+  configurado pelo server e as metricas locais atuais.
 
 Comando:
 
 ```powershell
 noisebot_server --host 192.168.1.30 debug voice-release-check --json
+curl http://127.0.0.1:8765/api/release/voice-check
 ```
 
 ## Gate 3 - Capture v2 Desligado

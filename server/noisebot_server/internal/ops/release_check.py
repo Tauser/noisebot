@@ -58,6 +58,21 @@ def run_release_check(
     playback_v2 = firmware.audio_playback_v2_status()
     metrics = get_json(f"{server_url.rstrip('/')}/ai/metrics")
 
+    return build_release_check(
+        codec_v2=codec_v2,
+        capture_v2=capture_v2,
+        playback_v2=playback_v2,
+        metrics=metrics,
+    )
+
+
+def build_release_check(
+    *,
+    codec_v2: dict[str, Any],
+    capture_v2: dict[str, Any],
+    playback_v2: dict[str, Any],
+    metrics: dict[str, Any],
+) -> ReleaseCheck:
     gates = (
         _codec_gate(codec_v2),
         _capture_gate(capture_v2),
@@ -206,6 +221,7 @@ def _list_str(value: Any) -> list[str]:
 __all__ = [
     "ReleaseCheck",
     "ReleaseGate",
+    "build_release_check",
     "format_release_check_json",
     "format_release_check_markdown",
     "run_release_check",
