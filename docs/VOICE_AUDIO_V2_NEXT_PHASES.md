@@ -226,6 +226,15 @@ Entregas:
   `PLAY_ACTIVE/PLAY_BRIDGE_SAY`, `bridge_say_playing` e fila SAY v2 tocando).
   Essa informacao alimenta apenas os buckets de telemetria; VAD, wake,
   captura, codec, Playback v2 e HAL nao mudam.
+- Validacao em hardware apos flash do shadow 30 s: com Opus v2 reativado,
+  `ww -> me conte uma historia curta` gerou transcript `Me conte uma história
+  curta.`, `tts_completed=true`, `tts_say_end_sent=true`, `voice_alert=null` e
+  `codec-v2 health` ok. O Activity v2 encerrou o shadow com 1875 frames em
+  30000 ms, `session_frames=268`, `idle_frames=1607`, `muted_frames=478` e
+  `unmuted_frames=1397`, confirmando que a telemetria agora enxerga sessao e
+  playback. Ponto amarelo: Playback v2 registrou 384 chunks SAY
+  recebidos/tocados e 14 drops no turno; repetir antes de qualquer novo handoff
+  de playback/captura.
 - Modo shadow que observa a sessao real sem decidir wake nem fim de fala.
 - Eventos internos de `speech_start`, `speech_end`, `silence`, `discard_reason`
   apenas quando existe sessao aberta.

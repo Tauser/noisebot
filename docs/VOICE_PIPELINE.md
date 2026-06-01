@@ -997,7 +997,13 @@ O roadmap detalhado das fases restantes esta em
    sem mudar decisao de wake/fim de fala. O incremento local mais recente
    amplia o shadow para ate 30 s e passa contexto explicito de playback do
    `audio_service` para esses buckets, sem alterar VAD, wake, captura, codec,
-   Playback v2, bridge ou HAL.
+   Playback v2, bridge ou HAL. Validacao em hardware apos flash confirmou o
+   objetivo de observabilidade: em shadow de 30 s durante `ww -> me conte uma
+   historia curta`, o endpoint fechou com `session_frames=268`,
+   `idle_frames=1607`, `muted_frames=478`, `unmuted_frames=1397`,
+   `tts_completed=true`, `SAY_END` e `codec-v2 health` ok. Ponto amarelo:
+   Playback v2 contou 14 drops SAY no turno e deve ser repetido antes do
+   proximo handoff.
 4. Capture Session v2 assumindo upstream por flag.
 5. Policy conversacional avancada somente depois de no-echo/captura estaveis.
 

@@ -344,6 +344,10 @@ Faz:
   e vazamento de playback sem promover decisao ativa;
 - aceitar shadow de ate 30 s e receber contexto explicito de playback do
   `audio_service` apenas para bucket de telemetria;
+- validacao em hardware do shadow 30 s: 1875 frames em 30000 ms,
+  `session_frames=268`, `idle_frames=1607`, `muted_frames=478`,
+  `unmuted_frames=1397`, Opus v2 saudavel, Capture v2 desligado; ponto amarelo
+  separado em Playback v2 com 14 drops SAY no turno;
 - ESP-SR VAD primario;
 - RMS/ZCR/espectral como telemetria;
 - AFE/NS opcional;

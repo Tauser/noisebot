@@ -276,6 +276,12 @@ Responsabilidade:
   ao Activity v2 e explicito (`wrote_audio`, estado de playback e fila SAY v2),
   mas continua sendo usado somente para bucket de telemetria; VAD, wake,
   captura, codec, Playback v2 e HAL permanecem nos caminhos ja validados.
+- Validacao em hardware do shadow 30 s confirmou o objetivo de observabilidade:
+  turno real `ww -> me conte uma historia curta` gerou
+  `session_frames=268`, `idle_frames=1607`, `muted_frames=478`,
+  `unmuted_frames=1397`, com Opus v2 saudavel e Capture v2 desligado. O mesmo
+  turno registrou 14 drops SAY em Playback v2, entao playback deve ser
+  rechecado antes de novo handoff.
 - Validacao em hardware pos-flash confirmou o contrato passivo: shadow de
   1000 ms observou 63 frames, encerrou sozinho, classificou silencio e manteve
   `session_active=false`; `capture-v2` permaneceu desligado, Playback v2 ficou
