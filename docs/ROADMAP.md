@@ -2305,6 +2305,10 @@ Implementação:
   `turn_taking_policy` e `turn_taking_decision`, e o historico recente prioriza
   a decisao de turn-taking antes de descarte/intencao. Isso reduz a necessidade
   de abrir `/ai/metrics` durante testes repetidos.
+- [x] Fase L tornou follow-up automatico opt-in: `NOISEBOT_FOLLOWUP_ENABLED`
+  fica falso por padrao e `NOISEBOT_FOLLOWUP_WINDOW_MS` limita a janela entre
+  1s e 30s quando o recurso for ligado explicitamente. Com default-off, uma
+  pergunta da propria resposta nao rearma escuta sozinha.
 
 ---
 

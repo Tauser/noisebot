@@ -1130,13 +1130,15 @@ class Orchestrator:
         payload = {
             "event": "FOLLOWUP_ARM",
             "turn_id": session.turn_id,
-            "window_ms": 8000,
+            "window_ms": self._config.conversation.followup_window_ms,
             "source": session.intent_name or "reply",
         }
         if await self._send_session_event(payload, "FOLLOWUP_ARM"):
             session.meta["followup_armed"] = True
 
     def _should_arm_followup(self, session: SessionContext) -> bool:
+        if not self._config.conversation.followup_enabled:
+            return False
         if session.meta.get("outcome") not in ("local_intent", "llm"):
             return False
         if session.intent_name == "local_empty_wake_prompt":

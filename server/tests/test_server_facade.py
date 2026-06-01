@@ -31,6 +31,8 @@ def _make_server_config(
     piper_model: str = "",
     max_utterance_samples: int = 160000,
     default_codec: str = "pcm16",
+    followup_enabled: bool = False,
+    followup_window_ms: int = 8000,
 ):
     config_module = importlib.import_module("noisebot_server.config")
 
@@ -87,6 +89,10 @@ def _make_server_config(
         ops=config_module.OpsConfig(
             port=8765,
             token_configured=False,
+        ),
+        conversation=config_module.ConversationConfig(
+            followup_enabled=followup_enabled,
+            followup_window_ms=followup_window_ms,
         ),
         log_level=config_module.LogLevel.INFO,
         dry_run=dry_run,
@@ -2658,6 +2664,10 @@ def test_server_transport_factory_creates_tcp_transport() -> None:
             port=8765,
             token_configured=False,
         ),
+        conversation=config_module.ConversationConfig(
+            followup_enabled=False,
+            followup_window_ms=8000,
+        ),
         log_level=config_module.LogLevel.INFO,
         dry_run=True,
         replay_path=None,
@@ -3961,7 +3971,7 @@ async def test_server_speech_done_arms_followup_only_for_real_question() -> None
     adapter = CapturingAdapter()
     orchestrator = orchestrator_module.Orchestrator(
         bus,
-        _make_server_config(),
+        _make_server_config(followup_enabled=True, followup_window_ms=6000),
         get_adapter=lambda: adapter,
     )
 
@@ -3980,7 +3990,7 @@ async def test_server_speech_done_arms_followup_only_for_real_question() -> None
     assert adapter.sessions == [{
         "event": "FOLLOWUP_ARM",
         "turn_id": 301,
-        "window_ms": 8000,
+        "window_ms": 6000,
         "source": "llm_reply",
     }]
 
@@ -4001,6 +4011,58 @@ async def test_server_speech_done_arms_followup_only_for_real_question() -> None
         "turn_id": 302,
         "outcome": "local_intent",
     }
+
+
+async def test_server_speech_done_keeps_followup_disabled_by_default() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class CapturingAdapter:
+        def __init__(self) -> None:
+            self.sessions = []
+
+        async def send_session(self, payload: dict) -> None:
+            self.sessions.append(payload)
+
+        async def send_expr(self, expression_id: int, duration_ms: int = 2000) -> None:
+            pass
+
+        async def send_action(self, action_id: int) -> None:
+            pass
+
+        async def send_emot_event(self, event_id: int) -> None:
+            pass
+
+        async def send_gaze(self, x: float, y: float) -> None:
+            pass
+
+    bus = runtime.EventBus(default_maxsize=512)
+    adapter = CapturingAdapter()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: adapter,
+    )
+
+    session = runtime.SessionContext(turn_id=303)
+    session.intent_name = "llm_reply"
+    session.reply_text = "Quer que eu continue?"
+    session.meta["outcome"] = "llm"
+    orchestrator._session = session
+    orchestrator._fsm.transition(runtime.TurnState.LISTENING, turn_id=session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.COMMITTING_TURN, turn_id=session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.THINKING, turn_id=session.turn_id)
+    orchestrator._fsm.transition(runtime.TurnState.SPEAKING, turn_id=session.turn_id)
+
+    await orchestrator._on_speech_done(runtime.SpeechDone(turn_id=session.turn_id))
+
+    assert adapter.sessions == [{
+        "event": "SESSION_DONE",
+        "turn_id": 303,
+        "outcome": "llm",
+    }]
 
 
 async def test_server_turn_error_sends_session_error_contract() -> None:

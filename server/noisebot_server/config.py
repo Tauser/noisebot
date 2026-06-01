@@ -113,6 +113,12 @@ class OpsConfig:
 
 
 @dataclass(frozen=True)
+class ConversationConfig:
+    followup_enabled: bool
+    followup_window_ms: int
+
+
+@dataclass(frozen=True)
 class NoiseBotServerConfig:
     """Complete server config without secret values."""
 
@@ -124,6 +130,7 @@ class NoiseBotServerConfig:
     audio: AudioConfig
     reconnect: ReconnectConfig
     ops: OpsConfig
+    conversation: ConversationConfig
     log_level: LogLevel
     dry_run: bool
     replay_path: str | None
@@ -178,6 +185,10 @@ class NoiseBotServerConfig:
             "ops": {
                 "port": self.ops.port,
                 "token_configured": self.ops.token_configured,
+            },
+            "conversation": {
+                "followup_enabled": self.conversation.followup_enabled,
+                "followup_window_ms": self.conversation.followup_window_ms,
             },
             "log_level": self.log_level.value,
             "dry_run": self.dry_run,
@@ -336,6 +347,13 @@ def load_config(env_path: str | os.PathLike[str] | None = None) -> NoiseBotServe
             port=_env_int("NOISEBOT_OPS_PORT", 8765),
             token_configured=bool(_env("NOISEBOT_OPS_TOKEN")),
         ),
+        conversation=ConversationConfig(
+            followup_enabled=_env_bool("NOISEBOT_FOLLOWUP_ENABLED", False),
+            followup_window_ms=max(
+                1000,
+                min(30000, _env_int("NOISEBOT_FOLLOWUP_WINDOW_MS", 8000)),
+            ),
+        ),
         log_level=log_level,
         dry_run=_env_bool("NOISEBOT_DRY_RUN", False),
         replay_path=_env("NOISEBOT_REPLAY") or None,
@@ -344,6 +362,7 @@ def load_config(env_path: str | os.PathLike[str] | None = None) -> NoiseBotServe
 
 __all__ = [
     "AudioConfig",
+    "ConversationConfig",
     "DEFAULT_LLM_MODELS",
     "DEFAULT_LLM_PROVIDER",
     "LlmConfig",

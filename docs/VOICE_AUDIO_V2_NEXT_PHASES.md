@@ -588,6 +588,11 @@ Entregas:
   `turn_taking_policy` e `turn_taking_decision` no diagnostico de voz, e o
   historico recente prioriza `turn_taking_decision` antes de descarte/intencao.
   Isso permite validar a Fase L sem abrir o JSON bruto de `/ai/metrics`.
+- Incremento server-only de safety conversacional: follow-up automatico virou
+  opt-in por `NOISEBOT_FOLLOWUP_ENABLED=false` por padrao, com janela limitada
+  por `NOISEBOT_FOLLOWUP_WINDOW_MS` (1s-30s, default 8s quando ligado). Assim o
+  robo nao rearma escuta por pergunta da propria resposta sem modo
+  explicitamente habilitado.
 - Contrato explicito entre `voice_controller`, state machine e sessao v2.
 - Follow-up automatico apenas como opt-in com janela curta, telemetria e
   abort/cancel claros.
@@ -605,8 +610,9 @@ Aceite:
 
 Rollback:
 
-- Desativar follow-up/turn-taking avancado e manter wake manual + barge-in por
-  wake.
+- Manter `NOISEBOT_FOLLOWUP_ENABLED=false` e usar wake manual + barge-in por
+  wake. Para rollback de janela, remover `NOISEBOT_FOLLOWUP_WINDOW_MS` volta ao
+  default de 8s quando o follow-up estiver ligado.
 
 ## Fase M - Release Checklist e Observabilidade Continua
 

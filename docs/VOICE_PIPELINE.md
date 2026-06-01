@@ -137,6 +137,10 @@ O dashboard operacional espelha essa politica: o diagnostico de voz mostra
 `turn_taking_policy` e `turn_taking_decision`, e o historico recente prioriza a
 decisao de turn-taking antes de motivos de descarte/intencao. Isso mantem a
 Fase L validavel visualmente, sem depender do JSON bruto.
+Follow-up automatico permanece fora do caminho default: `NOISEBOT_FOLLOWUP_ENABLED`
+fica falso por padrao, e `NOISEBOT_FOLLOWUP_WINDOW_MS` limita a janela entre
+1s e 30s quando o recurso for explicitamente ligado. Isso preserva wake manual
+como contrato normal e evita loops de reescuta por pergunta gerada pelo robo.
 `voice_capture_session_v2` possui replay/status/cancel via
 `/api/audio/capture-v2` e acompanhamento PCM16 real atras da flag
 `voice_audio_v2_capture_enabled`, desligada por padrao. Com a flag desligada, o
