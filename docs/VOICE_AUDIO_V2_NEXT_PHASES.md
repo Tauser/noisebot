@@ -875,6 +875,38 @@ Passo mais sensivel por tocar loop HAL/I2S:
 - Aceite: zero regressao em wake, captura, playback, Opus/PCM16 e health de
   filas; qualquer I2S recovery fica observavel.
 
+Status em 2026-06-02: N3 esta em andamento com RX distribuido e bridge TX
+despachado pelo Audio IO v2, ainda sem handoff de HAL/TX.
+
+- Incrementos locais fechados:
+  - RX mirror/owner logico: `audio_io_service_v2` observa os frames reais de
+    mic e expoe `rx_owner_*`, `rx_distributor_*` e comparacao de sessao.
+  - Dispatcher RX generico: sound analysis, processor shadow, probe,
+    session mirror, Activity v2, VAD legado e pre-roll passaram a consumir o
+    frame via `audio_io_service_v2_rx_dispatch_frame`.
+  - Bridge TX por dispatch: o envio real `VOICE_START/AUDIO_CHUNK/VOICE_END`
+    continua sob `audio_service`/`voice_capture_session_v2`, mas o audio de mic
+    que alimenta a bridge agora entra como consumidor do dispatcher RX, sem
+    duplicar o bloco legado no loop principal.
+- Validacao local: contrato focado Voice Audio v2 passou e `idf.py build`
+  concluiu sem warnings.
+- Validacao fisica apos flash do hash `9804179`: `/api/audio/io-v2` mostrou
+  `rx_dispatch_last_consumers=8`; na sessao real, `session_rx_dispatch_calls=259`
+  e `session_rx_dispatch_consumers=2072`, exatamente 8 consumidores por frame.
+  Capture v2 ficou dono real do TX (`bridge_tx_owner=true`) com
+  `voice_start/audio/end=true`, 69 chunks / 66240 samples e zero drops.
+  Activity v2 comparou contra o legado com `decision_diverged=false`; Codec v2
+  permaneceu `healthy=true`, worker `running`, drops zero; Playback v2 terminou
+  com fila SAY zero. O comando final `Pare.` virou `local_stop` e respondeu
+  `Pronto, parei.`.
+- Ponto de atencao nao bloqueante: Playback v2 manteve contadores cumulativos
+  de drops durante listening/cancelamento (`say_chunks_dropped_listening`), que
+  sao coerentes com descarte de audio antigo em barge-in; devem ser avaliados
+  por delta em novas rodadas.
+- Proximo incremento N3 recomendado: preparar TX/silencio/recovery dentro do
+  contrato do Audio IO v2, mantendo `audio_service` como unico dono do HAL e
+  sem promover Playback v2 ao speaker ainda.
+
 ### N4 - Playback v2 Assume HAL/Speaker
 
 Promover so depois de I/O v2 previsivel:

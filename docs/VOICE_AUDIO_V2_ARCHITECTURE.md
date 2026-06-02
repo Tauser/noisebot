@@ -231,6 +231,19 @@ Responsabilidade:
 - Nao decidir quando uma conversa comeca.
 - Nao enviar bridge.
 - Nao chamar LLM/STT.
+- Estado N3 em 2026-06-02: o RX real ja passa por owner/distributor/dispatcher
+  em `audio_io_service_v2`, com consumidores registrados pelo `audio_service`
+  para sound analysis, processor shadow, probe, session mirror, Activity v2,
+  VAD legado, pre-roll e bridge TX. Isso removeu o bloco legado duplicado de
+  bridge mic streaming do loop principal, mas nao transfere ownership de bridge
+  nem de HAL para o Audio IO v2.
+- Validacao N3.6 em hardware no hash `9804179`: `rx_dispatch_last_consumers=8`;
+  em sessao real, `session_rx_dispatch_calls=259` e
+  `session_rx_dispatch_consumers=2072`; Capture v2 TX owner ativo com zero
+  drops, Activity v2 sem divergencia, Codec v2 saudavel e Playback v2 com fila
+  SAY final zero.
+- Proximo passo arquitetural: tratar TX/silencio/recovery como contrato
+  observavel do Audio IO v2, mantendo `audio_service` como dono do HAL ate N4.
 
 Invariantes:
 

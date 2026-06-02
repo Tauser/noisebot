@@ -162,6 +162,22 @@ Incremento atual da Fase I:
   cancelamento p50 2,6 ms / p95 3,2 ms, `say_queue_count=0`,
   `say_cancel_count=2`, `say_chunks_cancelled=28` e `ESP_OK`.
 
+Incremento atual da Fase N3:
+
+- `audio_io_service_v2` ja faz owner/distributor/dispatcher do RX real.
+- O dispatcher RX agora alimenta 8 consumidores: sound analysis, processor
+  shadow, probe, session mirror, Activity v2, VAD legado, pre-roll e bridge TX.
+- O bridge TX entrou como callback do dispatch, mas o ownership de bridge e de
+  HAL continua em `audio_service`/`voice_capture_session_v2`; o Audio IO v2 nao
+  chama bridge e nao toca HAL.
+- Validacao fisica pos-flash do hash `9804179`: `/api/audio/io-v2` reportou
+  `rx_dispatch_last_consumers=8`; em sessao real, 259 chamadas de dispatch
+  geraram 2072 consumidores, Capture v2 enviou 69 chunks / 66240 samples com
+  zero drops, Activity v2 ficou `decision_diverged=false`, Codec v2 saudavel e
+  comando `Pare.` virou `local_stop`.
+- Proximo passo seguro: TX/silencio/recovery observavel no contrato Audio IO v2,
+  ainda sem passar speaker/HAL para Playback v2.
+
 ### Wake Word
 
 - Nao refazer agora.
