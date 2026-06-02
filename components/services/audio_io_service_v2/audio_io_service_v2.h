@@ -76,6 +76,12 @@ typedef struct {
     uint32_t session_rx_compare_frame_delta;
     uint32_t session_rx_compare_sample_delta;
     uint32_t session_rx_compare_elapsed_delta_ms;
+    bool tx_owner_observed;
+    uint32_t tx_owner_frames;
+    uint32_t tx_owner_samples;
+    uint32_t tx_owner_last_samples;
+    bool tx_owner_last_silence;
+    esp_err_t tx_owner_last_result;
     uint32_t rx_frames;
     uint32_t tx_frames;
     uint32_t tx_silence_frames;
@@ -109,7 +115,11 @@ void audio_io_service_v2_rx_dispatch_frame(const int16_t *samples,
                                            uint8_t consumer_count,
                                            nb_audio_io_v2_pcm_frame_t *out_frame);
 void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sample_count);
+void audio_io_service_v2_tx_owner_note_frame(uint16_t sample_count,
+                                             bool silence,
+                                             esp_err_t result);
 void audio_io_service_v2_probe_note_tx_silence(esp_err_t result);
+void audio_io_service_v2_note_i2s_recovery(esp_err_t reason);
 esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);
 void audio_io_service_v2_session_rx_mirror_feed(const int16_t *samples,
                                                 uint16_t sample_count);

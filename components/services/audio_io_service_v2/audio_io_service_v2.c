@@ -157,6 +157,12 @@ esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms)
     s_status.tx_silence_frames = 0;
     s_status.i2s_recoveries = 0;
     s_status.dropped_frames = 0;
+    s_status.tx_owner_observed = false;
+    s_status.tx_owner_frames = 0;
+    s_status.tx_owner_samples = 0;
+    s_status.tx_owner_last_samples = 0;
+    s_status.tx_owner_last_silence = false;
+    s_status.tx_owner_last_result = ESP_OK;
     s_status.rms_last = 0;
     s_status.peak_last = 0;
     s_status.rms_max = 0;
@@ -448,20 +454,57 @@ void audio_io_service_v2_session_rx_mirror_finish(uint32_t end_reason,
     taskEXIT_CRITICAL(&s_mux);
 }
 
-void audio_io_service_v2_probe_note_tx_silence(esp_err_t result)
+void audio_io_service_v2_tx_owner_note_frame(uint16_t sample_count,
+                                             bool silence,
+                                             esp_err_t result)
 {
     taskENTER_CRITICAL(&s_mux);
-    if (!s_status.probe_running) {
-        taskEXIT_CRITICAL(&s_mux);
-        return;
+    if (!s_status.initialized) {
+        memset(&s_status, 0, sizeof(s_status));
+        s_status.initialized = true;
+        s_status.last_error = ESP_OK;
     }
 
+    s_status.tx_owner_observed = true;
+    s_status.tx_owner_frames++;
+    s_status.tx_owner_samples += sample_count;
+    s_status.tx_owner_last_samples = sample_count;
+    s_status.tx_owner_last_silence = silence;
+    s_status.tx_owner_last_result = result;
     if (result == ESP_OK) {
         s_status.tx_frames++;
-        s_status.tx_silence_frames++;
+        if (silence) {
+            s_status.tx_silence_frames++;
+        }
     } else {
         s_status.dropped_frames++;
         s_status.last_error = result;
     }
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+void audio_io_service_v2_probe_note_tx_silence(esp_err_t result)
+{
+    taskENTER_CRITICAL(&s_mux);
+    bool running = s_status.probe_running;
+    taskEXIT_CRITICAL(&s_mux);
+    if (!running) {
+        return;
+    }
+
+    audio_io_service_v2_tx_owner_note_frame(NB_AUDIO_IO_V2_CHUNK_SAMPLES,
+                                            true,
+                                            result);
+}
+
+void audio_io_service_v2_note_i2s_recovery(esp_err_t reason)
+{
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.initialized) {
+        memset(&s_status, 0, sizeof(s_status));
+        s_status.initialized = true;
+    }
+    s_status.i2s_recoveries++;
+    s_status.last_error = reason;
     taskEXIT_CRITICAL(&s_mux);
 }

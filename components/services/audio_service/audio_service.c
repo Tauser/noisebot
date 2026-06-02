@@ -315,6 +315,7 @@ static void audio_service_recover_hal(const char *where, esp_err_t err)
 {
     ESP_LOGW(TAG, "recuperando I2S apos falhas em %s: %s",
              where ? where : "audio", esp_err_to_name(err));
+    audio_io_service_v2_note_i2s_recovery(err);
     audio_hal_deinit();
     vTaskDelay(pdMS_TO_TICKS(AUDIO_HAL_RECOVER_DELAY_MS));
     esp_err_t rc = audio_hal_init();
@@ -329,8 +330,10 @@ static void audio_service_recover_hal(const char *where, esp_err_t err)
     esp_vad_reset();
 }
 
-static void audio_note_spk_result(esp_err_t err, const char *where)
+static void audio_note_spk_result(esp_err_t err, const char *where,
+                                  uint16_t sample_count, bool silence)
 {
+    audio_io_service_v2_tx_owner_note_frame(sample_count, silence, err);
     if (err == ESP_OK) {
         s_spk_fail_count = 0;
         return;
@@ -1340,7 +1343,7 @@ static void audio_task(void *arg)
                     }
                     esp_err_t wr = audio_hal_spk_write(s_wav_chunk, WAV_SAMPLES_PER_CHUNK,
                                                        pdMS_TO_TICKS(100));
-                    audio_note_spk_result(wr, "wav");
+                    audio_note_spk_result(wr, "wav", WAV_SAMPLES_PER_CHUNK, false);
                     wrote_audio = true;
                 }
             }
@@ -1360,7 +1363,7 @@ static void audio_task(void *arg)
                     s_bridge_say_chunk.samples[i] = (int16_t)v;
                 }
                 esp_err_t wr = audio_hal_spk_write(s_bridge_say_chunk.samples, n, pdMS_TO_TICKS(100));
-                audio_note_spk_result(wr, "bridge_say");
+                audio_note_spk_result(wr, "bridge_say", n, false);
                 if ((++s_bridge_say_play_count % 64U) == 1U) {
                     ESP_LOGI(TAG, "Bridge SAY playback chunks=%lu q=%u",
                              (unsigned long)s_bridge_say_play_count,
@@ -1390,18 +1393,18 @@ static void audio_task(void *arg)
                                                            NB_AUDIO_CHUNK_FRAMES)) {
                 esp_err_t wr = audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
                                                    pdMS_TO_TICKS(100));
-                audio_note_spk_result(wr, "playback_v2_probe");
+                audio_note_spk_result(wr, "playback_v2_probe",
+                                      NB_AUDIO_CHUNK_FRAMES, false);
                 wrote_audio = true;
             } else if (synth_fill_chunk(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES)) {
                 esp_err_t wr = audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
                                                    pdMS_TO_TICKS(100));
-                audio_note_spk_result(wr, "synth");
+                audio_note_spk_result(wr, "synth", NB_AUDIO_CHUNK_FRAMES, false);
                 wrote_audio = true;
             } else {
                 esp_err_t wr = audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES,
                                                            pdMS_TO_TICKS(100));
-                audio_note_spk_result(wr, "silence");
-                audio_io_service_v2_probe_note_tx_silence(wr);
+                audio_note_spk_result(wr, "silence", NB_AUDIO_CHUNK_FRAMES, true);
             }
         }
 

@@ -263,7 +263,8 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "sound_analysis_tick(frame->samples, frame->sample_count);" in audio_service
     assert "audio_processor_service_feed_shadow(frame->samples, frame->sample_count);" in audio_service
     assert "voice_activity_service_v2_feed_frame(frame->samples," in audio_service
-    assert "audio_io_service_v2_probe_note_tx_silence(wr);" in audio_service
+    assert "audio_io_service_v2_tx_owner_note_frame(sample_count, silence, err);" in audio_service
+    assert "audio_io_service_v2_note_i2s_recovery(err);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_begin((uint32_t)source);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_feed(frame->samples," in audio_service
     assert "{ .cb = rx_dispatch_vad_cb, .ctx = &rx_dispatch }" in audio_service
@@ -285,6 +286,12 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert '\\"session_rx_owner_frames\\":%lu' in web
     assert '\\"session_rx_distributor_frames\\":%lu' in web
     assert '\\"session_rx_dispatch_consumers\\":%lu' in web
+    assert '\\"tx_owner_observed\\":%s' in web
+    assert '\\"tx_owner_frames\\":%lu' in web
+    assert '\\"tx_owner_samples\\":%lu' in web
+    assert '\\"tx_owner_last_samples\\":%lu' in web
+    assert '\\"tx_owner_last_silence\\":%s' in web
+    assert '\\"tx_owner_last_result\\":\\"%s\\"' in web
     assert '\\"session_rx_mirror_active\\":%s' in web
     assert '\\"session_rx_mirror_observed\\":%s' in web
     assert '\\"session_rx_legacy_observed\\":%s' in web
@@ -297,6 +304,8 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "void audio_io_service_v2_rx_dispatch_frame(" in io_h
     assert "nb_audio_io_v2_rx_consumer_t" in io_h
     assert "void audio_io_service_v2_probe_feed_rx_frame(" in io_h
+    assert "void audio_io_service_v2_tx_owner_note_frame(" in io_h
+    assert "void audio_io_service_v2_note_i2s_recovery(" in io_h
     assert "esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);" in io_h
     assert "void audio_io_service_v2_session_rx_mirror_feed(" in io_h
     assert "void audio_io_service_v2_session_rx_mirror_finish(" in io_h
@@ -311,6 +320,12 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "uint32_t session_rx_owner_samples;" in io_h
     assert "uint32_t session_rx_distributor_samples;" in io_h
     assert "uint32_t session_rx_dispatch_consumers;" in io_h
+    assert "bool tx_owner_observed;" in io_h
+    assert "uint32_t tx_owner_frames;" in io_h
+    assert "uint32_t tx_owner_samples;" in io_h
+    assert "uint32_t tx_owner_last_samples;" in io_h
+    assert "bool tx_owner_last_silence;" in io_h
+    assert "esp_err_t tx_owner_last_result;" in io_h
     assert "uint32_t session_rx_mirror_frames;" in io_h
     assert "uint32_t session_rx_legacy_samples;" in io_h
     assert "uint32_t session_rx_compare_elapsed_delta_ms;" in io_h
@@ -394,7 +409,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     ).read_text(encoding="utf-8")
 
     assert "audio_playback_service_v2_fill_probe_chunk(" in audio_service
-    assert 'audio_note_spk_result(wr, "playback_v2_probe");' in audio_service
+    assert 'audio_note_spk_result(wr, "playback_v2_probe",' in audio_service
     assert '{ .uri = "/api/audio/playback-v2"' in web
     assert '{ .uri = "/api/audio/playback-v2/probe"' in web
     assert '{ .uri = "/api/audio/playback-v2/stop"' in web

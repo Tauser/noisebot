@@ -1661,7 +1661,7 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_io_v2_status_t st;
     audio_io_service_v2_get_status(&st);
 
-    char buf[1600];
+    char buf[1900];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"probe_running\":%s,"
              "\"rx_owner_active\":%s,\"rx_owner_observed\":%s,"
@@ -1693,6 +1693,12 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              "\"session_rx_compare_frame_delta\":%lu,"
              "\"session_rx_compare_sample_delta\":%lu,"
              "\"session_rx_compare_elapsed_delta_ms\":%lu,"
+             "\"tx_owner_observed\":%s,"
+             "\"tx_owner_frames\":%lu,"
+             "\"tx_owner_samples\":%lu,"
+             "\"tx_owner_last_samples\":%lu,"
+             "\"tx_owner_last_silence\":%s,"
+             "\"tx_owner_last_result\":\"%s\","
              "\"rx_frames\":%lu,\"tx_frames\":%lu,"
              "\"tx_silence_frames\":%lu,\"i2s_recoveries\":%lu,"
              "\"dropped_frames\":%lu,\"rms_last\":%lu,\"peak_last\":%lu,"
@@ -1738,6 +1744,12 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.session_rx_compare_frame_delta,
              (unsigned long)st.session_rx_compare_sample_delta,
              (unsigned long)st.session_rx_compare_elapsed_delta_ms,
+             st.tx_owner_observed ? "true" : "false",
+             (unsigned long)st.tx_owner_frames,
+             (unsigned long)st.tx_owner_samples,
+             (unsigned long)st.tx_owner_last_samples,
+             st.tx_owner_last_silence ? "true" : "false",
+             esp_err_to_name(st.tx_owner_last_result),
              (unsigned long)st.rx_frames,
              (unsigned long)st.tx_frames,
              (unsigned long)st.tx_silence_frames,
