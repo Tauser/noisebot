@@ -2310,6 +2310,18 @@ Implementação:
   1s e 30s quando o recurso for ligado explicitamente. Com default-off, uma
   pergunta da propria resposta nao rearma escuta sozinha. O dashboard mostra o
   estado e a janela efetivos como leitura para reduzir ambiguidade em teste.
+- [x] Fase N3 avancou o Audio IO v2 para contrato de handoff de speaker em
+  dry-run: `/api/audio/io-v2` expoe `speaker_handoff_*` e os endpoints
+  `/api/audio/io-v2/speaker-handoff/enable|disable` controlam apenas a
+  observacao. Validacao em hardware apos flash do hash `afd885c`: baseline
+  desligado retornou `block_reason=DISABLED`; dry-run iniciou em `NO_TX`, virou
+  `candidate=true`/`ready=true` observando TX e permaneceu
+  `speaker_handoff_active=false`. Turno real curto acumulou
+  `speaker_handoff_frames=18725`, `speaker_handoff_failures=0`,
+  `speaker_handoff_recoveries=0`, `dropped_frames=0` e `i2s_recoveries=0`.
+  Playback v2 fechou fila SAY em zero; Capture v2 manteve TX upstream real sem
+  drops. Evidencia atual em PCM16; repetir com Opus v2 antes de qualquer owner
+  real do speaker.
 
 ---
 

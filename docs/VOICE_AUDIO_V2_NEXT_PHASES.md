@@ -920,9 +920,32 @@ despachado pelo Audio IO v2, ainda sem handoff de HAL/TX.
   zero drops, Activity v2 `decision_diverged=false`, e `Pare.` como
   `local_stop`. Depois de drenar 1 pacote egress residual, `codec-v2 health`
   voltou `status=ok`, sem warnings.
-- Proximo incremento N3 recomendado: transformar essa observabilidade de RX/TX
-  em contrato de handoff de speaker apenas em dry-run/flag, ainda sem passar o
-  HAL para Playback v2.
+- Incremento de handoff de speaker em dry-run fechado nos hashes `c5da270` e
+  `afd885c`: `/api/audio/io-v2` agora expoe `speaker_handoff_supported`,
+  `speaker_handoff_dry_run_enabled`, `speaker_handoff_active`,
+  `speaker_handoff_candidate`, `speaker_handoff_ready`,
+  `speaker_handoff_block_reason` e contadores de frames/samples/falhas. Os
+  endpoints `POST /api/audio/io-v2/speaker-handoff/enable|disable` ligam apenas
+  a observacao; `speaker_handoff_active` permanece `false`, entao Playback v2
+  ainda nao toca HAL/speaker. Validacao local: contrato Voice Audio v2 passou e
+  `idf.py build` concluiu sem warnings.
+- Validacao fisica apos flash do hash `afd885c`: baseline corrigido retornou
+  `speaker_handoff_dry_run_enabled=false` e
+  `speaker_handoff_block_reason=DISABLED`; ao habilitar o dry-run, o estado
+  iniciou em `NO_TX` e depois virou `candidate=true`, `ready=true`,
+  `block_reason=NONE` apenas observando TX. Durante um turno real curto
+  (`ww -> que horas sao`), o dry-run acumulou `speaker_handoff_frames=18725`,
+  `speaker_handoff_samples=4793600`, `speaker_handoff_silence_frames=18288`,
+  com 437 frames nao silenciosos no TX real, `speaker_handoff_failures=0`,
+  `speaker_handoff_recoveries=0`, `dropped_frames=0`, `i2s_recoveries=0` e
+  `speaker_handoff_active=false`. Playback v2 fechou fila SAY em zero
+  (`received=437`, `played=437`, drops cumulativos antigos=66); Capture v2
+  ficou dono real do TX upstream com zero drops. O Codec v2 estava em PCM16
+  nesse teste, portanto a evidencia e N3 dry-run PCM16; repetir com Opus v2
+  ativo antes de promover qualquer owner real.
+- Proximo incremento N3 recomendado: expor o handoff de speaker via proxy/CLI
+  do server e repetir o mesmo dry-run com Opus v2 ativo. Somente depois avaliar
+  um owner real controlado para Playback v2 via contrato Audio IO v2.
 
 ### N4 - Playback v2 Assume HAL/Speaker
 
