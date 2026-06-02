@@ -1078,6 +1078,16 @@ Incremento N4.3 iniciado:
   falhas de I/O (`dropped_frames=0`, `i2s_recoveries=0`, codec health ok), mas
   N4.3 exigiu ajuste para remover a copia extra do provider antes de repetir o
   gate.
+- Validacao fisica apos ajuste `5dfce7a`: depois de reativar Opus e armar
+  `speaker-owner`, o gate ficou `owner_ready=true`, `active=false`,
+  `block_reason=NONE`. No turno real curto, Playback v2 saiu de 262/262 para
+  1017/1017 chunks SAY, delta +755 recebidos/tocados, fila final zero,
+  zero drops, zero cancelamentos e `speaker_owner_active=true`. Audio IO v2
+  confirmou `speaker_handoff_active=true`, `speaker_handoff_ready=true`,
+  `block_reason=NONE`, zero falhas, zero recoveries, zero `dropped_frames` e
+  zero `i2s_recoveries`; `codec-v2 health` ficou `healthy=true/status=ok`.
+  `speaker-owner-disarm` voltou Playback v2 para false/false/false e Audio IO
+  para `DISABLED`.
 
 ### N5 - Reduzir audio_service.c
 

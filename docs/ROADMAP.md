@@ -2382,6 +2382,15 @@ Implementação:
   write fisico do speaker. Primeira validacao fisica acendeu o active-shadow,
   mas nao fechou o gate porque houve 30 drops SAY; o provider foi ajustado para
   evitar copia extra no loop antes de repetir o teste.
+- [x] Fase N4.3 validada em hardware apos ajuste `5dfce7a`: com owner armado,
+  turno real curto fez Playback v2 avancar de 262/262 para 1017/1017 chunks SAY
+  (+755 recebidos/tocados), fila final zero, zero drops, zero cancelamentos e
+  `speaker_owner_active=true`. Audio IO v2 confirmou
+  `speaker_handoff_active=true`, `speaker_handoff_ready=true`,
+  `block_reason=NONE`, zero falhas, zero recoveries, zero `dropped_frames` e
+  zero `i2s_recoveries`; `codec-v2 health` final ficou
+  `healthy=true/status=ok`. O rollback `speaker-owner-disarm` voltou Audio IO
+  para `DISABLED`.
 
 ---
 
