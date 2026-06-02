@@ -19,6 +19,7 @@ from .internal.agent import (
     PiperServerTTS,
     WhisperLocalSTT,
 )
+from .internal.agent.runtime import FirmwareConnected
 from .internal.ops import OpsHttpServer, StatusStore
 from .internal.ops.firmware_diag import FirmwareDiagClient
 from .internal.service import healthcheck_loop
@@ -179,6 +180,12 @@ class NoiseBotServer:
         self._tasks.append(
             asyncio.create_task(healthcheck_loop(), name="nb_healthcheck")
         )
+        self._tasks.append(
+            asyncio.create_task(
+                self._apply_default_audio_codec_on_connect(),
+                name="nb_audio_codec_default",
+            )
+        )
 
         try:
             await self._ops_server.start()
@@ -221,6 +228,14 @@ class NoiseBotServer:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
         log.info("NoiseBotServer: encerrado.")
+
+    async def _apply_default_audio_codec_on_connect(self) -> None:
+        events = self._bus.subscribe(FirmwareConnected, maxsize=4)
+        try:
+            async for _event in EventBus.iter_queue(events):
+                await self._apply_default_audio_codec()
+        finally:
+            self._bus.unsubscribe(events)
 
     async def _apply_default_audio_codec(self) -> None:
         codec = self._config.audio.default_codec
