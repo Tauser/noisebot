@@ -1108,6 +1108,18 @@ Incremento N4.4 iniciado:
   `speaker_frames_prepared` crescendo no mesmo delta de `say_chunks_played`,
   zero drops/cancelamentos, `speaker_handoff_active=true`, Codec v2 saudavel e
   rollback por `speaker-owner-disarm`.
+- Validacao fisica apos flash: baseline limpo, Codec v2 reativado por
+  `transport-enable`, gate estabilizado com `speaker_owner_ready=true` e Audio
+  IO v2 em `block_reason=NONE`. No turno curto real, Playback v2 reportou
+  `speaker_frames_prepared=380`, `speaker_samples_prepared=97280`,
+  `speaker_last_samples=256`, `speaker_last_volume=80`, `say_chunks_received=380`
+  e `say_chunks_played=380`, com fila final zero, zero drops, zero drops durante
+  listening, zero cancelamentos e `speaker_owner_active=true`. Audio IO v2
+  confirmou `speaker_handoff_active=true`, `speaker_handoff_ready=true`,
+  `speaker_handoff_frames=3230`, 380 frames nao silenciosos, zero falhas,
+  zero recoveries, zero `dropped_frames` e zero `i2s_recoveries`; Codec v2 ficou
+  `healthy=true/status=ok`. O rollback `speaker-owner-disarm` voltou Playback v2
+  para false/false/false e Audio IO v2 para `DISABLED`.
 
 ### N5 - Reduzir audio_service.c
 
