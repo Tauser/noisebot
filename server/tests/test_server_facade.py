@@ -5116,7 +5116,7 @@ def test_server_agent_local_intent_answers_curiosity_in_pt_br() -> None:
     assert result.reply_text
     assert "Curiosidade:" in result.reply_text
     assert "idioma errado" not in result.reply_text
-    assert result.expression_id == 4
+    assert result.expression_id == 2
 
 
 def test_server_agent_local_intent_handles_bare_stop_without_llm() -> None:
@@ -5129,7 +5129,7 @@ def test_server_agent_local_intent_handles_bare_stop_without_llm() -> None:
 
     assert result.intent_name == "local_stop"
     assert result.reply_text == "Pronto, parei."
-    assert result.expression_id == 2
+    assert result.expression_id == 0
     assert result.resolution_reason == "direct_stop"
 
 
@@ -5200,6 +5200,28 @@ def test_server_agent_local_intent_treats_transcribed_bye_as_stop_after_barge_in
     assert after_barge.intent_name == "local_stop"
     assert after_barge.reply_text == "Pronto, parei."
     assert after_barge.resolution_reason == "post_barge_stop"
+
+
+@pytest.mark.parametrize(
+    ("phrase", "intent_name", "expression_id"),
+    [
+        ("fique feliz", "local_expression_happy", 1),
+        ("fique curioso", "local_expression_curious", 2),
+        ("fique focado", "local_expression_focused", 4),
+    ],
+)
+def test_server_agent_local_expression_ids_match_firmware(
+    phrase: str,
+    intent_name: str,
+    expression_id: int,
+) -> None:
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match(phrase, turn_id=51)
+
+    assert result.intent_name == intent_name
+    assert result.expression_id == expression_id
 
 
 def test_server_agent_local_volume_intent_emits_device_command() -> None:

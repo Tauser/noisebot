@@ -399,14 +399,15 @@ def _vision_person_analysis_reply(analysis: VisionAnalysis) -> str:
 
 # -- Mapeamentos de intents --------------------------------------------------
 
-# expression_id: 1=ATTENTIVE, 2=NEUTRAL, 3=HAPPY, 4=CURIOUS, 5=FOCUSED
+# expression_id firmware: 0=NEUTRAL, 1=HAPPY, 2=CURIOUS, 3=SLEEPY, 4=FOCUSED
 # action_id:     0=none, 1=nod, 2=shake, 3=look_up, 4=look_down
 # emot_event_id: 2=neutral, 3=happy, 4=curious
 
-_EXPR_NEUTRAL    = 2
-_EXPR_ATTENTIVE  = 1
-_EXPR_HAPPY      = 3
-_EXPR_CURIOUS    = 4
+_EXPR_NEUTRAL    = 0
+_EXPR_ATTENTIVE  = 2
+_EXPR_HAPPY      = 1
+_EXPR_CURIOUS    = 2
+_EXPR_FOCUSED    = 4
 _EMOT_NEUTRAL    = 2
 _EMOT_HAPPY      = 3
 _EMOT_CURIOUS    = 4
@@ -868,7 +869,7 @@ class LocalIntentProvider:
                     turn_id=turn_id,
                     intent_name="local_expression_focused",
                     reply_text="Pronto, focado.",
-                    expression_id=5,
+                    expression_id=_EXPR_FOCUSED,
                     action_id=_ACTION_NONE,
                     emot_event_id=_EMOT_NEUTRAL,
                 )
