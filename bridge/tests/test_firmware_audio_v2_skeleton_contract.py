@@ -456,14 +456,21 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert '{ .uri = "/api/audio/playback-v2"' in web
     assert '{ .uri = "/api/audio/playback-v2/probe"' in web
     assert '{ .uri = "/api/audio/playback-v2/stop"' in web
+    assert '{ .uri = "/api/audio/playback-v2/speaker-owner/arm"' in web
+    assert '{ .uri = "/api/audio/playback-v2/speaker-owner/disarm"' in web
     assert "audio_service_is_busy()" in web
     assert "esp_err_t audio_playback_service_v2_probe_start(" in playback_h
     assert "bool audio_playback_service_v2_fill_probe_chunk(" in playback_h
+    assert "esp_err_t audio_playback_service_v2_speaker_owner_arm(void);" in playback_h
+    assert "esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);" in playback_h
     assert "audio_playback_service_v2_say_enqueue(" in playback_h
     assert "audio_playback_service_v2_say_dequeue(" in playback_h
     assert "audio_playback_service_v2_say_cancel(" in playback_h
     assert "bridge_say_observer" in playback_h
     assert "bridge_say_queue_owner" in playback_h
+    assert "bool speaker_owner_requested;" in playback_h
+    assert "bool speaker_owner_ready;" in playback_h
+    assert "bool speaker_owner_active;" in playback_h
     assert "say_chunks_received" in playback_h
     assert "audio_playback_service_v2_say_enqueue(" in audio_service
     assert "audio_playback_service_v2_say_dequeue(" in audio_service
@@ -471,7 +478,11 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "audio_playback_service_v2_note_say_dropped(" in audio_service
     assert "bridge_say_observer" in web
     assert "bridge_say_queue_owner" in web
+    assert '\\"speaker_owner_requested\\":%s' in web
+    assert '\\"speaker_owner_ready\\":%s' in web
+    assert '\\"speaker_owner_active\\":%s' in web
     assert "say_chunks_received" in web
+    assert "audio_io_service_v2_set_speaker_handoff_owner_requested(" in playback_c
     assert "audio_hal_" not in playback_c
 
 

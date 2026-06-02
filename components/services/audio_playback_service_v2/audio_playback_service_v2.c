@@ -3,6 +3,7 @@
  */
 
 #include "audio_playback_service_v2.h"
+#include "audio_io_service_v2.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/portmacro.h"
@@ -27,6 +28,18 @@ static void playback_v2_note_queue_count(uint32_t queue_count)
     s_status.bridge_say_queue_owner = (s_say_q != NULL);
     s_status.say_queue_depth = NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS;
     s_status.say_queue_count = queue_count;
+}
+
+static void playback_v2_mirror_speaker_owner(nb_audio_playback_v2_status_t *status,
+                                             const nb_audio_io_v2_status_t *io)
+{
+    if (status == NULL || io == NULL) {
+        return;
+    }
+
+    status->speaker_owner_requested = io->speaker_handoff_owner_requested;
+    status->speaker_owner_ready = io->speaker_handoff_owner_ready;
+    status->speaker_owner_active = io->speaker_handoff_active;
 }
 
 esp_err_t audio_playback_service_v2_init(void)
@@ -85,9 +98,13 @@ void audio_playback_service_v2_get_status(nb_audio_playback_v2_status_t *out)
         return;
     }
 
+    nb_audio_io_v2_status_t io;
+    audio_io_service_v2_get_status(&io);
+
     taskENTER_CRITICAL(&s_mux);
     *out = s_status;
     taskEXIT_CRITICAL(&s_mux);
+    playback_v2_mirror_speaker_owner(out, &io);
 }
 
 esp_err_t audio_playback_service_v2_probe_start(uint32_t duration_ms, uint16_t amplitude)
@@ -200,6 +217,34 @@ bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_co
     }
     taskEXIT_CRITICAL(&s_mux);
     return true;
+}
+
+esp_err_t audio_playback_service_v2_speaker_owner_arm(void)
+{
+    esp_err_t err = audio_io_service_v2_set_speaker_handoff_owner_requested(true);
+
+    taskENTER_CRITICAL(&s_mux);
+    if (err == ESP_OK) {
+        s_status.speaker_owner_requested = true;
+    }
+    s_status.last_error = err;
+    taskEXIT_CRITICAL(&s_mux);
+    return err;
+}
+
+esp_err_t audio_playback_service_v2_speaker_owner_disarm(void)
+{
+    esp_err_t err = audio_io_service_v2_set_speaker_handoff_owner_requested(false);
+
+    taskENTER_CRITICAL(&s_mux);
+    if (err == ESP_OK) {
+        s_status.speaker_owner_requested = false;
+        s_status.speaker_owner_ready = false;
+        s_status.speaker_owner_active = false;
+    }
+    s_status.last_error = err;
+    taskEXIT_CRITICAL(&s_mux);
+    return err;
 }
 
 esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t count)

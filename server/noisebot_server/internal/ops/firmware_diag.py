@@ -189,6 +189,12 @@ class FirmwareDiagClient:
             raise FirmwareDiagError("api/audio/playback-v2: resposta invalida")
         return payload
 
+    def audio_playback_v2_speaker_owner_arm(self) -> dict[str, Any]:
+        return self._post_json("api/audio/playback-v2/speaker-owner/arm")
+
+    def audio_playback_v2_speaker_owner_disarm(self) -> dict[str, Any]:
+        return self._post_json("api/audio/playback-v2/speaker-owner/disarm")
+
     def audio_io_v2_status(self) -> dict[str, Any]:
         payload = self._get_json("api/audio/io-v2")
         if not isinstance(payload, dict):

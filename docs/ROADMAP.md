@@ -2341,6 +2341,14 @@ Implementação:
   `speaker_handoff_frames=1368`, zero falhas, zero recoveries, zero drops e
   zero `i2s_recoveries`. `owner-disarm` voltou para `DISABLED`. O owner real do
   speaker fica reservado para N4.
+- [ ] Fase N4 iniciada com gate de owner no namespace de Playback v2:
+  `/api/audio/playback-v2/speaker-owner/arm|disarm` e CLI
+  `debug playback-v2 speaker-owner-arm|speaker-owner-disarm` delegam para o
+  owner gate do Audio IO v2 e espelham `speaker_owner_requested`,
+  `speaker_owner_ready` e `speaker_owner_active` no status de Playback v2. Este
+  primeiro incremento nao escreve no HAL e preserva `audio_service.c` como dono
+  fisico do speaker. Validacao local: contrato Voice Audio v2 `7 passed`, server
+  facade `171 passed`, server suite `188 passed` e `idf.py build` completo.
 
 ---
 

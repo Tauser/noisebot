@@ -144,7 +144,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     playback_v2 = debug_sub.add_parser("playback-v2")
     playback_v2.add_argument(
         "action",
-        choices=["status", "delta"],
+        choices=["status", "delta", "speaker-owner-arm", "speaker-owner-disarm"],
         nargs="?",
         default="status",
     )
@@ -654,6 +654,10 @@ def run_debug_command(args: argparse.Namespace) -> None:
         client = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=1.5)
         if args.action == "delta":
             payload = _run_playback_v2_delta(client, no_prompt=args.no_prompt)
+        elif args.action == "speaker-owner-arm":
+            payload = client.audio_playback_v2_speaker_owner_arm()
+        elif args.action == "speaker-owner-disarm":
+            payload = client.audio_playback_v2_speaker_owner_disarm()
         else:
             payload = client.audio_playback_v2_status()
 
@@ -913,6 +917,9 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
         f"- ok: {payload.get('ok')}",
         f"- observer: {payload.get('bridge_say_observer')}",
         f"- queue_owner: {payload.get('bridge_say_queue_owner')}",
+        f"- speaker_owner: requested={payload.get('speaker_owner_requested')} "
+        f"ready={payload.get('speaker_owner_ready')} "
+        f"active={payload.get('speaker_owner_active')}",
         f"- playing: {payload.get('playing')}",
         f"- queue: {payload.get('say_queue_count')}/{payload.get('say_queue_depth')}",
         f"- received/played: {payload.get('say_chunks_received')}/"

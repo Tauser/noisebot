@@ -27,6 +27,9 @@ typedef struct {
     bool stop_requested;
     bool bridge_say_observer;
     bool bridge_say_queue_owner;
+    bool speaker_owner_requested;
+    bool speaker_owner_ready;
+    bool speaker_owner_active;
     uint32_t probe_duration_ms;
     uint32_t probe_elapsed_ms;
     uint32_t queued_chunks;
@@ -59,6 +62,8 @@ esp_err_t audio_playback_service_v2_probe_start(uint32_t duration_ms, uint16_t a
 esp_err_t audio_playback_service_v2_probe_stop(void);
 bool audio_playback_service_v2_is_playing(void);
 bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_count);
+esp_err_t audio_playback_service_v2_speaker_owner_arm(void);
+esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);
 
 esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t count);
 bool audio_playback_service_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out);

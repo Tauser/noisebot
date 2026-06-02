@@ -999,6 +999,21 @@ Promover so depois de I/O v2 previsivel:
 - Aceite: resposta curta/longa, cancelamento, no-echo, fila SAY e rollback
   PCM16/Opus continuam verdes.
 
+Incremento N4.1 iniciado:
+
+- Playback v2 ganhou o gate explicito `speaker-owner arm|disarm`, exposto por
+  `/api/audio/playback-v2/speaker-owner/arm|disarm` e pelo CLI
+  `debug playback-v2 speaker-owner-arm|speaker-owner-disarm`.
+- O gate ainda delega para `audio_io_service_v2_set_speaker_handoff_owner_requested()`
+  e apenas espelha `speaker_owner_requested`, `speaker_owner_ready` e
+  `speaker_owner_active` em `/api/audio/playback-v2`; Playback v2 ainda nao
+  chama `audio_hal_*` nem escreve direto no HAL.
+- Validacao local antes do flash: contrato focado Voice Audio v2 verde
+  (`7 passed`), facade do server verde (`171 passed`), suite do server verde
+  (`188 passed`) e `idf.py build` completo sem warnings. Proximo gate fisico:
+  flashar e validar arm/disarm pelo namespace de Playback v2, confirmando que
+  `speaker_owner_active` permanece `false` ate a proxima promocao controlada.
+
 ### N5 - Reduzir audio_service.c
 
 Ultima etapa, apos donos reais validados:

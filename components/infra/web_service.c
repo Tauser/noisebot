@@ -2689,11 +2689,14 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_playback_v2_status_t st;
     audio_playback_service_v2_get_status(&st);
 
-    char buf[1024];
+    char buf[1200];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
              "\"bridge_say_queue_owner\":%s,"
+             "\"speaker_owner_requested\":%s,"
+             "\"speaker_owner_ready\":%s,"
+             "\"speaker_owner_active\":%s,"
              "\"probe_duration_ms\":%lu,"
              "\"probe_elapsed_ms\":%lu,\"queued_chunks\":%lu,"
              "\"played_chunks\":%lu,\"dropped_chunks\":%lu,"
@@ -2710,6 +2713,9 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              st.stop_requested ? "true" : "false",
              st.bridge_say_observer ? "true" : "false",
              st.bridge_say_queue_owner ? "true" : "false",
+             st.speaker_owner_requested ? "true" : "false",
+             st.speaker_owner_ready ? "true" : "false",
+             st.speaker_owner_active ? "true" : "false",
              (unsigned long)st.probe_duration_ms,
              (unsigned long)st.probe_elapsed_ms,
              (unsigned long)st.queued_chunks,
@@ -2777,6 +2783,24 @@ static esp_err_t handle_api_audio_playback_v2_probe(httpd_req_t *req)
 static esp_err_t handle_api_audio_playback_v2_stop(httpd_req_t *req)
 {
     esp_err_t err = audio_playback_service_v2_probe_stop();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "409 Conflict");
+    }
+    return send_audio_playback_v2_status(req, err);
+}
+
+static esp_err_t handle_api_audio_playback_v2_speaker_owner_arm(httpd_req_t *req)
+{
+    esp_err_t err = audio_playback_service_v2_speaker_owner_arm();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "409 Conflict");
+    }
+    return send_audio_playback_v2_status(req, err);
+}
+
+static esp_err_t handle_api_audio_playback_v2_speaker_owner_disarm(httpd_req_t *req)
+{
+    esp_err_t err = audio_playback_service_v2_speaker_owner_disarm();
     if (err != ESP_OK) {
         httpd_resp_set_status(req, "409 Conflict");
     }
@@ -4118,6 +4142,8 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/playback-v2", .method = HTTP_GET, .handler = handle_api_audio_playback_v2_status },
     { .uri = "/api/audio/playback-v2/probe", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_probe },
     { .uri = "/api/audio/playback-v2/stop", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_stop },
+    { .uri = "/api/audio/playback-v2/speaker-owner/arm", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_speaker_owner_arm },
+    { .uri = "/api/audio/playback-v2/speaker-owner/disarm", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_speaker_owner_disarm },
     { .uri = "/api/audio/capture-v2", .method = HTTP_GET, .handler = handle_api_voice_capture_v2_status },
     { .uri = "/api/audio/capture-v2/replay", .method = HTTP_POST, .handler = handle_api_voice_capture_v2_replay },
     { .uri = "/api/audio/capture-v2/cancel", .method = HTTP_POST, .handler = handle_api_voice_capture_v2_cancel },
