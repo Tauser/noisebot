@@ -1044,6 +1044,18 @@ Incremento N4.2 iniciado:
   resposta real curta e confirmar `speaker_owner_active=true` /
   `speaker_handoff_active=true`, zero falhas, zero recoveries, zero drops e
   rollback por `speaker-owner-disarm`.
+- Validacao fisica apos flash de `2bfb936`: apos `codec-v2 transport-enable`,
+  o gate armado ficou `speaker_handoff_owner_requested=true`,
+  `speaker_handoff_owner_ready=true`, `speaker_handoff_active=false` e
+  `block_reason=NONE`. No turno real curto `ww -> que horas sao?`, Playback v2
+  tocou 373/373 chunks SAY, fila final zero e zero drops; Playback v2 reportou
+  `speaker_owner_active=true` e Audio IO v2 reportou
+  `speaker_handoff_active=true`, `speaker_handoff_ready=true`,
+  `block_reason=NONE`, 9219 frames de handoff, 8846 silenciosos, zero falhas,
+  zero recoveries, zero `dropped_frames` e zero `i2s_recoveries`.
+  `speaker-owner-disarm` voltou o gate para `DISABLED`. Havia 1 pacote egress
+  Opus residual; `codec-v2 egress-drain` drenou e o health final voltou
+  `healthy=true`, `status=ok`, zero drops e `opus_codec_error=0`.
 
 ### N5 - Reduzir audio_service.c
 

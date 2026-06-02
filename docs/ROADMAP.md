@@ -2365,6 +2365,15 @@ Implementação:
   Playback v2 ainda nao chama `audio_hal_*`; `audio_service.c` segue escrevendo
   no HAL e o Audio IO v2 funciona como barreira/telemetria. Validacao local:
   contrato Voice Audio v2 `7 passed` e `idf.py build` completo.
+- [x] Fase N4.2 validada em hardware apos flash de `2bfb936`: com owner armado
+  e Opus reativado por `codec-v2 transport-enable`, turno real curto
+  `ww -> que horas sao?` tocou 373/373 chunks SAY, fila final zero e zero
+  drops. Playback v2 reportou `speaker_owner_active=true`; Audio IO v2 reportou
+  `speaker_handoff_active=true`, `speaker_handoff_ready=true`,
+  `block_reason=NONE`, 9219 frames de handoff, zero falhas, zero recoveries,
+  zero `dropped_frames` e zero `i2s_recoveries`. `speaker-owner-disarm` voltou
+  para `DISABLED`; egress drain limpou 1 pacote residual e `codec-v2 health`
+  final voltou `healthy=true/status=ok`.
 
 ---
 
