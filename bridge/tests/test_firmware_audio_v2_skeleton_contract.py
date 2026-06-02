@@ -245,6 +245,10 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "rx_dispatch_io_probe_cb" in audio_service
     assert "rx_dispatch_session_mirror_cb" in audio_service
     assert "rx_dispatch_activity_cb" in audio_service
+    assert "rx_dispatch_vad_cb" in audio_service
+    assert "rx_dispatch_preroll_cb" in audio_service
+    assert "wake_service_feed(dispatch->wake_samples, frame->sample_count);" in audio_service
+    assert "vad_update(dispatch->mic_samples," in audio_service
     assert "audio_io_service_v2_probe_feed_rx_frame(frame->samples, frame->sample_count);" in audio_service
     assert "nb_audio_io_v2_pcm_frame_t rx_frame = {0};" in audio_service
     assert "audio_io_service_v2_rx_dispatch_frame(s_sa_buf," in audio_service
@@ -253,13 +257,15 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "uint16_t rx_sample_count = rx_frame.sample_count;" in audio_service
     assert audio_service.index(
         "audio_io_service_v2_rx_dispatch_frame(s_sa_buf,"
-    ) < audio_service.index("vad_update(s_mic_proc, rx_samples, rx_sample_count, wrote_audio);")
+    ) < audio_service.index("/* ── 4c. Bridge mic streaming")
     assert "sound_analysis_tick(frame->samples, frame->sample_count);" in audio_service
     assert "audio_processor_service_feed_shadow(frame->samples, frame->sample_count);" in audio_service
     assert "voice_activity_service_v2_feed_frame(frame->samples," in audio_service
     assert "audio_io_service_v2_probe_note_tx_silence(wr);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_begin((uint32_t)source);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_feed(frame->samples," in audio_service
+    assert "{ .cb = rx_dispatch_vad_cb, .ctx = &rx_dispatch }" in audio_service
+    assert "{ .cb = rx_dispatch_preroll_cb, .ctx = &rx_dispatch }" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_finish((uint32_t)reason," in audio_service
     assert "legacy_tx_frames" in audio_service
     assert "legacy_tx_samples" in audio_service

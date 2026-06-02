@@ -609,10 +609,17 @@ static int esp_vad_update(const int16_t *pcm, size_t n, bool muted)
     return s.esp_vad_last_state;
 }
 
+static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
+                       bool local_output_active);
+
 typedef struct {
     bool io_v2_session_context;
     bool activity_session_context;
     bool activity_playback_context;
+    bool activity_bridge_say_context;
+    bool local_output_active;
+    const int32_t *mic_samples;
+    const int16_t *wake_samples;
 } rx_dispatch_context_t;
 
 static void rx_dispatch_sound_analysis_cb(const nb_audio_io_v2_pcm_frame_t *frame,
@@ -657,6 +664,41 @@ static void rx_dispatch_activity_cb(const nb_audio_io_v2_pcm_frame_t *frame,
                                          frame->sample_count,
                                          dispatch->activity_session_context,
                                          dispatch->activity_playback_context);
+}
+
+static void rx_dispatch_vad_cb(const nb_audio_io_v2_pcm_frame_t *frame,
+                               void *ctx)
+{
+    const rx_dispatch_context_t *dispatch = (const rx_dispatch_context_t *)ctx;
+    if (dispatch == NULL || dispatch->mic_samples == NULL) {
+        return;
+    }
+    vad_update(dispatch->mic_samples,
+               frame->samples,
+               frame->sample_count,
+               dispatch->local_output_active);
+}
+
+static void rx_dispatch_preroll_cb(const nb_audio_io_v2_pcm_frame_t *frame,
+                                   void *ctx)
+{
+    const rx_dispatch_context_t *dispatch = (const rx_dispatch_context_t *)ctx;
+    if (dispatch == NULL || dispatch->wake_samples == NULL) {
+        return;
+    }
+    if (!dispatch->io_v2_session_context &&
+        (!dispatch->local_output_active || dispatch->activity_bridge_say_context)) {
+        wake_service_feed(dispatch->wake_samples, frame->sample_count);
+    }
+    if (frame->sample_count > 0U) {
+        memcpy(s_preroll_buf[s_preroll_head],
+               frame->samples,
+               (size_t)frame->sample_count * sizeof(int16_t));
+        s_preroll_head = (uint8_t)((s_preroll_head + 1U) % PREROLL_CHUNKS);
+        if (s_preroll_count < PREROLL_CHUNKS) {
+            s_preroll_count++;
+        }
+    }
 }
 
 static bool listen_start_bridge_capture(void)
@@ -1288,13 +1330,16 @@ static void audio_task(void *arg)
         xSemaphoreTake(s.mutex, portMAX_DELAY);
         rx_dispatch.io_v2_session_context = s.listen_session_active;
         rx_dispatch.activity_session_context = s.listen_session_active;
-        bool activity_bridge_say_context = s.bridge_say_playing;
+        rx_dispatch.activity_bridge_say_context = s.bridge_say_playing;
         xSemaphoreGive(s.mutex);
+        rx_dispatch.local_output_active = wrote_audio;
+        rx_dispatch.mic_samples = s_mic_proc;
+        rx_dispatch.wake_samples = s_wake_buf;
         rx_dispatch.activity_playback_context =
             wrote_audio ||
             play_state == PLAY_ACTIVE ||
             play_state == PLAY_BRIDGE_SAY ||
-            activity_bridge_say_context ||
+            rx_dispatch.activity_bridge_say_context ||
             audio_playback_service_v2_is_playing();
         const nb_audio_io_v2_rx_consumer_t rx_consumers[] = {
             { .cb = rx_dispatch_sound_analysis_cb, .ctx = NULL },
@@ -1302,6 +1347,8 @@ static void audio_task(void *arg)
             { .cb = rx_dispatch_io_probe_cb, .ctx = NULL },
             { .cb = rx_dispatch_session_mirror_cb, .ctx = &rx_dispatch },
             { .cb = rx_dispatch_activity_cb, .ctx = &rx_dispatch },
+            { .cb = rx_dispatch_vad_cb, .ctx = &rx_dispatch },
+            { .cb = rx_dispatch_preroll_cb, .ctx = &rx_dispatch },
         };
         nb_audio_io_v2_pcm_frame_t rx_frame = {0};
         audio_io_service_v2_rx_dispatch_frame(s_sa_buf,
@@ -1313,21 +1360,6 @@ static void audio_task(void *arg)
                                               &rx_frame);
         const int16_t *rx_samples = rx_frame.samples;
         uint16_t rx_sample_count = rx_frame.sample_count;
-
-        /* ── 4. VAD ─────────────────────────────────────────────────────── */
-        vad_update(s_mic_proc, rx_samples, rx_sample_count, wrote_audio);
-
-        /* ── 4b. Alimentar pre-roll ring buffer e wake_service ──────────── */
-        if (!s.listen_session_active && (!wrote_audio || s.bridge_say_playing)) {
-            wake_service_feed(s_wake_buf, rx_sample_count);
-        }
-        if (rx_sample_count > 0U) {
-            memcpy(s_preroll_buf[s_preroll_head],
-                   rx_samples,
-                   (size_t)rx_sample_count * sizeof(int16_t));
-            s_preroll_head = (uint8_t)((s_preroll_head + 1U) % PREROLL_CHUNKS);
-            if (s_preroll_count < PREROLL_CHUNKS) s_preroll_count++;
-        }
 
         /* ── 4c. Bridge mic streaming ────────────────────────────────────── */
         if (s.listen_session_active && s.bridge_tx_active && rx_sample_count > 0U) {
