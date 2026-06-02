@@ -2421,14 +2421,23 @@ Implementação:
   zero cancelamentos, `speaker_handoff_active=true`, `block_reason=NONE`, zero
   falhas/recoveries/I2S recoveries e Codec v2 `healthy=true/status=ok`.
   `speaker-owner-disarm` voltou Audio IO v2 para `DISABLED`.
-- [ ] Fase N4.6 iniciada: Playback v2 passou a assumir a politica de idle da
+- [x] Fase N4.6 validada em hardware: Playback v2 passou a assumir a politica de idle da
   fila SAY por `audio_playback_service_v2_speaker_note_empty()`. O
   `audio_service.c` ainda faz a transicao final para `PLAY_IDLE` e emite
   `PLAYBACK_END`, mas deixa de decidir sozinho a janela de jitter/idle. O
   endpoint `/api/audio/playback-v2` agora expoe `speaker_empty_polls`,
   `speaker_empty_ms` e `speaker_idle_end_count`. Validacao local antes do flash:
   contrato Voice Audio v2 `7 passed`, server facade `171 passed`,
-  `git diff --check` limpo e `idf.py build` sem warnings.
+  `git diff --check` limpo e `idf.py build` sem warnings. Validacao fisica apos
+  flash: primeira rodada confirmou prepared/committed/played em lockstep
+  (387/387/387), `speaker_idle_end_count=1`, zero falhas de commit, Audio IO sem
+  falhas/recoveries e Codec v2 saudavel, mas registrou 1 drop SAY. Repeticao
+  com o gate rearmado fechou por delta: counters foram de 387 para 775
+  prepared/committed/played (+388), `say_chunks_dropped` permaneceu em 1
+  (zero drops novos), `speaker_idle_end_count` subiu de 1 para 2,
+  `speaker_commit_failures=0`, Audio IO ficou sem falhas/recoveries/dropped/I2S
+  recoveries e Codec v2 voltou a `healthy=true/status=ok` apos drenar 1 pacote
+  egress residual. `speaker-owner-disarm` voltou Audio IO v2 para `DISABLED`.
 
 ---
 

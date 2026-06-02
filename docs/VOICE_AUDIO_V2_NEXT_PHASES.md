@@ -1175,6 +1175,23 @@ Incremento N4.6 iniciado:
   `speaker_empty_polls` crescendo apenas no final/jitter da fala,
   `speaker_idle_end_count>=1`, fila final zero, zero drops/cancelamentos, Audio
   IO v2 sem falhas/recoveries e rollback por `speaker-owner-disarm`.
+- Validacao fisica apos flash: baseline limpo, Codec v2 reativado por
+  `transport-enable`, gate estabilizado com `speaker_owner_ready=true` e Audio
+  IO v2 em `block_reason=NONE`. A primeira rodada real confirmou o novo
+  contrato de idle (`speaker_empty_polls=87`, `speaker_empty_ms=0`,
+  `speaker_idle_end_count=1`) e manteve prepared/committed/played em lockstep
+  (`387/387/387`), `speaker_commit_failures=0`, fila final zero, Audio IO sem
+  falhas/recoveries/dropped/I2S recoveries e Codec v2 saudavel, mas acumulou
+  1 drop SAY. Repeticao com o gate rearmado fechou por delta: Playback v2 foi de
+  387 para 775 prepared/committed/played (+388), `say_chunks_dropped` permaneceu
+  em 1 (zero drops novos), `speaker_idle_end_count` subiu de 1 para 2,
+  `speaker_empty_polls` foi para 163, `speaker_commit_failures=0` e
+  `speaker_last_commit_result=ESP_OK`. Audio IO v2 manteve
+  `speaker_handoff_active=true`, `block_reason=NONE`, zero falhas, zero
+  recoveries, zero `dropped_frames` e zero `i2s_recoveries`; Codec v2 ficou
+  `healthy=true/status=ok` apos drenar 1 pacote egress residual. O rollback
+  `speaker-owner-disarm` voltou Playback v2 para false/false/false e Audio IO v2
+  para `DISABLED`.
 
 ### N5 - Reduzir audio_service.c
 
