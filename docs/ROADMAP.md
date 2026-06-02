@@ -2778,11 +2778,15 @@ Metas de produto:
 
 **Critérios de aceitação:**
 
-- [ ] Fixtures offline cobrem hora, status, ruído, silêncio e comando de corpo.
+- [x] Fixtures offline de baseline cobrem amostras reais boas e rejeitadas:
+  `docs/VOICE_REPLAY_BASELINE.json` referencia 2 comandos curtos aceitos e 2
+  amostras de ruido/mesa vibrando rejeitadas em `voice_samples/`.
 - [x] `--replay` retorna resultado estruturado com rota, outcome e detalhe diagnóstico.
 - [ ] Métricas aparecem no log final de cada sessão.
 - [ ] Checklist de hardware documenta comandos, resultado esperado e logs-chave.
-- [ ] Antes de mexer em LLM ou protocolo, replay precisa continuar verde.
+- [x] Antes de mexer em LLM ou protocolo, replay precisa continuar verde:
+  `bridge/tests/test_voice_check.py` valida o baseline com 4 fixtures e
+  `bridge/tests/test_replay.py` garante outcomes esperados.
 
 ---
 

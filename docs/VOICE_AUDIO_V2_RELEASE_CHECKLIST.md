@@ -364,6 +364,30 @@ Bloqueia release:
 - Reconexao acontece sem respeitar o backoff.
 - Shutdown deixa adapter ativo ou estado conectado falso-positivo.
 
+## Gate 9 - Replay Offline De Voz
+
+Verde:
+
+- `docs/VOICE_REPLAY_BASELINE.json` referencia fixtures reais em
+  `voice_samples/`.
+- O baseline contem amostras boas aceitas e amostras ruins rejeitadas.
+- `bridge/tests/test_voice_check.py` passa e reporta `4 fixtures ok`.
+- `bridge/tests/test_replay.py` confirma que `--replay` retorna resultado
+  estruturado e que os outcomes do baseline continuam coerentes.
+
+Comando:
+
+```powershell
+cmd.exe /c "set PYTHONPATH=D:\Projetos\Noisebot\bridge&& C:\Users\Tauser\AppData\Local\Python\pythoncore-3.14-64\python.exe -m pytest bridge\tests\test_voice_check.py bridge\tests\test_replay.py"
+```
+
+Bloqueia release:
+
+- Fixture do baseline ausente em `voice_samples/`.
+- Amostra boa cai como rejeitada.
+- Amostra ruim passa como comando valido.
+- `--replay` perde outcome estruturado ou detalhes diagnosticos.
+
 ## Registro Da Rodada
 
 Para cada release local de voz, registrar:
@@ -371,8 +395,8 @@ Para cada release local de voz, registrar:
 - Data, branch e hash do firmware/server testado.
 - Comandos executados e arquivos JSON/Markdown gerados.
 - Resultado de `codec-v2 health`, `capture-v2 status`, Playback v2 SAY,
-  `codec-ab`, `barge-live`, `no-echo-live`, reconexao TCP/UART e
-  `/ai/metrics`.
+  `codec-ab`, `barge-live`, `no-echo-live`, reconexao TCP/UART, replay offline
+  e `/ai/metrics`.
 - Codec ativo no inicio e no fim.
 - Se rollback PCM16 foi exercitado.
 - Qualquer falha real deve virar teste, replay ou checklist antes de novo
@@ -384,7 +408,7 @@ Esta Fase M parcial esta pronta quando:
 
 - O checklist acima esta referenciado pelos docs de voz.
 - Os gates protegem Opus v2, Playback v2 dono da fila SAY, Capture v2 desligado,
-  barge/no-echo, reconexao TCP/UART e completude TTS/texto.
+  barge/no-echo, reconexao TCP/UART, replay offline e completude TTS/texto.
 - O documento deixa explicito que wake, VAD, AEC, follow-up, `audio_service.c`
   e HAL ficam fora do escopo.
 - PCM16 rollback continua como criterio obrigatorio.
