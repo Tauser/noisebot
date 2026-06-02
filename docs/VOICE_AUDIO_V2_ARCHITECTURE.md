@@ -281,6 +281,10 @@ Invariantes:
 - Na Fase N4.2, Playback v2 marca o active-shadow do speaker por meio do
   `audio_service`/Audio IO v2 somente para frames SAY reais; ainda nao ha
   chamada `audio_hal_*` dentro de `audio_playback_service_v2`.
+- Na Fase N4.3, Playback v2 tambem fornece o proximo frame SAY por
+  `audio_playback_service_v2_speaker_next_frame()`. O `audio_service` continua
+  dono do volume e do write fisico no HAL, mas a selecao do frame de speaker
+  deixa de acessar diretamente o dequeue da fila.
 
 ### Voice Activity v2
 

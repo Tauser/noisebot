@@ -2374,6 +2374,12 @@ Implementação:
   zero `dropped_frames` e zero `i2s_recoveries`. `speaker-owner-disarm` voltou
   para `DISABLED`; egress drain limpou 1 pacote residual e `codec-v2 health`
   final voltou `healthy=true/status=ok`.
+- [ ] Fase N4.3 iniciada com provider explicito de frame SAY para speaker:
+  `audio_playback_service_v2_speaker_next_frame()` drena a fila SAY v2 e
+  entrega samples/count ao `audio_service`, que continua aplicando volume,
+  escrevendo no HAL e anotando o resultado no Audio IO v2. O objetivo e mover a
+  selecao/fornecimento do frame para Playback v2 sem ainda transferir o write
+  fisico do speaker.
 
 ---
 

@@ -1057,6 +1057,21 @@ Incremento N4.2 iniciado:
   Opus residual; `codec-v2 egress-drain` drenou e o health final voltou
   `healthy=true`, `status=ok`, zero drops e `opus_codec_error=0`.
 
+Incremento N4.3 iniciado:
+
+- Playback v2 ganhou `audio_playback_service_v2_speaker_next_frame()` como
+  provider explicito de frame SAY para speaker. A funcao drena a fila SAY v2 e
+  entrega samples/count ao owner fisico atual.
+- `audio_service.c` passou a pedir o proximo frame de speaker para Playback v2
+  no estado `PLAY_BRIDGE_SAY`, em vez de chamar diretamente o dequeue da fila.
+  `audio_service` ainda aplica volume, escreve no HAL e registra o resultado
+  no Audio IO v2.
+- Isso ainda nao transfere o HAL para Playback v2; e o passo intermediario para
+  separar selecao/fornecimento de frame do write fisico.
+- Gate fisico esperado: apos flash, resposta real curta deve manter 0 drops,
+  fila SAY final zero, `speaker_handoff_active=true` quando armado, e rollback
+  por `speaker-owner-disarm`.
+
 ### N5 - Reduzir audio_service.c
 
 Ultima etapa, apos donos reais validados:
