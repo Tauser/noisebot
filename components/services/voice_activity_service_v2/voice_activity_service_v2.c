@@ -12,6 +12,8 @@
 #define SHADOW_MAX_DURATION_MS          30000U
 #define SHADOW_SPEECH_RMS_THRESHOLD     1200U
 #define SHADOW_SPEECH_PEAK_THRESHOLD    2400U
+#define SESSION_SPEECH_RMS_THRESHOLD    600U
+#define SESSION_SPEECH_PEAK_THRESHOLD   1800U
 #define SESSION_END_SILENCE_MS          900U
 
 static nb_voice_activity_v2_status_t s_status = {
@@ -215,7 +217,9 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
     }
 
     taskENTER_CRITICAL(&s_mux);
-    bool running = s_status.shadow_running || s_status.session_compare_active;
+    bool shadow_running = s_status.shadow_running;
+    bool session_compare_running = s_status.session_compare_active;
+    bool running = shadow_running || session_compare_running;
     taskEXIT_CRITICAL(&s_mux);
     if (!running) {
         return;
@@ -234,9 +238,15 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
 
     uint32_t rms = isqrt_u64(sum_sq / sample_count);
     uint32_t zcr = zcr_permille(samples, sample_count);
+    uint32_t speech_rms_threshold = (session_compare_running && session_active)
+        ? SESSION_SPEECH_RMS_THRESHOLD
+        : SHADOW_SPEECH_RMS_THRESHOLD;
+    uint32_t speech_peak_threshold = (session_compare_running && session_active)
+        ? SESSION_SPEECH_PEAK_THRESHOLD
+        : SHADOW_SPEECH_PEAK_THRESHOLD;
     bool speech = !muted &&
-                  (rms >= SHADOW_SPEECH_RMS_THRESHOLD ||
-                   peak >= SHADOW_SPEECH_PEAK_THRESHOLD);
+                  (rms >= speech_rms_threshold ||
+                   peak >= speech_peak_threshold);
 
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.shadow_running && !s_status.session_compare_active) {
