@@ -78,6 +78,9 @@ static uint32_t       s_log_count = 0;
 static portMUX_TYPE   s_log_mux   = portMUX_INITIALIZER_UNLOCKED;
 static vprintf_like_t s_orig_vprintf = NULL;
 
+#define AUDIO_IO_V2_STATUS_BUF_SIZE 3400U
+static char s_audio_io_v2_status_buf[AUDIO_IO_V2_STATUS_BUF_SIZE];
+
 static int log_hook_vprintf(const char *fmt, va_list args)
 {
     va_list copy;
@@ -1682,8 +1685,8 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
         break;
     }
 
-    char buf[3200];
-    snprintf(buf, sizeof(buf),
+    char *buf = s_audio_io_v2_status_buf;
+    snprintf(buf, AUDIO_IO_V2_STATUS_BUF_SIZE,
              "{\"ok\":%s,\"initialized\":%s,\"probe_running\":%s,"
              "\"rx_owner_active\":%s,\"rx_owner_observed\":%s,"
              "\"session_rx_mirror_active\":%s,\"session_rx_mirror_observed\":%s,"
