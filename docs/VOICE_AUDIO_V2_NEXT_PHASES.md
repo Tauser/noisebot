@@ -1264,6 +1264,22 @@ Ultima etapa, apos donos reais validados:
   o caminho default de voz em hardware passa por Capture v2, Activity v2,
   Audio IO v2 e Playback v2.
 
+Incremento N5.1 iniciado:
+
+- O bloco `PLAY_BRIDGE_SAY` do loop principal de `audio_service.c` foi isolado
+  em `audio_service_play_bridge_say_chunk()`. O helper continua chamando
+  `audio_playback_service_v2_speaker_write_next_frame()` e usando o callback
+  local `audio_service_playback_v2_write_speaker()` para manter `audio_service`
+  como unico ponto que escreve fisicamente no HAL.
+- Esta etapa nao muda flags, wake, VAD, captura, Codec v2, PCM16/Opus ou dono
+  real do HAL; apenas reduz a superficie do loop legado e deixa a proxima
+  remocao de decisao duplicada mais localizada.
+- Gate esperado apos build/flash: `debug playback-v2 delta` em turno real curto
+  sem `issues`, fila SAY final zero, `speaker_write_failures=0`,
+  `speaker_commit_failures=0`, Audio IO v2 sem drops/recoveries e Codec v2 sem
+  drops/erros. Warnings de heap/egress residual continuam nao bloqueantes se os
+  deltas criticos permanecerem zerados.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

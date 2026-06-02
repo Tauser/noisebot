@@ -475,6 +475,44 @@ static void mic_condition_signal(const int32_t *in, int32_t *out, size_t n)
 /* Duração aproximada de um chunk em ms (256 samples @ 16kHz = 16ms). */
 #define CHUNK_DURATION_MS  16U
 
+static bool audio_service_play_bridge_say_chunk(void)
+{
+    uint16_t n = 0;
+    esp_err_t wr = ESP_OK;
+
+    if (audio_playback_service_v2_speaker_write_next_frame(
+            s.volume,
+            audio_service_playback_v2_write_speaker,
+            NULL,
+            &n,
+            &wr)) {
+        s.bridge_say_empty_ms = 0;
+        audio_note_spk_result(wr, "bridge_say", n, false);
+        if ((++s_bridge_say_play_count % 64U) == 1U) {
+            ESP_LOGI(TAG, "Bridge SAY playback chunks=%lu q=%u",
+                     (unsigned long)s_bridge_say_play_count,
+                     (unsigned)audio_playback_service_v2_say_pending_count());
+        }
+        return true;
+    }
+
+    /* Fila vazia pode ser jitter de TCP/TTS. Segura o modo SAY por
+     * uma janela curta antes de encerrar para não cortar frases. */
+    if (audio_playback_service_v2_speaker_note_empty(CHUNK_DURATION_MS,
+                                                     BRIDGE_SAY_IDLE_END_MS)) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s.play_state = PLAY_IDLE;
+        s.bridge_say_playing = false;
+        s.bridge_say_empty_ms = 0;
+        xSemaphoreGive(s.mutex);
+        audio_playback_service_v2_note_say_idle();
+        if (s.event_cb) {
+            s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
+        }
+    }
+    return false;
+}
+
 static const char *listen_phase_name(listen_phase_t phase)
 {
     switch (phase) {
@@ -1358,35 +1396,8 @@ static void audio_task(void *arg)
 
         /* ── Bridge SAY playback ─────────────────────────────────────────── */
         else if (play_state == PLAY_BRIDGE_SAY) {
-            uint16_t n = 0;
-            esp_err_t wr = ESP_OK;
-            if (audio_playback_service_v2_speaker_write_next_frame(
-                    s.volume,
-                    audio_service_playback_v2_write_speaker,
-                    NULL,
-                    &n,
-                    &wr)) {
-                s.bridge_say_empty_ms = 0;
-                audio_note_spk_result(wr, "bridge_say", n, false);
-                if ((++s_bridge_say_play_count % 64U) == 1U) {
-                    ESP_LOGI(TAG, "Bridge SAY playback chunks=%lu q=%u",
-                             (unsigned long)s_bridge_say_play_count,
-                             (unsigned)audio_playback_service_v2_say_pending_count());
-                }
+            if (audio_service_play_bridge_say_chunk()) {
                 wrote_audio = true;
-            } else {
-                /* Fila vazia pode ser jitter de TCP/TTS. Segura o modo SAY por
-                 * uma janela curta antes de encerrar para não cortar frases. */
-                if (audio_playback_service_v2_speaker_note_empty(CHUNK_DURATION_MS,
-                                                                 BRIDGE_SAY_IDLE_END_MS)) {
-                    xSemaphoreTake(s.mutex, portMAX_DELAY);
-                    s.play_state      = PLAY_IDLE;
-                    s.bridge_say_playing = false;
-                    s.bridge_say_empty_ms = 0;
-                    xSemaphoreGive(s.mutex);
-                    audio_playback_service_v2_note_say_idle();
-                    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
-                }
             }
         }
 
