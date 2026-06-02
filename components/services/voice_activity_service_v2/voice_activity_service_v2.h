@@ -26,9 +26,18 @@ typedef struct {
     bool initialized;
     bool session_active;
     bool shadow_running;
+    bool session_compare_active;
+    bool session_compare_speech_seen;
+    bool activity_end_observed;
+    bool legacy_end_observed;
+    bool decision_diverged;
     nb_voice_activity_v2_state_t state;
+    uint32_t session_compare_id;
     uint32_t shadow_duration_ms;
     uint32_t shadow_elapsed_ms;
+    uint32_t activity_end_elapsed_ms;
+    uint32_t legacy_end_elapsed_ms;
+    uint32_t legacy_end_reason;
     uint32_t observed_frames;
     uint32_t speech_frames;
     uint32_t silence_frames;
@@ -62,6 +71,9 @@ void voice_activity_service_v2_get_status(nb_voice_activity_v2_status_t *out);
 esp_err_t voice_activity_service_v2_shadow_start(uint32_t duration_ms);
 esp_err_t voice_activity_service_v2_shadow_stop(void);
 bool voice_activity_service_v2_shadow_is_running(void);
+esp_err_t voice_activity_service_v2_session_compare_begin(void);
+void voice_activity_service_v2_session_compare_legacy_end(uint32_t reason,
+                                                          uint32_t elapsed_ms);
 void voice_activity_service_v2_feed_frame(const int16_t *samples,
                                           uint16_t sample_count,
                                           bool session_active,

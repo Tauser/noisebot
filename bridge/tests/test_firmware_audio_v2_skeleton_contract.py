@@ -259,6 +259,8 @@ def test_voice_activity_v2_shadow_is_explicit_and_passive():
     ).read_text(encoding="utf-8")
 
     assert "voice_activity_service_v2_feed_frame(" in audio_service
+    assert "voice_activity_service_v2_session_compare_begin()" in audio_service
+    assert "voice_activity_service_v2_session_compare_legacy_end(" in audio_service
     assert "activity_session_context" in audio_service
     assert "activity_playback_context" in audio_service
     assert "audio_playback_service_v2_is_playing()" in audio_service
@@ -266,6 +268,10 @@ def test_voice_activity_v2_shadow_is_explicit_and_passive():
     assert '{ .uri = "/api/audio/activity-v2/shadow"' in web
     assert '{ .uri = "/api/audio/activity-v2/shadow/stop"' in web
     assert '\\"shadow_running\\":%s' in web
+    assert '\\"session_compare_active\\":%s' in web
+    assert '\\"activity_end_observed\\":%s' in web
+    assert '\\"legacy_end_observed\\":%s' in web
+    assert '\\"decision_diverged\\":%s' in web
     assert "zcr_last_permille" in web
     assert "session_frames" in web
     assert "speech_run_frames" in web
@@ -273,7 +279,11 @@ def test_voice_activity_v2_shadow_is_explicit_and_passive():
     assert "muted_rms_max" in web
     assert "unmuted_rms_max" in web
     assert "esp_err_t voice_activity_service_v2_shadow_start(" in activity_h
+    assert "esp_err_t voice_activity_service_v2_session_compare_begin(void);" in activity_h
+    assert "void voice_activity_service_v2_session_compare_legacy_end(" in activity_h
     assert "void voice_activity_service_v2_feed_frame(" in activity_h
+    assert "bool session_compare_active;" in activity_h
+    assert "bool decision_diverged;" in activity_h
     assert "zcr_last_permille" in activity_h
     assert "session_frames" in activity_h
     assert "speech_run_frames" in activity_h
@@ -281,6 +291,8 @@ def test_voice_activity_v2_shadow_is_explicit_and_passive():
     assert "muted_rms_max" in activity_h
     assert "unmuted_rms_max" in activity_h
     assert "SHADOW_SPEECH_RMS_THRESHOLD" in activity_c
+    assert "SESSION_END_SILENCE_MS" in activity_c
+    assert "s_status.activity_end_observed = true;" in activity_c
     assert "#define SHADOW_MAX_DURATION_MS          30000U" in activity_c
     assert "zcr_permille(" in activity_c
     assert "session_active" in activity_c

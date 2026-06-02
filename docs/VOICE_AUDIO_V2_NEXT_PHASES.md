@@ -833,6 +833,26 @@ Escopo restrito:
 - Aceite: fim de fala por Activity v2 bate o legado em turnos curtos/longos,
   nao cria turno fantasma e nao quebra barge-in.
 
+Inicio local em 2026-06-02:
+
+- `voice_activity_service_v2` ganhou um comparador de sessao real, iniciado pelo
+  `audio_service` apenas quando uma sessao de escuta ja foi aberta por wake ou
+  barge-in. Ele nao abre sessao em `IDLE`, nao chama bridge, nao chama HAL e nao
+  decide o fim de fala ainda.
+- O comparador observa os mesmos frames PCM16 condicionados ja enviados ao
+  shadow, marca se a Activity v2 viu fala, quando ela teria encerrado por
+  silencio (`activity_end_observed` / `activity_end_elapsed_ms`) e registra a
+  decisao legada no encerramento (`legacy_end_observed`,
+  `legacy_end_reason`, `legacy_end_elapsed_ms`).
+- `/api/audio/activity-v2` agora expoe `session_compare_active`,
+  `session_compare_id`, `session_compare_speech_seen`,
+  `activity_end_observed`, `legacy_end_observed`, `decision_diverged` e tempos
+  de decisao. O campo `decision_diverged` e apenas auditoria; o owner real do
+  fim de fala continua sendo o VAD legado do `audio_service`.
+- Validacao local: contrato focado Voice Audio v2 e build ESP-IDF limpos. Falta
+  flash e validacao fisica com turno curto, no-echo e barge-in antes de promover
+  qualquer decisao real.
+
 ### N3 - Audio IO v2 Assume RX/TX
 
 Passo mais sensivel por tocar loop HAL/I2S:

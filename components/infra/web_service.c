@@ -2409,11 +2409,17 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
     nb_voice_activity_v2_status_t st;
     voice_activity_service_v2_get_status(&st);
 
-    char buf[1280];
+    char buf[1600];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
-             "\"shadow_running\":%s,\"state\":\"%s\","
+             "\"shadow_running\":%s,\"session_compare_active\":%s,"
+             "\"session_compare_speech_seen\":%s,"
+             "\"activity_end_observed\":%s,\"legacy_end_observed\":%s,"
+             "\"decision_diverged\":%s,\"state\":\"%s\","
+             "\"session_compare_id\":%lu,"
              "\"shadow_duration_ms\":%lu,\"shadow_elapsed_ms\":%lu,"
+             "\"activity_end_elapsed_ms\":%lu,\"legacy_end_elapsed_ms\":%lu,"
+             "\"legacy_end_reason\":%lu,"
              "\"observed_frames\":%lu,\"speech_frames\":%lu,"
              "\"silence_frames\":%lu,"
              "\"speech_run_frames\":%lu,\"silence_run_frames\":%lu,"
@@ -2432,9 +2438,18 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
              st.initialized ? "true" : "false",
              st.session_active ? "true" : "false",
              st.shadow_running ? "true" : "false",
+             st.session_compare_active ? "true" : "false",
+             st.session_compare_speech_seen ? "true" : "false",
+             st.activity_end_observed ? "true" : "false",
+             st.legacy_end_observed ? "true" : "false",
+             st.decision_diverged ? "true" : "false",
              activity_v2_state_name(st.state),
+             (unsigned long)st.session_compare_id,
              (unsigned long)st.shadow_duration_ms,
              (unsigned long)st.shadow_elapsed_ms,
+             (unsigned long)st.activity_end_elapsed_ms,
+             (unsigned long)st.legacy_end_elapsed_ms,
+             (unsigned long)st.legacy_end_reason,
              (unsigned long)st.observed_frames,
              (unsigned long)st.speech_frames,
              (unsigned long)st.silence_frames,

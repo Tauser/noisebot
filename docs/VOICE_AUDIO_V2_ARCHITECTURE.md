@@ -276,6 +276,11 @@ Responsabilidade:
   ao Activity v2 e explicito (`wrote_audio`, estado de playback e fila SAY v2),
   mas continua sendo usado somente para bucket de telemetria; VAD, wake,
   captura, codec, Playback v2 e HAL permanecem nos caminhos ja validados.
+- Inicio da Fase N2: Activity v2 tambem compara sua decisao de fim por silencio
+  contra a decisao legada do `audio_service` dentro de sessoes ja abertas por
+  wake/barge-in. O comparador expoe divergencias em status, mas ainda nao
+  encerra sessao real, nao abre sessao em `IDLE`, nao chama bridge e nao acessa
+  HAL.
 - Validacao em hardware do shadow 30 s confirmou o objetivo de observabilidade:
   turno real `ww -> me conte uma historia curta` gerou
   `session_frames=268`, `idle_frames=1607`, `muted_frames=478`,

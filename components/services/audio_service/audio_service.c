@@ -745,6 +745,8 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
     uint32_t speech_elapsed_ms = s.listen_speech_elapsed_ms;
     bool capture_v2_active = s.listen_capture_v2_active;
     bool capture_v2_tx_owner = s.listen_capture_v2_tx_owner;
+    voice_activity_service_v2_session_compare_legacy_end((uint32_t)reason,
+                                                          speech_elapsed_ms);
 
     s.listen_session_active    = false;
     s.listen_phase             = LISTEN_PHASE_IDLE;
@@ -1642,6 +1644,7 @@ esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source
         return ESP_ERR_NOT_SUPPORTED;
     }
 
+    (void)voice_activity_service_v2_session_compare_begin();
     bool capture_v2_active = begin_capture_v2_if_enabled(source);
 
     s.listen_session_active       = true;

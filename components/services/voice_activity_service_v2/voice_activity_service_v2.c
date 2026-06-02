@@ -12,6 +12,7 @@
 #define SHADOW_MAX_DURATION_MS          30000U
 #define SHADOW_SPEECH_RMS_THRESHOLD     1200U
 #define SHADOW_SPEECH_PEAK_THRESHOLD    2400U
+#define SESSION_END_SILENCE_MS          900U
 
 static nb_voice_activity_v2_status_t s_status = {
     .state = NB_VOICE_ACTIVITY_V2_STATE_UNKNOWN,
@@ -160,6 +161,50 @@ bool voice_activity_service_v2_shadow_is_running(void)
     return running;
 }
 
+esp_err_t voice_activity_service_v2_session_compare_begin(void)
+{
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.initialized) {
+        memset(&s_status, 0, sizeof(s_status));
+        s_status.initialized = true;
+    }
+
+    bool initialized = s_status.initialized;
+    bool shadow_running = s_status.shadow_running;
+    uint32_t shadow_duration_ms = s_status.shadow_duration_ms;
+    uint32_t session_compare_id = s_status.session_compare_id + 1U;
+    memset(&s_status, 0, sizeof(s_status));
+    s_status.initialized = initialized;
+    s_status.shadow_running = shadow_running;
+    s_status.shadow_duration_ms = shadow_duration_ms;
+    s_status.session_compare_active = true;
+    s_status.session_compare_id = session_compare_id;
+    s_status.state = NB_VOICE_ACTIVITY_V2_STATE_UNKNOWN;
+    s_status.last_error = ESP_OK;
+    taskEXIT_CRITICAL(&s_mux);
+    return ESP_OK;
+}
+
+void voice_activity_service_v2_session_compare_legacy_end(uint32_t reason,
+                                                          uint32_t elapsed_ms)
+{
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.initialized || !s_status.session_compare_active) {
+        taskEXIT_CRITICAL(&s_mux);
+        return;
+    }
+
+    s_status.session_compare_active = false;
+    s_status.session_active = false;
+    s_status.legacy_end_observed = true;
+    s_status.legacy_end_reason = reason;
+    s_status.legacy_end_elapsed_ms = elapsed_ms;
+    s_status.decision_diverged =
+        (s_status.activity_end_observed && reason != 0U) ||
+        (!s_status.activity_end_observed && reason == 0U);
+    taskEXIT_CRITICAL(&s_mux);
+}
+
 void voice_activity_service_v2_feed_frame(const int16_t *samples,
                                           uint16_t sample_count,
                                           bool session_active,
@@ -170,7 +215,7 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
     }
 
     taskENTER_CRITICAL(&s_mux);
-    bool running = s_status.shadow_running;
+    bool running = s_status.shadow_running || s_status.session_compare_active;
     taskEXIT_CRITICAL(&s_mux);
     if (!running) {
         return;
@@ -242,6 +287,9 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
         }
     }
     if (speech) {
+        if (s_status.session_compare_active && session_active) {
+            s_status.session_compare_speech_seen = true;
+        }
         s_status.speech_frames++;
         s_status.speech_run_frames++;
         s_status.silence_run_frames = 0U;
@@ -257,10 +305,19 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
             s_status.silence_run_max_frames = s_status.silence_run_frames;
         }
         s_status.state = NB_VOICE_ACTIVITY_V2_STATE_SILENCE;
+        if (s_status.session_compare_active &&
+            session_active &&
+            s_status.session_compare_speech_seen &&
+            !s_status.activity_end_observed &&
+            (s_status.silence_run_frames * ACTIVITY_V2_CHUNK_MS) >= SESSION_END_SILENCE_MS) {
+            s_status.activity_end_observed = true;
+            s_status.activity_end_elapsed_ms = s_status.shadow_elapsed_ms + ACTIVITY_V2_CHUNK_MS;
+        }
     }
 
     s_status.shadow_elapsed_ms += ACTIVITY_V2_CHUNK_MS;
-    if (s_status.shadow_elapsed_ms >= s_status.shadow_duration_ms) {
+    if (s_status.shadow_running &&
+        s_status.shadow_elapsed_ms >= s_status.shadow_duration_ms) {
         s_status.shadow_running = false;
     }
     taskEXIT_CRITICAL(&s_mux);

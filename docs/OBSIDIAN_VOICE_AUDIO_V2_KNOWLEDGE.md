@@ -381,6 +381,10 @@ Faz:
   e vazamento de playback sem promover decisao ativa;
 - aceitar shadow de ate 30 s e receber contexto explicito de playback do
   `audio_service` apenas para bucket de telemetria;
+- inicio N2: comparar a decisao v2 contra o fim de fala legado dentro de uma
+  sessao real ja aberta por wake/barge-in, expondo
+  `session_compare_active`, `activity_end_observed`, `legacy_end_observed` e
+  `decision_diverged` em `/api/audio/activity-v2`;
 - validacao em hardware do shadow 30 s: 1875 frames em 30000 ms,
   `session_frames=268`, `idle_frames=1607`, `muted_frames=478`,
   `unmuted_frames=1397`, Opus v2 saudavel, Capture v2 desligado; ponto amarelo
@@ -399,7 +403,8 @@ Nao faz:
 
 - abrir sessao em IDLE;
 - mandar bridge;
-- decidir wake.
+- decidir wake;
+- encerrar a sessao real nesta subfase N2 inicial.
 - tocar playback ou mudar codec/captura.
 
 #### `voice_capture_session_v2`

@@ -1218,6 +1218,12 @@ O roadmap detalhado das fases restantes esta em
    vivo mas sem transporte (`connected=false`), o que parece queda de voz. O
    `.env` local deve conter `NOISEBOT_HOST=192.168.1.30` junto de
    `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2`.
+   Inicio da Fase N2: Activity v2 agora possui comparador de sessao real
+   iniciado pelo `audio_service` somente depois de wake/barge-in abrir uma
+   sessao. Ele registra se viu fala, quando teria encerrado por silencio,
+   qual foi a decisao legada e se houve divergencia, tudo exposto em
+   `/api/audio/activity-v2`. Ainda nao decide fim de fala, nao abre sessao em
+   `IDLE`, nao toca bridge/HAL e precisa de flash + validacao fisica.
 4. Capture Session v2 assumindo upstream por flag.
 5. Policy conversacional avancada somente depois de no-echo/captura estaveis.
 
