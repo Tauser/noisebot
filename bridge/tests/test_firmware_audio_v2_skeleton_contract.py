@@ -247,17 +247,19 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "rx_dispatch_activity_cb" in audio_service
     assert "rx_dispatch_vad_cb" in audio_service
     assert "rx_dispatch_preroll_cb" in audio_service
+    assert "rx_dispatch_bridge_tx_cb" in audio_service
     assert "wake_service_feed(dispatch->wake_samples, frame->sample_count);" in audio_service
     assert "vad_update(dispatch->mic_samples," in audio_service
+    assert "bridge_service_send_audio_chunk(s_bridge_buf, frame->sample_count)" in audio_service
     assert "audio_io_service_v2_probe_feed_rx_frame(frame->samples, frame->sample_count);" in audio_service
-    assert "nb_audio_io_v2_pcm_frame_t rx_frame = {0};" in audio_service
     assert "audio_io_service_v2_rx_dispatch_frame(s_sa_buf," in audio_service
-    assert "&rx_frame);" in audio_service
-    assert "const int16_t *rx_samples = rx_frame.samples;" in audio_service
-    assert "uint16_t rx_sample_count = rx_frame.sample_count;" in audio_service
+    assert "NULL);" in audio_service
+    assert "const int16_t *rx_samples = rx_frame.samples;" not in audio_service
+    assert "uint16_t rx_sample_count = rx_frame.sample_count;" not in audio_service
+    assert "/* ── 4c. Bridge mic streaming" not in audio_service
     assert audio_service.index(
         "audio_io_service_v2_rx_dispatch_frame(s_sa_buf,"
-    ) < audio_service.index("/* ── 4c. Bridge mic streaming")
+    ) < audio_service.index("/* ── 4d. Session timeouts")
     assert "sound_analysis_tick(frame->samples, frame->sample_count);" in audio_service
     assert "audio_processor_service_feed_shadow(frame->samples, frame->sample_count);" in audio_service
     assert "voice_activity_service_v2_feed_frame(frame->samples," in audio_service
@@ -266,6 +268,7 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "audio_io_service_v2_session_rx_mirror_feed(frame->samples," in audio_service
     assert "{ .cb = rx_dispatch_vad_cb, .ctx = &rx_dispatch }" in audio_service
     assert "{ .cb = rx_dispatch_preroll_cb, .ctx = &rx_dispatch }" in audio_service
+    assert "{ .cb = rx_dispatch_bridge_tx_cb, .ctx = NULL }" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_finish((uint32_t)reason," in audio_service
     assert "legacy_tx_frames" in audio_service
     assert "legacy_tx_samples" in audio_service

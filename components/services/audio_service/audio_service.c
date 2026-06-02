@@ -919,6 +919,112 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
     return ESP_OK;
 }
 
+static void rx_dispatch_bridge_tx_cb(const nb_audio_io_v2_pcm_frame_t *frame,
+                                     void *ctx)
+{
+    (void)ctx;
+    if (!s.listen_session_active || !s.bridge_tx_active || frame->sample_count == 0U) {
+        return;
+    }
+
+    int32_t raw_rms = 0;
+    int32_t tx_rms = 0;
+    uint16_t raw_peak = 0;
+    uint16_t tx_peak = 0;
+    uint16_t saturated = 0;
+    bool used_processed = audio_processor_service_read_bridge_processed(
+        s_bridge_proc_buf, frame->sample_count);
+    const int16_t *bridge_src = used_processed ? s_bridge_proc_buf : frame->samples;
+    bridge_prepare_tx_audio(bridge_src, s_bridge_buf, frame->sample_count,
+                            &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
+    if (bridge_service_opus_is_enabled()) {
+        bridge_feed_opus_pcm(s_bridge_buf, frame->sample_count);
+        uint8_t sent_packets = bridge_drain_opus_packets_if_enabled(
+            s.listen_capture_v2_tx_owner);
+        if (sent_packets > 0U) {
+            s.bridge_audio_sent = true;
+            s.listen_legacy_tx_frames += sent_packets;
+            s.listen_legacy_tx_samples +=
+                (uint32_t)sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES;
+            if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
+                voice_capture_session_v2_note_audio_chunk(
+                    (uint16_t)sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES,
+                    true);
+            }
+            s.bridge_tx_fail_count = 0;
+            if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
+                ESP_LOGI(TAG,
+                         "bridge tx diag: source=opus raw_rms=%ld raw_peak=%u tx_rms=%ld tx_peak=%u sat=%u/%u",
+                         (long)raw_rms,
+                         (unsigned)raw_peak,
+                         (long)tx_rms,
+                         (unsigned)tx_peak,
+                         (unsigned)saturated,
+                         (unsigned)frame->sample_count);
+            }
+        }
+    } else {
+        esp_err_t tx_rc = s.listen_capture_v2_tx_owner
+            ? voice_capture_session_v2_send_audio_chunk(s_bridge_buf, frame->sample_count)
+            : bridge_service_send_audio_chunk(s_bridge_buf, frame->sample_count);
+        if (tx_rc == ESP_OK) {
+            bridge_feed_opus_pcm(s_bridge_buf, frame->sample_count);
+            s.bridge_audio_sent = true;
+            s.listen_legacy_tx_frames++;
+            s.listen_legacy_tx_samples += (uint32_t)frame->sample_count;
+            if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
+                voice_capture_session_v2_note_audio_chunk(frame->sample_count, true);
+            }
+            s.bridge_tx_fail_count = 0;
+            if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
+                ESP_LOGI(TAG,
+                         "bridge tx diag: source=%s raw_rms=%ld raw_peak=%u tx_rms=%ld tx_peak=%u sat=%u/%u",
+                         used_processed ? "afe" : "raw",
+                         (long)raw_rms,
+                         (unsigned)raw_peak,
+                         (long)tx_rms,
+                         (unsigned)tx_peak,
+                         (unsigned)saturated,
+                         (unsigned)frame->sample_count);
+            }
+        } else {
+            if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
+                voice_capture_session_v2_note_audio_chunk(frame->sample_count, false);
+            }
+            if (tx_rc == ESP_ERR_INVALID_STATE) {
+                ESP_LOGW(TAG, "bridge desconectou durante sessao — encerrando escuta");
+                s.bridge_flush_before_end = false;
+                listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
+            } else if (tx_rc == ESP_ERR_NO_MEM) {
+                /* Backpressure persistente não é fala saudável: a fila já ficou
+                 * atrás do tempo real. Encerra limpo após poucas falhas para não
+                 * alimentar STT com áudio picotado ou atrasado. */
+                if (s.bridge_tx_fail_count < UINT8_MAX) {
+                    s.bridge_tx_fail_count++;
+                }
+                if (s.bridge_tx_fail_count >= BRIDGE_TX_FAIL_ABORT_COUNT) {
+                    ESP_LOGW(TAG,
+                             "bridge TX congestionado (%u chunks dropados seguidos) — encerrando sessao",
+                             (unsigned)s.bridge_tx_fail_count);
+                    s.bridge_flush_before_end = true;
+                    listen_session_finish(NB_LISTEN_END_TIMEOUT);
+                }
+            } else {
+                if (s.bridge_tx_fail_count < UINT8_MAX) {
+                    s.bridge_tx_fail_count++;
+                }
+                if (s.bridge_tx_fail_count >= BRIDGE_TX_FAIL_ABORT_COUNT) {
+                    ESP_LOGW(TAG,
+                             "bridge TX travou (%u falhas seguidas: %s) — encerrando sessao",
+                             (unsigned)s.bridge_tx_fail_count, esp_err_to_name(tx_rc));
+                    s.bridge_flush_before_end = true;
+                    listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
+                }
+            }
+        }
+    }
+}
+
 static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
                        bool local_output_active)
 {
@@ -1349,117 +1455,15 @@ static void audio_task(void *arg)
             { .cb = rx_dispatch_activity_cb, .ctx = &rx_dispatch },
             { .cb = rx_dispatch_vad_cb, .ctx = &rx_dispatch },
             { .cb = rx_dispatch_preroll_cb, .ctx = &rx_dispatch },
+            { .cb = rx_dispatch_bridge_tx_cb, .ctx = NULL },
         };
-        nb_audio_io_v2_pcm_frame_t rx_frame = {0};
         audio_io_service_v2_rx_dispatch_frame(s_sa_buf,
                                               (uint16_t)mic_n,
                                               0U,
                                               rx_consumers,
                                               (uint8_t)(sizeof(rx_consumers) /
                                                         sizeof(rx_consumers[0])),
-                                              &rx_frame);
-        const int16_t *rx_samples = rx_frame.samples;
-        uint16_t rx_sample_count = rx_frame.sample_count;
-
-        /* ── 4c. Bridge mic streaming ────────────────────────────────────── */
-        if (s.listen_session_active && s.bridge_tx_active && rx_sample_count > 0U) {
-            int32_t raw_rms = 0;
-            int32_t tx_rms = 0;
-            uint16_t raw_peak = 0;
-            uint16_t tx_peak = 0;
-            uint16_t saturated = 0;
-            bool used_processed = audio_processor_service_read_bridge_processed(
-                s_bridge_proc_buf, rx_sample_count);
-            const int16_t *bridge_src = used_processed ? s_bridge_proc_buf : rx_samples;
-            bridge_prepare_tx_audio(bridge_src, s_bridge_buf, rx_sample_count,
-                                    &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
-            if (bridge_service_opus_is_enabled()) {
-                bridge_feed_opus_pcm(s_bridge_buf, rx_sample_count);
-                uint8_t sent_packets = bridge_drain_opus_packets_if_enabled(
-                    s.listen_capture_v2_tx_owner);
-                if (sent_packets > 0U) {
-                    s.bridge_audio_sent = true;
-                    s.listen_legacy_tx_frames += sent_packets;
-                    s.listen_legacy_tx_samples +=
-                        (uint32_t)sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES;
-                    if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
-                        voice_capture_session_v2_note_audio_chunk(
-                            (uint16_t)sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES,
-                            true);
-                    }
-                    s.bridge_tx_fail_count = 0;
-                    if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
-                        ESP_LOGI(TAG,
-                                 "bridge tx diag: source=opus raw_rms=%ld raw_peak=%u tx_rms=%ld tx_peak=%u sat=%u/%u",
-                                 (long)raw_rms,
-                                 (unsigned)raw_peak,
-                                 (long)tx_rms,
-                                 (unsigned)tx_peak,
-                                 (unsigned)saturated,
-                                 (unsigned)rx_sample_count);
-                    }
-                }
-            } else {
-                esp_err_t tx_rc = s.listen_capture_v2_tx_owner
-                    ? voice_capture_session_v2_send_audio_chunk(s_bridge_buf, rx_sample_count)
-                    : bridge_service_send_audio_chunk(s_bridge_buf, rx_sample_count);
-                if (tx_rc == ESP_OK) {
-                    bridge_feed_opus_pcm(s_bridge_buf, rx_sample_count);
-                    s.bridge_audio_sent = true;
-                    s.listen_legacy_tx_frames++;
-                    s.listen_legacy_tx_samples += (uint32_t)rx_sample_count;
-                    if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
-                        voice_capture_session_v2_note_audio_chunk(rx_sample_count, true);
-                    }
-                    s.bridge_tx_fail_count = 0;
-                    if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
-                        ESP_LOGI(TAG,
-                                 "bridge tx diag: source=%s raw_rms=%ld raw_peak=%u tx_rms=%ld tx_peak=%u sat=%u/%u",
-                                 used_processed ? "afe" : "raw",
-                                 (long)raw_rms,
-                                 (unsigned)raw_peak,
-                                 (long)tx_rms,
-                                 (unsigned)tx_peak,
-                                 (unsigned)saturated,
-                                 (unsigned)rx_sample_count);
-                    }
-                } else {
-                    if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
-                        voice_capture_session_v2_note_audio_chunk(rx_sample_count, false);
-                    }
-                    if (tx_rc == ESP_ERR_INVALID_STATE) {
-                        ESP_LOGW(TAG, "bridge desconectou durante sessao — encerrando escuta");
-                        s.bridge_flush_before_end = false;
-                        listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
-                    } else if (tx_rc == ESP_ERR_NO_MEM) {
-                        /* Backpressure persistente não é fala saudável: a fila já ficou
-                         * atrás do tempo real. Encerra limpo após poucas falhas para não
-                         * alimentar STT com áudio picotado ou atrasado. */
-                        if (s.bridge_tx_fail_count < UINT8_MAX) {
-                            s.bridge_tx_fail_count++;
-                        }
-                        if (s.bridge_tx_fail_count >= BRIDGE_TX_FAIL_ABORT_COUNT) {
-                            ESP_LOGW(TAG,
-                                     "bridge TX congestionado (%u chunks dropados seguidos) — encerrando sessao",
-                                     (unsigned)s.bridge_tx_fail_count);
-                            s.bridge_flush_before_end = true;
-                            listen_session_finish(NB_LISTEN_END_TIMEOUT);
-                        }
-                    } else {
-                        if (s.bridge_tx_fail_count < UINT8_MAX) {
-                            s.bridge_tx_fail_count++;
-                        }
-                        if (s.bridge_tx_fail_count >= BRIDGE_TX_FAIL_ABORT_COUNT) {
-                            ESP_LOGW(TAG,
-                                     "bridge TX travou (%u falhas seguidas: %s) — encerrando sessao",
-                                     (unsigned)s.bridge_tx_fail_count, esp_err_to_name(tx_rc));
-                            s.bridge_flush_before_end = true;
-                            listen_session_finish(NB_LISTEN_END_BRIDGE_DISCONNECTED);
-                        }
-                    }
-                }
-            }
-        }
+                                              NULL);
 
         /* ── 4d. Session timeouts ────────────────────────────────────────── */
         if (s.listen_session_active) {
