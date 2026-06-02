@@ -66,7 +66,15 @@ class RobotOutputProvider:
             )
 
         if intent.device_command:
-            await self._emit(adapter, "session", intent.device_command, intent.turn_id)
+            if intent.device_command.get("event") == "VOLUME_COMMAND":
+                await self._emit(
+                    adapter,
+                    "volume",
+                    {"percent": intent.device_command.get("percent", 50)},
+                    intent.turn_id,
+                )
+            else:
+                await self._emit(adapter, "session", intent.device_command, intent.turn_id)
 
         if include_reply_text and intent.reply_text:
             await self._emit(

@@ -5202,6 +5202,74 @@ def test_server_agent_local_intent_treats_transcribed_bye_as_stop_after_barge_in
     assert after_barge.resolution_reason == "post_barge_stop"
 
 
+def test_server_agent_local_volume_intent_emits_device_command() -> None:
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("aumente o volume", turn_id=51, context={"status": {"volume": 55}})
+
+    assert result.intent_name == "local_volume_set"
+    assert result.reply_text == "Volume em 65 por cento."
+    assert result.device_command == {"event": "VOLUME_COMMAND", "percent": 65}
+
+
+async def test_server_robot_output_routes_volume_command_to_adapter() -> None:
+    output_module = importlib.import_module("noisebot_server.internal.agent.output")
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+
+    class CapturingAdapter:
+        def __init__(self) -> None:
+            self.volumes = []
+
+        async def send_expr(self, expression_id: int, duration_ms: int = 2000) -> None:
+            pass
+
+        async def send_emot_event(self, event_id: int) -> None:
+            pass
+
+        async def send_volume(self, percent: int) -> None:
+            self.volumes.append(percent)
+
+    bus = runtime.EventBus()
+    adapter = CapturingAdapter()
+    provider = output_module.RobotOutputProvider(bus)
+    intent = runtime.IntentResolved(
+        turn_id=52,
+        intent_name="local_volume_set",
+        reply_text="Volume em 70 por cento.",
+        expression_id=1,
+        emot_event_id=2,
+        device_command={"event": "VOLUME_COMMAND", "percent": 70},
+    )
+
+    await provider.emit_for_intent(intent, adapter, include_reply_text=False)
+
+    assert adapter.volumes == [70]
+
+
+def test_server_agent_light_color_intent_is_honest_until_supported() -> None:
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("mude a luz para azul", turn_id=53)
+
+    assert result.intent_name == "local_light_unsupported"
+    assert result.device_command is None
+    assert "nao tenho controle de cor" in result.reply_text
+    assert result.resolution_reason == "unsupported_device_command"
+
+
+def test_server_agent_incomplete_agenda_does_not_promise_creation() -> None:
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("agende isso pra mim", turn_id=54)
+
+    assert result.intent_name == "local_agenda_incomplete"
+    assert result.device_command is None
+    assert "Ainda preciso" in result.reply_text
+
+
 def test_server_agent_llm_and_intents_are_server_owned() -> None:
     _ensure_bridgev2_path()
 

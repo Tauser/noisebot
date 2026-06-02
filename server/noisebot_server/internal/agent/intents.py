@@ -44,6 +44,8 @@ _UNIT_SECONDS: dict[str, int] = {
     "horas": 3600,
 }
 
+_DEFAULT_VOLUME_PERCENT = 80
+
 _TIMER_TERMS = ("timer", "timing", "temporizador", "contador", "contagem")
 _CANCEL_TERMS = (
     "cancela",
@@ -90,10 +92,38 @@ def _parse_duration_s(text: str) -> int | None:
     return int(match.group(1)) * _UNIT_SECONDS[match.group(2)]
 
 
+def _parse_percent(text: str) -> int | None:
+    match = re.search(r"\b(\d{1,3})\s*(?:%|por cento)?\b", text)
+    if not match:
+        return None
+    return max(0, min(100, int(match.group(1))))
+
+
+def _status_volume(status: dict) -> int:
+    try:
+        return max(0, min(100, int(status.get("volume", _DEFAULT_VOLUME_PERCENT))))
+    except (TypeError, ValueError):
+        return _DEFAULT_VOLUME_PERCENT
+
+
 def _agenda_command(action: str, **payload: object) -> dict[str, object]:
     return {
         "event": "AGENDA_COMMAND",
         "action": action,
+        **payload,
+    }
+
+
+def _volume_command(percent: int) -> dict[str, object]:
+    return {
+        "event": "VOLUME_COMMAND",
+        "percent": max(0, min(100, int(percent))),
+    }
+
+
+def _settings_command(**payload: object) -> dict[str, object]:
+    return {
+        "event": "SETTINGS_COMMAND",
         **payload,
     }
 
@@ -592,6 +622,19 @@ class LocalIntentProvider:
                     ),
                 )
 
+        if _has(norm, "agenda", "agendar", "agende", "lembrete", "lembre", "timer", "alarme"):
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_agenda_incomplete",
+                reply_text=(
+                    "Ainda preciso de tempo e tipo. Pode dizer, por exemplo: "
+                    "timer de 5 minutos, ou me lembre de beber agua daqui a 10 minutos."
+                ),
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_NEUTRAL,
+            )
+
         # -- Tempo atual -------------------------------------------------------
         if _has(norm, "que horas", "horas sao", "hora e", "hora esta",
                 "que hora", "me diz a hora", "diz a hora", "horas agora"):
@@ -613,6 +656,48 @@ class LocalIntentProvider:
                 expression_id=_EXPR_ATTENTIVE,
                 action_id=_ACTION_NONE,
                 emot_event_id=_EMOT_NEUTRAL,
+            )
+
+        if _has(norm, "brilho da tela", "brilho tela", "tela mais clara", "tela mais escura"):
+            percent = _parse_percent(norm)
+            if percent is None:
+                percent = 90 if _has(norm, "clara", "aumenta", "aumentar") else 35
+            brightness = max(0, min(255, int(round(percent * 2.55))))
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_display_brightness",
+                reply_text=f"Brilho da tela em {percent} por cento.",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_NEUTRAL,
+                device_command=_settings_command(display_brightness=brightness),
+            )
+
+        if _has(norm, "brilho do led", "brilho dos leds", "led mais forte", "led mais fraco"):
+            percent = _parse_percent(norm)
+            if percent is None:
+                percent = 90 if _has(norm, "forte", "aumenta", "aumentar") else 25
+            brightness = max(0, min(255, int(round(percent * 2.55))))
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_led_brightness",
+                reply_text=f"Brilho dos LEDs em {percent} por cento.",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_NEUTRAL,
+                device_command=_settings_command(led_brightness=brightness),
+            )
+
+        if _has(norm, "acende a luz", "acenda a luz", "mude a luz", "luz azul",
+                "luz verde", "luz vermelha", "cor do led", "cor dos leds"):
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_light_unsupported",
+                reply_text="Ainda nao tenho controle de cor das luzes conectado ao firmware.",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_NEUTRAL,
+                resolution_reason="unsupported_device_command",
             )
 
         # -- Teste de bridge ---------------------------------------------------
@@ -854,25 +939,25 @@ class LocalIntentProvider:
             )
 
         # -- Volume ------------------------------------------------------------
-        if _has(norm, "aumenta o volume", "mais alto", "fala mais alto", "volume alto"):
+        if _has(norm, "volume", "som", "audio") or _has(norm, "mais alto", "mais baixo", "fala mais alto", "fala mais baixo"):
+            explicit_percent = _parse_percent(norm)
+            current = _status_volume(status)
+            if explicit_percent is not None:
+                percent = explicit_percent
+            elif _has(norm, "aumenta", "aumentar", "aumente", "alto", "mais alto"):
+                percent = min(100, current + 10)
+            elif _has(norm, "diminui", "diminuir", "diminua", "baixa", "baixar", "baixo", "mais baixo", "silencio", "fica quieto"):
+                percent = max(0, current - 10)
+            else:
+                percent = current
             return IntentResolved(
                 turn_id=turn_id,
-                intent_name="local_volume_up",
-                reply_text="Volume aumentado.",
+                intent_name="local_volume_set",
+                reply_text=f"Volume em {percent} por cento.",
                 expression_id=_EXPR_ATTENTIVE,
                 action_id=_ACTION_NONE,
                 emot_event_id=_EMOT_NEUTRAL,
-            )
-
-        if _has(norm, "diminui o volume", "mais baixo", "fala mais baixo", "volume baixo",
-                "silencio", "fica quieto"):
-            return IntentResolved(
-                turn_id=turn_id,
-                intent_name="local_volume_down",
-                reply_text="Volume reduzido.",
-                expression_id=_EXPR_ATTENTIVE,
-                action_id=_ACTION_NONE,
-                emot_event_id=_EMOT_NEUTRAL,
+                device_command=_volume_command(percent),
             )
 
         # -- Sem intent local --------------------------------------------------
