@@ -281,6 +281,13 @@ Responsabilidade:
   wake/barge-in. O comparador expoe divergencias em status, mas ainda nao
   encerra sessao real, nao abre sessao em `IDLE`, nao chama bridge e nao acessa
   HAL.
+- Validacao fisica N2 em 2026-06-02: o comparador passivo passou turno curto,
+  no-echo curto e barge/pare. O turno curto fechou com `speech_frames=15`,
+  `activity_end_observed=true` e `decision_diverged=false`; no-echo curto nao
+  criou turno fantasma e fechou com `speech_frames=29`; barge/pare fechou com
+  `source=BARGE_IN`, comando seguinte `local_stop`, zero drops no Capture v2 e
+  Activity v2 sem divergencia (`speech_frames=18`). O owner real do fim de fala
+  continua sendo o VAD legado do `audio_service`.
 - Validacao em hardware do shadow 30 s confirmou o objetivo de observabilidade:
   turno real `ww -> me conte uma historia curta` gerou
   `session_frames=268`, `idle_frames=1607`, `muted_frames=478`,

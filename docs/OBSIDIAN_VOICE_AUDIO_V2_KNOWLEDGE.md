@@ -385,6 +385,13 @@ Faz:
   sessao real ja aberta por wake/barge-in, expondo
   `session_compare_active`, `activity_end_observed`, `legacy_end_observed` e
   `decision_diverged` em `/api/audio/activity-v2`;
+- N2 hardware em 2026-06-02: comparador passivo calibrado para sessao real
+  (`RMS 200` / `peak 700`) passou turno curto, no-echo curto e barge/pare.
+  O turno curto marcou `speech_frames=15`, no-echo `speech_frames=29` e
+  barge/pare `speech_frames=18`; todos fecharam com
+  `activity_end_observed=true` e `decision_diverged=false`. Capture v2 ficou
+  dono do TX e sem drops; no barge/pare o comando `Pare.` virou `local_stop`
+  apos interrupcao por `barge_in`. Activity v2 continua sem decidir o fim real.
 - validacao em hardware do shadow 30 s: 1875 frames em 30000 ms,
   `session_frames=268`, `idle_frames=1607`, `muted_frames=478`,
   `unmuted_frames=1397`, Opus v2 saudavel, Capture v2 desligado; ponto amarelo

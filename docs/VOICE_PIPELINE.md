@@ -1223,7 +1223,12 @@ O roadmap detalhado das fases restantes esta em
    sessao. Ele registra se viu fala, quando teria encerrado por silencio,
    qual foi a decisao legada e se houve divergencia, tudo exposto em
    `/api/audio/activity-v2`. Ainda nao decide fim de fala, nao abre sessao em
-   `IDLE`, nao toca bridge/HAL e precisa de flash + validacao fisica.
+   `IDLE` e nao toca bridge/HAL. Validacao fisica em 2026-06-02 fechou turno
+   curto, no-echo curto e barge/pare sem divergencia: o barge/pare registrou
+   o turno anterior como `outcome=interrupted` / `discard_reason=barge_in`,
+   comando seguinte `local_stop`, Capture v2 `source=BARGE_IN`, zero drops e
+   Activity v2 com `speech_frames=18`, `activity_end_observed=true` e
+   `decision_diverged=false`.
 4. Capture Session v2 assumindo upstream por flag.
 5. Policy conversacional avancada somente depois de no-echo/captura estaveis.
 

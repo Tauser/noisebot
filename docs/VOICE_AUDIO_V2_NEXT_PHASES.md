@@ -849,9 +849,21 @@ Inicio local em 2026-06-02:
   `activity_end_observed`, `legacy_end_observed`, `decision_diverged` e tempos
   de decisao. O campo `decision_diverged` e apenas auditoria; o owner real do
   fim de fala continua sendo o VAD legado do `audio_service`.
-- Validacao local: contrato focado Voice Audio v2 e build ESP-IDF limpos. Falta
-  flash e validacao fisica com turno curto, no-echo e barge-in antes de promover
-  qualquer decisao real.
+- Validacao local: contrato focado Voice Audio v2 e build ESP-IDF limpos.
+- Validacao fisica em 2026-06-02: apos calibrar o limiar do comparador de
+  sessao para `RMS 200` / `peak 700`, o turno curto `ww -> que horas sao`
+  passou com `speech_frames=15`, `session_compare_speech_seen=true`,
+  `activity_end_observed=true`, legado por silencio e `decision_diverged=false`.
+  O no-echo curto `ww -> diga oi` manteve o ultimo turno esperado, sem turno
+  fantasma apos silencio, com `speech_frames=29` e `decision_diverged=false`.
+  O barge/pare (`ww -> me conte uma historia` durante TTS `ww -> pare`) fechou
+  com turno anterior `outcome=interrupted` / `discard_reason=barge_in`, comando
+  seguinte `local_stop`, Capture v2 `source=BARGE_IN`, zero drops e Activity v2
+  sem divergencia (`speech_frames=18`, `decision_diverged=false`). O pacote
+  egress Opus residual foi drenado para fila zero.
+- Status: N2 comparador passivo verde para turno curto, no-echo curto e
+  barge/pare. Ainda nao promover Activity v2 a decisor real; o owner do fim de
+  fala continua no VAD legado do `audio_service`.
 
 ### N3 - Audio IO v2 Assume RX/TX
 
