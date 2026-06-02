@@ -92,6 +92,11 @@ aplica volume percentual e clamp antes de devolver o frame. O write fisico no
 HAL ainda permanece em `audio_service`, mas os contadores
 `speaker_frames_prepared` e `speaker_samples_prepared` mostram que o preparo do
 speaker saiu do loop legado.
+Na Fase N4.5, o resultado do write SAY tambem volta para Playback v2 por
+`audio_playback_service_v2_speaker_commit_frame()`. Assim o Playback v2 passa a
+ter telemetria de commit (`speaker_frames_committed`, falhas e ultimo resultado)
+e aciona o marcador de handoff no Audio IO v2, enquanto o HAL fisico continua no
+`audio_service`.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

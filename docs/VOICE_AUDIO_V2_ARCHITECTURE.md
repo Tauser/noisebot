@@ -290,6 +290,10 @@ Invariantes:
   `speaker_frames_prepared`/`speaker_samples_prepared`. O `audio_service`
   permanece como unico escritor fisico do HAL, mas ja recebe PCM preparado para
   o speaker.
+- Na Fase N4.5, Playback v2 tambem recebe o resultado do write fisico por
+  `audio_playback_service_v2_speaker_commit_frame()` e aciona o marcador de
+  handoff no Audio IO v2. Isso remove a chamada direta do `audio_service` para
+  o marcador N4 de Playback/SAY, sem mover `audio_hal_*` para Playback v2.
 
 ### Voice Activity v2
 

@@ -1121,6 +1121,28 @@ Incremento N4.4 iniciado:
   `healthy=true/status=ok`. O rollback `speaker-owner-disarm` voltou Playback v2
   para false/false/false e Audio IO v2 para `DISABLED`.
 
+Incremento N4.5 iniciado:
+
+- Playback v2 ganhou `audio_playback_service_v2_speaker_commit_frame()` para
+  fechar o contrato do frame SAY apos o write fisico. O `audio_service` ainda
+  chama `audio_hal_spk_write()`, mas passa o resultado para Playback v2, que
+  registra o commit e aciona o marcador de handoff no Audio IO v2.
+- `/api/audio/playback-v2` expoe `speaker_frames_committed`,
+  `speaker_samples_committed`, `speaker_commit_failures`,
+  `speaker_last_commit_samples` e `speaker_last_commit_result`.
+- `audio_service.c` deixou de chamar diretamente
+  `audio_io_service_v2_speaker_handoff_note_playback_frame()` no caminho SAY,
+  reduzindo o acoplamento do loop legado com o Audio IO v2 sem colocar HAL
+  dentro do Playback v2.
+- Validacao local antes do flash: contrato focado Voice Audio v2 verde
+  (`7 passed`), facade do server verde (`171 passed`), `git diff --check`
+  limpo e `idf.py build` completo sem warnings. Gate fisico esperado: apos
+  flash, armar `speaker-owner`, executar resposta real curta e confirmar
+  `speaker_frames_committed` acompanhando `speaker_frames_prepared` e
+  `say_chunks_played`, `speaker_commit_failures=0`, zero drops/cancelamentos,
+  `speaker_handoff_active=true`, Codec v2 saudavel e rollback por
+  `speaker-owner-disarm`.
+
 ### N5 - Reduzir audio_service.c
 
 Ultima etapa, apos donos reais validados:

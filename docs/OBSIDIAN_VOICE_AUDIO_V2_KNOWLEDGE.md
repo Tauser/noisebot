@@ -190,6 +190,10 @@ Incremento atual da Fase N3:
 - Fase N4.4 moveu o preparo do frame SAY para Playback v2: o provider do
   speaker agora aplica volume/clamp antes do write fisico e expõe contadores
   `speaker_frames_prepared`/`speaker_samples_prepared` para validacao.
+- Fase N4.5 moveu o commit do write SAY para Playback v2: `audio_service`
+  continua escrevendo no HAL, mas passa o resultado para
+  `audio_playback_service_v2_speaker_commit_frame()`, que registra telemetria e
+  aciona o marcador de handoff no Audio IO v2.
 - O HAL/speaker continua fisicamente em `audio_service`; Playback v2 ainda nao
   chama `audio_hal_*`.
 

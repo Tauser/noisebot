@@ -2405,6 +2405,15 @@ Implementação:
   zero cancelamentos, `speaker_handoff_active=true`, `block_reason=NONE`, zero
   falhas/recoveries/I2S recoveries e Codec v2 `healthy=true/status=ok`.
   `speaker-owner-disarm` voltou Audio IO v2 para `DISABLED`.
+- [ ] Fase N4.5 iniciada: Playback v2 passou a fechar o contrato de commit do
+  frame SAY por `audio_playback_service_v2_speaker_commit_frame()`. O
+  `audio_service.c` ainda escreve fisicamente no HAL, mas entrega o resultado
+  para Playback v2, que registra `speaker_frames_committed`,
+  `speaker_samples_committed`, `speaker_commit_failures`,
+  `speaker_last_commit_samples` e `speaker_last_commit_result` e aciona o
+  marcador de handoff no Audio IO v2. Validacao local antes do flash: contrato
+  Voice Audio v2 `7 passed`, server facade `171 passed`, `git diff --check`
+  limpo e `idf.py build` sem warnings.
 
 ---
 
