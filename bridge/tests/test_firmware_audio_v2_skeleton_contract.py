@@ -240,14 +240,20 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
         encoding="utf-8"
     )
 
-    assert "audio_io_service_v2_probe_feed_rx_frame(s_sa_buf, (uint16_t)mic_n);" in audio_service
-    assert "audio_io_service_v2_rx_owner_accept_frame(s_sa_buf, (uint16_t)mic_n, 0U);" in audio_service
+    assert "audio_io_service_v2_probe_feed_rx_frame(rx_samples, rx_sample_count);" in audio_service
+    assert "nb_audio_io_v2_pcm_frame_t rx_frame = {0};" in audio_service
+    assert "audio_io_service_v2_rx_owner_accept_frame(s_sa_buf," in audio_service
+    assert "&rx_frame);" in audio_service
+    assert "const int16_t *rx_samples = rx_frame.samples;" in audio_service
+    assert "uint16_t rx_sample_count = rx_frame.sample_count;" in audio_service
     assert audio_service.index(
-        "audio_io_service_v2_rx_owner_accept_frame(s_sa_buf, (uint16_t)mic_n, 0U);"
-    ) < audio_service.index("sound_analysis_tick(s_sa_buf, mic_n);")
+        "audio_io_service_v2_rx_owner_accept_frame(s_sa_buf,"
+    ) < audio_service.index("sound_analysis_tick(rx_samples, rx_sample_count);")
+    assert "audio_processor_service_feed_shadow(rx_samples, rx_sample_count);" in audio_service
+    assert "voice_activity_service_v2_feed_frame(rx_samples," in audio_service
     assert "audio_io_service_v2_probe_note_tx_silence(wr);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_begin((uint32_t)source);" in audio_service
-    assert "audio_io_service_v2_session_rx_mirror_feed(s_sa_buf, (uint16_t)mic_n);" in audio_service
+    assert "audio_io_service_v2_session_rx_mirror_feed(rx_samples, rx_sample_count);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_finish((uint32_t)reason," in audio_service
     assert "legacy_tx_frames" in audio_service
     assert "legacy_tx_samples" in audio_service
@@ -257,7 +263,10 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert '\\"rx_owner_active\\":%s' in web
     assert '\\"rx_owner_observed\\":%s' in web
     assert '\\"rx_owner_frames\\":%lu' in web
+    assert '\\"rx_distributor_frames\\":%lu' in web
+    assert '\\"rx_distributor_last_timestamp_ms\\":%lu' in web
     assert '\\"session_rx_owner_frames\\":%lu' in web
+    assert '\\"session_rx_distributor_frames\\":%lu' in web
     assert '\\"session_rx_mirror_active\\":%s' in web
     assert '\\"session_rx_mirror_observed\\":%s' in web
     assert '\\"session_rx_legacy_observed\\":%s' in web
@@ -275,7 +284,10 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "bool rx_owner_active;" in io_h
     assert "bool session_rx_legacy_covered;" in io_h
     assert "uint32_t rx_owner_frames;" in io_h
+    assert "uint32_t rx_distributor_frames;" in io_h
+    assert "uint32_t rx_distributor_last_timestamp_ms;" in io_h
     assert "uint32_t session_rx_owner_samples;" in io_h
+    assert "uint32_t session_rx_distributor_samples;" in io_h
     assert "uint32_t session_rx_mirror_frames;" in io_h
     assert "uint32_t session_rx_legacy_samples;" in io_h
     assert "uint32_t session_rx_compare_elapsed_delta_ms;" in io_h

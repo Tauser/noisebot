@@ -197,8 +197,17 @@ bool audio_io_service_v2_probe_is_running(void)
 
 void audio_io_service_v2_rx_owner_accept_frame(const int16_t *samples,
                                                uint16_t sample_count,
-                                               uint32_t source_flags)
+                                               uint32_t source_flags,
+                                               nb_audio_io_v2_pcm_frame_t *out_frame)
 {
+    uint32_t timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000LL);
+    if (out_frame != NULL) {
+        out_frame->samples = samples;
+        out_frame->sample_count = sample_count;
+        out_frame->timestamp_ms = timestamp_ms;
+        out_frame->source_flags = (uint8_t)(source_flags & 0xffU);
+    }
+
     if (samples == NULL || sample_count == 0U) {
         return;
     }
@@ -220,9 +229,14 @@ void audio_io_service_v2_rx_owner_accept_frame(const int16_t *samples,
     s_status.rx_owner_samples += sample_count;
     s_status.rx_owner_last_samples = sample_count;
     s_status.rx_owner_source_flags = source_flags;
+    s_status.rx_distributor_frames++;
+    s_status.rx_distributor_samples += sample_count;
+    s_status.rx_distributor_last_timestamp_ms = timestamp_ms;
     if (s_status.session_rx_mirror_active) {
         s_status.session_rx_owner_frames++;
         s_status.session_rx_owner_samples += sample_count;
+        s_status.session_rx_distributor_frames++;
+        s_status.session_rx_distributor_samples += sample_count;
     }
     s_status.rms_last = rms;
     s_status.peak_last = peak;
@@ -300,6 +314,8 @@ esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source)
     s_status.session_rx_mirror_end_reason = 0;
     s_status.session_rx_owner_frames = 0;
     s_status.session_rx_owner_samples = 0;
+    s_status.session_rx_distributor_frames = 0;
+    s_status.session_rx_distributor_samples = 0;
     s_status.session_rx_legacy_observed = false;
     s_status.session_rx_legacy_covered = false;
     s_status.session_rx_legacy_frames = 0;

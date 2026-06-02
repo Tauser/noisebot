@@ -1234,10 +1234,16 @@ static void audio_task(void *arg)
             if (v < -32768) v = -32768;
             s_sa_buf[i] = (int16_t)v;
         }
-        audio_io_service_v2_rx_owner_accept_frame(s_sa_buf, (uint16_t)mic_n, 0U);
-        sound_analysis_tick(s_sa_buf, mic_n);
-        audio_processor_service_feed_shadow(s_sa_buf, (uint16_t)mic_n);
-        audio_io_service_v2_probe_feed_rx_frame(s_sa_buf, (uint16_t)mic_n);
+        nb_audio_io_v2_pcm_frame_t rx_frame = {0};
+        audio_io_service_v2_rx_owner_accept_frame(s_sa_buf,
+                                                  (uint16_t)mic_n,
+                                                  0U,
+                                                  &rx_frame);
+        const int16_t *rx_samples = rx_frame.samples;
+        uint16_t rx_sample_count = rx_frame.sample_count;
+        sound_analysis_tick(rx_samples, rx_sample_count);
+        audio_processor_service_feed_shadow(rx_samples, rx_sample_count);
+        audio_io_service_v2_probe_feed_rx_frame(rx_samples, rx_sample_count);
         bool io_v2_session_context = false;
         bool activity_session_context = false;
         bool activity_bridge_say_context = false;
@@ -1247,45 +1253,47 @@ static void audio_task(void *arg)
         activity_bridge_say_context = s.bridge_say_playing;
         xSemaphoreGive(s.mutex);
         if (io_v2_session_context) {
-            audio_io_service_v2_session_rx_mirror_feed(s_sa_buf, (uint16_t)mic_n);
+            audio_io_service_v2_session_rx_mirror_feed(rx_samples, rx_sample_count);
         }
         bool activity_playback_context = wrote_audio ||
                                          play_state == PLAY_ACTIVE ||
                                          play_state == PLAY_BRIDGE_SAY ||
                                          activity_bridge_say_context ||
                                          audio_playback_service_v2_is_playing();
-        voice_activity_service_v2_feed_frame(s_sa_buf,
-                                             (uint16_t)mic_n,
+        voice_activity_service_v2_feed_frame(rx_samples,
+                                             rx_sample_count,
                                              activity_session_context,
                                              activity_playback_context);
 
         /* ── 4. VAD ─────────────────────────────────────────────────────── */
-        vad_update(s_mic_proc, s_sa_buf, mic_n, wrote_audio);
+        vad_update(s_mic_proc, rx_samples, rx_sample_count, wrote_audio);
 
         /* ── 4b. Alimentar pre-roll ring buffer e wake_service ──────────── */
         if (!s.listen_session_active && (!wrote_audio || s.bridge_say_playing)) {
-            wake_service_feed(s_wake_buf, (uint16_t)mic_n);
+            wake_service_feed(s_wake_buf, rx_sample_count);
         }
-        if (mic_n > 0U) {
-            memcpy(s_preroll_buf[s_preroll_head], s_sa_buf, mic_n * sizeof(int16_t));
+        if (rx_sample_count > 0U) {
+            memcpy(s_preroll_buf[s_preroll_head],
+                   rx_samples,
+                   (size_t)rx_sample_count * sizeof(int16_t));
             s_preroll_head = (uint8_t)((s_preroll_head + 1U) % PREROLL_CHUNKS);
             if (s_preroll_count < PREROLL_CHUNKS) s_preroll_count++;
         }
 
         /* ── 4c. Bridge mic streaming ────────────────────────────────────── */
-        if (s.listen_session_active && s.bridge_tx_active && mic_n > 0) {
+        if (s.listen_session_active && s.bridge_tx_active && rx_sample_count > 0U) {
             int32_t raw_rms = 0;
             int32_t tx_rms = 0;
             uint16_t raw_peak = 0;
             uint16_t tx_peak = 0;
             uint16_t saturated = 0;
             bool used_processed = audio_processor_service_read_bridge_processed(
-                s_bridge_proc_buf, (uint16_t)mic_n);
-            const int16_t *bridge_src = used_processed ? s_bridge_proc_buf : s_sa_buf;
-            bridge_prepare_tx_audio(bridge_src, s_bridge_buf, mic_n,
+                s_bridge_proc_buf, rx_sample_count);
+            const int16_t *bridge_src = used_processed ? s_bridge_proc_buf : rx_samples;
+            bridge_prepare_tx_audio(bridge_src, s_bridge_buf, rx_sample_count,
                                     &raw_rms, &raw_peak, &tx_rms, &tx_peak, &saturated);
             if (bridge_service_opus_is_enabled()) {
-                bridge_feed_opus_pcm(s_bridge_buf, (uint16_t)mic_n);
+                bridge_feed_opus_pcm(s_bridge_buf, rx_sample_count);
                 uint8_t sent_packets = bridge_drain_opus_packets_if_enabled(
                     s.listen_capture_v2_tx_owner);
                 if (sent_packets > 0U) {
@@ -1307,20 +1315,20 @@ static void audio_task(void *arg)
                                  (long)tx_rms,
                                  (unsigned)tx_peak,
                                  (unsigned)saturated,
-                                 (unsigned)mic_n);
+                                 (unsigned)rx_sample_count);
                     }
                 }
             } else {
                 esp_err_t tx_rc = s.listen_capture_v2_tx_owner
-                    ? voice_capture_session_v2_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n)
-                    : bridge_service_send_audio_chunk(s_bridge_buf, (uint16_t)mic_n);
+                    ? voice_capture_session_v2_send_audio_chunk(s_bridge_buf, rx_sample_count)
+                    : bridge_service_send_audio_chunk(s_bridge_buf, rx_sample_count);
                 if (tx_rc == ESP_OK) {
-                    bridge_feed_opus_pcm(s_bridge_buf, (uint16_t)mic_n);
+                    bridge_feed_opus_pcm(s_bridge_buf, rx_sample_count);
                     s.bridge_audio_sent = true;
                     s.listen_legacy_tx_frames++;
-                    s.listen_legacy_tx_samples += (uint32_t)mic_n;
+                    s.listen_legacy_tx_samples += (uint32_t)rx_sample_count;
                     if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
-                        voice_capture_session_v2_note_audio_chunk((uint16_t)mic_n, true);
+                        voice_capture_session_v2_note_audio_chunk(rx_sample_count, true);
                     }
                     s.bridge_tx_fail_count = 0;
                     if ((++s_bridge_diag_chunk_counter % BRIDGE_TX_LOG_CHUNKS) == 1U) {
@@ -1332,11 +1340,11 @@ static void audio_task(void *arg)
                                  (long)tx_rms,
                                  (unsigned)tx_peak,
                                  (unsigned)saturated,
-                                 (unsigned)mic_n);
+                                 (unsigned)rx_sample_count);
                     }
                 } else {
                     if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
-                        voice_capture_session_v2_note_audio_chunk((uint16_t)mic_n, false);
+                        voice_capture_session_v2_note_audio_chunk(rx_sample_count, false);
                     }
                     if (tx_rc == ESP_ERR_INVALID_STATE) {
                         ESP_LOGW(TAG, "bridge desconectou durante sessao — encerrando escuta");
