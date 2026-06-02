@@ -76,6 +76,16 @@ static uint32_t abs_delta_u32(uint32_t a, uint32_t b)
     return (a >= b) ? (a - b) : (b - a);
 }
 
+static void initialize_status_locked(void)
+{
+    memset(&s_status, 0, sizeof(s_status));
+    s_status.initialized = true;
+    s_status.speaker_handoff_supported = true;
+    s_status.speaker_handoff_block_reason =
+        NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
+    s_status.last_error = ESP_OK;
+}
+
 static void reset_speaker_handoff_locked(void)
 {
     s_status.speaker_handoff_active = false;
@@ -141,12 +151,7 @@ esp_err_t audio_io_service_v2_init(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    memset(&s_status, 0, sizeof(s_status));
-    s_status.initialized = true;
-    s_status.speaker_handoff_supported = true;
-    s_status.speaker_handoff_block_reason =
-        NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
-    s_status.last_error = ESP_OK;
+    initialize_status_locked();
     s_status.heap_internal_free_kb = internal_kb;
     s_status.heap_dma_free_kb = dma_kb;
     taskEXIT_CRITICAL(&s_mux);
@@ -197,8 +202,7 @@ esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms)
 
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.initialized) {
-        memset(&s_status, 0, sizeof(s_status));
-        s_status.initialized = true;
+        initialize_status_locked();
     }
     if (s_status.probe_running) {
         taskEXIT_CRITICAL(&s_mux);
@@ -263,10 +267,7 @@ esp_err_t audio_io_service_v2_set_speaker_handoff_dry_run(bool enabled)
 {
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.initialized) {
-        memset(&s_status, 0, sizeof(s_status));
-        s_status.initialized = true;
-        s_status.speaker_handoff_supported = true;
-        s_status.last_error = ESP_OK;
+        initialize_status_locked();
     }
 
     s_status.speaker_handoff_supported = true;
@@ -299,10 +300,7 @@ void audio_io_service_v2_rx_owner_accept_frame(const int16_t *samples,
 
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.initialized) {
-        memset(&s_status, 0, sizeof(s_status));
-        s_status.initialized = true;
-        s_status.speaker_handoff_supported = true;
-        s_status.last_error = ESP_OK;
+        initialize_status_locked();
     }
 
     s_status.rx_owner_active = true;
@@ -415,8 +413,7 @@ esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source)
 
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.initialized) {
-        memset(&s_status, 0, sizeof(s_status));
-        s_status.initialized = true;
+        initialize_status_locked();
     }
     if (s_status.session_rx_mirror_active) {
         taskEXIT_CRITICAL(&s_mux);
@@ -536,9 +533,7 @@ void audio_io_service_v2_tx_owner_note_frame(uint16_t sample_count,
 {
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.initialized) {
-        memset(&s_status, 0, sizeof(s_status));
-        s_status.initialized = true;
-        s_status.last_error = ESP_OK;
+        initialize_status_locked();
     }
 
     s_status.tx_owner_observed = true;
@@ -591,9 +586,7 @@ void audio_io_service_v2_note_i2s_recovery(esp_err_t reason)
 {
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.initialized) {
-        memset(&s_status, 0, sizeof(s_status));
-        s_status.initialized = true;
-        s_status.speaker_handoff_supported = true;
+        initialize_status_locked();
     }
     s_status.i2s_recoveries++;
     s_status.last_error = reason;
