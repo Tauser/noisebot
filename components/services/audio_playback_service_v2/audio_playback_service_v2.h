@@ -39,6 +39,9 @@ typedef struct {
     uint32_t speaker_commit_failures;
     uint32_t speaker_last_commit_samples;
     esp_err_t speaker_last_commit_result;
+    uint32_t speaker_empty_polls;
+    uint32_t speaker_empty_ms;
+    uint32_t speaker_idle_end_count;
     uint32_t probe_duration_ms;
     uint32_t probe_elapsed_ms;
     uint32_t queued_chunks;
@@ -79,6 +82,8 @@ bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk
                                                   uint8_t volume_percent);
 void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
                                                     esp_err_t result);
+bool audio_playback_service_v2_speaker_note_empty(uint32_t chunk_ms,
+                                                  uint32_t idle_end_ms);
 uint32_t audio_playback_service_v2_say_cancel(void);
 uint32_t audio_playback_service_v2_say_pending_count(void);
 

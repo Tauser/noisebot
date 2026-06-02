@@ -2573,7 +2573,7 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
     nb_voice_activity_v2_status_t st;
     voice_activity_service_v2_get_status(&st);
 
-    char buf[1600];
+    char buf[1800];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
              "\"shadow_running\":%s,\"session_compare_active\":%s,"
@@ -2706,6 +2706,9 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              "\"speaker_commit_failures\":%lu,"
              "\"speaker_last_commit_samples\":%lu,"
              "\"speaker_last_commit_result\":\"%s\","
+             "\"speaker_empty_polls\":%lu,"
+             "\"speaker_empty_ms\":%lu,"
+             "\"speaker_idle_end_count\":%lu,"
              "\"probe_duration_ms\":%lu,"
              "\"probe_elapsed_ms\":%lu,\"queued_chunks\":%lu,"
              "\"played_chunks\":%lu,\"dropped_chunks\":%lu,"
@@ -2734,6 +2737,9 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.speaker_commit_failures,
              (unsigned long)st.speaker_last_commit_samples,
              esp_err_to_name(st.speaker_last_commit_result),
+             (unsigned long)st.speaker_empty_polls,
+             (unsigned long)st.speaker_empty_ms,
+             (unsigned long)st.speaker_idle_end_count,
              (unsigned long)st.probe_duration_ms,
              (unsigned long)st.probe_elapsed_ms,
              (unsigned long)st.queued_chunks,

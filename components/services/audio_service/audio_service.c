@@ -1368,7 +1368,8 @@ static void audio_task(void *arg)
             } else {
                 /* Fila vazia pode ser jitter de TCP/TTS. Segura o modo SAY por
                  * uma janela curta antes de encerrar para não cortar frases. */
-                if (s.bridge_say_empty_ms >= BRIDGE_SAY_IDLE_END_MS) {
+                if (audio_playback_service_v2_speaker_note_empty(CHUNK_DURATION_MS,
+                                                                 BRIDGE_SAY_IDLE_END_MS)) {
                     xSemaphoreTake(s.mutex, portMAX_DELAY);
                     s.play_state      = PLAY_IDLE;
                     s.bridge_say_playing = false;
@@ -1376,8 +1377,6 @@ static void audio_task(void *arg)
                     xSemaphoreGive(s.mutex);
                     audio_playback_service_v2_note_say_idle();
                     if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
-                } else {
-                    s.bridge_say_empty_ms += CHUNK_DURATION_MS;
                 }
             }
         }

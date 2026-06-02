@@ -31,6 +31,11 @@ static void playback_v2_note_queue_count(uint32_t queue_count)
     s_status.say_queue_count = queue_count;
 }
 
+static void playback_v2_reset_speaker_empty_locked(void)
+{
+    s_status.speaker_empty_ms = 0;
+}
+
 static void playback_v2_mirror_speaker_owner(nb_audio_playback_v2_status_t *status,
                                              const nb_audio_io_v2_status_t *io)
 {
@@ -273,6 +278,7 @@ esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t
         uint32_t queue_count = (uint32_t)uxQueueMessagesWaiting(queue);
         taskENTER_CRITICAL(&s_mux);
         s_status.say_chunks_received++;
+        playback_v2_reset_speaker_empty_locked();
         playback_v2_note_queue_count(queue_count);
         s_status.last_error = ESP_OK;
         taskEXIT_CRITICAL(&s_mux);
@@ -345,6 +351,7 @@ bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk
     s_status.speaker_samples_prepared += out->count;
     s_status.speaker_last_samples = out->count;
     s_status.speaker_last_volume = volume_percent;
+    playback_v2_reset_speaker_empty_locked();
     s_status.last_error = ESP_OK;
     taskEXIT_CRITICAL(&s_mux);
     return true;
@@ -367,6 +374,23 @@ void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
     taskEXIT_CRITICAL(&s_mux);
 }
 
+bool audio_playback_service_v2_speaker_note_empty(uint32_t chunk_ms,
+                                                  uint32_t idle_end_ms)
+{
+    taskENTER_CRITICAL(&s_mux);
+    s_status.speaker_empty_polls++;
+    bool should_end = idle_end_ms > 0U &&
+                      s_status.speaker_empty_ms >= idle_end_ms;
+    if (should_end) {
+        s_status.speaker_idle_end_count++;
+    } else {
+        s_status.speaker_empty_ms += chunk_ms;
+    }
+    s_status.last_error = ESP_OK;
+    taskEXIT_CRITICAL(&s_mux);
+    return should_end;
+}
+
 uint32_t audio_playback_service_v2_say_cancel(void)
 {
     QueueHandle_t queue = s_say_q;
@@ -382,6 +406,7 @@ uint32_t audio_playback_service_v2_say_cancel(void)
     if (pending > 0U) {
         s_status.say_cancel_count++;
     }
+    playback_v2_reset_speaker_empty_locked();
     playback_v2_note_queue_count(0U);
     s_status.last_error = ESP_OK;
     taskEXIT_CRITICAL(&s_mux);
@@ -457,6 +482,7 @@ void audio_playback_service_v2_note_say_idle(void)
     taskENTER_CRITICAL(&s_mux);
     s_status.bridge_say_observer = true;
     s_status.bridge_say_queue_owner = (s_say_q != NULL);
+    playback_v2_reset_speaker_empty_locked();
     s_status.say_queue_count = 0;
     taskEXIT_CRITICAL(&s_mux);
 }
