@@ -388,6 +388,30 @@ Bloqueia release:
 - Amostra ruim passa como comando valido.
 - `--replay` perde outcome estruturado ou detalhes diagnosticos.
 
+## Gate 10 - Log Final De Sessao
+
+Verde:
+
+- Cada sessao registrada pelo server emite uma linha `VOICE_SESSION_FINAL`.
+- A linha contem JSON compacto com `turn_id`, `outcome`, `route`, `state`,
+  `audio_codec`, motivo final, contadores de audio e metricas STT/TTS
+  disponiveis.
+- O log evita transcript/resposta completos; esses continuam em `/ai/metrics`
+  para diagnostico visual controlado.
+- Drops e filas continuam auditados pelos gates de Codec v2 e Playback v2.
+
+Teste automatico:
+
+```powershell
+cmd.exe /c "set PYTHONPATH=D:\Projetos\Noisebot\server&& C:\Users\Tauser\AppData\Local\Python\pythoncore-3.14-64\python.exe -m pytest server\tests\test_server_facade.py::test_server_orchestrator_logs_final_voice_session"
+```
+
+Bloqueia release:
+
+- Sessao termina sem linha `VOICE_SESSION_FINAL`.
+- JSON nao traz rota/outcome/codec ou metricas STT/TTS disponiveis.
+- Log despeja transcript ou resposta completa por acidente.
+
 ## Registro Da Rodada
 
 Para cada release local de voz, registrar:
@@ -396,7 +420,7 @@ Para cada release local de voz, registrar:
 - Comandos executados e arquivos JSON/Markdown gerados.
 - Resultado de `codec-v2 health`, `capture-v2 status`, Playback v2 SAY,
   `codec-ab`, `barge-live`, `no-echo-live`, reconexao TCP/UART, replay offline
-  e `/ai/metrics`.
+  log final de sessao e `/ai/metrics`.
 - Codec ativo no inicio e no fim.
 - Se rollback PCM16 foi exercitado.
 - Qualquer falha real deve virar teste, replay ou checklist antes de novo
@@ -408,7 +432,8 @@ Esta Fase M parcial esta pronta quando:
 
 - O checklist acima esta referenciado pelos docs de voz.
 - Os gates protegem Opus v2, Playback v2 dono da fila SAY, Capture v2 desligado,
-  barge/no-echo, reconexao TCP/UART, replay offline e completude TTS/texto.
+  barge/no-echo, reconexao TCP/UART, replay offline, log final de sessao e
+  completude TTS/texto.
 - O documento deixa explicito que wake, VAD, AEC, follow-up, `audio_service.c`
   e HAL ficam fora do escopo.
 - PCM16 rollback continua como criterio obrigatorio.

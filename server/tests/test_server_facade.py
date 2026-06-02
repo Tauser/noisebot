@@ -3435,6 +3435,65 @@ def test_server_orchestrator_records_turn_taking_policy() -> None:
     assert store.last_voice_session["turn_taking_decision"] == "post_barge_stop"
 
 
+def test_server_orchestrator_logs_final_voice_session(caplog) -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    bus = runtime.EventBus(default_maxsize=512)
+    store = status_module.StatusStore()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(default_codec="opus-v2"),
+        get_adapter=lambda: None,
+        status_store=store,
+    )
+    session = runtime.SessionContext(turn_id=79)
+    session.final_text = "Me diga uma curiosidade."
+    session.intent_name = "llm_reply"
+    session.reply_text = "Aqui vai uma curiosidade."
+    session.meta["outcome"] = "llm"
+    session.meta["transcript_quality"] = "good"
+    session.meta["voice_end_reason"] = "silence"
+    session.meta["tts_chunks_sent"] = 12
+    session.meta["tts_completed"] = True
+    session.meta["tts_say_begin_sent"] = True
+    session.meta["tts_say_end_sent"] = True
+
+    with caplog.at_level(logging.INFO, logger=orchestrator_module.__name__):
+        orchestrator._record_voice_session(session)
+
+    assert store.last_voice_session["route"] == "llm"
+    assert store.last_voice_session["audio_codec"] == "opus-v2"
+
+    lines = [
+        record.message.removeprefix("VOICE_SESSION_FINAL ")
+        for record in caplog.records
+        if record.message.startswith("VOICE_SESSION_FINAL ")
+    ]
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["turn_id"] == 79
+    assert payload["outcome"] == "llm"
+    assert payload["route"] == "llm"
+    assert payload["state"] == "idle"
+    assert payload["audio_codec"] == "opus-v2"
+    assert payload["voice_end_reason"] == "silence"
+    assert payload["chunk_count"] == 0
+    assert payload["transcript_quality"] == "good"
+    assert payload["intent_name"] == "llm_reply"
+    assert payload["reply_chars"] == len("Aqui vai uma curiosidade.")
+    assert payload["tts_chunks_sent"] == 12
+    assert payload["tts_completed"] is True
+    assert payload["tts_say_begin_sent"] is True
+    assert payload["tts_say_end_sent"] is True
+    assert isinstance(payload["duration_ms"], float)
+    assert "transcript" not in payload
+    assert "reply" not in payload
+
+
 async def test_server_orchestrator_marks_post_barge_stop_decision() -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     orchestrator_module = importlib.import_module(

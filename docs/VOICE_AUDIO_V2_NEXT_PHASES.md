@@ -644,7 +644,10 @@ Entregas:
 - Testes de reconexao/cancelamento explicito no bridge: cancelamento explicito
   ja cobre `SPEECH_CANCEL`/turn id e reconexao TCP/UART cobre recriacao de
   transporte/adapter com backoff apos queda.
-- Registro claro de codec ativo, drops, filas, STT, TTS, SAY e estado final.
+- Registro claro de codec ativo, drops, filas, STT, TTS, SAY e estado final:
+  cada sessao gravada pelo server emite `VOICE_SESSION_FINAL` com JSON
+  estruturado para auditoria, enquanto drops/filas seguem nos gates de Codec v2
+  e Playback v2.
 
 Comandos base:
 
@@ -677,6 +680,8 @@ Gates obrigatorios da Fase M parcial:
   backoff entre tentativas.
 - Replay offline: `bridge/tests/test_voice_check.py` e o baseline em
   `docs/VOICE_REPLAY_BASELINE.json` passam com fixtures reais boas/rejeitadas.
+- Log final: cada sessao registrada pelo server emite `VOICE_SESSION_FINAL`
+  com turno, rota, outcome, codec, STT/TTS, motivo final e estado.
 - TTS/texto: `/ai/metrics` separa `tts_completed=false`, falha de `SAY_END`,
   truncamento visual e paginacao `TEXT_SCROLL`; `text_scroll_pages_sent` deve
   cobrir `text_scroll_pages` quando houver paginacao.

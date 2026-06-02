@@ -176,7 +176,9 @@ def _sanitize_session(value: dict) -> dict:
     allowed = {
         "turn_id",
         "outcome",
+        "route",
         "state",
+        "audio_codec",
         "discard_reason",
         "voice_end_reason",
         "total_samples",

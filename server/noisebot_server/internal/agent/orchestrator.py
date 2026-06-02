@@ -25,6 +25,7 @@ Fase 6: TTS persistente (PiperServerTTS) + cache + OutputScheduler.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections import deque
@@ -1454,10 +1455,20 @@ class Orchestrator:
             else:
                 outcome = "idle"
 
-        self._store.record_voice_session({
+        audio_config = getattr(self._config, "audio", None)
+        audio_codec = getattr(audio_config, "default_codec", None)
+        route = session.meta.get("route") or (
+            "llm" if session.intent_name == "llm_reply" else (
+                "local_intent" if session.intent_name else outcome
+            )
+        )
+
+        voice_session = {
             "turn_id": session.turn_id,
             "outcome": outcome,
+            "route": route,
             "state": self._fsm.state.name.lower(),
+            "audio_codec": audio_codec,
             "discard_reason": session.discard_reason,
             "voice_end_reason": session.meta.get("voice_end_reason"),
             "total_samples": session.total_samples,
@@ -1499,7 +1510,9 @@ class Orchestrator:
             "speech_total_ms": since_start_ms("speech_done"),
             "error_stage": session.meta.get("error_stage"),
             "error_reason": session.meta.get("error_reason"),
-        })
+        }
+        self._store.record_voice_session(voice_session)
+        _log_voice_session_final(voice_session)
 
 
 def _split_text_scroll_pages(
@@ -1544,3 +1557,39 @@ def _text_prefix(text: str, max_bytes: int, max_chars: int) -> str:
             break
         out = candidate
     return out
+
+
+def _log_voice_session_final(session: dict[str, Any]) -> None:
+    """Emit one compact structured line for release/debug log audits."""
+    fields = (
+        "turn_id",
+        "outcome",
+        "route",
+        "state",
+        "audio_codec",
+        "discard_reason",
+        "voice_end_reason",
+        "total_samples",
+        "duration_ms",
+        "chunk_count",
+        "transcript_quality",
+        "intent_name",
+        "reply_chars",
+        "tts_chunks_sent",
+        "tts_completed",
+        "tts_say_begin_sent",
+        "tts_say_end_sent",
+        "voice_end_to_stt_start_ms",
+        "stt_ms",
+        "first_audio_out_ms",
+        "first_audio_after_voice_end_ms",
+        "text_scroll_pages",
+        "text_scroll_pages_sent",
+        "error_stage",
+        "error_reason",
+    )
+    payload = {key: session.get(key) for key in fields if session.get(key) is not None}
+    log.info(
+        "VOICE_SESSION_FINAL %s",
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+    )

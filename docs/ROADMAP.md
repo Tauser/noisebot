@@ -2782,7 +2782,9 @@ Metas de produto:
   `docs/VOICE_REPLAY_BASELINE.json` referencia 2 comandos curtos aceitos e 2
   amostras de ruido/mesa vibrando rejeitadas em `voice_samples/`.
 - [x] `--replay` retorna resultado estruturado com rota, outcome e detalhe diagnóstico.
-- [ ] Métricas aparecem no log final de cada sessão.
+- [x] Métricas aparecem no log final de cada sessão: o server emite
+  `VOICE_SESSION_FINAL` com JSON compacto contendo turno, rota, outcome,
+  codec configurado, STT/TTS, motivo final e contadores principais.
 - [ ] Checklist de hardware documenta comandos, resultado esperado e logs-chave.
 - [x] Antes de mexer em LLM ou protocolo, replay precisa continuar verde:
   `bridge/tests/test_voice_check.py` valida o baseline com 4 fixtures e
