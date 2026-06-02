@@ -292,6 +292,19 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert '\\"tx_owner_last_samples\\":%lu' in web
     assert '\\"tx_owner_last_silence\\":%s' in web
     assert '\\"tx_owner_last_result\\":\\"%s\\"' in web
+    assert '\\"speaker_handoff_supported\\":%s' in web
+    assert '\\"speaker_handoff_dry_run_enabled\\":%s' in web
+    assert '\\"speaker_handoff_active\\":%s' in web
+    assert '\\"speaker_handoff_candidate\\":%s' in web
+    assert '\\"speaker_handoff_ready\\":%s' in web
+    assert '\\"speaker_handoff_block_reason\\":\\"%s\\"' in web
+    assert '\\"speaker_handoff_frames\\":%lu' in web
+    assert '\\"speaker_handoff_samples\\":%lu' in web
+    assert '\\"speaker_handoff_silence_frames\\":%lu' in web
+    assert '\\"speaker_handoff_failures\\":%lu' in web
+    assert '\\"speaker_handoff_recoveries\\":%lu' in web
+    assert '\\"speaker_handoff_last_samples\\":%lu' in web
+    assert '\\"speaker_handoff_last_result\\":\\"%s\\"' in web
     assert '\\"session_rx_mirror_active\\":%s' in web
     assert '\\"session_rx_mirror_observed\\":%s' in web
     assert '\\"session_rx_legacy_observed\\":%s' in web
@@ -306,6 +319,11 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "void audio_io_service_v2_probe_feed_rx_frame(" in io_h
     assert "void audio_io_service_v2_tx_owner_note_frame(" in io_h
     assert "void audio_io_service_v2_note_i2s_recovery(" in io_h
+    assert "esp_err_t audio_io_service_v2_set_speaker_handoff_dry_run(bool enabled);" in io_h
+    assert "NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED" in io_h
+    assert "NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NO_TX" in io_h
+    assert "NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_TX_ERROR" in io_h
+    assert "NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_I2S_RECOVERY" in io_h
     assert "esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);" in io_h
     assert "void audio_io_service_v2_session_rx_mirror_feed(" in io_h
     assert "void audio_io_service_v2_session_rx_mirror_finish(" in io_h
@@ -326,11 +344,28 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "uint32_t tx_owner_last_samples;" in io_h
     assert "bool tx_owner_last_silence;" in io_h
     assert "esp_err_t tx_owner_last_result;" in io_h
+    assert "bool speaker_handoff_supported;" in io_h
+    assert "bool speaker_handoff_dry_run_enabled;" in io_h
+    assert "bool speaker_handoff_active;" in io_h
+    assert "bool speaker_handoff_candidate;" in io_h
+    assert "bool speaker_handoff_ready;" in io_h
+    assert "nb_audio_io_v2_speaker_handoff_block_t speaker_handoff_block_reason;" in io_h
+    assert "uint32_t speaker_handoff_frames;" in io_h
+    assert "uint32_t speaker_handoff_samples;" in io_h
+    assert "uint32_t speaker_handoff_silence_frames;" in io_h
+    assert "uint32_t speaker_handoff_failures;" in io_h
+    assert "uint32_t speaker_handoff_recoveries;" in io_h
+    assert "uint32_t speaker_handoff_last_samples;" in io_h
+    assert "esp_err_t speaker_handoff_last_result;" in io_h
     assert "uint32_t session_rx_mirror_frames;" in io_h
     assert "uint32_t session_rx_legacy_samples;" in io_h
     assert "uint32_t session_rx_compare_elapsed_delta_ms;" in io_h
     assert "audio_hal_" not in io_c
     assert "bridge_" not in io_c
+    assert "speaker_handoff_active = false;" in io_c
+    assert "audio_io_service_v2_set_speaker_handoff_dry_run(" in io_c
+    assert '{ .uri = "/api/audio/io-v2/speaker-handoff/enable"' in web
+    assert '{ .uri = "/api/audio/io-v2/speaker-handoff/disable"' in web
 
 
 def test_voice_activity_v2_shadow_is_explicit_and_passive():

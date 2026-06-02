@@ -1661,7 +1661,28 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_io_v2_status_t st;
     audio_io_service_v2_get_status(&st);
 
-    char buf[1900];
+    const char *speaker_block = "UNKNOWN";
+    switch (st.speaker_handoff_block_reason) {
+    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NONE:
+        speaker_block = "NONE";
+        break;
+    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED:
+        speaker_block = "DISABLED";
+        break;
+    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NO_TX:
+        speaker_block = "NO_TX";
+        break;
+    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_TX_ERROR:
+        speaker_block = "TX_ERROR";
+        break;
+    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_I2S_RECOVERY:
+        speaker_block = "I2S_RECOVERY";
+        break;
+    default:
+        break;
+    }
+
+    char buf[3000];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"probe_running\":%s,"
              "\"rx_owner_active\":%s,\"rx_owner_observed\":%s,"
@@ -1699,6 +1720,19 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              "\"tx_owner_last_samples\":%lu,"
              "\"tx_owner_last_silence\":%s,"
              "\"tx_owner_last_result\":\"%s\","
+             "\"speaker_handoff_supported\":%s,"
+             "\"speaker_handoff_dry_run_enabled\":%s,"
+             "\"speaker_handoff_active\":%s,"
+             "\"speaker_handoff_candidate\":%s,"
+             "\"speaker_handoff_ready\":%s,"
+             "\"speaker_handoff_block_reason\":\"%s\","
+             "\"speaker_handoff_frames\":%lu,"
+             "\"speaker_handoff_samples\":%lu,"
+             "\"speaker_handoff_silence_frames\":%lu,"
+             "\"speaker_handoff_failures\":%lu,"
+             "\"speaker_handoff_recoveries\":%lu,"
+             "\"speaker_handoff_last_samples\":%lu,"
+             "\"speaker_handoff_last_result\":\"%s\","
              "\"rx_frames\":%lu,\"tx_frames\":%lu,"
              "\"tx_silence_frames\":%lu,\"i2s_recoveries\":%lu,"
              "\"dropped_frames\":%lu,\"rms_last\":%lu,\"peak_last\":%lu,"
@@ -1750,6 +1784,19 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.tx_owner_last_samples,
              st.tx_owner_last_silence ? "true" : "false",
              esp_err_to_name(st.tx_owner_last_result),
+             st.speaker_handoff_supported ? "true" : "false",
+             st.speaker_handoff_dry_run_enabled ? "true" : "false",
+             st.speaker_handoff_active ? "true" : "false",
+             st.speaker_handoff_candidate ? "true" : "false",
+             st.speaker_handoff_ready ? "true" : "false",
+             speaker_block,
+             (unsigned long)st.speaker_handoff_frames,
+             (unsigned long)st.speaker_handoff_samples,
+             (unsigned long)st.speaker_handoff_silence_frames,
+             (unsigned long)st.speaker_handoff_failures,
+             (unsigned long)st.speaker_handoff_recoveries,
+             (unsigned long)st.speaker_handoff_last_samples,
+             esp_err_to_name(st.speaker_handoff_last_result),
              (unsigned long)st.rx_frames,
              (unsigned long)st.tx_frames,
              (unsigned long)st.tx_silence_frames,
@@ -1770,6 +1817,24 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
 static esp_err_t handle_api_audio_io_v2_status(httpd_req_t *req)
 {
     return send_audio_io_v2_status(req, ESP_OK);
+}
+
+static esp_err_t handle_api_audio_io_v2_speaker_handoff_enable(httpd_req_t *req)
+{
+    esp_err_t err = audio_io_service_v2_set_speaker_handoff_dry_run(true);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+    return send_audio_io_v2_status(req, err);
+}
+
+static esp_err_t handle_api_audio_io_v2_speaker_handoff_disable(httpd_req_t *req)
+{
+    esp_err_t err = audio_io_service_v2_set_speaker_handoff_dry_run(false);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+    return send_audio_io_v2_status(req, err);
 }
 
 static const char *audio_codec_v2_format_name(nb_audio_codec_v2_format_t format)
@@ -4018,6 +4083,8 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/io-v2", .method = HTTP_GET, .handler = handle_api_audio_io_v2_status },
     { .uri = "/api/audio/io-v2/probe", .method = HTTP_POST, .handler = handle_api_audio_io_v2_probe },
     { .uri = "/api/audio/io-v2/probe/stop", .method = HTTP_POST, .handler = handle_api_audio_io_v2_probe_stop },
+    { .uri = "/api/audio/io-v2/speaker-handoff/enable", .method = HTTP_POST, .handler = handle_api_audio_io_v2_speaker_handoff_enable },
+    { .uri = "/api/audio/io-v2/speaker-handoff/disable", .method = HTTP_POST, .handler = handle_api_audio_io_v2_speaker_handoff_disable },
     { .uri = "/api/audio/activity-v2", .method = HTTP_GET, .handler = handle_api_voice_activity_v2_status },
     { .uri = "/api/audio/activity-v2/shadow", .method = HTTP_POST, .handler = handle_api_voice_activity_v2_shadow },
     { .uri = "/api/audio/activity-v2/shadow/stop", .method = HTTP_POST, .handler = handle_api_voice_activity_v2_shadow_stop },

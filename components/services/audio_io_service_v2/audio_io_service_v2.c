@@ -76,6 +76,59 @@ static uint32_t abs_delta_u32(uint32_t a, uint32_t b)
     return (a >= b) ? (a - b) : (b - a);
 }
 
+static void reset_speaker_handoff_locked(void)
+{
+    s_status.speaker_handoff_active = false;
+    s_status.speaker_handoff_candidate = false;
+    s_status.speaker_handoff_ready = false;
+    s_status.speaker_handoff_block_reason =
+        s_status.speaker_handoff_dry_run_enabled
+            ? NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NO_TX
+            : NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
+    s_status.speaker_handoff_frames = 0;
+    s_status.speaker_handoff_samples = 0;
+    s_status.speaker_handoff_silence_frames = 0;
+    s_status.speaker_handoff_failures = 0;
+    s_status.speaker_handoff_recoveries = 0;
+    s_status.speaker_handoff_last_samples = 0;
+    s_status.speaker_handoff_last_result = ESP_OK;
+}
+
+static void update_speaker_handoff_ready_locked(void)
+{
+    if (!s_status.speaker_handoff_dry_run_enabled) {
+        s_status.speaker_handoff_candidate = false;
+        s_status.speaker_handoff_ready = false;
+        s_status.speaker_handoff_block_reason =
+            NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
+        return;
+    }
+
+    s_status.speaker_handoff_candidate = s_status.speaker_handoff_frames > 0U;
+    if (!s_status.speaker_handoff_candidate) {
+        s_status.speaker_handoff_ready = false;
+        s_status.speaker_handoff_block_reason =
+            NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NO_TX;
+        return;
+    }
+    if (s_status.speaker_handoff_recoveries > 0U) {
+        s_status.speaker_handoff_ready = false;
+        s_status.speaker_handoff_block_reason =
+            NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_I2S_RECOVERY;
+        return;
+    }
+    if (s_status.speaker_handoff_failures > 0U) {
+        s_status.speaker_handoff_ready = false;
+        s_status.speaker_handoff_block_reason =
+            NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_TX_ERROR;
+        return;
+    }
+
+    s_status.speaker_handoff_ready = true;
+    s_status.speaker_handoff_block_reason =
+        NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NONE;
+}
+
 esp_err_t audio_io_service_v2_init(void)
 {
     uint32_t internal_kb = 0;
@@ -90,6 +143,9 @@ esp_err_t audio_io_service_v2_init(void)
 
     memset(&s_status, 0, sizeof(s_status));
     s_status.initialized = true;
+    s_status.speaker_handoff_supported = true;
+    s_status.speaker_handoff_block_reason =
+        NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
     s_status.last_error = ESP_OK;
     s_status.heap_internal_free_kb = internal_kb;
     s_status.heap_dma_free_kb = dma_kb;
@@ -163,6 +219,8 @@ esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms)
     s_status.tx_owner_last_samples = 0;
     s_status.tx_owner_last_silence = false;
     s_status.tx_owner_last_result = ESP_OK;
+    s_status.speaker_handoff_supported = true;
+    reset_speaker_handoff_locked();
     s_status.rms_last = 0;
     s_status.peak_last = 0;
     s_status.rms_max = 0;
@@ -201,6 +259,23 @@ bool audio_io_service_v2_probe_is_running(void)
     return running;
 }
 
+esp_err_t audio_io_service_v2_set_speaker_handoff_dry_run(bool enabled)
+{
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.initialized) {
+        memset(&s_status, 0, sizeof(s_status));
+        s_status.initialized = true;
+        s_status.speaker_handoff_supported = true;
+        s_status.last_error = ESP_OK;
+    }
+
+    s_status.speaker_handoff_supported = true;
+    s_status.speaker_handoff_dry_run_enabled = enabled;
+    reset_speaker_handoff_locked();
+    taskEXIT_CRITICAL(&s_mux);
+    return ESP_OK;
+}
+
 void audio_io_service_v2_rx_owner_accept_frame(const int16_t *samples,
                                                uint16_t sample_count,
                                                uint32_t source_flags,
@@ -226,6 +301,7 @@ void audio_io_service_v2_rx_owner_accept_frame(const int16_t *samples,
     if (!s_status.initialized) {
         memset(&s_status, 0, sizeof(s_status));
         s_status.initialized = true;
+        s_status.speaker_handoff_supported = true;
         s_status.last_error = ESP_OK;
     }
 
@@ -471,6 +547,20 @@ void audio_io_service_v2_tx_owner_note_frame(uint16_t sample_count,
     s_status.tx_owner_last_samples = sample_count;
     s_status.tx_owner_last_silence = silence;
     s_status.tx_owner_last_result = result;
+    s_status.speaker_handoff_supported = true;
+    if (s_status.speaker_handoff_dry_run_enabled) {
+        s_status.speaker_handoff_frames++;
+        s_status.speaker_handoff_samples += sample_count;
+        s_status.speaker_handoff_last_samples = sample_count;
+        s_status.speaker_handoff_last_result = result;
+        if (silence) {
+            s_status.speaker_handoff_silence_frames++;
+        }
+        if (result != ESP_OK) {
+            s_status.speaker_handoff_failures++;
+        }
+        update_speaker_handoff_ready_locked();
+    }
     if (result == ESP_OK) {
         s_status.tx_frames++;
         if (silence) {
@@ -503,8 +593,14 @@ void audio_io_service_v2_note_i2s_recovery(esp_err_t reason)
     if (!s_status.initialized) {
         memset(&s_status, 0, sizeof(s_status));
         s_status.initialized = true;
+        s_status.speaker_handoff_supported = true;
     }
     s_status.i2s_recoveries++;
     s_status.last_error = reason;
+    if (s_status.speaker_handoff_dry_run_enabled) {
+        s_status.speaker_handoff_recoveries++;
+        s_status.speaker_handoff_last_result = reason;
+        update_speaker_handoff_ready_locked();
+    }
     taskEXIT_CRITICAL(&s_mux);
 }
