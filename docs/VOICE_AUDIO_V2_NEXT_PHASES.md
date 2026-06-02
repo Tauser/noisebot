@@ -970,6 +970,23 @@ despachado pelo Audio IO v2, ainda sem handoff de HAL/TX.
   legado do `audio_service`. O primeiro passo deve ser uma flag de owner
   bloqueada por gates (`speaker_handoff_ready`, zero drops/recoveries, Opus
   health ok e rollback imediato para `speaker-handoff-disable`).
+- Incremento de arm/disarm do owner controlado fechado nos hashes `f2de809` e
+  `f332619`: o firmware expoe
+  `speaker_handoff_owner_requested`/`speaker_handoff_owner_ready` e os
+  endpoints `POST /api/audio/io-v2/speaker-handoff/owner/arm|disarm`; o server
+  espelha isso no CLI `noisebot_server debug io-v2
+  speaker-handoff-owner-arm|speaker-handoff-owner-disarm`. O primeiro flash de
+  `f2de809` revelou timeout no HTTP ao montar o JSON grande de `/api/audio/io-v2`;
+  `f332619` moveu esse buffer para memoria estatica dedicada e o build voltou
+  limpo. Validacao fisica apos flash de `f332619`: baseline respondeu
+  `owner_requested=false`, `owner_ready=false`, `active=false`,
+  `block_reason=DISABLED`; `owner-arm` respondeu sem derrubar HTTP, iniciou em
+  `NO_TX`, e a leitura seguinte mostrou `owner_requested=true`,
+  `owner_ready=true`, `active=false`, `speaker_handoff_ready=true`,
+  `block_reason=NONE`, `speaker_handoff_frames=1368`, `failures=0`,
+  `recoveries=0`, `dropped_frames=0` e `i2s_recoveries=0`. `owner-disarm`
+  voltou para `DISABLED` com owner/dry-run desligados. Status: N3 pronta para
+  fechar; o owner real do speaker fica para N4.
 
 ### N4 - Playback v2 Assume HAL/Speaker
 

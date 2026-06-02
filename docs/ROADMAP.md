@@ -2332,6 +2332,15 @@ Implementação:
   `speaker_handoff_failures=0`, `speaker_handoff_recoveries=0`,
   `dropped_frames=0` e `i2s_recoveries=0`. Um pacote egress Opus residual foi
   drenado e `codec-v2 health` final voltou `healthy=true/status=ok`.
+- [x] Fase N3 fechou o gate de owner controlado do speaker sem owner real:
+  `speaker_handoff_owner_requested`/`speaker_handoff_owner_ready` e endpoints
+  `speaker-handoff/owner/arm|disarm` foram validados em hardware apos
+  `f332619`. Baseline respondeu `DISABLED`; `owner-arm` nao derrubou mais HTTP,
+  iniciou em `NO_TX` e depois ficou `owner_ready=true`,
+  `speaker_handoff_ready=true`, `active=false`, `block_reason=NONE`,
+  `speaker_handoff_frames=1368`, zero falhas, zero recoveries, zero drops e
+  zero `i2s_recoveries`. `owner-disarm` voltou para `DISABLED`. O owner real do
+  speaker fica reservado para N4.
 
 ---
 
