@@ -30,6 +30,10 @@ typedef struct {
     bool speaker_owner_requested;
     bool speaker_owner_ready;
     bool speaker_owner_active;
+    uint32_t speaker_frames_prepared;
+    uint32_t speaker_samples_prepared;
+    uint32_t speaker_last_samples;
+    uint32_t speaker_last_volume;
     uint32_t probe_duration_ms;
     uint32_t probe_elapsed_ms;
     uint32_t queued_chunks;
@@ -66,7 +70,8 @@ esp_err_t audio_playback_service_v2_speaker_owner_arm(void);
 esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);
 esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t count);
 bool audio_playback_service_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out);
-bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out);
+bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out,
+                                                  uint8_t volume_percent);
 uint32_t audio_playback_service_v2_say_cancel(void);
 uint32_t audio_playback_service_v2_say_pending_count(void);
 

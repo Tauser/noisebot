@@ -1351,17 +1351,11 @@ static void audio_task(void *arg)
 
         /* ── Bridge SAY playback ─────────────────────────────────────────── */
         else if (play_state == PLAY_BRIDGE_SAY) {
-            if (audio_playback_service_v2_speaker_next_frame(&s_bridge_say_chunk)) {
+            if (audio_playback_service_v2_speaker_next_frame(&s_bridge_say_chunk,
+                                                             s.volume)) {
                 s.bridge_say_empty_ms = 0;
                 uint16_t n = s_bridge_say_chunk.count;
                 if (n > NB_BRIDGE_AUDIO_CHUNK_SAMPLES) n = NB_BRIDGE_AUDIO_CHUNK_SAMPLES;
-                uint32_t mult = ((uint32_t)s.volume * 256U) / 100U;
-                for (uint16_t i = 0; i < n; i++) {
-                    int32_t v = ((int32_t)s_bridge_say_chunk.samples[i] * (int32_t)mult) >> 8;
-                    if (v >  32767) v =  32767;
-                    if (v < -32768) v = -32768;
-                    s_bridge_say_chunk.samples[i] = (int16_t)v;
-                }
                 esp_err_t wr = audio_hal_spk_write(s_bridge_say_chunk.samples, n, pdMS_TO_TICKS(100));
                 audio_note_spk_result(wr, "bridge_say", n, false);
                 audio_io_service_v2_speaker_handoff_note_playback_frame(false, wr);

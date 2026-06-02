@@ -920,6 +920,10 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
         f"- speaker_owner: requested={payload.get('speaker_owner_requested')} "
         f"ready={payload.get('speaker_owner_ready')} "
         f"active={payload.get('speaker_owner_active')}",
+        f"- speaker_prepared: {payload.get('speaker_frames_prepared')}/"
+        f"{payload.get('speaker_samples_prepared')} samples "
+        f"last={payload.get('speaker_last_samples')} "
+        f"volume={payload.get('speaker_last_volume')}",
         f"- playing: {payload.get('playing')}",
         f"- queue: {payload.get('say_queue_count')}/{payload.get('say_queue_depth')}",
         f"- received/played: {payload.get('say_chunks_received')}/"

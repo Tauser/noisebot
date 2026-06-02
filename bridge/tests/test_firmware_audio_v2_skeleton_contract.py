@@ -466,7 +466,8 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "bool audio_playback_service_v2_fill_probe_chunk(" in playback_h
     assert "esp_err_t audio_playback_service_v2_speaker_owner_arm(void);" in playback_h
     assert "esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);" in playback_h
-    assert "bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out);" in playback_h
+    assert "bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out," in playback_h
+    assert "uint8_t volume_percent);" in playback_h
     assert "audio_playback_service_v2_say_enqueue(" in playback_h
     assert "audio_playback_service_v2_say_dequeue(" in playback_h
     assert "audio_playback_service_v2_say_cancel(" in playback_h
@@ -475,9 +476,13 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "bool speaker_owner_requested;" in playback_h
     assert "bool speaker_owner_ready;" in playback_h
     assert "bool speaker_owner_active;" in playback_h
+    assert "uint32_t speaker_frames_prepared;" in playback_h
+    assert "uint32_t speaker_samples_prepared;" in playback_h
+    assert "uint32_t speaker_last_samples;" in playback_h
+    assert "uint32_t speaker_last_volume;" in playback_h
     assert "say_chunks_received" in playback_h
     assert "audio_playback_service_v2_say_enqueue(" in audio_service
-    assert "audio_playback_service_v2_speaker_next_frame(&s_bridge_say_chunk)" in audio_service
+    assert "audio_playback_service_v2_speaker_next_frame(&s_bridge_say_chunk" in audio_service
     assert "audio_playback_service_v2_say_cancel(" in audio_service
     assert "audio_playback_service_v2_note_say_dropped(" in audio_service
     assert "audio_io_service_v2_speaker_handoff_note_playback_frame(false, wr);" in audio_service
@@ -486,8 +491,13 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert '\\"speaker_owner_requested\\":%s' in web
     assert '\\"speaker_owner_ready\\":%s' in web
     assert '\\"speaker_owner_active\\":%s' in web
+    assert '\\"speaker_frames_prepared\\":%lu' in web
+    assert '\\"speaker_samples_prepared\\":%lu' in web
+    assert '\\"speaker_last_samples\\":%lu' in web
+    assert '\\"speaker_last_volume\\":%lu' in web
     assert "say_chunks_received" in web
     assert "audio_playback_service_v2_say_dequeue(out)" in playback_c
+    assert "volume_percent" in playback_c
     assert "audio_io_service_v2_set_speaker_handoff_owner_requested(" in playback_c
     assert "audio_hal_" not in playback_c
 

@@ -13,6 +13,7 @@
 #define PLAYBACK_PROBE_MAX_DURATION_MS  2000U
 #define PLAYBACK_PROBE_DEFAULT_AMP      1200U
 #define PLAYBACK_PROBE_MAX_AMP          6000U
+#define PLAYBACK_SPEAKER_MAX_VOLUME     100U
 
 static nb_audio_playback_v2_status_t s_status;
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -306,7 +307,8 @@ bool audio_playback_service_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out
     return true;
 }
 
-bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out)
+bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out,
+                                                  uint8_t volume_percent)
 {
     if (out == NULL) {
         taskENTER_CRITICAL(&s_mux);
@@ -315,7 +317,37 @@ bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk
         return false;
     }
 
-    return audio_playback_service_v2_say_dequeue(out);
+    if (!audio_playback_service_v2_say_dequeue(out)) {
+        return false;
+    }
+
+    if (out->count > NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES) {
+        out->count = NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES;
+    }
+    if (volume_percent > PLAYBACK_SPEAKER_MAX_VOLUME) {
+        volume_percent = PLAYBACK_SPEAKER_MAX_VOLUME;
+    }
+
+    uint32_t mult = ((uint32_t)volume_percent * 256U) / 100U;
+    for (uint16_t i = 0; i < out->count; i++) {
+        int32_t v = ((int32_t)out->samples[i] * (int32_t)mult) >> 8;
+        if (v > 32767) {
+            v = 32767;
+        }
+        if (v < -32768) {
+            v = -32768;
+        }
+        out->samples[i] = (int16_t)v;
+    }
+
+    taskENTER_CRITICAL(&s_mux);
+    s_status.speaker_frames_prepared++;
+    s_status.speaker_samples_prepared += out->count;
+    s_status.speaker_last_samples = out->count;
+    s_status.speaker_last_volume = volume_percent;
+    s_status.last_error = ESP_OK;
+    taskEXIT_CRITICAL(&s_mux);
+    return true;
 }
 
 uint32_t audio_playback_service_v2_say_cancel(void)

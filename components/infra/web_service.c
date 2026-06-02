@@ -2689,7 +2689,7 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_playback_v2_status_t st;
     audio_playback_service_v2_get_status(&st);
 
-    char buf[1200];
+    char buf[1400];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
@@ -2697,6 +2697,10 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              "\"speaker_owner_requested\":%s,"
              "\"speaker_owner_ready\":%s,"
              "\"speaker_owner_active\":%s,"
+             "\"speaker_frames_prepared\":%lu,"
+             "\"speaker_samples_prepared\":%lu,"
+             "\"speaker_last_samples\":%lu,"
+             "\"speaker_last_volume\":%lu,"
              "\"probe_duration_ms\":%lu,"
              "\"probe_elapsed_ms\":%lu,\"queued_chunks\":%lu,"
              "\"played_chunks\":%lu,\"dropped_chunks\":%lu,"
@@ -2716,6 +2720,10 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              st.speaker_owner_requested ? "true" : "false",
              st.speaker_owner_ready ? "true" : "false",
              st.speaker_owner_active ? "true" : "false",
+             (unsigned long)st.speaker_frames_prepared,
+             (unsigned long)st.speaker_samples_prepared,
+             (unsigned long)st.speaker_last_samples,
+             (unsigned long)st.speaker_last_volume,
              (unsigned long)st.probe_duration_ms,
              (unsigned long)st.probe_elapsed_ms,
              (unsigned long)st.queued_chunks,

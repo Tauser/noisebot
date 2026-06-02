@@ -1173,6 +1173,10 @@ def test_server_cli_runs_playback_v2_speaker_owner_debug_command(monkeypatch, ca
             "speaker_owner_requested": True,
             "speaker_owner_ready": False,
             "speaker_owner_active": False,
+            "speaker_frames_prepared": 12,
+            "speaker_samples_prepared": 3072,
+            "speaker_last_samples": 256,
+            "speaker_last_volume": 80,
             "playing": False,
             "say_queue_count": 0,
             "say_queue_depth": 16,
@@ -1195,6 +1199,7 @@ def test_server_cli_runs_playback_v2_speaker_owner_debug_command(monkeypatch, ca
 
     captured = capsys.readouterr()
     assert "- speaker_owner: requested=True ready=False active=False" in captured.out
+    assert "- speaker_prepared: 12/3072 samples last=256 volume=80" in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
     assert calls["arm"] is True
 
