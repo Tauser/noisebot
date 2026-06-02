@@ -28,6 +28,15 @@ typedef struct {
     uint8_t source_flags;
 } nb_audio_io_v2_pcm_frame_t;
 
+typedef void (*nb_audio_io_v2_rx_consumer_cb_t)(
+    const nb_audio_io_v2_pcm_frame_t *frame,
+    void *ctx);
+
+typedef struct {
+    nb_audio_io_v2_rx_consumer_cb_t cb;
+    void *ctx;
+} nb_audio_io_v2_rx_consumer_t;
+
 typedef struct {
     bool initialized;
     bool probe_running;
@@ -44,10 +53,15 @@ typedef struct {
     uint32_t rx_distributor_frames;
     uint32_t rx_distributor_samples;
     uint32_t rx_distributor_last_timestamp_ms;
+    uint32_t rx_dispatch_calls;
+    uint32_t rx_dispatch_consumers;
+    uint32_t rx_dispatch_last_consumers;
     uint32_t session_rx_owner_frames;
     uint32_t session_rx_owner_samples;
     uint32_t session_rx_distributor_frames;
     uint32_t session_rx_distributor_samples;
+    uint32_t session_rx_dispatch_calls;
+    uint32_t session_rx_dispatch_consumers;
     uint32_t session_rx_mirror_id;
     uint32_t session_rx_mirror_source;
     uint32_t session_rx_mirror_elapsed_ms;
@@ -88,6 +102,12 @@ void audio_io_service_v2_rx_owner_accept_frame(const int16_t *samples,
                                                uint16_t sample_count,
                                                uint32_t source_flags,
                                                nb_audio_io_v2_pcm_frame_t *out_frame);
+void audio_io_service_v2_rx_dispatch_frame(const int16_t *samples,
+                                           uint16_t sample_count,
+                                           uint32_t source_flags,
+                                           const nb_audio_io_v2_rx_consumer_t *consumers,
+                                           uint8_t consumer_count,
+                                           nb_audio_io_v2_pcm_frame_t *out_frame);
 void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sample_count);
 void audio_io_service_v2_probe_note_tx_silence(esp_err_t result);
 esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);

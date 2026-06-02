@@ -609,6 +609,56 @@ static int esp_vad_update(const int16_t *pcm, size_t n, bool muted)
     return s.esp_vad_last_state;
 }
 
+typedef struct {
+    bool io_v2_session_context;
+    bool activity_session_context;
+    bool activity_playback_context;
+} rx_dispatch_context_t;
+
+static void rx_dispatch_sound_analysis_cb(const nb_audio_io_v2_pcm_frame_t *frame,
+                                          void *ctx)
+{
+    (void)ctx;
+    sound_analysis_tick(frame->samples, frame->sample_count);
+}
+
+static void rx_dispatch_processor_shadow_cb(const nb_audio_io_v2_pcm_frame_t *frame,
+                                            void *ctx)
+{
+    (void)ctx;
+    audio_processor_service_feed_shadow(frame->samples, frame->sample_count);
+}
+
+static void rx_dispatch_io_probe_cb(const nb_audio_io_v2_pcm_frame_t *frame,
+                                    void *ctx)
+{
+    (void)ctx;
+    audio_io_service_v2_probe_feed_rx_frame(frame->samples, frame->sample_count);
+}
+
+static void rx_dispatch_session_mirror_cb(const nb_audio_io_v2_pcm_frame_t *frame,
+                                          void *ctx)
+{
+    const rx_dispatch_context_t *dispatch = (const rx_dispatch_context_t *)ctx;
+    if (dispatch != NULL && dispatch->io_v2_session_context) {
+        audio_io_service_v2_session_rx_mirror_feed(frame->samples,
+                                                   frame->sample_count);
+    }
+}
+
+static void rx_dispatch_activity_cb(const nb_audio_io_v2_pcm_frame_t *frame,
+                                    void *ctx)
+{
+    const rx_dispatch_context_t *dispatch = (const rx_dispatch_context_t *)ctx;
+    if (dispatch == NULL) {
+        return;
+    }
+    voice_activity_service_v2_feed_frame(frame->samples,
+                                         frame->sample_count,
+                                         dispatch->activity_session_context,
+                                         dispatch->activity_playback_context);
+}
+
 static bool listen_start_bridge_capture(void)
 {
     if (s.bridge_start_sent) return true;
@@ -1234,36 +1284,35 @@ static void audio_task(void *arg)
             if (v < -32768) v = -32768;
             s_sa_buf[i] = (int16_t)v;
         }
+        rx_dispatch_context_t rx_dispatch = {0};
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        rx_dispatch.io_v2_session_context = s.listen_session_active;
+        rx_dispatch.activity_session_context = s.listen_session_active;
+        bool activity_bridge_say_context = s.bridge_say_playing;
+        xSemaphoreGive(s.mutex);
+        rx_dispatch.activity_playback_context =
+            wrote_audio ||
+            play_state == PLAY_ACTIVE ||
+            play_state == PLAY_BRIDGE_SAY ||
+            activity_bridge_say_context ||
+            audio_playback_service_v2_is_playing();
+        const nb_audio_io_v2_rx_consumer_t rx_consumers[] = {
+            { .cb = rx_dispatch_sound_analysis_cb, .ctx = NULL },
+            { .cb = rx_dispatch_processor_shadow_cb, .ctx = NULL },
+            { .cb = rx_dispatch_io_probe_cb, .ctx = NULL },
+            { .cb = rx_dispatch_session_mirror_cb, .ctx = &rx_dispatch },
+            { .cb = rx_dispatch_activity_cb, .ctx = &rx_dispatch },
+        };
         nb_audio_io_v2_pcm_frame_t rx_frame = {0};
-        audio_io_service_v2_rx_owner_accept_frame(s_sa_buf,
-                                                  (uint16_t)mic_n,
-                                                  0U,
-                                                  &rx_frame);
+        audio_io_service_v2_rx_dispatch_frame(s_sa_buf,
+                                              (uint16_t)mic_n,
+                                              0U,
+                                              rx_consumers,
+                                              (uint8_t)(sizeof(rx_consumers) /
+                                                        sizeof(rx_consumers[0])),
+                                              &rx_frame);
         const int16_t *rx_samples = rx_frame.samples;
         uint16_t rx_sample_count = rx_frame.sample_count;
-        sound_analysis_tick(rx_samples, rx_sample_count);
-        audio_processor_service_feed_shadow(rx_samples, rx_sample_count);
-        audio_io_service_v2_probe_feed_rx_frame(rx_samples, rx_sample_count);
-        bool io_v2_session_context = false;
-        bool activity_session_context = false;
-        bool activity_bridge_say_context = false;
-        xSemaphoreTake(s.mutex, portMAX_DELAY);
-        io_v2_session_context = s.listen_session_active;
-        activity_session_context = s.listen_session_active;
-        activity_bridge_say_context = s.bridge_say_playing;
-        xSemaphoreGive(s.mutex);
-        if (io_v2_session_context) {
-            audio_io_service_v2_session_rx_mirror_feed(rx_samples, rx_sample_count);
-        }
-        bool activity_playback_context = wrote_audio ||
-                                         play_state == PLAY_ACTIVE ||
-                                         play_state == PLAY_BRIDGE_SAY ||
-                                         activity_bridge_say_context ||
-                                         audio_playback_service_v2_is_playing();
-        voice_activity_service_v2_feed_frame(rx_samples,
-                                             rx_sample_count,
-                                             activity_session_context,
-                                             activity_playback_context);
 
         /* ── 4. VAD ─────────────────────────────────────────────────────── */
         vad_update(s_mic_proc, rx_samples, rx_sample_count, wrote_audio);

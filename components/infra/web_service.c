@@ -1673,10 +1673,15 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              "\"rx_distributor_frames\":%lu,"
              "\"rx_distributor_samples\":%lu,"
              "\"rx_distributor_last_timestamp_ms\":%lu,"
+             "\"rx_dispatch_calls\":%lu,"
+             "\"rx_dispatch_consumers\":%lu,"
+             "\"rx_dispatch_last_consumers\":%lu,"
              "\"session_rx_owner_frames\":%lu,"
              "\"session_rx_owner_samples\":%lu,"
              "\"session_rx_distributor_frames\":%lu,"
              "\"session_rx_distributor_samples\":%lu,"
+             "\"session_rx_dispatch_calls\":%lu,"
+             "\"session_rx_dispatch_consumers\":%lu,"
              "\"session_rx_mirror_id\":%lu,\"session_rx_mirror_source\":%lu,"
              "\"session_rx_mirror_elapsed_ms\":%lu,"
              "\"session_rx_mirror_frames\":%lu,"
@@ -1712,10 +1717,15 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.rx_distributor_frames,
              (unsigned long)st.rx_distributor_samples,
              (unsigned long)st.rx_distributor_last_timestamp_ms,
+             (unsigned long)st.rx_dispatch_calls,
+             (unsigned long)st.rx_dispatch_consumers,
+             (unsigned long)st.rx_dispatch_last_consumers,
              (unsigned long)st.session_rx_owner_frames,
              (unsigned long)st.session_rx_owner_samples,
              (unsigned long)st.session_rx_distributor_frames,
              (unsigned long)st.session_rx_distributor_samples,
+             (unsigned long)st.session_rx_dispatch_calls,
+             (unsigned long)st.session_rx_dispatch_consumers,
              (unsigned long)st.session_rx_mirror_id,
              (unsigned long)st.session_rx_mirror_source,
              (unsigned long)st.session_rx_mirror_elapsed_ms,

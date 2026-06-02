@@ -249,6 +249,43 @@ void audio_io_service_v2_rx_owner_accept_frame(const int16_t *samples,
     taskEXIT_CRITICAL(&s_mux);
 }
 
+void audio_io_service_v2_rx_dispatch_frame(const int16_t *samples,
+                                           uint16_t sample_count,
+                                           uint32_t source_flags,
+                                           const nb_audio_io_v2_rx_consumer_t *consumers,
+                                           uint8_t consumer_count,
+                                           nb_audio_io_v2_pcm_frame_t *out_frame)
+{
+    nb_audio_io_v2_pcm_frame_t frame = {0};
+    nb_audio_io_v2_pcm_frame_t *target = (out_frame != NULL) ? out_frame : &frame;
+    audio_io_service_v2_rx_owner_accept_frame(samples,
+                                              sample_count,
+                                              source_flags,
+                                              target);
+    if (target->samples == NULL || target->sample_count == 0U) {
+        return;
+    }
+
+    uint32_t dispatched = 0;
+    for (uint8_t i = 0; i < consumer_count; i++) {
+        if (consumers == NULL || consumers[i].cb == NULL) {
+            continue;
+        }
+        consumers[i].cb(target, consumers[i].ctx);
+        dispatched++;
+    }
+
+    taskENTER_CRITICAL(&s_mux);
+    s_status.rx_dispatch_calls++;
+    s_status.rx_dispatch_consumers += dispatched;
+    s_status.rx_dispatch_last_consumers = dispatched;
+    if (s_status.session_rx_mirror_active) {
+        s_status.session_rx_dispatch_calls++;
+        s_status.session_rx_dispatch_consumers += dispatched;
+    }
+    taskEXIT_CRITICAL(&s_mux);
+}
+
 void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sample_count)
 {
     if (samples == NULL || sample_count == 0U) {
@@ -316,6 +353,8 @@ esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source)
     s_status.session_rx_owner_samples = 0;
     s_status.session_rx_distributor_frames = 0;
     s_status.session_rx_distributor_samples = 0;
+    s_status.session_rx_dispatch_calls = 0;
+    s_status.session_rx_dispatch_consumers = 0;
     s_status.session_rx_legacy_observed = false;
     s_status.session_rx_legacy_covered = false;
     s_status.session_rx_legacy_frames = 0;

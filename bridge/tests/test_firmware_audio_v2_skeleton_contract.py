@@ -240,20 +240,26 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
         encoding="utf-8"
     )
 
-    assert "audio_io_service_v2_probe_feed_rx_frame(rx_samples, rx_sample_count);" in audio_service
+    assert "rx_dispatch_sound_analysis_cb" in audio_service
+    assert "rx_dispatch_processor_shadow_cb" in audio_service
+    assert "rx_dispatch_io_probe_cb" in audio_service
+    assert "rx_dispatch_session_mirror_cb" in audio_service
+    assert "rx_dispatch_activity_cb" in audio_service
+    assert "audio_io_service_v2_probe_feed_rx_frame(frame->samples, frame->sample_count);" in audio_service
     assert "nb_audio_io_v2_pcm_frame_t rx_frame = {0};" in audio_service
-    assert "audio_io_service_v2_rx_owner_accept_frame(s_sa_buf," in audio_service
+    assert "audio_io_service_v2_rx_dispatch_frame(s_sa_buf," in audio_service
     assert "&rx_frame);" in audio_service
     assert "const int16_t *rx_samples = rx_frame.samples;" in audio_service
     assert "uint16_t rx_sample_count = rx_frame.sample_count;" in audio_service
     assert audio_service.index(
-        "audio_io_service_v2_rx_owner_accept_frame(s_sa_buf,"
-    ) < audio_service.index("sound_analysis_tick(rx_samples, rx_sample_count);")
-    assert "audio_processor_service_feed_shadow(rx_samples, rx_sample_count);" in audio_service
-    assert "voice_activity_service_v2_feed_frame(rx_samples," in audio_service
+        "audio_io_service_v2_rx_dispatch_frame(s_sa_buf,"
+    ) < audio_service.index("vad_update(s_mic_proc, rx_samples, rx_sample_count, wrote_audio);")
+    assert "sound_analysis_tick(frame->samples, frame->sample_count);" in audio_service
+    assert "audio_processor_service_feed_shadow(frame->samples, frame->sample_count);" in audio_service
+    assert "voice_activity_service_v2_feed_frame(frame->samples," in audio_service
     assert "audio_io_service_v2_probe_note_tx_silence(wr);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_begin((uint32_t)source);" in audio_service
-    assert "audio_io_service_v2_session_rx_mirror_feed(rx_samples, rx_sample_count);" in audio_service
+    assert "audio_io_service_v2_session_rx_mirror_feed(frame->samples," in audio_service
     assert "audio_io_service_v2_session_rx_mirror_finish((uint32_t)reason," in audio_service
     assert "legacy_tx_frames" in audio_service
     assert "legacy_tx_samples" in audio_service
@@ -265,8 +271,11 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert '\\"rx_owner_frames\\":%lu' in web
     assert '\\"rx_distributor_frames\\":%lu' in web
     assert '\\"rx_distributor_last_timestamp_ms\\":%lu' in web
+    assert '\\"rx_dispatch_calls\\":%lu' in web
+    assert '\\"rx_dispatch_last_consumers\\":%lu' in web
     assert '\\"session_rx_owner_frames\\":%lu' in web
     assert '\\"session_rx_distributor_frames\\":%lu' in web
+    assert '\\"session_rx_dispatch_consumers\\":%lu' in web
     assert '\\"session_rx_mirror_active\\":%s' in web
     assert '\\"session_rx_mirror_observed\\":%s' in web
     assert '\\"session_rx_legacy_observed\\":%s' in web
@@ -276,6 +285,8 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert '\\"session_rx_compare_sample_delta\\":%lu' in web
     assert "esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms);" in io_h
     assert "void audio_io_service_v2_rx_owner_accept_frame(" in io_h
+    assert "void audio_io_service_v2_rx_dispatch_frame(" in io_h
+    assert "nb_audio_io_v2_rx_consumer_t" in io_h
     assert "void audio_io_service_v2_probe_feed_rx_frame(" in io_h
     assert "esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);" in io_h
     assert "void audio_io_service_v2_session_rx_mirror_feed(" in io_h
@@ -286,8 +297,11 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "uint32_t rx_owner_frames;" in io_h
     assert "uint32_t rx_distributor_frames;" in io_h
     assert "uint32_t rx_distributor_last_timestamp_ms;" in io_h
+    assert "uint32_t rx_dispatch_calls;" in io_h
+    assert "uint32_t rx_dispatch_last_consumers;" in io_h
     assert "uint32_t session_rx_owner_samples;" in io_h
     assert "uint32_t session_rx_distributor_samples;" in io_h
+    assert "uint32_t session_rx_dispatch_consumers;" in io_h
     assert "uint32_t session_rx_mirror_frames;" in io_h
     assert "uint32_t session_rx_legacy_samples;" in io_h
     assert "uint32_t session_rx_compare_elapsed_delta_ms;" in io_h
