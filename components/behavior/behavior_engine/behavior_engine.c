@@ -630,6 +630,25 @@ static void bridge_on_event(const nb_event_t *evt)
                 ui_overlay_show_toast("LEDs ajustados", NB_UI_OVERLAY_SUCCESS, 1500U);
                 NB_LOGI(TAG, "brilho LED via bridge: %u", (unsigned)brightness);
             }
+        } else if (strstr(payload, "\"event\":\"LED_COMMAND\"")) {
+            if (strstr(payload, "\"action\":\"reset\"")) {
+                led_base_set(NB_LED_BASE_IDLE, true);
+                ui_overlay_show_toast("LEDs normais", NB_UI_OVERLAY_SUCCESS, 1500U);
+                NB_LOGI(TAG, "LED reset via bridge");
+            } else {
+                uint8_t red = 0U;
+                uint8_t green = 0U;
+                uint8_t blue = 0U;
+                if (session_json_u8(payload, "r", &red) &&
+                    session_json_u8(payload, "g", &green) &&
+                    session_json_u8(payload, "b", &blue)) {
+                    nb_led_color_t color = { .r = red, .g = green, .b = blue };
+                    led_set_all(color);
+                    ui_overlay_show_toast("LEDs ajustados", NB_UI_OVERLAY_SUCCESS, 1500U);
+                    NB_LOGI(TAG, "cor LED via bridge: %u,%u,%u",
+                            (unsigned)red, (unsigned)green, (unsigned)blue);
+                }
+            }
         }
         break;
     }

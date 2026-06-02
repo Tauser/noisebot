@@ -128,6 +128,14 @@ def _settings_command(**payload: object) -> dict[str, object]:
     }
 
 
+def _led_command(action: str, **payload: object) -> dict[str, object]:
+    return {
+        "event": "LED_COMMAND",
+        "action": action,
+        **payload,
+    }
+
+
 def _alert_command(action: str) -> dict[str, object]:
     return {
         "event": "ALERT_COMMAND",
@@ -209,6 +217,24 @@ def _parse_weekdays_mask(text: str) -> int:
         if name in text:
             mask |= 1 << bit
     return mask
+
+
+def _parse_led_color(text: str) -> tuple[str, int, int, int] | None:
+    colors: list[tuple[str, tuple[str, ...], tuple[int, int, int]]] = [
+        ("azul", ("azul",), (40, 120, 255)),
+        ("verde", ("verde",), (40, 220, 90)),
+        ("vermelho", ("vermelho", "vermelha"), (255, 0, 0)),
+        ("branco", ("branco", "branca"), (255, 255, 220)),
+        ("amarelo", ("amarelo", "amarela"), (255, 200, 40)),
+        ("roxo", ("roxo", "roxa", "purpura"), (120, 55, 255)),
+        ("rosa", ("rosa", "magenta"), (255, 80, 180)),
+        ("ciano", ("ciano", "cyan"), (35, 220, 240)),
+        ("laranja", ("laranja",), (255, 80, 0)),
+    ]
+    for name, terms, rgb in colors:
+        if any(term in text for term in terms):
+            return name, rgb[0], rgb[1], rgb[2]
+    return None
 
 
 # -- Replies de tempo --------------------------------------------------------
@@ -689,16 +715,48 @@ class LocalIntentProvider:
                 device_command=_settings_command(led_brightness=brightness),
             )
 
-        if _has(norm, "acende a luz", "acenda a luz", "mude a luz", "luz azul",
-                "luz verde", "luz vermelha", "cor do led", "cor dos leds"):
+        if _has(norm, "luz normal", "led normal", "cor normal", "volta a luz", "volte a luz"):
             return IntentResolved(
                 turn_id=turn_id,
-                intent_name="local_light_unsupported",
-                reply_text="Ainda nao tenho controle de cor das luzes conectado ao firmware.",
+                intent_name="local_light_reset",
+                reply_text="Luzes de volta ao modo normal.",
                 expression_id=_EXPR_ATTENTIVE,
                 action_id=_ACTION_NONE,
                 emot_event_id=_EMOT_NEUTRAL,
-                resolution_reason="unsupported_device_command",
+                device_command=_led_command("reset"),
+            )
+
+        if _has(norm, "acende a luz", "acenda a luz", "mude a luz", "mudar a luz",
+                "luz ", "cor do led", "cor dos leds"):
+            color = _parse_led_color(norm)
+            if color is not None:
+                name, red, green, blue = color
+                return IntentResolved(
+                    turn_id=turn_id,
+                    intent_name="local_light_color",
+                    reply_text=f"Luzes em {name}.",
+                    expression_id=_EXPR_ATTENTIVE,
+                    action_id=_ACTION_NONE,
+                    emot_event_id=_EMOT_NEUTRAL,
+                    device_command=_led_command("color", r=red, g=green, b=blue),
+                )
+            if _has(norm, "acende a luz", "acenda a luz"):
+                return IntentResolved(
+                    turn_id=turn_id,
+                    intent_name="local_light_color",
+                    reply_text="Luzes acesas.",
+                    expression_id=_EXPR_ATTENTIVE,
+                    action_id=_ACTION_NONE,
+                    emot_event_id=_EMOT_NEUTRAL,
+                    device_command=_led_command("color", r=255, g=255, b=220),
+                )
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_light_incomplete",
+                reply_text="Qual cor voce quer nos LEDs?",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_NEUTRAL,
             )
 
         # -- Teste de bridge ---------------------------------------------------

@@ -30,3 +30,18 @@ def test_listen_start_clears_stale_text_overlay():
 
     assert "ui_overlay_clear_text();" in block
     assert block.index("ui_overlay_clear_text();") < block.index("ui_overlay_listening_set(true);")
+
+
+def test_bridge_led_command_controls_led_service():
+    src = _source()
+
+    start = src.index('} else if (strstr(payload, "\\"event\\":\\"LED_COMMAND\\""))')
+    end = src.index("}\n        }\n        break;", start)
+    block = src[start:end]
+
+    assert 'strstr(payload, "\\"action\\":\\"reset\\"")' in block
+    assert "led_base_set(NB_LED_BASE_IDLE, true);" in block
+    assert 'session_json_u8(payload, "r", &red)' in block
+    assert 'session_json_u8(payload, "g", &green)' in block
+    assert 'session_json_u8(payload, "b", &blue)' in block
+    assert "led_set_all(color);" in block

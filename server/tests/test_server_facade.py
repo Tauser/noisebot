@@ -5344,16 +5344,31 @@ async def test_server_robot_output_routes_volume_command_to_adapter() -> None:
     assert adapter.volumes == [70]
 
 
-def test_server_agent_light_color_intent_is_honest_until_supported() -> None:
+def test_server_agent_light_color_intent_emits_led_command() -> None:
     agent = importlib.import_module("noisebot_server.internal.agent")
     provider = agent.LocalIntentProvider()
 
     result = provider.match("mude a luz para azul", turn_id=53)
 
-    assert result.intent_name == "local_light_unsupported"
-    assert result.device_command is None
-    assert "nao tenho controle de cor" in result.reply_text
-    assert result.resolution_reason == "unsupported_device_command"
+    assert result.intent_name == "local_light_color"
+    assert result.reply_text == "Luzes em azul."
+    assert result.device_command == {
+        "event": "LED_COMMAND",
+        "action": "color",
+        "r": 40,
+        "g": 120,
+        "b": 255,
+    }
+
+
+def test_server_agent_light_reset_emits_led_command() -> None:
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("volte a luz normal", turn_id=53)
+
+    assert result.intent_name == "local_light_reset"
+    assert result.device_command == {"event": "LED_COMMAND", "action": "reset"}
 
 
 def test_server_agent_incomplete_agenda_does_not_promise_creation() -> None:
