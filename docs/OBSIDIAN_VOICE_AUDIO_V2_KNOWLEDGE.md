@@ -175,8 +175,14 @@ Incremento atual da Fase N3:
   geraram 2072 consumidores, Capture v2 enviou 69 chunks / 66240 samples com
   zero drops, Activity v2 ficou `decision_diverged=false`, Codec v2 saudavel e
   comando `Pare.` virou `local_stop`.
-- Proximo passo seguro: TX/silencio/recovery observavel no contrato Audio IO v2,
-  ainda sem passar speaker/HAL para Playback v2.
+- Incremento TX validado no hash `8d22f38`: Audio IO v2 observa todo TX real
+  executado pelo `audio_service`, incluindo silencio, SAY, WAV, synth/probe e
+  recovery I2S. No teste real, `tx_owner_frames` acompanhou `tx_frames`,
+  `tx_owner_last_result=ESP_OK`, `i2s_recoveries=0`, `dropped_frames=0`,
+  Playback/Capture ficaram sem drops, `rx_dispatch_last_consumers=8`, e
+  `codec-v2 health` voltou `status=ok` apos drenar 1 pacote egress residual.
+- Proximo passo seguro: handoff de speaker em dry-run/flag pelo contrato Audio
+  IO v2, ainda sem passar HAL para Playback v2 como default.
 
 ### Wake Word
 

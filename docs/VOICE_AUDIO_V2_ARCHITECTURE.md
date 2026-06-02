@@ -242,8 +242,15 @@ Responsabilidade:
   `session_rx_dispatch_consumers=2072`; Capture v2 TX owner ativo com zero
   drops, Activity v2 sem divergencia, Codec v2 saudavel e Playback v2 com fila
   SAY final zero.
-- Proximo passo arquitetural: tratar TX/silencio/recovery como contrato
-  observavel do Audio IO v2, mantendo `audio_service` como dono do HAL ate N4.
+- Estado N3 TX em 2026-06-02: `audio_io_service_v2` tambem observa o TX real
+  que ainda e executado pelo `audio_service`, expondo `tx_owner_*`,
+  `tx_silence_frames`, `dropped_frames` e `i2s_recoveries`. Validacao em
+  hardware no hash `8d22f38` confirmou TX observado em lockstep com o loop
+  (`tx_owner_frames=54188` / `tx_frames=54188`), ultimo TX `ESP_OK`, silencio em
+  idle, `i2s_recoveries=0`, `dropped_frames=0`, Capture v2/Playback v2 sem
+  drops e Codec v2 final `status=ok` apos drenar fila egress residual.
+- Proximo passo arquitetural: criar handoff de speaker em dry-run/flag via
+  contrato I/O v2. Ate N4, `audio_service` continua dono unico do HAL.
 
 Invariantes:
 

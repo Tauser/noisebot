@@ -903,9 +903,26 @@ despachado pelo Audio IO v2, ainda sem handoff de HAL/TX.
   de drops durante listening/cancelamento (`say_chunks_dropped_listening`), que
   sao coerentes com descarte de audio antigo em barge-in; devem ser avaliados
   por delta em novas rodadas.
-- Proximo incremento N3 recomendado: preparar TX/silencio/recovery dentro do
-  contrato do Audio IO v2, mantendo `audio_service` como unico dono do HAL e
-  sem promover Playback v2 ao speaker ainda.
+- Incremento TX/silencio/recovery observado fechado no hash `8d22f38`:
+  `audio_io_service_v2` passou a registrar `tx_owner_observed`,
+  `tx_owner_frames`, `tx_owner_samples`, ultimo tamanho de TX, se o ultimo TX
+  foi silencio e `tx_owner_last_result`; recuperacoes I2S agora incrementam
+  `i2s_recoveries`. O `audio_service` continua sendo o unico dono do HAL e
+  apenas anota o resultado de WAV, SAY, probe, synth e silencio no contrato v2.
+- Validacao local do incremento TX: contrato focado Voice Audio v2 passou e
+  `idf.py build` concluiu sem warnings.
+- Validacao fisica apos flash do hash `8d22f38`: baseline pos-boot mostrou
+  `tx_owner_observed=true`, `tx_owner_frames=3825`, `tx_frames=3825`,
+  `tx_owner_last_result=ESP_OK`, `tx_owner_last_silence=true`,
+  `i2s_recoveries=0` e `dropped_frames=0`. O teste real
+  `ww -> que horas sao -> ww -> pare` manteve `rx_dispatch_last_consumers=8`,
+  Capture v2 dono do TX real com zero drops, Playback v2 com fila final zero e
+  zero drops, Activity v2 `decision_diverged=false`, e `Pare.` como
+  `local_stop`. Depois de drenar 1 pacote egress residual, `codec-v2 health`
+  voltou `status=ok`, sem warnings.
+- Proximo incremento N3 recomendado: transformar essa observabilidade de RX/TX
+  em contrato de handoff de speaker apenas em dry-run/flag, ainda sem passar o
+  HAL para Playback v2.
 
 ### N4 - Playback v2 Assume HAL/Speaker
 
