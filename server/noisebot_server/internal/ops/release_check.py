@@ -128,11 +128,15 @@ def _codec_gate(payload: dict[str, Any]) -> ReleaseGate:
 
 def _capture_gate(payload: dict[str, Any]) -> ReleaseGate:
     error = str(payload.get("last_error") or payload.get("error") or "ESP_OK")
+    state = str(payload.get("state") or "")
+    disabled = payload.get("real_capture_enabled") is False
+    inactive = payload.get("session_active") is False
+    idle_or_retained_done = state in {"IDLE_SESSION", "DONE"}
     ok = (
         bool(payload.get("ok"))
-        and payload.get("real_capture_enabled") is False
-        and payload.get("session_active") is False
-        and str(payload.get("state") or "") == "IDLE_SESSION"
+        and disabled
+        and inactive
+        and idle_or_retained_done
         and error == "ESP_OK"
     )
     detail = (
@@ -140,7 +144,12 @@ def _capture_gate(payload: dict[str, Any]) -> ReleaseGate:
         f"active={payload.get('session_active')}, state={payload.get('state')}, "
         f"error={error}"
     )
-    warnings = () if ok else ("capture-v2 deveria estar desligado e idle",)
+    if ok and state == "DONE":
+        warnings = ("capture-v2 reteve a ultima sessao DONE, mas esta desligado e inativo",)
+    elif ok:
+        warnings = ()
+    else:
+        warnings = ("capture-v2 deveria estar desligado e inativo",)
     return ReleaseGate("Capture v2 default-off", ok, detail, warnings)
 
 

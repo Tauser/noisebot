@@ -2290,6 +2290,51 @@ def test_server_voice_release_check_accepts_clean_preflight(monkeypatch) -> None
     assert "Status: OK" in release_check.format_release_check_markdown(check)
 
 
+def test_server_voice_release_check_accepts_retained_capture_done_state() -> None:
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+
+    check = release_check.build_release_check(
+        codec_v2={
+            "ok": True,
+            "healthy": True,
+            "status": "ok",
+            "format": "pcm16",
+            "worker_state": "running",
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "issues": [],
+            "warnings": [],
+        },
+        capture_v2={
+            "ok": True,
+            "real_capture_enabled": False,
+            "session_active": False,
+            "state": "DONE",
+            "last_error": "ESP_OK",
+        },
+        playback_v2={
+            "ok": True,
+            "bridge_say_observer": True,
+            "bridge_say_queue_owner": True,
+            "say_queue_count": 0,
+            "say_chunks_received": 10,
+            "say_chunks_played": 10,
+            "say_chunks_dropped": 0,
+            "say_chunks_dropped_listening": 0,
+            "last_error": "ESP_OK",
+        },
+        metrics={"last_voice_session": {}},
+    )
+
+    assert check.ok is True
+    capture_gate = check.gates[1]
+    assert capture_gate.name == "Capture v2 default-off"
+    assert capture_gate.ok is True
+    assert capture_gate.warnings == (
+        "capture-v2 reteve a ultima sessao DONE, mas esta desligado e inativo",
+    )
+
+
 def test_server_cli_runs_voice_release_check_json(monkeypatch, capsys) -> None:
     cli = importlib.import_module("noisebot_server.cli")
     release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
