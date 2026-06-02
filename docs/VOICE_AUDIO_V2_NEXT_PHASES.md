@@ -648,6 +648,9 @@ Entregas:
   cada sessao gravada pelo server emite `VOICE_SESSION_FINAL` com JSON
   estruturado para auditoria, enquanto drops/filas seguem nos gates de Codec v2
   e Playback v2.
+- Checklist manual de hardware para fechar release local: preflight, turno
+  curto, resposta longa, barge-in/pare, no-echo e rollback PCM16 ficam
+  documentados em `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md`.
 
 Comandos base:
 
@@ -682,6 +685,9 @@ Gates obrigatorios da Fase M parcial:
   `docs/VOICE_REPLAY_BASELINE.json` passam com fixtures reais boas/rejeitadas.
 - Log final: cada sessao registrada pelo server emite `VOICE_SESSION_FINAL`
   com turno, rota, outcome, codec, STT/TTS, motivo final e estado.
+- Hardware manual: rodada documentada cobre preflight, turno curto, resposta
+  longa, barge-in/pare, no-echo e rollback PCM16 com resultados esperados e
+  logs-chave.
 - TTS/texto: `/ai/metrics` separa `tts_completed=false`, falha de `SAY_END`,
   truncamento visual e paginacao `TEXT_SCROLL`; `text_scroll_pages_sent` deve
   cobrir `text_scroll_pages` quando houver paginacao.

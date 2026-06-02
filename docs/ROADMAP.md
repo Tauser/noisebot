@@ -2785,7 +2785,10 @@ Metas de produto:
 - [x] Métricas aparecem no log final de cada sessão: o server emite
   `VOICE_SESSION_FINAL` com JSON compacto contendo turno, rota, outcome,
   codec configurado, STT/TTS, motivo final e contadores principais.
-- [ ] Checklist de hardware documenta comandos, resultado esperado e logs-chave.
+- [x] Checklist de hardware documenta comandos, resultado esperado e logs-chave:
+  `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md` tem a rodada manual de hardware
+  para preflight, turno curto, resposta longa, barge-in/pare, no-echo e
+  rollback PCM16.
 - [x] Antes de mexer em LLM ou protocolo, replay precisa continuar verde:
   `bridge/tests/test_voice_check.py` valida o baseline com 4 fixtures e
   `bridge/tests/test_replay.py` garante outcomes esperados.

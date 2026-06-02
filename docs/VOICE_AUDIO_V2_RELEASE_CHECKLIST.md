@@ -412,6 +412,140 @@ Bloqueia release:
 - JSON nao traz rota/outcome/codec ou metricas STT/TTS disponiveis.
 - Log despeja transcript ou resposta completa por acidente.
 
+## Rodada Manual De Hardware
+
+Use esta rodada para fechar release local da Fase M parcial. Ela nao muda
+firmware e deve ser executada com o server ja conectado ao robo.
+
+### Preparacao
+
+- Confirmar que o server subiu com o host correto e Opus v2 ativo localmente.
+- Abrir o dashboard/Ops ou deixar os logs do server visiveis.
+- Registrar branch e hash antes de iniciar.
+
+Comandos:
+
+```powershell
+git rev-parse --short HEAD
+noisebot_server --host 192.168.1.30 debug voice-release-check --json
+noisebot_server --host 192.168.1.30 debug codec-v2 health --json
+noisebot_server --host 192.168.1.30 debug capture-v2 status --json
+```
+
+Esperado:
+
+- `voice-release-check` com `ok=true`.
+- `codec-v2 health` com `healthy=true`, `status=ok`, worker coerente com Opus
+  ativo, zero drops e fila egress zero.
+- `capture-v2 status` com `real_capture_enabled=false`,
+  `session_active=false`, `state=IDLE_SESSION`.
+
+Logs-chave:
+
+- Linha `VOICE_SESSION_FINAL` so aparece apos turnos reais; no preflight, usar
+  os JSONs dos comandos acima.
+- Em caso de egress pendente isolado, drenar com `codec-v2 egress-drain` e
+  repetir `codec-v2 health`.
+
+### Turno Curto
+
+Comando fisico:
+
+- `ww -> que horas sao?`
+
+Verificar:
+
+```powershell
+noisebot_server --host 192.168.1.30 debug playback-v2 delta --json
+noisebot_server --host 192.168.1.30 debug codec-v2 health --json
+```
+
+Esperado:
+
+- Intent local coerente (`local_time`) ou transcript curto correto.
+- Playback v2 com `normal_path_clean=true`, `queue_empty=true`,
+  `say_chunks_received > 0`, `say_chunks_played > 0` e zero drops novos.
+- `/ai/metrics.last_voice_session` com `tts_completed=true`,
+  `tts_say_end_sent=true` e `voice_alert=null`.
+- Log do server com `VOICE_SESSION_FINAL` contendo `turn_id`, `route`,
+  `outcome`, `audio_codec`, `voice_end_reason`, `stt_ms` quando aplicavel e
+  campos TTS disponiveis.
+
+### Resposta Longa
+
+Comando fisico:
+
+- `ww -> me conte uma historia longa`
+
+Verificar:
+
+```powershell
+noisebot_server --host 192.168.1.30 debug codec-v2 health --json
+curl http://127.0.0.1:8765/ai/metrics
+```
+
+Esperado:
+
+- `tts_completed=true`, `tts_say_begin_sent=true`,
+  `tts_say_end_sent=true`, `tts_chunks_sent > 0`.
+- Se `text_scroll_truncated=true`, o diagnostico trata como limite visual e
+  nao como corte de audio quando `tts_completed=true`.
+- Playback v2 termina com fila zero e sem drops novos no caminho normal.
+- `VOICE_SESSION_FINAL` registra outcome/rota e metricas principais.
+
+### Barge-In / Pare
+
+Comando fisico:
+
+- `ww -> me conte uma historia longa -> ww -> pare`
+
+Verificar:
+
+```powershell
+noisebot_server --host 192.168.1.30 debug barge-live "me conte uma historia longa" --codec opus-v2 --json
+noisebot_server --host 192.168.1.30 debug codec-v2 health --json
+```
+
+Esperado:
+
+- Turno longo interrompido com `outcome=interrupted` ou
+  `discard_reason=barge_in`.
+- Comando curto final roteado para `local_stop` quando houver contexto recente
+  de barge-in, inclusive se o STT ouvir algo como `Vale.` ou despedida curta.
+- Audio antigo nao continua tocando apos cancelamento.
+- Playback v2 termina com fila zero; drops novos so sao aceitaveis se forem
+  classificados como listening/cancel de audio antigo.
+
+### No-Echo
+
+Comando:
+
+```powershell
+noisebot_server --host 192.168.1.30 debug no-echo-live "me conte uma historia longa" --codec opus-v2 --json
+```
+
+Esperado:
+
+- `ok=true`.
+- `unexpected_turn_id=null`.
+- O TTS do robo nao abre novo turno sozinho.
+- Rollback/cleanup do teste deixa Codec v2 saudavel.
+
+### Rollback PCM16
+
+Comando:
+
+```powershell
+noisebot_server --host 192.168.1.30 debug codec-v2 transport-disable --json
+```
+
+Esperado:
+
+- Server/firmware voltam a PCM16 sem fila egress pendente.
+- `codec-v2 health` continua `healthy=true`.
+- Para voltar ao default local Opus v2, reiniciar o server com
+  `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2` ou usar o fluxo operacional vigente.
+
 ## Registro Da Rodada
 
 Para cada release local de voz, registrar:
@@ -419,7 +553,7 @@ Para cada release local de voz, registrar:
 - Data, branch e hash do firmware/server testado.
 - Comandos executados e arquivos JSON/Markdown gerados.
 - Resultado de `codec-v2 health`, `capture-v2 status`, Playback v2 SAY,
-  `codec-ab`, `barge-live`, `no-echo-live`, reconexao TCP/UART, replay offline
+  `codec-ab`, `barge-live`, `no-echo-live`, reconexao TCP/UART, replay offline,
   log final de sessao e `/ai/metrics`.
 - Codec ativo no inicio e no fim.
 - Se rollback PCM16 foi exercitado.
