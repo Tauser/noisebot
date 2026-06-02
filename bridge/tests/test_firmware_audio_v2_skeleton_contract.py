@@ -245,19 +245,28 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "audio_io_service_v2_session_rx_mirror_begin((uint32_t)source);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_feed(s_sa_buf, (uint16_t)mic_n);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_finish((uint32_t)reason," in audio_service
+    assert "legacy_tx_frames" in audio_service
+    assert "legacy_tx_samples" in audio_service
     assert '{ .uri = "/api/audio/io-v2"' in web
     assert '{ .uri = "/api/audio/io-v2/probe"' in web
     assert "audio_service_is_busy()" in web
     assert '\\"session_rx_mirror_active\\":%s' in web
     assert '\\"session_rx_mirror_observed\\":%s' in web
+    assert '\\"session_rx_legacy_observed\\":%s' in web
+    assert '\\"session_rx_legacy_covered\\":%s' in web
     assert '\\"session_rx_mirror_frames\\":%lu' in web
+    assert '\\"session_rx_legacy_frames\\":%lu' in web
+    assert '\\"session_rx_compare_sample_delta\\":%lu' in web
     assert "esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms);" in io_h
     assert "void audio_io_service_v2_probe_feed_rx_frame(" in io_h
     assert "esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);" in io_h
     assert "void audio_io_service_v2_session_rx_mirror_feed(" in io_h
     assert "void audio_io_service_v2_session_rx_mirror_finish(" in io_h
     assert "bool session_rx_mirror_active;" in io_h
+    assert "bool session_rx_legacy_covered;" in io_h
     assert "uint32_t session_rx_mirror_frames;" in io_h
+    assert "uint32_t session_rx_legacy_samples;" in io_h
+    assert "uint32_t session_rx_compare_elapsed_delta_ms;" in io_h
     assert "audio_hal_" not in io_c
     assert "bridge_" not in io_c
 

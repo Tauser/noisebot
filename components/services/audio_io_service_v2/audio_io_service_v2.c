@@ -71,6 +71,11 @@ static void compute_frame_levels(const int16_t *samples,
     }
 }
 
+static uint32_t abs_delta_u32(uint32_t a, uint32_t b)
+{
+    return (a >= b) ? (a - b) : (b - a);
+}
+
 esp_err_t audio_io_service_v2_init(void)
 {
     uint32_t internal_kb = 0;
@@ -253,6 +258,14 @@ esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source)
     s_status.session_rx_mirror_frames = 0;
     s_status.session_rx_mirror_samples = 0;
     s_status.session_rx_mirror_end_reason = 0;
+    s_status.session_rx_legacy_observed = false;
+    s_status.session_rx_legacy_covered = false;
+    s_status.session_rx_legacy_frames = 0;
+    s_status.session_rx_legacy_samples = 0;
+    s_status.session_rx_legacy_elapsed_ms = 0;
+    s_status.session_rx_compare_frame_delta = 0;
+    s_status.session_rx_compare_sample_delta = 0;
+    s_status.session_rx_compare_elapsed_delta_ms = 0;
     s_status.last_error = ESP_OK;
     s_status.heap_internal_free_kb = internal_kb;
     s_status.heap_dma_free_kb = dma_kb;
@@ -300,7 +313,9 @@ void audio_io_service_v2_session_rx_mirror_feed(const int16_t *samples,
 }
 
 void audio_io_service_v2_session_rx_mirror_finish(uint32_t end_reason,
-                                                  uint32_t elapsed_ms)
+                                                  uint32_t legacy_frames,
+                                                  uint32_t legacy_samples,
+                                                  uint32_t legacy_elapsed_ms)
 {
     uint32_t internal_kb = 0;
     uint32_t dma_kb = 0;
@@ -314,7 +329,23 @@ void audio_io_service_v2_session_rx_mirror_finish(uint32_t end_reason,
 
     s_status.session_rx_mirror_active = false;
     s_status.session_rx_mirror_end_reason = end_reason;
-    s_status.session_rx_mirror_elapsed_ms = elapsed_ms;
+    s_status.session_rx_legacy_observed = legacy_frames > 0U || legacy_samples > 0U;
+    s_status.session_rx_legacy_frames = legacy_frames;
+    s_status.session_rx_legacy_samples = legacy_samples;
+    s_status.session_rx_legacy_elapsed_ms = legacy_elapsed_ms;
+    s_status.session_rx_compare_frame_delta = abs_delta_u32(
+        s_status.session_rx_mirror_frames,
+        legacy_frames);
+    s_status.session_rx_compare_sample_delta = abs_delta_u32(
+        s_status.session_rx_mirror_samples,
+        legacy_samples);
+    s_status.session_rx_compare_elapsed_delta_ms = abs_delta_u32(
+        s_status.session_rx_mirror_elapsed_ms,
+        legacy_elapsed_ms);
+    s_status.session_rx_legacy_covered =
+        s_status.session_rx_mirror_observed &&
+        s_status.session_rx_mirror_frames >= legacy_frames &&
+        s_status.session_rx_mirror_samples >= legacy_samples;
     s_status.heap_internal_free_kb = internal_kb;
     s_status.heap_dma_free_kb = dma_kb;
     taskEXIT_CRITICAL(&s_mux);

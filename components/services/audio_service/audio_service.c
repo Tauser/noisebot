@@ -222,6 +222,8 @@ static struct {
     bool                 listen_session_active;       /* sessão aberta          */
     bool                 bridge_start_sent;           /* VOICE_START foi à bridge */
     bool                 bridge_audio_sent;           /* ao menos 1 chunk enviado */
+    uint32_t             listen_legacy_tx_frames;     /* chunks/pacotes enviados */
+    uint32_t             listen_legacy_tx_samples;    /* samples equivalentes enviados */
     uint8_t              bridge_tx_fail_count;        /* falhas seguidas na fila TX */
     bool                 bridge_flush_before_end;     /* limpa fila antes do END    */
     listen_phase_t       listen_phase;                /* turn-taking interno       */
@@ -743,11 +745,15 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
                 && (s.bridge_audio_sent || reason == NB_LISTEN_END_CANCELLED);
     listen_phase_t phase = s.listen_phase;
     uint32_t speech_elapsed_ms = s.listen_speech_elapsed_ms;
+    uint32_t legacy_tx_frames = s.listen_legacy_tx_frames;
+    uint32_t legacy_tx_samples = s.listen_legacy_tx_samples;
     bool capture_v2_active = s.listen_capture_v2_active;
     bool capture_v2_tx_owner = s.listen_capture_v2_tx_owner;
     voice_activity_service_v2_session_compare_legacy_end((uint32_t)reason,
                                                           speech_elapsed_ms);
     audio_io_service_v2_session_rx_mirror_finish((uint32_t)reason,
+                                                 legacy_tx_frames,
+                                                 legacy_tx_samples,
                                                  speech_elapsed_ms);
 
     s.listen_session_active    = false;
@@ -755,6 +761,8 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
     s.listen_mode              = NB_LISTEN_MODE_AUTO;
     s.listen_wait_remaining_ms = 0;
     s.listen_speech_elapsed_ms = 0;
+    s.listen_legacy_tx_frames  = 0;
+    s.listen_legacy_tx_samples = 0;
     s.bridge_tx_active         = false;
     s.vad_state                = VAD_SILENCE;
     s.vad_enter_count          = 0;
@@ -1281,6 +1289,9 @@ static void audio_task(void *arg)
                     s.listen_capture_v2_tx_owner);
                 if (sent_packets > 0U) {
                     s.bridge_audio_sent = true;
+                    s.listen_legacy_tx_frames += sent_packets;
+                    s.listen_legacy_tx_samples +=
+                        (uint32_t)sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES;
                     if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
                         voice_capture_session_v2_note_audio_chunk(
                             (uint16_t)sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES,
@@ -1305,6 +1316,8 @@ static void audio_task(void *arg)
                 if (tx_rc == ESP_OK) {
                     bridge_feed_opus_pcm(s_bridge_buf, (uint16_t)mic_n);
                     s.bridge_audio_sent = true;
+                    s.listen_legacy_tx_frames++;
+                    s.listen_legacy_tx_samples += (uint32_t)mic_n;
                     if (s.listen_capture_v2_active && !s.listen_capture_v2_tx_owner) {
                         voice_capture_session_v2_note_audio_chunk((uint16_t)mic_n, true);
                     }
@@ -1489,6 +1502,8 @@ esp_err_t audio_service_init(void)
     s.listen_session_active       = false;
     s.bridge_start_sent           = false;
     s.bridge_audio_sent           = false;
+    s.listen_legacy_tx_frames     = 0;
+    s.listen_legacy_tx_samples    = 0;
     s.bridge_tx_fail_count        = 0;
     s.bridge_flush_before_end     = false;
     s.listen_phase                = LISTEN_PHASE_IDLE;

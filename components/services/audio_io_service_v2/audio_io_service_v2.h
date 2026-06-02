@@ -41,6 +41,14 @@ typedef struct {
     uint32_t session_rx_mirror_frames;
     uint32_t session_rx_mirror_samples;
     uint32_t session_rx_mirror_end_reason;
+    bool session_rx_legacy_observed;
+    bool session_rx_legacy_covered;
+    uint32_t session_rx_legacy_frames;
+    uint32_t session_rx_legacy_samples;
+    uint32_t session_rx_legacy_elapsed_ms;
+    uint32_t session_rx_compare_frame_delta;
+    uint32_t session_rx_compare_sample_delta;
+    uint32_t session_rx_compare_elapsed_delta_ms;
     uint32_t rx_frames;
     uint32_t tx_frames;
     uint32_t tx_silence_frames;
@@ -69,7 +77,9 @@ esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);
 void audio_io_service_v2_session_rx_mirror_feed(const int16_t *samples,
                                                 uint16_t sample_count);
 void audio_io_service_v2_session_rx_mirror_finish(uint32_t end_reason,
-                                                  uint32_t elapsed_ms);
+                                                  uint32_t legacy_frames,
+                                                  uint32_t legacy_samples,
+                                                  uint32_t legacy_elapsed_ms);
 
 #ifdef __cplusplus
 }
