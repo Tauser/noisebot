@@ -2888,6 +2888,12 @@ no protocolo.
       final `ok=true`, turno curto, resposta longa, barge-in/pare, no-echo por
       `/ai/metrics` sem turno fantasma, rollback PCM16 e retorno a Opus v2 com
       health verde.
+- [ ] Fase N planejada como migracao estrutural do firmware Voice v2:
+      N0 congela baseline/gates; N1 torna Capture v2 default controlado; N2
+      promove Activity v2 a decisor dentro da sessao; N3 migra RX/TX para
+      Audio IO v2; N4 promove Playback v2 ao caminho HAL/speaker; N5 reduz
+      `audio_service.c` para ponte/compatibilidade. STT/LLM/TTS continuam fora
+      do firmware.
 
 ---
 

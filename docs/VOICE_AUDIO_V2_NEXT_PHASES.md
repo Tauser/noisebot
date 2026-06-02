@@ -717,6 +717,89 @@ Aceite:
 - PCM16 permanece rollback operacional por env/restart ou
   `codec-v2 transport-disable`.
 
+## Fase N - Migracao Estrutural Do Voice v2 No Firmware
+
+Objetivo: completar a transferencia gradual dos caminhos de audio em tempo real
+para os servicos Voice Audio v2 do firmware, preservando rollback e mantendo
+STT/LLM/TTS fora do ESP32-S3.
+
+Estado de partida apos a Fase M:
+
+- `audio_service.c` ainda e o dono real do loop I2S/HAL e continua drenando o
+  playback para o speaker.
+- `audio_playback_service_v2` ja e dono da fila SAY real, mas ainda nao escreve
+  direto no HAL.
+- `voice_capture_session_v2` ja tem TX real opt-in validado, mas ainda nao virou
+  default permanente.
+- `voice_activity_service_v2` ainda e shadow/telemetria, nao decisor principal
+  de VAD/fim de fala.
+- `audio_io_service_v2` ainda nao assumiu RX/TX real como servico principal.
+
+### N0 - Baseline/Gates
+
+Antes de qualquer mudanca estrutural:
+
+- Rodar `voice-release-check --json`, `codec-v2 health --json`,
+  `playback-v2 delta --json`, `capture-v2 status --json`,
+  `barge-live --codec opus-v2` e validacao no-echo.
+- Congelar snapshot saudavel com branch/hash, codec ativo, contadores SAY,
+  estado Capture v2, `/ai/metrics.last_voice_session` e rollback PCM16.
+- Aceite: Fase M continua verde sem novos warnings bloqueantes.
+
+### N1 - Capture v2 Default Controlado
+
+Nao ligar direto como default permanente:
+
+- Tornar `voice_capture_session_v2` default por config/flag persistente,
+  reversivel e auditavel.
+- Manter rollback claro para TX legado no `audio_service`.
+- Aceite: turno curto, silencio pos-wake, barge-in/pare, no-echo, rollback
+  PCM16 e Opus v2 health passam com Capture v2 como dono real do TX.
+
+### N2 - Activity v2 Como Decisor Dentro Da Sessao
+
+Escopo restrito:
+
+- `voice_activity_service_v2` so decide dentro de sessao ja aberta por wake ou
+  barge-in.
+- Nao abrir sessao em `IDLE`; wake/follow-up continuam donos da abertura.
+- Comparar decisao v2 contra legado antes de promover, expondo divergencias em
+  status/metrics.
+- Aceite: fim de fala por Activity v2 bate o legado em turnos curtos/longos,
+  nao cria turno fantasma e nao quebra barge-in.
+
+### N3 - Audio IO v2 Assume RX/TX
+
+Passo mais sensivel por tocar loop HAL/I2S:
+
+- Primeiro RX mirror/owner com rollback.
+- Depois TX/silencio controlado.
+- Depois recovery/erro I2S com contadores claros.
+- Aceite: zero regressao em wake, captura, playback, Opus/PCM16 e health de
+  filas; qualquer I2S recovery fica observavel.
+
+### N4 - Playback v2 Assume HAL/Speaker
+
+Promover so depois de I/O v2 previsivel:
+
+- `audio_playback_service_v2` deixa de ser apenas dono da fila e passa a escrever
+  no caminho de speaker via contrato I/O v2.
+- `audio_service.c` deixa de drenar SAY para o HAL quando a flag v2 estiver
+  ativa.
+- Aceite: resposta curta/longa, cancelamento, no-echo, fila SAY e rollback
+  PCM16/Opus continuam verdes.
+
+### N5 - Reduzir audio_service.c
+
+Ultima etapa, apos donos reais validados:
+
+- `audio_service.c` vira ponte/compatibilidade e orquestracao legada minima.
+- Remover decisao duplicada apenas quando os servicos v2 ja tiverem gates e
+  rollback equivalentes.
+- Aceite: arquitetura em camadas preservada, nenhum comportamento v1 quebra, e
+  o caminho default de voz em hardware passa por Capture v2, Activity v2,
+  Audio IO v2 e Playback v2.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
@@ -726,6 +809,8 @@ Aceite:
 4. Fase K: capture session v2 assume upstream por flag.
 5. Fase L: policy conversacional avancada, so depois de no-echo e captura
    estarem estaveis.
+6. Fase N0-N5: migracao estrutural do firmware v2, com gates antes de cada
+   troca de owner real.
 
 Essa ordem segue a regra central da arquitetura v2: separar I/O, playback,
 processor, codec e policy. No NoiseBot, a prioridade imediata e diminuir o
