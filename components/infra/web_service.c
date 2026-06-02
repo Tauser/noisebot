@@ -2689,7 +2689,7 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_playback_v2_status_t st;
     audio_playback_service_v2_get_status(&st);
 
-    char buf[1600];
+    char buf[1800];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
@@ -2706,6 +2706,11 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              "\"speaker_commit_failures\":%lu,"
              "\"speaker_last_commit_samples\":%lu,"
              "\"speaker_last_commit_result\":\"%s\","
+             "\"speaker_write_requests\":%lu,"
+             "\"speaker_write_samples\":%lu,"
+             "\"speaker_write_failures\":%lu,"
+             "\"speaker_last_write_samples\":%lu,"
+             "\"speaker_last_write_result\":\"%s\","
              "\"speaker_empty_polls\":%lu,"
              "\"speaker_empty_ms\":%lu,"
              "\"speaker_idle_end_count\":%lu,"
@@ -2737,6 +2742,11 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.speaker_commit_failures,
              (unsigned long)st.speaker_last_commit_samples,
              esp_err_to_name(st.speaker_last_commit_result),
+             (unsigned long)st.speaker_write_requests,
+             (unsigned long)st.speaker_write_samples,
+             (unsigned long)st.speaker_write_failures,
+             (unsigned long)st.speaker_last_write_samples,
+             esp_err_to_name(st.speaker_last_write_result),
              (unsigned long)st.speaker_empty_polls,
              (unsigned long)st.speaker_empty_ms,
              (unsigned long)st.speaker_idle_end_count,

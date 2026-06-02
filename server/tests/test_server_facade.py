@@ -1182,6 +1182,11 @@ def test_server_cli_runs_playback_v2_speaker_owner_debug_command(monkeypatch, ca
             "speaker_commit_failures": 0,
             "speaker_last_commit_samples": 256,
             "speaker_last_commit_result": "ESP_OK",
+            "speaker_write_requests": 12,
+            "speaker_write_samples": 3072,
+            "speaker_write_failures": 0,
+            "speaker_last_write_samples": 256,
+            "speaker_last_write_result": "ESP_OK",
             "speaker_empty_polls": 4,
             "speaker_empty_ms": 64,
             "speaker_idle_end_count": 0,
@@ -1209,6 +1214,7 @@ def test_server_cli_runs_playback_v2_speaker_owner_debug_command(monkeypatch, ca
     assert "- speaker_owner: requested=True ready=False active=False" in captured.out
     assert "- speaker_prepared: 12/3072 samples last=256 volume=80" in captured.out
     assert "- speaker_committed: 12/3072 samples failures=0 last=256 result=ESP_OK" in captured.out
+    assert "- speaker_write: 12/3072 samples failures=0 last=256 result=ESP_OK" in captured.out
     assert "- speaker_empty: polls=4 ms=64 ends=0" in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
     assert calls["arm"] is True

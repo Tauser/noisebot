@@ -39,6 +39,11 @@ typedef struct {
     uint32_t speaker_commit_failures;
     uint32_t speaker_last_commit_samples;
     esp_err_t speaker_last_commit_result;
+    uint32_t speaker_write_requests;
+    uint32_t speaker_write_samples;
+    uint32_t speaker_write_failures;
+    uint32_t speaker_last_write_samples;
+    esp_err_t speaker_last_write_result;
     uint32_t speaker_empty_polls;
     uint32_t speaker_empty_ms;
     uint32_t speaker_idle_end_count;
@@ -65,6 +70,11 @@ typedef struct {
     uint16_t count;
 } nb_audio_playback_v2_say_chunk_t;
 
+typedef esp_err_t (*nb_audio_playback_v2_speaker_write_cb_t)(
+    const int16_t *samples,
+    uint16_t sample_count,
+    void *ctx);
+
 esp_err_t audio_playback_service_v2_init(void);
 esp_err_t audio_playback_service_v2_deinit(void);
 bool audio_playback_service_v2_is_initialized(void);
@@ -80,6 +90,12 @@ esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t
 bool audio_playback_service_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out);
 bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out,
                                                   uint8_t volume_percent);
+bool audio_playback_service_v2_speaker_write_next_frame(
+    uint8_t volume_percent,
+    nb_audio_playback_v2_speaker_write_cb_t write_cb,
+    void *ctx,
+    uint16_t *sample_count,
+    esp_err_t *result);
 void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
                                                     esp_err_t result);
 bool audio_playback_service_v2_speaker_note_empty(uint32_t chunk_ms,

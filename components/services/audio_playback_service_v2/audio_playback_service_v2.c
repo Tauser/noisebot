@@ -357,6 +357,58 @@ bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk
     return true;
 }
 
+bool audio_playback_service_v2_speaker_write_next_frame(
+    uint8_t volume_percent,
+    nb_audio_playback_v2_speaker_write_cb_t write_cb,
+    void *ctx,
+    uint16_t *sample_count,
+    esp_err_t *result)
+{
+    nb_audio_playback_v2_say_chunk_t frame;
+
+    if (sample_count != NULL) {
+        *sample_count = 0U;
+    }
+    if (result != NULL) {
+        *result = ESP_OK;
+    }
+    if (write_cb == NULL) {
+        taskENTER_CRITICAL(&s_mux);
+        s_status.last_error = ESP_ERR_INVALID_ARG;
+        taskEXIT_CRITICAL(&s_mux);
+        if (result != NULL) {
+            *result = ESP_ERR_INVALID_ARG;
+        }
+        return false;
+    }
+
+    if (!audio_playback_service_v2_speaker_next_frame(&frame, volume_percent)) {
+        return false;
+    }
+
+    esp_err_t wr = write_cb(frame.samples, frame.count, ctx);
+    audio_playback_service_v2_speaker_commit_frame(frame.count, wr);
+
+    taskENTER_CRITICAL(&s_mux);
+    s_status.speaker_write_requests++;
+    s_status.speaker_write_samples += frame.count;
+    s_status.speaker_last_write_samples = frame.count;
+    s_status.speaker_last_write_result = wr;
+    if (wr != ESP_OK) {
+        s_status.speaker_write_failures++;
+    }
+    s_status.last_error = wr;
+    taskEXIT_CRITICAL(&s_mux);
+
+    if (sample_count != NULL) {
+        *sample_count = frame.count;
+    }
+    if (result != NULL) {
+        *result = wr;
+    }
+    return true;
+}
+
 void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
                                                     esp_err_t result)
 {

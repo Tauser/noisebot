@@ -237,7 +237,6 @@ static struct {
 } s;
 
 #define BRIDGE_SAY_IDLE_END_MS  1200U
-static nb_audio_playback_v2_say_chunk_t s_bridge_say_chunk; /* buffer para o speaker */
 static uint32_t         s_bridge_say_drop_count;
 static uint32_t         s_bridge_say_rx_count;
 static uint32_t         s_bridge_say_play_count;
@@ -346,6 +345,14 @@ static void audio_note_spk_result(esp_err_t err, const char *where,
     if (s_spk_fail_count >= AUDIO_HAL_RECOVER_FAILS) {
         audio_service_recover_hal(where, err);
     }
+}
+
+static esp_err_t audio_service_playback_v2_write_speaker(const int16_t *samples,
+                                                         uint16_t sample_count,
+                                                         void *ctx)
+{
+    (void)ctx;
+    return audio_hal_spk_write(samples, sample_count, pdMS_TO_TICKS(100));
 }
 
 static void audio_note_mic_result(esp_err_t err)
@@ -1351,14 +1358,16 @@ static void audio_task(void *arg)
 
         /* ── Bridge SAY playback ─────────────────────────────────────────── */
         else if (play_state == PLAY_BRIDGE_SAY) {
-            if (audio_playback_service_v2_speaker_next_frame(&s_bridge_say_chunk,
-                                                             s.volume)) {
+            uint16_t n = 0;
+            esp_err_t wr = ESP_OK;
+            if (audio_playback_service_v2_speaker_write_next_frame(
+                    s.volume,
+                    audio_service_playback_v2_write_speaker,
+                    NULL,
+                    &n,
+                    &wr)) {
                 s.bridge_say_empty_ms = 0;
-                uint16_t n = s_bridge_say_chunk.count;
-                if (n > NB_BRIDGE_AUDIO_CHUNK_SAMPLES) n = NB_BRIDGE_AUDIO_CHUNK_SAMPLES;
-                esp_err_t wr = audio_hal_spk_write(s_bridge_say_chunk.samples, n, pdMS_TO_TICKS(100));
                 audio_note_spk_result(wr, "bridge_say", n, false);
-                audio_playback_service_v2_speaker_commit_frame(n, wr);
                 if ((++s_bridge_say_play_count % 64U) == 1U) {
                     ESP_LOGI(TAG, "Bridge SAY playback chunks=%lu q=%u",
                              (unsigned long)s_bridge_say_play_count,

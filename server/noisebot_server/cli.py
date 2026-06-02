@@ -929,6 +929,11 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
         f"failures={payload.get('speaker_commit_failures')} "
         f"last={payload.get('speaker_last_commit_samples')} "
         f"result={payload.get('speaker_last_commit_result')}",
+        f"- speaker_write: {payload.get('speaker_write_requests')}/"
+        f"{payload.get('speaker_write_samples')} samples "
+        f"failures={payload.get('speaker_write_failures')} "
+        f"last={payload.get('speaker_last_write_samples')} "
+        f"result={payload.get('speaker_last_write_result')}",
         f"- speaker_empty: polls={payload.get('speaker_empty_polls')} "
         f"ms={payload.get('speaker_empty_ms')} "
         f"ends={payload.get('speaker_idle_end_count')}",
