@@ -12,6 +12,8 @@ from noisebot_server.internal.agent.playback import (
     FIRMWARE_SAY_QUEUE,
     OutputScheduler,
     SAY_SEND_INTERVAL_S,
+    SAY_STARTUP_CHUNKS,
+    SAY_STARTUP_INTERVAL_S,
 )
 
 
@@ -42,6 +44,11 @@ def test_output_scheduler_default_prebuffer_leaves_firmware_queue_headroom() -> 
 
 def test_output_scheduler_default_send_interval_is_slightly_conservative() -> None:
     assert SAY_SEND_INTERVAL_S == pytest.approx(0.018)
+
+
+def test_output_scheduler_default_startup_ramp_is_more_conservative() -> None:
+    assert SAY_STARTUP_CHUNKS == 64
+    assert SAY_STARTUP_INTERVAL_S == pytest.approx(0.024)
 
 
 async def _iter_chunks(*chunks: bytes) -> AsyncIterator[bytes]:
@@ -115,7 +122,36 @@ async def test_output_scheduler_does_not_catch_up_with_bursts(monkeypatch) -> No
     assert stats.chunks_sent == FIRMWARE_SAY_QUEUE + 3
     expected_paced = len(adapter.chunks) - max(FIRMWARE_SAY_QUEUE, 1)
     assert len(paced_sleeps) == expected_paced
-    assert all(delay == pytest.approx(SAY_SEND_INTERVAL_S) for delay in paced_sleeps)
+    assert all(delay == pytest.approx(SAY_STARTUP_INTERVAL_S) for delay in paced_sleeps)
+
+
+@pytest.mark.asyncio
+async def test_output_scheduler_returns_to_nominal_pacing_after_startup(monkeypatch) -> None:
+    adapter = AdapterProbe()
+    scheduler = OutputScheduler()
+    source = b"\x55" * CHUNK_BYTES * (SAY_STARTUP_CHUNKS + 3)
+    sleeps: list[float] = []
+    now = 1000.0
+
+    def monotonic() -> float:
+        return now
+
+    async def fake_sleep(delay: float) -> None:
+        nonlocal now
+        sleeps.append(delay)
+        if delay > 0:
+            now += delay
+
+    monkeypatch.setattr(playback_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(playback_module.asyncio, "sleep", fake_sleep)
+
+    stats = await scheduler.run(11, _iter_chunks(source), adapter)
+
+    paced_sleeps = [delay for delay in sleeps if delay > 0]
+    assert len(adapter.chunks) == SAY_STARTUP_CHUNKS + 3
+    assert stats.chunks_sent == SAY_STARTUP_CHUNKS + 3
+    assert any(delay == pytest.approx(SAY_STARTUP_INTERVAL_S) for delay in paced_sleeps)
+    assert any(delay == pytest.approx(SAY_SEND_INTERVAL_S) for delay in paced_sleeps)
 
 
 @pytest.mark.asyncio

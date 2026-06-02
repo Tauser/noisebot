@@ -36,6 +36,11 @@ SAY_SEND_INTERVAL_S = max(
     CHUNK_DURATION_S,
     min(0.040, _env_float("NOISEBOT_TTS_SEND_INTERVAL_MS", 18.0) / 1000.0),
 )
+SAY_STARTUP_CHUNKS = max(0, min(256, _env_int("NOISEBOT_TTS_STARTUP_CHUNKS", 64)))
+SAY_STARTUP_INTERVAL_S = max(
+    SAY_SEND_INTERVAL_S,
+    min(0.080, _env_float("NOISEBOT_TTS_STARTUP_INTERVAL_MS", 24.0) / 1000.0),
+)
 
 
 @dataclass(frozen=True)
@@ -178,8 +183,9 @@ class OutputScheduler:
 
     async def _pace_chunk(self) -> None:
         now = time.monotonic()
+        interval_s = self._chunk_interval_s()
         if self._chunks_sent < FIRMWARE_SAY_QUEUE:
-            self._next_send_at = now + SAY_SEND_INTERVAL_S
+            self._next_send_at = now + interval_s
             return
 
         if self._next_send_at is None or self._next_send_at < now:
@@ -189,7 +195,12 @@ class OutputScheduler:
         if sleep_s > 0:
             await asyncio.sleep(sleep_s)
 
-        self._next_send_at += SAY_SEND_INTERVAL_S
+        self._next_send_at += interval_s
+
+    def _chunk_interval_s(self) -> float:
+        if self._chunks_sent < SAY_STARTUP_CHUNKS:
+            return SAY_STARTUP_INTERVAL_S
+        return SAY_SEND_INTERVAL_S
 
 
 async def _maybe_call_adapter(adapter: Any, method_name: str, *args: Any) -> bool:
@@ -216,5 +227,7 @@ __all__ = [
     "OutputScheduler",
     "PlaybackStats",
     "SAY_SEND_INTERVAL_S",
+    "SAY_STARTUP_CHUNKS",
+    "SAY_STARTUP_INTERVAL_S",
     "SAMPLE_RATE",
 ]
