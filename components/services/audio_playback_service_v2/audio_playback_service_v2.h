@@ -64,12 +64,9 @@ bool audio_playback_service_v2_is_playing(void);
 bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_count);
 esp_err_t audio_playback_service_v2_speaker_owner_arm(void);
 esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);
-bool audio_playback_service_v2_speaker_next_frame(int16_t *out,
-                                                  uint16_t capacity,
-                                                  uint16_t *out_count);
-
 esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t count);
 bool audio_playback_service_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out);
+bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out);
 uint32_t audio_playback_service_v2_say_cancel(void);
 uint32_t audio_playback_service_v2_say_pending_count(void);
 

@@ -1351,11 +1351,10 @@ static void audio_task(void *arg)
 
         /* ── Bridge SAY playback ─────────────────────────────────────────── */
         else if (play_state == PLAY_BRIDGE_SAY) {
-            uint16_t n = 0;
-            if (audio_playback_service_v2_speaker_next_frame(s_bridge_say_chunk.samples,
-                                                             NB_BRIDGE_AUDIO_CHUNK_SAMPLES,
-                                                             &n)) {
+            if (audio_playback_service_v2_speaker_next_frame(&s_bridge_say_chunk)) {
                 s.bridge_say_empty_ms = 0;
+                uint16_t n = s_bridge_say_chunk.count;
+                if (n > NB_BRIDGE_AUDIO_CHUNK_SAMPLES) n = NB_BRIDGE_AUDIO_CHUNK_SAMPLES;
                 uint32_t mult = ((uint32_t)s.volume * 256U) / 100U;
                 for (uint16_t i = 0; i < n; i++) {
                     int32_t v = ((int32_t)s_bridge_say_chunk.samples[i] * (int32_t)mult) >> 8;

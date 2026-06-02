@@ -306,32 +306,16 @@ bool audio_playback_service_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out
     return true;
 }
 
-bool audio_playback_service_v2_speaker_next_frame(int16_t *out,
-                                                  uint16_t capacity,
-                                                  uint16_t *out_count)
+bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out)
 {
-    if (out_count != NULL) {
-        *out_count = 0U;
-    }
-    if (out == NULL || out_count == NULL || capacity == 0U) {
+    if (out == NULL) {
         taskENTER_CRITICAL(&s_mux);
         s_status.last_error = ESP_ERR_INVALID_ARG;
         taskEXIT_CRITICAL(&s_mux);
         return false;
     }
 
-    nb_audio_playback_v2_say_chunk_t chunk;
-    if (!audio_playback_service_v2_say_dequeue(&chunk)) {
-        return false;
-    }
-
-    uint16_t count = chunk.count;
-    if (count > capacity) {
-        count = capacity;
-    }
-    memcpy(out, chunk.samples, count * sizeof(int16_t));
-    *out_count = count;
-    return count > 0U;
+    return audio_playback_service_v2_say_dequeue(out);
 }
 
 uint32_t audio_playback_service_v2_say_cancel(void)

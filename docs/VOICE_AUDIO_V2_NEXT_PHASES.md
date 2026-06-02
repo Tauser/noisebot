@@ -1060,8 +1060,8 @@ Incremento N4.2 iniciado:
 Incremento N4.3 iniciado:
 
 - Playback v2 ganhou `audio_playback_service_v2_speaker_next_frame()` como
-  provider explicito de frame SAY para speaker. A funcao drena a fila SAY v2 e
-  entrega samples/count ao owner fisico atual.
+  provider explicito de frame SAY para speaker. A funcao drena a fila SAY v2
+  para um chunk fornecido pelo caller, evitando copia extra no loop de speaker.
 - `audio_service.c` passou a pedir o proximo frame de speaker para Playback v2
   no estado `PLAY_BRIDGE_SAY`, em vez de chamar diretamente o dequeue da fila.
   `audio_service` ainda aplica volume, escreve no HAL e registra o resultado
@@ -1071,6 +1071,13 @@ Incremento N4.3 iniciado:
 - Gate fisico esperado: apos flash, resposta real curta deve manter 0 drops,
   fila SAY final zero, `speaker_handoff_active=true` quando armado, e rollback
   por `speaker-owner-disarm`.
+- Primeira validacao fisica apos `2e50c1b` acendeu o active-shadow, mas nao
+  fechou o gate: o turno mostrou `speaker_owner_active=true` e
+  `speaker_handoff_active=true`, porem Playback v2 acumulou 907 chunks
+  recebidos, 906 tocados, 30 drops e 1 cancelamento. O firmware ficou sem
+  falhas de I/O (`dropped_frames=0`, `i2s_recoveries=0`, codec health ok), mas
+  N4.3 exigiu ajuste para remover a copia extra do provider antes de repetir o
+  gate.
 
 ### N5 - Reduzir audio_service.c
 
