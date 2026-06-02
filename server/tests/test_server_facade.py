@@ -2876,6 +2876,75 @@ def test_server_transport_factory_creates_tcp_transport() -> None:
     assert transport.description == "TCP 192.168.1.30:9000"
 
 
+async def test_server_connection_supervisor_reconnects_after_disconnect(monkeypatch) -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    supervisor_module = importlib.import_module(
+        "noisebot_server.internal.transport.supervisor"
+    )
+
+    class FakeTransport:
+        def __init__(self, index: int) -> None:
+            self.index = index
+            self.description = f"fake-{index}"
+
+        async def connect(self) -> None:
+            calls.append(f"connect:{self.index}")
+
+        async def disconnect(self) -> None:
+            calls.append(f"disconnect:{self.index}")
+
+        async def send(self, data: bytes) -> None:
+            pass
+
+        async def recv(self, n: int = 4096) -> bytes:
+            return b""
+
+    class FakeAdapter:
+        def __init__(self, transport, bus) -> None:
+            self.transport = transport
+            self.bus = bus
+            self.is_connected = True
+
+        async def run(self) -> None:
+            calls.append(f"adapter:{self.transport.index}")
+            self.is_connected = False
+
+    calls: list[str] = []
+    transports = [FakeTransport(1), FakeTransport(2)]
+
+    def transport_factory():
+        return transports.pop(0)
+
+    async def fake_sleep(seconds: float) -> None:
+        calls.append(f"sleep:{seconds:.2f}")
+        if not transports:
+            await supervisor.shutdown()
+
+    monkeypatch.setattr(supervisor_module, "FirmwareAdapter", FakeAdapter)
+
+    supervisor = supervisor_module.ConnectionSupervisor(
+        transport_factory,
+        runtime.EventBus(),
+        _make_server_config().reconnect,
+    )
+    supervisor._sleep = fake_sleep
+
+    await supervisor.run()
+
+    assert calls == [
+        "connect:1",
+        "adapter:1",
+        "disconnect:1",
+        "sleep:0.05",
+        "connect:2",
+        "adapter:2",
+        "disconnect:2",
+        "sleep:0.05",
+    ]
+    assert supervisor.adapter is None
+    assert supervisor.is_connected is False
+
+
 def test_server_transport_is_server_owned() -> None:
     _ensure_bridgev2_path()
 

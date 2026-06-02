@@ -346,6 +346,24 @@ Bloqueia release:
 - Diagnostico mistura corte visual, falha de TTS e queda de Opus sem separar
   metricas.
 
+## Gate 8 - Reconexao TCP/UART
+
+Verde:
+
+- `python -m pytest server\tests\test_server_facade.py::test_server_connection_supervisor_reconnects_after_disconnect`
+  passa com `PYTHONPATH=server`.
+- O supervisor recria transporte e adapter apos a queda do adapter atual.
+- O transporte antigo e desconectado antes da proxima tentativa.
+- O backoff configurado e exercitado entre tentativas.
+- Ao encerrar, `adapter=None` e `is_connected=false`.
+
+Bloqueia release:
+
+- Queda do adapter deixa o server preso em uma conexao morta.
+- Transporte antigo permanece aberto entre tentativas.
+- Reconexao acontece sem respeitar o backoff.
+- Shutdown deixa adapter ativo ou estado conectado falso-positivo.
+
 ## Registro Da Rodada
 
 Para cada release local de voz, registrar:
@@ -353,7 +371,8 @@ Para cada release local de voz, registrar:
 - Data, branch e hash do firmware/server testado.
 - Comandos executados e arquivos JSON/Markdown gerados.
 - Resultado de `codec-v2 health`, `capture-v2 status`, Playback v2 SAY,
-  `codec-ab`, `barge-live`, `no-echo-live` e `/ai/metrics`.
+  `codec-ab`, `barge-live`, `no-echo-live`, reconexao TCP/UART e
+  `/ai/metrics`.
 - Codec ativo no inicio e no fim.
 - Se rollback PCM16 foi exercitado.
 - Qualquer falha real deve virar teste, replay ou checklist antes de novo
@@ -365,7 +384,7 @@ Esta Fase M parcial esta pronta quando:
 
 - O checklist acima esta referenciado pelos docs de voz.
 - Os gates protegem Opus v2, Playback v2 dono da fila SAY, Capture v2 desligado,
-  barge/no-echo e completude TTS/texto.
+  barge/no-echo, reconexao TCP/UART e completude TTS/texto.
 - O documento deixa explicito que wake, VAD, AEC, follow-up, `audio_service.c`
   e HAL ficam fora do escopo.
 - PCM16 rollback continua como criterio obrigatorio.

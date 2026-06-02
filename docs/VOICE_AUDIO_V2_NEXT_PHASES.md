@@ -639,7 +639,9 @@ Entregas:
   remove fala pendente da fila TX, nao remove frames nao relacionados a fala, e
   o scheduler nao envia `SAY_END` artificial apos cancelamento.
 - Replays com amostras reais boas e ruins.
-- Testes de reconexao/cancelamento explicito no bridge.
+- Testes de reconexao/cancelamento explicito no bridge: cancelamento explicito
+  ja cobre `SPEECH_CANCEL`/turn id e reconexao TCP/UART cobre recriacao de
+  transporte/adapter com backoff apos queda.
 - Registro claro de codec ativo, drops, filas, STT, TTS, SAY e estado final.
 
 Comandos base:
@@ -668,6 +670,9 @@ Gates obrigatorios da Fase M parcial:
 - Turn-taking: `barge-live --codec opus-v2` interrompe por wake com
   `discard_reason=barge_in`; `no-echo-live --codec opus-v2` nao abre turno
   fantasma.
+- Transporte: teste automatico de reconexao TCP/UART passa, cobrindo queda do
+  adapter, desconexao do transporte antigo, recriacao do transporte/adapter e
+  backoff entre tentativas.
 - TTS/texto: `/ai/metrics` separa `tts_completed=false`, falha de `SAY_END`,
   truncamento visual e paginacao `TEXT_SCROLL`; `text_scroll_pages_sent` deve
   cobrir `text_scroll_pages` quando houver paginacao.
