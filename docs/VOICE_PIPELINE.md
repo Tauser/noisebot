@@ -232,6 +232,11 @@ O endurecimento do rollback tambem foi validado apos flash: desligar
 `voice_audio_v2_capture_tx_enabled` limpa o ownership interno mesmo em idle,
 deixando `bridge_tx_handoff_enabled=false`, `bridge_tx_owner=false` e
 `legacy_audio_service_tx_owner=true`.
+No inicio da Fase N1, ligar `voice_audio_v2_capture_tx_enabled` pelo
+`/api/config` tambem liga `voice_audio_v2_capture_enabled`, removendo o estado
+inconsistente "TX armado sem Capture v2 real". O gate `voice-release-check`
+passou a aceitar o baseline antigo desligado e o modo `Capture v2 controlado`
+ligado/inativo/sem drops; o fechamento ainda exige flash e validacao fisica.
 Validacao fisica apos flash tambem passou: com Opus ativo e
 `capture-v2 tx-enable`, o turno `ww -> que horas sao` fechou como local time
 com transcript correto, `voice_end_reason=silence`, TTS completo e

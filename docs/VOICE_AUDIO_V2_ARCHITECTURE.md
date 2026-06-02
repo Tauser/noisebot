@@ -342,6 +342,11 @@ Responsabilidade:
   `VOICE_START/AUDIO_CHUNK/VOICE_END` a `voice_capture_session_v2`. Quando a
   flag e desligada, o caminho legado volta a ser dono do TX real e o status
   limpa `bridge_tx_owner` mesmo em idle.
+- Inicio da Fase N1: ligar `voice_audio_v2_capture_tx_enabled` via
+  `/api/config` tambem liga `voice_audio_v2_capture_enabled`, para impedir TX
+  handoff armado sem Capture v2 real. O release gate passou a aceitar
+  `Capture v2 controlado`: baseline desligado/inativo ou capture+handoff
+  ligados, sessao inativa, erro `ESP_OK` e drops zero.
 - Validacao de aceite em hardware: o handoff real opt-in passou em turno curto
   por silencio e em barge-in. No turno curto, Capture v2 ficou dono do TX real
   com zero drops e Playback v2 recebeu/tocou todos os chunks SAY com fila final
@@ -1196,8 +1201,8 @@ Resumo:
   `ESP_OK`.
 - Fase M parcial: checklist/health de release em
   `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md`, protegendo Opus v2, Playback v2
-  dono da fila SAY, Capture v2 desligado, barge/no-echo e completude TTS/texto,
-  sem alterar firmware C.
+  dono da fila SAY, Capture v2 desligado ou controlado em N1, barge/no-echo e
+  completude TTS/texto, sem alterar firmware C.
 - Fase J: `voice_activity_service_v2` entra como processor shadow/opt-in para
   VAD/NS/AFE, sem AEC device-side no hardware atual. Primeiro passo local:
   shadow probe passivo em `/api/audio/activity-v2`, alimentado por copia de
@@ -1235,8 +1240,8 @@ Hardware/manual assistido:
 - `noisebot_server debug no-echo-live`;
 - `noisebot_server debug opus-quality`;
 - `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md` para gates de release local,
-  incluindo `codec-v2 health`, Playback v2 SAY, Capture v2 desligado,
-  rollback PCM16, barge/no-echo e completude TTS/texto;
+  incluindo `codec-v2 health`, Playback v2 SAY, Capture v2 desligado ou
+  controlado em N1, rollback PCM16, barge/no-echo e completude TTS/texto;
 - teste ambiente real:
   - TV ligada;
   - conversa distante;

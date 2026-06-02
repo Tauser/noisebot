@@ -120,9 +120,19 @@ Fase M parcial:
 - `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md` fixa gates de release local sem
   alterar firmware C.
 - Proteger antes de novos refactors: Opus v2 por `codec-v2 health`, Playback v2
-  dono da fila SAY, Capture v2 desligado, PCM16 rollback, `barge-live`,
-  `no-echo-live` e completude TTS/texto.
+  dono da fila SAY, Capture v2 desligado ou controlado em N1, PCM16 rollback,
+  `barge-live`, `no-echo-live` e completude TTS/texto.
 - Fora do escopo: wake, VAD, AEC, follow-up, `audio_service.c` e HAL.
+
+Inicio N1 em 2026-06-01:
+
+- `voice_audio_v2_capture_tx_enabled=true` via `/api/config` tambem liga
+  `voice_audio_v2_capture_enabled=true`, evitando handoff TX armado sem Capture
+  v2 real.
+- `voice-release-check` aceita o gate `Capture v2 controlado` em dois modos:
+  baseline desligado/inativo sem drops, ou Capture+handoff ligados, sessao
+  inativa, `ESP_OK` e drops zero. Precisa de flash e validacao fisica antes de
+  fechar N1.
 
 Incremento atual da Fase I:
 

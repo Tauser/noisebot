@@ -410,6 +410,7 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
     assert "voice_audio_v2_capture_enabled" in web
     assert "voice_audio_v2_capture_tx_enabled" in web
     assert 'cfg.max_uri_handlers  = (uint16_t)((sizeof(k_uris) / sizeof(k_uris[0])) + 4U);' in web
+    assert "err = config_set_voice_audio_v2_capture_enabled(true);" in web
     assert "(void)voice_capture_session_v2_set_bridge_tx_owner(false);" in web
     assert '\\"real_capture_enabled\\":%s,' in web
     assert '\\"bridge_tx_handoff_enabled\\":%s,' in web

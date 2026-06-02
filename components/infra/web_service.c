@@ -710,7 +710,12 @@ static esp_err_t handle_api_config_post(httpd_req_t *req)
     }
     else if (strcmp(key, "voice_audio_v2_capture_tx_enabled") == 0) {
         bool tx_enabled = val != 0.0;
-        err = config_set_voice_audio_v2_capture_tx_enabled(tx_enabled);
+        if (tx_enabled) {
+            err = config_set_voice_audio_v2_capture_enabled(true);
+        }
+        if (err == ESP_OK) {
+            err = config_set_voice_audio_v2_capture_tx_enabled(tx_enabled);
+        }
         if (err == ESP_OK && !tx_enabled) {
             (void)voice_capture_session_v2_set_bridge_tx_owner(false);
         }

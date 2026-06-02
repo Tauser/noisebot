@@ -130,27 +130,40 @@ def _capture_gate(payload: dict[str, Any]) -> ReleaseGate:
     error = str(payload.get("last_error") or payload.get("error") or "ESP_OK")
     state = str(payload.get("state") or "")
     disabled = payload.get("real_capture_enabled") is False
+    controlled = (
+        payload.get("real_capture_enabled") is True
+        and payload.get("bridge_tx_handoff_enabled") is True
+    )
     inactive = payload.get("session_active") is False
     idle_or_retained_done = state in {"IDLE_SESSION", "DONE"}
+    dropped_frames = _int(payload.get("dropped_frames"))
+    shadow_drops = _int(payload.get("shadow_audio_dropped_chunks"))
     ok = (
         bool(payload.get("ok"))
-        and disabled
+        and (disabled or controlled)
         and inactive
         and idle_or_retained_done
         and error == "ESP_OK"
+        and dropped_frames == 0
+        and shadow_drops == 0
     )
     detail = (
         f"enabled={payload.get('real_capture_enabled')}, "
+        f"tx_handoff={payload.get('bridge_tx_handoff_enabled')}, "
         f"active={payload.get('session_active')}, state={payload.get('state')}, "
-        f"error={error}"
+        f"drops={dropped_frames}/{shadow_drops}, error={error}"
     )
-    if ok and state == "DONE":
+    if ok and disabled and state == "DONE":
         warnings = ("capture-v2 reteve a ultima sessao DONE, mas esta desligado e inativo",)
+    elif ok and controlled and state == "DONE" and payload.get("bridge_tx_owner") is True:
+        warnings = ("capture-v2 controlado reteve o ownership da ultima sessao DONE",)
     elif ok:
         warnings = ()
+    elif disabled:
+        warnings = ("capture-v2 deveria estar desligado, inativo e sem drops",)
     else:
-        warnings = ("capture-v2 deveria estar desligado e inativo",)
-    return ReleaseGate("Capture v2 default-off", ok, detail, warnings)
+        warnings = ("capture-v2 controlado deve estar inativo, com handoff ligado e sem drops",)
+    return ReleaseGate("Capture v2 controlado", ok, detail, warnings)
 
 
 def _playback_gate(payload: dict[str, Any]) -> ReleaseGate:

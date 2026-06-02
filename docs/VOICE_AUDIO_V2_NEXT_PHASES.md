@@ -779,6 +779,22 @@ Nao ligar direto como default permanente:
 - Aceite: turno curto, silencio pos-wake, barge-in/pare, no-echo, rollback
   PCM16 e Opus v2 health passam com Capture v2 como dono real do TX.
 
+Inicio local em 2026-06-01:
+
+- `voice_audio_v2_capture_tx_enabled=true` agora coabilita
+  `voice_audio_v2_capture_enabled=true` no endpoint `/api/config`, evitando
+  estado inconsistente em que o TX handoff fica armado sem uma sessao Capture v2
+  real poder abrir.
+- O rollback de TX continua em `capture-v2 tx-disable` /
+  `voice_audio_v2_capture_tx_enabled=false`, que libera o ownership interno e
+  devolve o TX logico ao caminho legado do `audio_service`; desligar tambem
+  `voice_audio_v2_capture_enabled` preserva o rollback completo para shadow off.
+- `voice-release-check` agora chama o gate de `Capture v2 controlado` e aceita
+  dois estados saudaveis: baseline antigo desligado/inativo sem drops, ou N1
+  com `real_capture_enabled=true`, `bridge_tx_handoff_enabled=true`, sessao
+  inativa, erro `ESP_OK` e drops zero. Ainda falta flash e validacao fisica para
+  fechar N1.
+
 ### N2 - Activity v2 Como Decisor Dentro Da Sessao
 
 Escopo restrito:
