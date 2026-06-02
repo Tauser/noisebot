@@ -285,6 +285,11 @@ Invariantes:
   `audio_playback_service_v2_speaker_next_frame()`. O `audio_service` continua
   dono do volume e do write fisico no HAL, mas a selecao do frame de speaker
   deixa de acessar diretamente o dequeue da fila.
+- Na Fase N4.4, o preparo do frame SAY tambem migra para Playback v2: o servico
+  limita o tamanho do chunk, aplica o volume percentual com clamp e expoe
+  `speaker_frames_prepared`/`speaker_samples_prepared`. O `audio_service`
+  permanece como unico escritor fisico do HAL, mas ja recebe PCM preparado para
+  o speaker.
 
 ### Voice Activity v2
 

@@ -87,6 +87,11 @@ Na Fase N4.2, o pipeline adiciona active-shadow para speaker handoff:
 Playback v2 foi escrito com `ESP_OK`. Esse sinal pode tornar
 `speaker_handoff_active=true` durante resposta real armada, mas ainda nao
 transfere a escrita fisica do HAL para Playback v2.
+Na Fase N4.4, Playback v2 tambem prepara o PCM SAY para speaker: o provider
+aplica volume percentual e clamp antes de devolver o frame. O write fisico no
+HAL ainda permanece em `audio_service`, mas os contadores
+`speaker_frames_prepared` e `speaker_samples_prepared` mostram que o preparo do
+speaker saiu do loop legado.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

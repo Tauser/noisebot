@@ -187,6 +187,9 @@ Incremento atual da Fase N3:
   `audio_io_service_v2_speaker_handoff_note_playback_frame()` so marca
   `speaker_handoff_active=true` quando o owner esta armado, o frame SAY nao e
   silencio e o write fisico feito por `audio_service` retornou `ESP_OK`.
+- Fase N4.4 moveu o preparo do frame SAY para Playback v2: o provider do
+  speaker agora aplica volume/clamp antes do write fisico e expõe contadores
+  `speaker_frames_prepared`/`speaker_samples_prepared` para validacao.
 - O HAL/speaker continua fisicamente em `audio_service`; Playback v2 ainda nao
   chama `audio_hal_*`.
 

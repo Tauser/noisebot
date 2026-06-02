@@ -2391,6 +2391,14 @@ Implementação:
   zero `i2s_recoveries`; `codec-v2 health` final ficou
   `healthy=true/status=ok`. O rollback `speaker-owner-disarm` voltou Audio IO
   para `DISABLED`.
+- [ ] Fase N4.4 iniciada: Playback v2 passou a preparar o frame SAY do speaker
+  em `audio_playback_service_v2_speaker_next_frame()`, incluindo clamp de tamanho
+  e volume percentual, enquanto `audio_service.c` continua unico dono fisico do
+  `audio_hal_spk_write()`. `/api/audio/playback-v2` agora expoe
+  `speaker_frames_prepared`, `speaker_samples_prepared`, `speaker_last_samples`
+  e `speaker_last_volume`. Validacao local antes do flash: contrato Voice Audio
+  v2 `7 passed`, server facade `171 passed`, `git diff --check` limpo e
+  `idf.py build` sem warnings.
 
 ---
 

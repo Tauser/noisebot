@@ -1089,6 +1089,26 @@ Incremento N4.3 iniciado:
   `speaker-owner-disarm` voltou Playback v2 para false/false/false e Audio IO
   para `DISABLED`.
 
+Incremento N4.4 iniciado:
+
+- Playback v2 agora prepara o frame SAY destinado ao speaker dentro de
+  `audio_playback_service_v2_speaker_next_frame()`: alem de drenar a fila, ele
+  limita o tamanho do chunk, aplica volume percentual com clamp e devolve PCM ja
+  pronto para o write fisico.
+- `/api/audio/playback-v2` expoe `speaker_frames_prepared`,
+  `speaker_samples_prepared`, `speaker_last_samples` e `speaker_last_volume`
+  para validar se o preparo do speaker esta acompanhando `say_chunks_played`.
+- `audio_service.c` continua o unico ponto que chama `audio_hal_spk_write()` no
+  caminho SAY; ele apenas solicita o frame preparado ao Playback v2, escreve no
+  HAL e registra o resultado no Audio IO v2.
+- Validacao local antes do flash: contrato focado Voice Audio v2 verde
+  (`7 passed`), facade do server verde (`171 passed`), `git diff --check`
+  limpo e `idf.py build` completo sem warnings. Gate fisico esperado: apos
+  flash, armar `speaker-owner`, executar resposta real curta e confirmar
+  `speaker_frames_prepared` crescendo no mesmo delta de `say_chunks_played`,
+  zero drops/cancelamentos, `speaker_handoff_active=true`, Codec v2 saudavel e
+  rollback por `speaker-owner-disarm`.
+
 ### N5 - Reduzir audio_service.c
 
 Ultima etapa, apos donos reais validados:
