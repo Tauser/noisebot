@@ -2689,7 +2689,7 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_playback_v2_status_t st;
     audio_playback_service_v2_get_status(&st);
 
-    char buf[1400];
+    char buf[1600];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
@@ -2701,6 +2701,11 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              "\"speaker_samples_prepared\":%lu,"
              "\"speaker_last_samples\":%lu,"
              "\"speaker_last_volume\":%lu,"
+             "\"speaker_frames_committed\":%lu,"
+             "\"speaker_samples_committed\":%lu,"
+             "\"speaker_commit_failures\":%lu,"
+             "\"speaker_last_commit_samples\":%lu,"
+             "\"speaker_last_commit_result\":\"%s\","
              "\"probe_duration_ms\":%lu,"
              "\"probe_elapsed_ms\":%lu,\"queued_chunks\":%lu,"
              "\"played_chunks\":%lu,\"dropped_chunks\":%lu,"
@@ -2724,6 +2729,11 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.speaker_samples_prepared,
              (unsigned long)st.speaker_last_samples,
              (unsigned long)st.speaker_last_volume,
+             (unsigned long)st.speaker_frames_committed,
+             (unsigned long)st.speaker_samples_committed,
+             (unsigned long)st.speaker_commit_failures,
+             (unsigned long)st.speaker_last_commit_samples,
+             esp_err_to_name(st.speaker_last_commit_result),
              (unsigned long)st.probe_duration_ms,
              (unsigned long)st.probe_elapsed_ms,
              (unsigned long)st.queued_chunks,

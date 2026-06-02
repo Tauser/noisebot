@@ -34,6 +34,11 @@ typedef struct {
     uint32_t speaker_samples_prepared;
     uint32_t speaker_last_samples;
     uint32_t speaker_last_volume;
+    uint32_t speaker_frames_committed;
+    uint32_t speaker_samples_committed;
+    uint32_t speaker_commit_failures;
+    uint32_t speaker_last_commit_samples;
+    esp_err_t speaker_last_commit_result;
     uint32_t probe_duration_ms;
     uint32_t probe_elapsed_ms;
     uint32_t queued_chunks;
@@ -72,6 +77,8 @@ esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t
 bool audio_playback_service_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out);
 bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out,
                                                   uint8_t volume_percent);
+void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
+                                                    esp_err_t result);
 uint32_t audio_playback_service_v2_say_cancel(void);
 uint32_t audio_playback_service_v2_say_pending_count(void);
 

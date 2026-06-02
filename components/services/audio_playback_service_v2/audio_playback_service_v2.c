@@ -350,6 +350,23 @@ bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk
     return true;
 }
 
+void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
+                                                    esp_err_t result)
+{
+    audio_io_service_v2_speaker_handoff_note_playback_frame(false, result);
+
+    taskENTER_CRITICAL(&s_mux);
+    s_status.speaker_frames_committed++;
+    s_status.speaker_samples_committed += sample_count;
+    s_status.speaker_last_commit_samples = sample_count;
+    s_status.speaker_last_commit_result = result;
+    if (result != ESP_OK) {
+        s_status.speaker_commit_failures++;
+    }
+    s_status.last_error = result;
+    taskEXIT_CRITICAL(&s_mux);
+}
+
 uint32_t audio_playback_service_v2_say_cancel(void)
 {
     QueueHandle_t queue = s_say_q;
