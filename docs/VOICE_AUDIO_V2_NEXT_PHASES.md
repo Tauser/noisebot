@@ -1010,9 +1010,22 @@ Incremento N4.1 iniciado:
   chama `audio_hal_*` nem escreve direto no HAL.
 - Validacao local antes do flash: contrato focado Voice Audio v2 verde
   (`7 passed`), facade do server verde (`171 passed`), suite do server verde
-  (`188 passed`) e `idf.py build` completo sem warnings. Proximo gate fisico:
-  flashar e validar arm/disarm pelo namespace de Playback v2, confirmando que
-  `speaker_owner_active` permanece `false` ate a proxima promocao controlada.
+  (`188 passed`) e `idf.py build` completo sem warnings.
+- Validacao fisica apos flash de `f7e6ed1`: `debug playback-v2
+  speaker-owner-arm --json` respondeu `ok=true`; o snapshot estabilizado de
+  Playback v2 mostrou `speaker_owner_requested=true`,
+  `speaker_owner_ready=true`, `speaker_owner_active=false`, fila zero e
+  `ESP_OK`. Audio IO v2 confirmou `speaker_handoff_dry_run_enabled=true`,
+  `speaker_handoff_owner_requested=true`, `speaker_handoff_owner_ready=true`,
+  `speaker_handoff_ready=true`, `speaker_handoff_active=false`,
+  `block_reason=NONE`, `speaker_handoff_frames=1435`, zero falhas, zero
+  recoveries, zero drops e zero `i2s_recoveries`. `speaker-owner-disarm`
+  voltou Playback v2 para false/false/false e Audio IO v2 para
+  `block_reason=DISABLED`.
+- Observacao operacional: apos flash/reboot, `codec-v2 health` ficou degradado
+  enquanto o worker Opus ainda nao estava iniciado (`opus_codec_error=-1`);
+  `debug codec-v2 transport-enable --json` reativou o worker e o health voltou
+  `healthy=true`, `status=ok`, zero drops e `opus_codec_error=0`.
 
 ### N5 - Reduzir audio_service.c
 

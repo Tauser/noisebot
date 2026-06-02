@@ -2349,6 +2349,15 @@ Implementação:
   primeiro incremento nao escreve no HAL e preserva `audio_service.c` como dono
   fisico do speaker. Validacao local: contrato Voice Audio v2 `7 passed`, server
   facade `171 passed`, server suite `188 passed` e `idf.py build` completo.
+- [x] Fase N4.1 validada em hardware apos flash de `f7e6ed1`: Playback v2
+  `speaker-owner-arm` respondeu `ok=true` e estabilizou em
+  `speaker_owner_requested=true`, `speaker_owner_ready=true`,
+  `speaker_owner_active=false`; Audio IO v2 confirmou dry-run/owner pronto,
+  `speaker_handoff_ready=true`, `block_reason=NONE`, 1435 frames de handoff,
+  zero falhas, zero recoveries, zero drops e zero `i2s_recoveries`.
+  `speaker-owner-disarm` voltou o gate para `DISABLED`. Apos o reboot, Codec v2
+  precisou de `transport-enable` para reiniciar o worker Opus; health final
+  voltou `healthy=true/status=ok`, zero drops e `opus_codec_error=0`.
 
 ---
 
