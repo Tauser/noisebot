@@ -639,12 +639,6 @@ static void bridge_on_event(const nb_event_t *evt)
             }
         } else if (session_json_string_equals(payload, "event", "SETTINGS_COMMAND")) {
             uint8_t brightness = 0U;
-            if (session_json_u8(payload, "display_brightness", &brightness)) {
-                render_service_set_brightness(brightness);
-                (void)config_set_brightness(brightness);
-                ui_overlay_show_toast("Tela ajustada", NB_UI_OVERLAY_SUCCESS, 1500U);
-                NB_LOGI(TAG, "brilho tela via bridge: %u", (unsigned)brightness);
-            }
             if (session_json_u8(payload, "led_brightness", &brightness)) {
                 led_set_brightness(brightness);
                 (void)config_set_brightness(brightness);

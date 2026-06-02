@@ -1083,7 +1083,6 @@ static esp_err_t phase_services(void)
         NB_LOGW(TAG, "render_service_init falhou: %s — display sem render_task",
                 esp_err_to_name(err));
     } else {
-        render_service_set_brightness(config_get_brightness());
         err = render_service_start();
         NB_ASSERT(err == ESP_OK, TAG, "render_service_start falhou: %s",
                   esp_err_to_name(err));

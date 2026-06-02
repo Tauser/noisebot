@@ -1245,8 +1245,8 @@ Incremento N4.8 iniciado:
   Codec v2 e `heap_internal_free_kb` abaixo de 16 KB. Esses avisos mantem
   `ok=true` quando nao ha falha funcional, mas deixam `status=warn`.
 - Validacao local: teste focado do CLI Playback v2 verde (`3 passed`). O facade
-  completo do server foi executado e encontrou uma falha fora deste escopo no
-  worktree sujo de intents (`local_led_brightness` vs `local_brightness`).
+  completo do server deve permanecer verde apos a limpeza dos comandos locais
+  de brilho.
 - Validacao viva sem prompt contra o firmware: `ok=true`, `status=warn`,
   `issues=[]`, deltas criticos zerados (`say_chunks_dropped=0`,
   `speaker_write_failures=0`, `speaker_commit_failures=0`,

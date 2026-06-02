@@ -1054,21 +1054,7 @@ class OpsHttpServer:
                 applied["led_brightness"] = "saved_only"
 
         if "display_brightness" in request_data:
-            if connected:
-                brightness = _percent_to_u8(int(settings["display_brightness"]))
-                try:
-                    await adapter.send_session(
-                        {
-                            "event": "SETTINGS_COMMAND",
-                            "display_brightness": brightness,
-                        }
-                    )
-                    applied["display_brightness"] = "firmware"
-                except Exception as exc:
-                    log.warning("Ops API: brilho tela salvo, envio ao firmware falhou: %s", exc)
-                    applied["display_brightness"] = "saved_only"
-            else:
-                applied["display_brightness"] = "saved_only"
+            applied["display_brightness"] = "unsupported_no_backlight"
 
         for key in ("display_brightness", "led_brightness"):
             if key in request_data and key not in applied:

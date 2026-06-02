@@ -685,16 +685,6 @@ class LocalIntentProvider:
                 emot_event_id=_EMOT_NEUTRAL,
             )
 
-        wants_display_brightness = _has(
-            norm,
-            "brilho da tela",
-            "brilho tela",
-            "tela mais clara",
-            "tela mais escura",
-            "brilho do display",
-            "display mais claro",
-            "display mais escuro",
-        )
         wants_led_brightness = _has(
             norm,
             "brilho do led",
@@ -718,19 +708,15 @@ class LocalIntentProvider:
             "brilho mais fraco",
         )
 
-        if wants_display_brightness:
-            percent = _parse_percent(norm)
-            if percent is None:
-                percent = 90 if _has(norm, "clara", "claro", "aumenta", "aumentar", "aumente") else 35
-            brightness = max(0, min(255, int(round(percent * 2.55))))
+        if _has(norm, "brilho da tela", "brilho tela", "tela mais clara", "tela mais escura",
+                "brilho do display", "display mais claro", "display mais escuro"):
             return IntentResolved(
                 turn_id=turn_id,
-                intent_name="local_display_brightness",
-                reply_text=f"Brilho da tela em {percent} por cento.",
+                intent_name="local_display_brightness_unsupported",
+                reply_text="Essa tela nao tem backlight ajustavel; posso ajustar o brilho dos LEDs.",
                 expression_id=_EXPR_ATTENTIVE,
                 action_id=_ACTION_NONE,
                 emot_event_id=_EMOT_NEUTRAL,
-                device_command=_settings_command(display_brightness=brightness),
             )
 
         if wants_led_brightness:
@@ -755,15 +741,12 @@ class LocalIntentProvider:
             brightness = max(0, min(255, int(round(percent * 2.55))))
             return IntentResolved(
                 turn_id=turn_id,
-                intent_name="local_brightness",
-                reply_text=f"Brilho em {percent} por cento.",
+                intent_name="local_led_brightness",
+                reply_text=f"Brilho dos LEDs em {percent} por cento.",
                 expression_id=_EXPR_ATTENTIVE,
                 action_id=_ACTION_NONE,
                 emot_event_id=_EMOT_NEUTRAL,
-                device_command=_settings_command(
-                    display_brightness=brightness,
-                    led_brightness=brightness,
-                ),
+                device_command=_settings_command(led_brightness=brightness),
             )
 
         if _has(norm, "luz normal", "led normal", "cor normal", "volta a luz", "volte a luz"):

@@ -56,11 +56,11 @@ def test_bridge_settings_command_uses_json_field_parser():
     end = src.index('} else if (session_json_string_equals(payload, "event", "LED_COMMAND"))', start)
     block = src[start:end]
 
-    assert 'session_json_u8(payload, "display_brightness", &brightness)' in block
     assert 'session_json_u8(payload, "led_brightness", &brightness)' in block
+    assert 'session_json_u8(payload, "display_brightness", &brightness)' not in block
 
 
-def test_config_brightness_endpoint_applies_runtime_services():
+def test_config_brightness_endpoint_applies_led_runtime_only():
     src = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
 
     start = src.index('else if (strcmp(key, "brightness")')
@@ -68,5 +68,5 @@ def test_config_brightness_endpoint_applies_runtime_services():
     block = src[start:end]
 
     assert "config_set_brightness(brightness)" in block
-    assert "render_service_set_brightness(brightness);" in block
     assert "led_set_brightness(brightness);" in block
+    assert "render_service_set_brightness(brightness);" not in block

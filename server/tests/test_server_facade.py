@@ -5434,13 +5434,23 @@ def test_server_agent_generic_brightness_short_command_emits_settings_command() 
 
     result = provider.match("diminua o brilho", turn_id=53)
 
-    assert result.intent_name == "local_brightness"
-    assert result.reply_text == "Brilho em 25 por cento."
+    assert result.intent_name == "local_led_brightness"
+    assert result.reply_text == "Brilho dos LEDs em 25 por cento."
     assert result.device_command == {
         "event": "SETTINGS_COMMAND",
-        "display_brightness": 64,
         "led_brightness": 64,
     }
+
+
+def test_server_agent_display_brightness_is_honest_until_backlight_exists() -> None:
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("diminua o brilho da tela", turn_id=53)
+
+    assert result.intent_name == "local_display_brightness_unsupported"
+    assert result.device_command is None
+    assert "nao tem backlight ajustavel" in result.reply_text
 
 
 def test_server_agent_led_brightness_percent_emits_settings_command() -> None:

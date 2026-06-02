@@ -30,7 +30,6 @@
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "led_service.h"
-#include "render_service.h"
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -728,7 +727,6 @@ static esp_err_t handle_api_config_post(httpd_req_t *req)
         uint8_t brightness = (uint8_t)val;
         err = config_set_brightness(brightness);
         if (err == ESP_OK) {
-            render_service_set_brightness(brightness);
             led_set_brightness(brightness);
         }
     }

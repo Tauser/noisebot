@@ -37,7 +37,7 @@ O sistema usa dois mecanismos de persistência com papeis distintos e complement
 | `servo_tilt_center`  | int16  | Posição central TILT                   | 2048     |
 | `servo_speed_max`    | uint16 | Velocidade máxima (unid. SCS)          | 200      |
 | `volume_level`       | uint8  | Volume de 0 a 100                      | 70       |
-| `display_brightness` | uint8  | Backlight de 0 a 255                   | 180      |
+| `display_brightness` | uint8  | Brilho dos LEDs de 0 a 255; tela atual não tem BL ajustável | 180      |
 | `touch_sensitivity`  | float  | Fator de sensibilidade touch           | 0.20     |
 | `idle_timeout_s`     | uint32 | Segundos até entrar em SLEEPING        | 3600     |
 | `log_level`          | uint8  | Nível mínimo de log (0=VERBOSE)        | 3 (INFO) |
