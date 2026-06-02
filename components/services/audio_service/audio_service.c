@@ -747,6 +747,8 @@ static esp_err_t listen_session_finish(nb_listen_end_reason_t reason)
     bool capture_v2_tx_owner = s.listen_capture_v2_tx_owner;
     voice_activity_service_v2_session_compare_legacy_end((uint32_t)reason,
                                                           speech_elapsed_ms);
+    audio_io_service_v2_session_rx_mirror_finish((uint32_t)reason,
+                                                 speech_elapsed_ms);
 
     s.listen_session_active    = false;
     s.listen_phase             = LISTEN_PHASE_IDLE;
@@ -1227,12 +1229,17 @@ static void audio_task(void *arg)
         sound_analysis_tick(s_sa_buf, mic_n);
         audio_processor_service_feed_shadow(s_sa_buf, (uint16_t)mic_n);
         audio_io_service_v2_probe_feed_rx_frame(s_sa_buf, (uint16_t)mic_n);
+        bool io_v2_session_context = false;
         bool activity_session_context = false;
         bool activity_bridge_say_context = false;
         xSemaphoreTake(s.mutex, portMAX_DELAY);
+        io_v2_session_context = s.listen_session_active;
         activity_session_context = s.listen_session_active;
         activity_bridge_say_context = s.bridge_say_playing;
         xSemaphoreGive(s.mutex);
+        if (io_v2_session_context) {
+            audio_io_service_v2_session_rx_mirror_feed(s_sa_buf, (uint16_t)mic_n);
+        }
         bool activity_playback_context = wrote_audio ||
                                          play_state == PLAY_ACTIVE ||
                                          play_state == PLAY_BRIDGE_SAY ||
@@ -1645,6 +1652,7 @@ esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source
     }
 
     (void)voice_activity_service_v2_session_compare_begin();
+    (void)audio_io_service_v2_session_rx_mirror_begin((uint32_t)source);
     bool capture_v2_active = begin_capture_v2_if_enabled(source);
 
     s.listen_session_active       = true;

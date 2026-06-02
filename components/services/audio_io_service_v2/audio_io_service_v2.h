@@ -31,8 +31,16 @@ typedef struct {
 typedef struct {
     bool initialized;
     bool probe_running;
+    bool session_rx_mirror_active;
+    bool session_rx_mirror_observed;
     uint32_t probe_duration_ms;
     uint32_t probe_elapsed_ms;
+    uint32_t session_rx_mirror_id;
+    uint32_t session_rx_mirror_source;
+    uint32_t session_rx_mirror_elapsed_ms;
+    uint32_t session_rx_mirror_frames;
+    uint32_t session_rx_mirror_samples;
+    uint32_t session_rx_mirror_end_reason;
     uint32_t rx_frames;
     uint32_t tx_frames;
     uint32_t tx_silence_frames;
@@ -57,6 +65,11 @@ esp_err_t audio_io_service_v2_probe_stop(void);
 bool audio_io_service_v2_probe_is_running(void);
 void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sample_count);
 void audio_io_service_v2_probe_note_tx_silence(esp_err_t result);
+esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);
+void audio_io_service_v2_session_rx_mirror_feed(const int16_t *samples,
+                                                uint16_t sample_count);
+void audio_io_service_v2_session_rx_mirror_finish(uint32_t end_reason,
+                                                  uint32_t elapsed_ms);
 
 #ifdef __cplusplus
 }

@@ -47,6 +47,30 @@ static void read_heap_kb(uint32_t *internal_kb, uint32_t *dma_kb)
     }
 }
 
+static void compute_frame_levels(const int16_t *samples,
+                                 uint16_t sample_count,
+                                 uint32_t *rms,
+                                 uint32_t *peak)
+{
+    uint64_t sum_sq = 0;
+    uint32_t local_peak = 0;
+    for (uint16_t i = 0; i < sample_count; i++) {
+        int32_t v = samples[i];
+        uint32_t mag = (uint32_t)((v < 0) ? -v : v);
+        sum_sq += (uint64_t)mag * (uint64_t)mag;
+        if (mag > local_peak) {
+            local_peak = mag;
+        }
+    }
+
+    if (rms != NULL) {
+        *rms = isqrt_u64(sum_sq / sample_count);
+    }
+    if (peak != NULL) {
+        *peak = local_peak;
+    }
+}
+
 esp_err_t audio_io_service_v2_init(void)
 {
     uint32_t internal_kb = 0;
@@ -179,18 +203,9 @@ void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sa
         return;
     }
 
-    uint64_t sum_sq = 0;
+    uint32_t rms = 0;
     uint32_t peak = 0;
-    for (uint16_t i = 0; i < sample_count; i++) {
-        int32_t v = samples[i];
-        uint32_t mag = (uint32_t)((v < 0) ? -v : v);
-        sum_sq += (uint64_t)mag * (uint64_t)mag;
-        if (mag > peak) {
-            peak = mag;
-        }
-    }
-
-    uint32_t rms = isqrt_u64(sum_sq / sample_count);
+    compute_frame_levels(samples, sample_count, &rms, &peak);
 
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.probe_running) {
@@ -211,6 +226,97 @@ void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sa
     if (s_status.probe_elapsed_ms >= s_status.probe_duration_ms) {
         s_status.probe_running = false;
     }
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source)
+{
+    uint32_t internal_kb = 0;
+    uint32_t dma_kb = 0;
+    read_heap_kb(&internal_kb, &dma_kb);
+
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.initialized) {
+        memset(&s_status, 0, sizeof(s_status));
+        s_status.initialized = true;
+    }
+    if (s_status.session_rx_mirror_active) {
+        taskEXIT_CRITICAL(&s_mux);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    s_status.session_rx_mirror_active = true;
+    s_status.session_rx_mirror_observed = false;
+    s_status.session_rx_mirror_id++;
+    s_status.session_rx_mirror_source = source;
+    s_status.session_rx_mirror_elapsed_ms = 0;
+    s_status.session_rx_mirror_frames = 0;
+    s_status.session_rx_mirror_samples = 0;
+    s_status.session_rx_mirror_end_reason = 0;
+    s_status.last_error = ESP_OK;
+    s_status.heap_internal_free_kb = internal_kb;
+    s_status.heap_dma_free_kb = dma_kb;
+    taskEXIT_CRITICAL(&s_mux);
+    return ESP_OK;
+}
+
+void audio_io_service_v2_session_rx_mirror_feed(const int16_t *samples,
+                                                uint16_t sample_count)
+{
+    if (samples == NULL || sample_count == 0U) {
+        return;
+    }
+
+    taskENTER_CRITICAL(&s_mux);
+    bool active = s_status.session_rx_mirror_active;
+    taskEXIT_CRITICAL(&s_mux);
+    if (!active) {
+        return;
+    }
+
+    uint32_t rms = 0;
+    uint32_t peak = 0;
+    compute_frame_levels(samples, sample_count, &rms, &peak);
+
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.session_rx_mirror_active) {
+        taskEXIT_CRITICAL(&s_mux);
+        return;
+    }
+
+    s_status.session_rx_mirror_observed = true;
+    s_status.session_rx_mirror_frames++;
+    s_status.session_rx_mirror_samples += sample_count;
+    s_status.session_rx_mirror_elapsed_ms += NB_AUDIO_IO_V2_CHUNK_MS;
+    s_status.rms_last = rms;
+    s_status.peak_last = peak;
+    if (rms > s_status.rms_max) {
+        s_status.rms_max = rms;
+    }
+    if (peak > s_status.peak_max) {
+        s_status.peak_max = peak;
+    }
+    taskEXIT_CRITICAL(&s_mux);
+}
+
+void audio_io_service_v2_session_rx_mirror_finish(uint32_t end_reason,
+                                                  uint32_t elapsed_ms)
+{
+    uint32_t internal_kb = 0;
+    uint32_t dma_kb = 0;
+    read_heap_kb(&internal_kb, &dma_kb);
+
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.initialized || !s_status.session_rx_mirror_active) {
+        taskEXIT_CRITICAL(&s_mux);
+        return;
+    }
+
+    s_status.session_rx_mirror_active = false;
+    s_status.session_rx_mirror_end_reason = end_reason;
+    s_status.session_rx_mirror_elapsed_ms = elapsed_ms;
+    s_status.heap_internal_free_kb = internal_kb;
+    s_status.heap_dma_free_kb = dma_kb;
     taskEXIT_CRITICAL(&s_mux);
 }
 

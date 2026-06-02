@@ -1661,10 +1661,16 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_io_v2_status_t st;
     audio_io_service_v2_get_status(&st);
 
-    char buf[640];
+    char buf[960];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"probe_running\":%s,"
+             "\"session_rx_mirror_active\":%s,\"session_rx_mirror_observed\":%s,"
              "\"probe_duration_ms\":%lu,\"probe_elapsed_ms\":%lu,"
+             "\"session_rx_mirror_id\":%lu,\"session_rx_mirror_source\":%lu,"
+             "\"session_rx_mirror_elapsed_ms\":%lu,"
+             "\"session_rx_mirror_frames\":%lu,"
+             "\"session_rx_mirror_samples\":%lu,"
+             "\"session_rx_mirror_end_reason\":%lu,"
              "\"rx_frames\":%lu,\"tx_frames\":%lu,"
              "\"tx_silence_frames\":%lu,\"i2s_recoveries\":%lu,"
              "\"dropped_frames\":%lu,\"rms_last\":%lu,\"peak_last\":%lu,"
@@ -1674,8 +1680,16 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              (err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
              st.probe_running ? "true" : "false",
+             st.session_rx_mirror_active ? "true" : "false",
+             st.session_rx_mirror_observed ? "true" : "false",
              (unsigned long)st.probe_duration_ms,
              (unsigned long)st.probe_elapsed_ms,
+             (unsigned long)st.session_rx_mirror_id,
+             (unsigned long)st.session_rx_mirror_source,
+             (unsigned long)st.session_rx_mirror_elapsed_ms,
+             (unsigned long)st.session_rx_mirror_frames,
+             (unsigned long)st.session_rx_mirror_samples,
+             (unsigned long)st.session_rx_mirror_end_reason,
              (unsigned long)st.rx_frames,
              (unsigned long)st.tx_frames,
              (unsigned long)st.tx_silence_frames,
