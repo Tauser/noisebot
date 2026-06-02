@@ -89,6 +89,7 @@ static void initialize_status_locked(void)
 static void reset_speaker_handoff_locked(void)
 {
     s_status.speaker_handoff_active = false;
+    s_status.speaker_handoff_owner_ready = false;
     s_status.speaker_handoff_candidate = false;
     s_status.speaker_handoff_ready = false;
     s_status.speaker_handoff_block_reason =
@@ -109,6 +110,7 @@ static void update_speaker_handoff_ready_locked(void)
     if (!s_status.speaker_handoff_dry_run_enabled) {
         s_status.speaker_handoff_candidate = false;
         s_status.speaker_handoff_ready = false;
+        s_status.speaker_handoff_owner_ready = false;
         s_status.speaker_handoff_block_reason =
             NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
         return;
@@ -117,24 +119,30 @@ static void update_speaker_handoff_ready_locked(void)
     s_status.speaker_handoff_candidate = s_status.speaker_handoff_frames > 0U;
     if (!s_status.speaker_handoff_candidate) {
         s_status.speaker_handoff_ready = false;
+        s_status.speaker_handoff_owner_ready = false;
         s_status.speaker_handoff_block_reason =
             NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NO_TX;
         return;
     }
     if (s_status.speaker_handoff_recoveries > 0U) {
         s_status.speaker_handoff_ready = false;
+        s_status.speaker_handoff_owner_ready = false;
         s_status.speaker_handoff_block_reason =
             NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_I2S_RECOVERY;
         return;
     }
     if (s_status.speaker_handoff_failures > 0U) {
         s_status.speaker_handoff_ready = false;
+        s_status.speaker_handoff_owner_ready = false;
         s_status.speaker_handoff_block_reason =
             NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_TX_ERROR;
         return;
     }
 
     s_status.speaker_handoff_ready = true;
+    s_status.speaker_handoff_owner_ready =
+        s_status.speaker_handoff_owner_requested &&
+        !s_status.speaker_handoff_active;
     s_status.speaker_handoff_block_reason =
         NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NONE;
 }
@@ -272,6 +280,29 @@ esp_err_t audio_io_service_v2_set_speaker_handoff_dry_run(bool enabled)
 
     s_status.speaker_handoff_supported = true;
     s_status.speaker_handoff_dry_run_enabled = enabled;
+    if (!enabled) {
+        s_status.speaker_handoff_owner_requested = false;
+    }
+    reset_speaker_handoff_locked();
+    taskEXIT_CRITICAL(&s_mux);
+    return ESP_OK;
+}
+
+esp_err_t audio_io_service_v2_set_speaker_handoff_owner_requested(bool requested)
+{
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.initialized) {
+        initialize_status_locked();
+    }
+
+    s_status.speaker_handoff_supported = true;
+    s_status.speaker_handoff_owner_requested = requested;
+    if (requested) {
+        s_status.speaker_handoff_dry_run_enabled = true;
+    } else {
+        s_status.speaker_handoff_dry_run_enabled = false;
+        s_status.speaker_handoff_owner_ready = false;
+    }
     reset_speaker_handoff_locked();
     taskEXIT_CRITICAL(&s_mux);
     return ESP_OK;

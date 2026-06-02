@@ -294,6 +294,8 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert '\\"tx_owner_last_result\\":\\"%s\\"' in web
     assert '\\"speaker_handoff_supported\\":%s' in web
     assert '\\"speaker_handoff_dry_run_enabled\\":%s' in web
+    assert '\\"speaker_handoff_owner_requested\\":%s' in web
+    assert '\\"speaker_handoff_owner_ready\\":%s' in web
     assert '\\"speaker_handoff_active\\":%s' in web
     assert '\\"speaker_handoff_candidate\\":%s' in web
     assert '\\"speaker_handoff_ready\\":%s' in web
@@ -320,6 +322,7 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "void audio_io_service_v2_tx_owner_note_frame(" in io_h
     assert "void audio_io_service_v2_note_i2s_recovery(" in io_h
     assert "esp_err_t audio_io_service_v2_set_speaker_handoff_dry_run(bool enabled);" in io_h
+    assert "esp_err_t audio_io_service_v2_set_speaker_handoff_owner_requested(bool requested);" in io_h
     assert "NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED" in io_h
     assert "NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NO_TX" in io_h
     assert "NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_TX_ERROR" in io_h
@@ -346,6 +349,8 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "esp_err_t tx_owner_last_result;" in io_h
     assert "bool speaker_handoff_supported;" in io_h
     assert "bool speaker_handoff_dry_run_enabled;" in io_h
+    assert "bool speaker_handoff_owner_requested;" in io_h
+    assert "bool speaker_handoff_owner_ready;" in io_h
     assert "bool speaker_handoff_active;" in io_h
     assert "bool speaker_handoff_candidate;" in io_h
     assert "bool speaker_handoff_ready;" in io_h
@@ -364,8 +369,11 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "bridge_" not in io_c
     assert "speaker_handoff_active = false;" in io_c
     assert "audio_io_service_v2_set_speaker_handoff_dry_run(" in io_c
+    assert "audio_io_service_v2_set_speaker_handoff_owner_requested(" in io_c
     assert '{ .uri = "/api/audio/io-v2/speaker-handoff/enable"' in web
     assert '{ .uri = "/api/audio/io-v2/speaker-handoff/disable"' in web
+    assert '{ .uri = "/api/audio/io-v2/speaker-handoff/owner/arm"' in web
+    assert '{ .uri = "/api/audio/io-v2/speaker-handoff/owner/disarm"' in web
 
 
 def test_voice_activity_v2_shadow_is_explicit_and_passive():

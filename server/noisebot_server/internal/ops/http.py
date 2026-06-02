@@ -147,6 +147,8 @@ class OpsHttpServer:
         wa.router.add_get("/api/device/audio/io-v2", self._get_device_audio_io_v2)
         wa.router.add_post("/api/device/audio/io-v2/speaker-handoff/enable", self._post_device_audio_io_v2_speaker_handoff_enable)
         wa.router.add_post("/api/device/audio/io-v2/speaker-handoff/disable", self._post_device_audio_io_v2_speaker_handoff_disable)
+        wa.router.add_post("/api/device/audio/io-v2/speaker-handoff/owner/arm", self._post_device_audio_io_v2_speaker_handoff_owner_arm)
+        wa.router.add_post("/api/device/audio/io-v2/speaker-handoff/owner/disarm", self._post_device_audio_io_v2_speaker_handoff_owner_disarm)
         wa.router.add_get("/api/device/audio/codec-v2", self._get_device_audio_codec_v2)
         wa.router.add_get("/api/device/audio/codec-v2/health", self._get_device_audio_codec_v2_health)
         wa.router.add_post("/api/device/audio/codec-v2/encode-test", self._post_device_audio_codec_v2_encode_test)
@@ -542,6 +544,20 @@ class OpsHttpServer:
         self._require_token(request)
         return await self._proxy_firmware_diag_post(
             self._firmware_diag_client.audio_io_v2_speaker_handoff_disable
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_io_v2_speaker_handoff_owner_arm(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_io_v2_speaker_handoff_owner_arm
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _post_device_audio_io_v2_speaker_handoff_owner_disarm(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        return await self._proxy_firmware_diag_post(
+            self._firmware_diag_client.audio_io_v2_speaker_handoff_owner_disarm
             if self._firmware_diag_client is not None else None
         )
 

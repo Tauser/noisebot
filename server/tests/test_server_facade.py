@@ -840,10 +840,14 @@ def test_server_firmware_diag_client_exposes_io_v2_endpoint(monkeypatch) -> None
     assert client.audio_io_v2_status()["ok"]
     assert client.audio_io_v2_speaker_handoff_enable()["ok"]
     assert client.audio_io_v2_speaker_handoff_disable()["ok"]
+    assert client.audio_io_v2_speaker_handoff_owner_arm()["ok"]
+    assert client.audio_io_v2_speaker_handoff_owner_disarm()["ok"]
     assert get_paths == ["api/audio/io-v2"]
     assert post_paths == [
         "api/audio/io-v2/speaker-handoff/enable",
         "api/audio/io-v2/speaker-handoff/disable",
+        "api/audio/io-v2/speaker-handoff/owner/arm",
+        "api/audio/io-v2/speaker-handoff/owner/disarm",
     ]
 
 
@@ -1125,6 +1129,29 @@ def test_server_cli_parses_io_v2_debug_command() -> None:
     assert args.host == "192.168.1.30"
     assert args.action == "speaker-handoff-enable"
     assert args.json
+
+    arm_args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "io-v2",
+        "speaker-handoff-owner-arm",
+        "--json",
+    ])
+    disarm_args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "io-v2",
+        "speaker-handoff-owner-disarm",
+        "--json",
+    ])
+    assert arm_args.debug_command == "io-v2"
+    assert arm_args.action == "speaker-handoff-owner-arm"
+    assert arm_args.json
+    assert disarm_args.debug_command == "io-v2"
+    assert disarm_args.action == "speaker-handoff-owner-disarm"
+    assert disarm_args.json
 
 
 def test_server_cli_runs_io_v2_speaker_handoff_debug_command(monkeypatch, capsys) -> None:

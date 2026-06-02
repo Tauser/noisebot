@@ -155,7 +155,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     io_v2 = debug_sub.add_parser("io-v2")
     io_v2.add_argument(
         "action",
-        choices=["status", "speaker-handoff-enable", "speaker-handoff-disable"],
+        choices=[
+            "status",
+            "speaker-handoff-enable",
+            "speaker-handoff-disable",
+            "speaker-handoff-owner-arm",
+            "speaker-handoff-owner-disarm",
+        ],
         nargs="?",
         default="status",
     )
@@ -674,6 +680,10 @@ def run_debug_command(args: argparse.Namespace) -> None:
             payload = client.audio_io_v2_speaker_handoff_enable()
         elif args.action == "speaker-handoff-disable":
             payload = client.audio_io_v2_speaker_handoff_disable()
+        elif args.action == "speaker-handoff-owner-arm":
+            payload = client.audio_io_v2_speaker_handoff_owner_arm()
+        elif args.action == "speaker-handoff-owner-disarm":
+            payload = client.audio_io_v2_speaker_handoff_owner_disarm()
         else:
             payload = client.audio_io_v2_status()
 
@@ -762,6 +772,10 @@ def _format_io_v2_status(payload: dict[str, object]) -> str:
             f"- Drops: {payload.get('dropped_frames', '')}",
             f"- Speaker handoff dry-run: "
             f"{payload.get('speaker_handoff_dry_run_enabled', '')}",
+            f"- Speaker handoff owner armado: "
+            f"{payload.get('speaker_handoff_owner_requested', '')}",
+            f"- Speaker handoff owner pronto: "
+            f"{payload.get('speaker_handoff_owner_ready', '')}",
             f"- Speaker handoff active: {payload.get('speaker_handoff_active', '')}",
             f"- Speaker handoff ready: {payload.get('speaker_handoff_ready', '')} "
             f"({payload.get('speaker_handoff_block_reason', '')})",

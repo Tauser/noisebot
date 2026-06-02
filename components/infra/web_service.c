@@ -1682,7 +1682,7 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
         break;
     }
 
-    char buf[3000];
+    char buf[3200];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"probe_running\":%s,"
              "\"rx_owner_active\":%s,\"rx_owner_observed\":%s,"
@@ -1722,6 +1722,8 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              "\"tx_owner_last_result\":\"%s\","
              "\"speaker_handoff_supported\":%s,"
              "\"speaker_handoff_dry_run_enabled\":%s,"
+             "\"speaker_handoff_owner_requested\":%s,"
+             "\"speaker_handoff_owner_ready\":%s,"
              "\"speaker_handoff_active\":%s,"
              "\"speaker_handoff_candidate\":%s,"
              "\"speaker_handoff_ready\":%s,"
@@ -1786,6 +1788,8 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              esp_err_to_name(st.tx_owner_last_result),
              st.speaker_handoff_supported ? "true" : "false",
              st.speaker_handoff_dry_run_enabled ? "true" : "false",
+             st.speaker_handoff_owner_requested ? "true" : "false",
+             st.speaker_handoff_owner_ready ? "true" : "false",
              st.speaker_handoff_active ? "true" : "false",
              st.speaker_handoff_candidate ? "true" : "false",
              st.speaker_handoff_ready ? "true" : "false",
@@ -1831,6 +1835,24 @@ static esp_err_t handle_api_audio_io_v2_speaker_handoff_enable(httpd_req_t *req)
 static esp_err_t handle_api_audio_io_v2_speaker_handoff_disable(httpd_req_t *req)
 {
     esp_err_t err = audio_io_service_v2_set_speaker_handoff_dry_run(false);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+    return send_audio_io_v2_status(req, err);
+}
+
+static esp_err_t handle_api_audio_io_v2_speaker_handoff_owner_arm(httpd_req_t *req)
+{
+    esp_err_t err = audio_io_service_v2_set_speaker_handoff_owner_requested(true);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+    return send_audio_io_v2_status(req, err);
+}
+
+static esp_err_t handle_api_audio_io_v2_speaker_handoff_owner_disarm(httpd_req_t *req)
+{
+    esp_err_t err = audio_io_service_v2_set_speaker_handoff_owner_requested(false);
     if (err != ESP_OK) {
         httpd_resp_set_status(req, "500 Internal Server Error");
     }
@@ -4085,6 +4107,8 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/io-v2/probe/stop", .method = HTTP_POST, .handler = handle_api_audio_io_v2_probe_stop },
     { .uri = "/api/audio/io-v2/speaker-handoff/enable", .method = HTTP_POST, .handler = handle_api_audio_io_v2_speaker_handoff_enable },
     { .uri = "/api/audio/io-v2/speaker-handoff/disable", .method = HTTP_POST, .handler = handle_api_audio_io_v2_speaker_handoff_disable },
+    { .uri = "/api/audio/io-v2/speaker-handoff/owner/arm", .method = HTTP_POST, .handler = handle_api_audio_io_v2_speaker_handoff_owner_arm },
+    { .uri = "/api/audio/io-v2/speaker-handoff/owner/disarm", .method = HTTP_POST, .handler = handle_api_audio_io_v2_speaker_handoff_owner_disarm },
     { .uri = "/api/audio/activity-v2", .method = HTTP_GET, .handler = handle_api_voice_activity_v2_status },
     { .uri = "/api/audio/activity-v2/shadow", .method = HTTP_POST, .handler = handle_api_voice_activity_v2_shadow },
     { .uri = "/api/audio/activity-v2/shadow/stop", .method = HTTP_POST, .handler = handle_api_voice_activity_v2_shadow_stop },

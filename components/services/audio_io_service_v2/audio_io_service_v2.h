@@ -92,6 +92,8 @@ typedef struct {
     esp_err_t tx_owner_last_result;
     bool speaker_handoff_supported;
     bool speaker_handoff_dry_run_enabled;
+    bool speaker_handoff_owner_requested;
+    bool speaker_handoff_owner_ready;
     bool speaker_handoff_active;
     bool speaker_handoff_candidate;
     bool speaker_handoff_ready;
@@ -126,6 +128,7 @@ esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms);
 esp_err_t audio_io_service_v2_probe_stop(void);
 bool audio_io_service_v2_probe_is_running(void);
 esp_err_t audio_io_service_v2_set_speaker_handoff_dry_run(bool enabled);
+esp_err_t audio_io_service_v2_set_speaker_handoff_owner_requested(bool requested);
 void audio_io_service_v2_rx_owner_accept_frame(const int16_t *samples,
                                                uint16_t sample_count,
                                                uint32_t source_flags,
