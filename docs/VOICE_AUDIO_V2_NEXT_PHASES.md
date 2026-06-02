@@ -1027,6 +1027,24 @@ Incremento N4.1 iniciado:
   `debug codec-v2 transport-enable --json` reativou o worker e o health voltou
   `healthy=true`, `status=ok`, zero drops e `opus_codec_error=0`.
 
+Incremento N4.2 iniciado:
+
+- Audio IO v2 ganhou `audio_io_service_v2_speaker_handoff_note_playback_frame()`
+  para marcar especificamente quando um frame nao silencioso de Playback v2/SAY
+  passou pelo gate de owner armado com write `ESP_OK`.
+- `audio_service.c` chama esse marcador somente no caminho `PLAY_BRIDGE_SAY`,
+  logo depois do write no speaker e da anotacao generica de TX. Assim
+  `speaker_handoff_active=true` passa a significar "Playback v2/SAY entrou no
+  gate" e nao apenas "houve TX qualquer".
+- Ainda nao ha chamada `audio_hal_*` dentro de Playback v2; o HAL continua
+  sendo escrito por `audio_service.c`, com Audio IO v2 como barreira/telemetria.
+- Validacao local antes do flash: contrato focado Voice Audio v2 verde
+  (`7 passed`) e `idf.py build` completo sem warnings. Proximo gate fisico:
+  flashar, armar `debug playback-v2 speaker-owner-arm --json`, executar uma
+  resposta real curta e confirmar `speaker_owner_active=true` /
+  `speaker_handoff_active=true`, zero falhas, zero recoveries, zero drops e
+  rollback por `speaker-owner-disarm`.
+
 ### N5 - Reduzir audio_service.c
 
 Ultima etapa, apos donos reais validados:

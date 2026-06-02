@@ -320,6 +320,7 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "nb_audio_io_v2_rx_consumer_t" in io_h
     assert "void audio_io_service_v2_probe_feed_rx_frame(" in io_h
     assert "void audio_io_service_v2_tx_owner_note_frame(" in io_h
+    assert "void audio_io_service_v2_speaker_handoff_note_playback_frame(" in io_h
     assert "void audio_io_service_v2_note_i2s_recovery(" in io_h
     assert "esp_err_t audio_io_service_v2_set_speaker_handoff_dry_run(bool enabled);" in io_h
     assert "esp_err_t audio_io_service_v2_set_speaker_handoff_owner_requested(bool requested);" in io_h
@@ -368,6 +369,8 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "audio_hal_" not in io_c
     assert "bridge_" not in io_c
     assert "speaker_handoff_active = false;" in io_c
+    assert "audio_io_service_v2_speaker_handoff_note_playback_frame(" in io_c
+    assert "s_status.speaker_handoff_active = true;" in io_c
     assert "audio_io_service_v2_set_speaker_handoff_dry_run(" in io_c
     assert "audio_io_service_v2_set_speaker_handoff_owner_requested(" in io_c
     assert '{ .uri = "/api/audio/io-v2/speaker-handoff/enable"' in web
@@ -476,6 +479,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "audio_playback_service_v2_say_dequeue(" in audio_service
     assert "audio_playback_service_v2_say_cancel(" in audio_service
     assert "audio_playback_service_v2_note_say_dropped(" in audio_service
+    assert "audio_io_service_v2_speaker_handoff_note_playback_frame(false, wr);" in audio_service
     assert "bridge_say_observer" in web
     assert "bridge_say_queue_owner" in web
     assert '\\"speaker_owner_requested\\":%s' in web

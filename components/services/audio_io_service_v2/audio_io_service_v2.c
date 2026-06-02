@@ -599,6 +599,24 @@ void audio_io_service_v2_tx_owner_note_frame(uint16_t sample_count,
     taskEXIT_CRITICAL(&s_mux);
 }
 
+void audio_io_service_v2_speaker_handoff_note_playback_frame(bool silence,
+                                                             esp_err_t result)
+{
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.initialized) {
+        initialize_status_locked();
+    }
+
+    if (s_status.speaker_handoff_dry_run_enabled &&
+        s_status.speaker_handoff_owner_requested &&
+        result == ESP_OK &&
+        !silence) {
+        s_status.speaker_handoff_active = true;
+    }
+    update_speaker_handoff_ready_locked();
+    taskEXIT_CRITICAL(&s_mux);
+}
+
 void audio_io_service_v2_probe_note_tx_silence(esp_err_t result)
 {
     taskENTER_CRITICAL(&s_mux);

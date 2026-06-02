@@ -1364,6 +1364,7 @@ static void audio_task(void *arg)
                 }
                 esp_err_t wr = audio_hal_spk_write(s_bridge_say_chunk.samples, n, pdMS_TO_TICKS(100));
                 audio_note_spk_result(wr, "bridge_say", n, false);
+                audio_io_service_v2_speaker_handoff_note_playback_frame(false, wr);
                 if ((++s_bridge_say_play_count % 64U) == 1U) {
                     ESP_LOGI(TAG, "Bridge SAY playback chunks=%lu q=%u",
                              (unsigned long)s_bridge_say_play_count,

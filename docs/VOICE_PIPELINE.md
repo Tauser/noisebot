@@ -82,6 +82,11 @@ real apos restart do server: baseline `received=494`, `played=494`,
 `received=892`, `played=892`, `dropped=154`, ou seja, +398 chunks recebidos e
 tocados com zero drops novos. `/ai/metrics` confirmou `tts_completed=true`,
 `tts_say_end_sent=true`, `tts_chunks_sent=398` e `voice_alert=null`.
+Na Fase N4.2, o pipeline adiciona active-shadow para speaker handoff:
+`audio_service` marca no Audio IO v2 quando um frame SAY nao silencioso de
+Playback v2 foi escrito com `ESP_OK`. Esse sinal pode tornar
+`speaker_handoff_active=true` durante resposta real armada, mas ainda nao
+transfere a escrita fisica do HAL para Playback v2.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

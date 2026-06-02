@@ -249,8 +249,11 @@ Responsabilidade:
   (`tx_owner_frames=54188` / `tx_frames=54188`), ultimo TX `ESP_OK`, silencio em
   idle, `i2s_recoveries=0`, `dropped_frames=0`, Capture v2/Playback v2 sem
   drops e Codec v2 final `status=ok` apos drenar fila egress residual.
-- Proximo passo arquitetural: criar handoff de speaker em dry-run/flag via
-  contrato I/O v2. Ate N4, `audio_service` continua dono unico do HAL.
+- Estado N4.2: o handoff de speaker ja tem gate de owner via Playback v2 e
+  active-shadow no Audio IO v2. `speaker_handoff_active=true` significa que um
+  frame nao silencioso de Playback v2/SAY passou pelo gate armado com write
+  `ESP_OK`; nao significa que Playback v2 esteja chamando HAL diretamente.
+  `audio_service` continua dono unico da escrita fisica no speaker.
 
 Invariantes:
 
@@ -275,6 +278,9 @@ Invariantes:
 - Nenhum chunk antigo pode tocar depois de `SPEECH_CANCEL`.
 - Playback nao deve alimentar VAD como fala do usuario.
 - Deve haver janela de mute/ignore para VAD pos-playback.
+- Na Fase N4.2, Playback v2 marca o active-shadow do speaker por meio do
+  `audio_service`/Audio IO v2 somente para frames SAY reais; ainda nao ha
+  chamada `audio_hal_*` dentro de `audio_playback_service_v2`.
 
 ### Voice Activity v2
 

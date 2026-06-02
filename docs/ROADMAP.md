@@ -2358,6 +2358,13 @@ Implementação:
   `speaker-owner-disarm` voltou o gate para `DISABLED`. Apos o reboot, Codec v2
   precisou de `transport-enable` para reiniciar o worker Opus; health final
   voltou `healthy=true/status=ok`, zero drops e `opus_codec_error=0`.
+- [ ] Fase N4.2 iniciada como active shadow de Playback v2/SAY:
+  `audio_io_service_v2_speaker_handoff_note_playback_frame()` marca
+  `speaker_handoff_active=true` somente quando o owner esta armado, o write do
+  frame SAY nao silencioso voltou `ESP_OK` e o caminho e `PLAY_BRIDGE_SAY`.
+  Playback v2 ainda nao chama `audio_hal_*`; `audio_service.c` segue escrevendo
+  no HAL e o Audio IO v2 funciona como barreira/telemetria. Validacao local:
+  contrato Voice Audio v2 `7 passed` e `idf.py build` completo.
 
 ---
 

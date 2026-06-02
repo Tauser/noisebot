@@ -181,8 +181,14 @@ Incremento atual da Fase N3:
   `tx_owner_last_result=ESP_OK`, `i2s_recoveries=0`, `dropped_frames=0`,
   Playback/Capture ficaram sem drops, `rx_dispatch_last_consumers=8`, e
   `codec-v2 health` voltou `status=ok` apos drenar 1 pacote egress residual.
-- Proximo passo seguro: handoff de speaker em dry-run/flag pelo contrato Audio
-  IO v2, ainda sem passar HAL para Playback v2 como default.
+- Fase N4.1 validou o gate de owner pelo namespace de Playback v2
+  (`speaker-owner-arm|disarm`), ainda sem transferir HAL.
+- Fase N4.2 adiciona active-shadow especifico para Playback v2/SAY:
+  `audio_io_service_v2_speaker_handoff_note_playback_frame()` so marca
+  `speaker_handoff_active=true` quando o owner esta armado, o frame SAY nao e
+  silencio e o write fisico feito por `audio_service` retornou `ESP_OK`.
+- O HAL/speaker continua fisicamente em `audio_service`; Playback v2 ainda nao
+  chama `audio_hal_*`.
 
 ### Wake Word
 

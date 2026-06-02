@@ -143,6 +143,8 @@ void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sa
 void audio_io_service_v2_tx_owner_note_frame(uint16_t sample_count,
                                              bool silence,
                                              esp_err_t result);
+void audio_io_service_v2_speaker_handoff_note_playback_frame(bool silence,
+                                                             esp_err_t result);
 void audio_io_service_v2_probe_note_tx_silence(esp_err_t result);
 void audio_io_service_v2_note_i2s_recovery(esp_err_t reason);
 esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);
