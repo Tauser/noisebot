@@ -35,13 +35,26 @@ def test_listen_start_clears_stale_text_overlay():
 def test_bridge_led_command_controls_led_service():
     src = _source()
 
-    start = src.index('} else if (strstr(payload, "\\"event\\":\\"LED_COMMAND\\""))')
+    assert "static bool session_json_string_equals(" in src
+
+    start = src.index('} else if (session_json_string_equals(payload, "event", "LED_COMMAND"))')
     end = src.index("}\n        }\n        break;", start)
     block = src[start:end]
 
-    assert 'strstr(payload, "\\"action\\":\\"reset\\"")' in block
+    assert 'session_json_string_equals(payload, "action", "reset")' in block
     assert "led_base_set(NB_LED_BASE_IDLE, true);" in block
     assert 'session_json_u8(payload, "r", &red)' in block
     assert 'session_json_u8(payload, "g", &green)' in block
     assert 'session_json_u8(payload, "b", &blue)' in block
     assert "led_set_all(color);" in block
+
+
+def test_bridge_settings_command_uses_json_field_parser():
+    src = _source()
+
+    start = src.index('} else if (session_json_string_equals(payload, "event", "SETTINGS_COMMAND"))')
+    end = src.index('} else if (session_json_string_equals(payload, "event", "LED_COMMAND"))', start)
+    block = src[start:end]
+
+    assert 'session_json_u8(payload, "display_brightness", &brightness)' in block
+    assert 'session_json_u8(payload, "led_brightness", &brightness)' in block

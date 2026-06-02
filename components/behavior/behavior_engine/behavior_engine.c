@@ -437,6 +437,7 @@ static bool session_json_u8(const char *payload, const char *key, uint8_t *out_v
     const char *value_start = strstr(payload, pattern);
     if (!value_start) return false;
     value_start += written;
+    while (*value_start == ' ') value_start++;
 
     char *end = NULL;
     unsigned long value = strtoul(value_start, &end, 10);
@@ -445,6 +446,26 @@ static bool session_json_u8(const char *payload, const char *key, uint8_t *out_v
 
     *out_value = (uint8_t)value;
     return true;
+}
+
+static bool session_json_string_equals(const char *payload, const char *key, const char *expected)
+{
+    if (!payload || !key || !expected) return false;
+
+    char pattern[48];
+    int written = snprintf(pattern, sizeof(pattern), "\"%s\":", key);
+    if (written <= 0 || (size_t)written >= sizeof(pattern)) return false;
+
+    const char *value_start = strstr(payload, pattern);
+    if (!value_start) return false;
+    value_start += written;
+    while (*value_start == ' ') value_start++;
+    if (*value_start != '"') return false;
+    value_start++;
+
+    size_t expected_len = strlen(expected);
+    return strncmp(value_start, expected, expected_len) == 0 &&
+           value_start[expected_len] == '"';
 }
 
 static void bridge_resp_timeout_cb(void *arg)
@@ -616,7 +637,7 @@ static void bridge_on_event(const nb_event_t *evt)
             } else {
                 ui_overlay_show_toast("Erro na conversa", NB_UI_OVERLAY_ERROR, BRIDGE_ERROR_TOAST_MS);
             }
-        } else if (strstr(payload, "\"event\":\"SETTINGS_COMMAND\"")) {
+        } else if (session_json_string_equals(payload, "event", "SETTINGS_COMMAND")) {
             uint8_t brightness = 0U;
             if (session_json_u8(payload, "display_brightness", &brightness)) {
                 render_service_set_brightness(brightness);
@@ -630,8 +651,8 @@ static void bridge_on_event(const nb_event_t *evt)
                 ui_overlay_show_toast("LEDs ajustados", NB_UI_OVERLAY_SUCCESS, 1500U);
                 NB_LOGI(TAG, "brilho LED via bridge: %u", (unsigned)brightness);
             }
-        } else if (strstr(payload, "\"event\":\"LED_COMMAND\"")) {
-            if (strstr(payload, "\"action\":\"reset\"")) {
+        } else if (session_json_string_equals(payload, "event", "LED_COMMAND")) {
+            if (session_json_string_equals(payload, "action", "reset")) {
                 led_base_set(NB_LED_BASE_IDLE, true);
                 ui_overlay_show_toast("LEDs normais", NB_UI_OVERLAY_SUCCESS, 1500U);
                 NB_LOGI(TAG, "LED reset via bridge");

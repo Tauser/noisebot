@@ -221,12 +221,12 @@ def _parse_weekdays_mask(text: str) -> int:
 
 def _parse_led_color(text: str) -> tuple[str, int, int, int] | None:
     colors: list[tuple[str, tuple[str, ...], tuple[int, int, int]]] = [
-        ("azul", ("azul",), (40, 120, 255)),
-        ("verde", ("verde",), (40, 220, 90)),
-        ("vermelho", ("vermelho", "vermelha"), (255, 0, 0)),
-        ("branco", ("branco", "branca"), (255, 255, 220)),
-        ("amarelo", ("amarelo", "amarela"), (255, 200, 40)),
-        ("roxo", ("roxo", "roxa", "purpura"), (120, 55, 255)),
+        ("azul", ("azul", "azuis"), (40, 120, 255)),
+        ("verde", ("verde", "verdes"), (40, 220, 90)),
+        ("vermelho", ("vermelho", "vermelha", "vermelhos", "vermelhas"), (255, 0, 0)),
+        ("branco", ("branco", "branca", "brancos", "brancas"), (255, 255, 220)),
+        ("amarelo", ("amarelo", "amarela", "amarelos", "amarelas"), (255, 200, 40)),
+        ("roxo", ("roxo", "roxa", "roxos", "roxas", "purpura"), (120, 55, 255)),
         ("rosa", ("rosa", "magenta"), (255, 80, 180)),
         ("ciano", ("ciano", "cyan"), (35, 220, 240)),
         ("laranja", ("laranja",), (255, 80, 0)),
@@ -685,10 +685,11 @@ class LocalIntentProvider:
                 emot_event_id=_EMOT_NEUTRAL,
             )
 
-        if _has(norm, "brilho da tela", "brilho tela", "tela mais clara", "tela mais escura"):
+        if _has(norm, "brilho da tela", "brilho tela", "tela mais clara", "tela mais escura",
+                "brilho do display", "display mais claro", "display mais escuro"):
             percent = _parse_percent(norm)
             if percent is None:
-                percent = 90 if _has(norm, "clara", "aumenta", "aumentar") else 35
+                percent = 90 if _has(norm, "clara", "claro", "aumenta", "aumentar", "aumente") else 35
             brightness = max(0, min(255, int(round(percent * 2.55))))
             return IntentResolved(
                 turn_id=turn_id,
@@ -700,10 +701,13 @@ class LocalIntentProvider:
                 device_command=_settings_command(display_brightness=brightness),
             )
 
-        if _has(norm, "brilho do led", "brilho dos leds", "led mais forte", "led mais fraco"):
+        if _has(norm, "brilho do led", "brilho dos leds", "led mais forte", "led mais fraco",
+                "luz mais forte", "luzes mais fortes", "luz mais fraca", "luzes mais fracas",
+                "aumenta o brilho", "aumente o brilho", "diminui o brilho", "diminua o brilho",
+                "abaixa o brilho", "baixa o brilho", "brilho mais forte", "brilho mais fraco"):
             percent = _parse_percent(norm)
             if percent is None:
-                percent = 90 if _has(norm, "forte", "aumenta", "aumentar") else 25
+                percent = 90 if _has(norm, "forte", "fortes", "aumenta", "aumentar", "aumente") else 25
             brightness = max(0, min(255, int(round(percent * 2.55))))
             return IntentResolved(
                 turn_id=turn_id,
@@ -727,7 +731,9 @@ class LocalIntentProvider:
             )
 
         if _has(norm, "acende a luz", "acenda a luz", "mude a luz", "mudar a luz",
-                "luz ", "cor do led", "cor dos leds"):
+                "mude a cor", "mudar a cor", "troque a cor", "trocar a cor",
+                "deixe a luz", "deixa a luz", "deixe os leds", "deixa os leds",
+                "luz ", "luzes", "led ", "leds", "cor do led", "cor dos leds"):
             color = _parse_led_color(norm)
             if color is not None:
                 name, red, green, blue = color
