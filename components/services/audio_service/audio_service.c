@@ -1234,6 +1234,7 @@ static void audio_task(void *arg)
             if (v < -32768) v = -32768;
             s_sa_buf[i] = (int16_t)v;
         }
+        audio_io_service_v2_rx_owner_accept_frame(s_sa_buf, (uint16_t)mic_n, 0U);
         sound_analysis_tick(s_sa_buf, mic_n);
         audio_processor_service_feed_shadow(s_sa_buf, (uint16_t)mic_n);
         audio_io_service_v2_probe_feed_rx_frame(s_sa_buf, (uint16_t)mic_n);

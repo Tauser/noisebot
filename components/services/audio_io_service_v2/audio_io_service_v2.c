@@ -195,6 +195,46 @@ bool audio_io_service_v2_probe_is_running(void)
     return running;
 }
 
+void audio_io_service_v2_rx_owner_accept_frame(const int16_t *samples,
+                                               uint16_t sample_count,
+                                               uint32_t source_flags)
+{
+    if (samples == NULL || sample_count == 0U) {
+        return;
+    }
+
+    uint32_t rms = 0;
+    uint32_t peak = 0;
+    compute_frame_levels(samples, sample_count, &rms, &peak);
+
+    taskENTER_CRITICAL(&s_mux);
+    if (!s_status.initialized) {
+        memset(&s_status, 0, sizeof(s_status));
+        s_status.initialized = true;
+        s_status.last_error = ESP_OK;
+    }
+
+    s_status.rx_owner_active = true;
+    s_status.rx_owner_observed = true;
+    s_status.rx_owner_frames++;
+    s_status.rx_owner_samples += sample_count;
+    s_status.rx_owner_last_samples = sample_count;
+    s_status.rx_owner_source_flags = source_flags;
+    if (s_status.session_rx_mirror_active) {
+        s_status.session_rx_owner_frames++;
+        s_status.session_rx_owner_samples += sample_count;
+    }
+    s_status.rms_last = rms;
+    s_status.peak_last = peak;
+    if (rms > s_status.rms_max) {
+        s_status.rms_max = rms;
+    }
+    if (peak > s_status.peak_max) {
+        s_status.peak_max = peak;
+    }
+    taskEXIT_CRITICAL(&s_mux);
+}
+
 void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sample_count)
 {
     if (samples == NULL || sample_count == 0U) {
@@ -258,6 +298,8 @@ esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source)
     s_status.session_rx_mirror_frames = 0;
     s_status.session_rx_mirror_samples = 0;
     s_status.session_rx_mirror_end_reason = 0;
+    s_status.session_rx_owner_frames = 0;
+    s_status.session_rx_owner_samples = 0;
     s_status.session_rx_legacy_observed = false;
     s_status.session_rx_legacy_covered = false;
     s_status.session_rx_legacy_frames = 0;

@@ -1661,12 +1661,17 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_io_v2_status_t st;
     audio_io_service_v2_get_status(&st);
 
-    char buf[1280];
+    char buf[1600];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"probe_running\":%s,"
+             "\"rx_owner_active\":%s,\"rx_owner_observed\":%s,"
              "\"session_rx_mirror_active\":%s,\"session_rx_mirror_observed\":%s,"
              "\"session_rx_legacy_observed\":%s,\"session_rx_legacy_covered\":%s,"
              "\"probe_duration_ms\":%lu,\"probe_elapsed_ms\":%lu,"
+             "\"rx_owner_frames\":%lu,\"rx_owner_samples\":%lu,"
+             "\"rx_owner_last_samples\":%lu,\"rx_owner_source_flags\":%lu,"
+             "\"session_rx_owner_frames\":%lu,"
+             "\"session_rx_owner_samples\":%lu,"
              "\"session_rx_mirror_id\":%lu,\"session_rx_mirror_source\":%lu,"
              "\"session_rx_mirror_elapsed_ms\":%lu,"
              "\"session_rx_mirror_frames\":%lu,"
@@ -1687,12 +1692,20 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              (err == ESP_OK) ? "true" : "false",
              st.initialized ? "true" : "false",
              st.probe_running ? "true" : "false",
+             st.rx_owner_active ? "true" : "false",
+             st.rx_owner_observed ? "true" : "false",
              st.session_rx_mirror_active ? "true" : "false",
              st.session_rx_mirror_observed ? "true" : "false",
              st.session_rx_legacy_observed ? "true" : "false",
              st.session_rx_legacy_covered ? "true" : "false",
              (unsigned long)st.probe_duration_ms,
              (unsigned long)st.probe_elapsed_ms,
+             (unsigned long)st.rx_owner_frames,
+             (unsigned long)st.rx_owner_samples,
+             (unsigned long)st.rx_owner_last_samples,
+             (unsigned long)st.rx_owner_source_flags,
+             (unsigned long)st.session_rx_owner_frames,
+             (unsigned long)st.session_rx_owner_samples,
              (unsigned long)st.session_rx_mirror_id,
              (unsigned long)st.session_rx_mirror_source,
              (unsigned long)st.session_rx_mirror_elapsed_ms,

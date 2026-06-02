@@ -1,8 +1,8 @@
 /*
  * audio_io_service_v2.h - Audio I/O v2 contract (Layer 4)
  *
- * Phase B skeleton only. This service is intentionally not initialized from
- * boot; the current audio_service remains the active voice path.
+ * Audio Service still owns the HAL path; v2 can accept normalized frames as a
+ * logical owner before distribution while rollout validates the split.
  */
 
 #ifndef NB_AUDIO_IO_SERVICE_V2_H
@@ -31,10 +31,18 @@ typedef struct {
 typedef struct {
     bool initialized;
     bool probe_running;
+    bool rx_owner_active;
+    bool rx_owner_observed;
     bool session_rx_mirror_active;
     bool session_rx_mirror_observed;
     uint32_t probe_duration_ms;
     uint32_t probe_elapsed_ms;
+    uint32_t rx_owner_frames;
+    uint32_t rx_owner_samples;
+    uint32_t rx_owner_last_samples;
+    uint32_t rx_owner_source_flags;
+    uint32_t session_rx_owner_frames;
+    uint32_t session_rx_owner_samples;
     uint32_t session_rx_mirror_id;
     uint32_t session_rx_mirror_source;
     uint32_t session_rx_mirror_elapsed_ms;
@@ -71,6 +79,9 @@ void audio_io_service_v2_get_status(nb_audio_io_v2_status_t *out);
 esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms);
 esp_err_t audio_io_service_v2_probe_stop(void);
 bool audio_io_service_v2_probe_is_running(void);
+void audio_io_service_v2_rx_owner_accept_frame(const int16_t *samples,
+                                               uint16_t sample_count,
+                                               uint32_t source_flags);
 void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sample_count);
 void audio_io_service_v2_probe_note_tx_silence(esp_err_t result);
 esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);

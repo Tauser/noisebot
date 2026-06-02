@@ -241,6 +241,10 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     )
 
     assert "audio_io_service_v2_probe_feed_rx_frame(s_sa_buf, (uint16_t)mic_n);" in audio_service
+    assert "audio_io_service_v2_rx_owner_accept_frame(s_sa_buf, (uint16_t)mic_n, 0U);" in audio_service
+    assert audio_service.index(
+        "audio_io_service_v2_rx_owner_accept_frame(s_sa_buf, (uint16_t)mic_n, 0U);"
+    ) < audio_service.index("sound_analysis_tick(s_sa_buf, mic_n);")
     assert "audio_io_service_v2_probe_note_tx_silence(wr);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_begin((uint32_t)source);" in audio_service
     assert "audio_io_service_v2_session_rx_mirror_feed(s_sa_buf, (uint16_t)mic_n);" in audio_service
@@ -250,6 +254,10 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert '{ .uri = "/api/audio/io-v2"' in web
     assert '{ .uri = "/api/audio/io-v2/probe"' in web
     assert "audio_service_is_busy()" in web
+    assert '\\"rx_owner_active\\":%s' in web
+    assert '\\"rx_owner_observed\\":%s' in web
+    assert '\\"rx_owner_frames\\":%lu' in web
+    assert '\\"session_rx_owner_frames\\":%lu' in web
     assert '\\"session_rx_mirror_active\\":%s' in web
     assert '\\"session_rx_mirror_observed\\":%s' in web
     assert '\\"session_rx_legacy_observed\\":%s' in web
@@ -258,12 +266,16 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert '\\"session_rx_legacy_frames\\":%lu' in web
     assert '\\"session_rx_compare_sample_delta\\":%lu' in web
     assert "esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms);" in io_h
+    assert "void audio_io_service_v2_rx_owner_accept_frame(" in io_h
     assert "void audio_io_service_v2_probe_feed_rx_frame(" in io_h
     assert "esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source);" in io_h
     assert "void audio_io_service_v2_session_rx_mirror_feed(" in io_h
     assert "void audio_io_service_v2_session_rx_mirror_finish(" in io_h
     assert "bool session_rx_mirror_active;" in io_h
+    assert "bool rx_owner_active;" in io_h
     assert "bool session_rx_legacy_covered;" in io_h
+    assert "uint32_t rx_owner_frames;" in io_h
+    assert "uint32_t session_rx_owner_samples;" in io_h
     assert "uint32_t session_rx_mirror_frames;" in io_h
     assert "uint32_t session_rx_legacy_samples;" in io_h
     assert "uint32_t session_rx_compare_elapsed_delta_ms;" in io_h
