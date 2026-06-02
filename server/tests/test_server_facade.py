@@ -1118,6 +1118,10 @@ def test_server_cli_runs_playback_v2_delta_debug_command(monkeypatch, capsys) ->
             "say_chunks_dropped_listening": 1,
             "say_chunks_cancelled": 2,
             "say_cancel_count": 1,
+            "speaker_write_requests": 100,
+            "speaker_write_failures": 0,
+            "speaker_frames_committed": 100,
+            "speaker_commit_failures": 0,
             "error": "ESP_OK",
         },
         {
@@ -1130,6 +1134,56 @@ def test_server_cli_runs_playback_v2_delta_debug_command(monkeypatch, capsys) ->
             "say_chunks_dropped_listening": 1,
             "say_chunks_cancelled": 2,
             "say_cancel_count": 1,
+            "speaker_write_requests": 180,
+            "speaker_write_failures": 0,
+            "speaker_frames_committed": 180,
+            "speaker_commit_failures": 0,
+            "error": "ESP_OK",
+        },
+    ]
+    io_snapshots = [
+        {
+            "ok": True,
+            "dropped_frames": 0,
+            "i2s_recoveries": 0,
+            "speaker_handoff_failures": 0,
+            "speaker_handoff_recoveries": 0,
+            "heap_internal_free_kb": 20,
+        },
+        {
+            "ok": True,
+            "dropped_frames": 0,
+            "i2s_recoveries": 0,
+            "speaker_handoff_failures": 0,
+            "speaker_handoff_recoveries": 0,
+            "heap_internal_free_kb": 12,
+        },
+    ]
+    codec_snapshots = [
+        {
+            "ok": True,
+            "format": "opus",
+            "worker_state": "running",
+            "worker_active": True,
+            "transport_enabled": True,
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "opus_codec_error": 0,
+            "opus_egress_queue_count": 0,
+            "queue_count": 0,
+            "error": "ESP_OK",
+        },
+        {
+            "ok": True,
+            "format": "opus",
+            "worker_state": "running",
+            "worker_active": True,
+            "transport_enabled": True,
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "opus_codec_error": 0,
+            "opus_egress_queue_count": 0,
+            "queue_count": 0,
             "error": "ESP_OK",
         },
     ]
@@ -1138,7 +1192,15 @@ def test_server_cli_runs_playback_v2_delta_debug_command(monkeypatch, capsys) ->
         calls["base_url"] = self.base_url
         return snapshots.pop(0)
 
+    def fake_io_status(self):
+        return io_snapshots.pop(0)
+
+    def fake_codec_status(self):
+        return codec_snapshots.pop(0)
+
     monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_playback_v2_status", fake_status)
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_io_v2_status", fake_io_status)
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_codec_v2_status", fake_codec_status)
 
     cli.main([
         "--host",
@@ -1152,8 +1214,13 @@ def test_server_cli_runs_playback_v2_delta_debug_command(monkeypatch, capsys) ->
 
     captured = capsys.readouterr()
     assert '"ok": true' in captured.out
+    assert '"status": "warn"' in captured.out
     assert '"say_chunks_received": 80' in captured.out
     assert '"say_chunks_dropped": 0' in captured.out
+    assert '"speaker_write_failures": 0' in captured.out
+    assert '"audio_io_deltas"' in captured.out
+    assert '"codec_deltas"' in captured.out
+    assert '"heap_internal_free_kb baixo: 12"' in captured.out
     assert '"normal_path_clean": true' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
 

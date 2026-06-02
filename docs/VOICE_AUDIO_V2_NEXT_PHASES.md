@@ -1224,13 +1224,34 @@ Incremento N4.7 iniciado:
   conservadora do `OutputScheduler` foi mantida como opt-in
   (`NOISEBOT_TTS_STARTUP_CHUNKS`), mas desabilitada por default
   (`NOISEBOT_TTS_STARTUP_CHUNKS=0`) porque aumentou a latencia percebida da
-  fala. O envio nominal continua em 18 ms por chunk. Isso nao altera firmware,
+  fala. O envio nominal voltou a acompanhar o chunk real de 16 ms por chunk.
+  Isso nao altera firmware,
   HAL, wake, captura ou codec. Validacao anterior em hardware apos restart do
   server: baseline Playback v2
   `received=2400/played=2398/dropped=15`; turno real `ww -> que horas sao?`
   enviou 411 chunks TTS e fechou em `received=2811/played=2809/dropped=15`,
   fila final zero, `speaker_write_failures=0`, `speaker_commit_failures=0`,
   Audio IO v2 sem `dropped_frames`/`i2s_recoveries` e Codec v2 sem drops.
+
+Incremento N4.8 iniciado:
+
+- O CLI `debug playback-v2 delta` virou gate operacional agregado: alem dos
+  deltas SAY, ele agora coleta Playback v2, Audio IO v2 e Codec v2 antes/depois
+  do turno e emite `status=ok|warn|fail`, `issues` e `warnings`.
+- Falhas duras: fila SAY final nao vazia, novos drops SAY/listening, falhas de
+  write/commit do speaker, `dropped_frames`/`i2s_recoveries` ou falhas/recoveries
+  de Audio IO v2, drops/erros de Codec v2 ou Codec v2 nao saudavel.
+- Avisos nao bloqueantes atuais: `opus_egress_queue_count` residual no health do
+  Codec v2 e `heap_internal_free_kb` abaixo de 16 KB. Esses avisos mantem
+  `ok=true` quando nao ha falha funcional, mas deixam `status=warn`.
+- Validacao local: teste focado do CLI Playback v2 verde (`3 passed`). O facade
+  completo do server foi executado e encontrou uma falha fora deste escopo no
+  worktree sujo de intents (`local_led_brightness` vs `local_brightness`).
+- Validacao viva sem prompt contra o firmware: `ok=true`, `status=warn`,
+  `issues=[]`, deltas criticos zerados (`say_chunks_dropped=0`,
+  `speaker_write_failures=0`, `speaker_commit_failures=0`,
+  `dropped_frames=0`, `i2s_recoveries=0`, `packet_drops=0`,
+  `opus_egress_packet_drops=0`, `opus_codec_error=0`) e fila SAY final zero.
 
 ### N5 - Reduzir audio_service.c
 

@@ -858,13 +858,20 @@ def _playback_v2_counter_delta(before: dict[str, object],
 
 
 def _run_playback_v2_delta(client, *, no_prompt: bool) -> dict[str, object]:
+    from .internal.ops.firmware_diag import codec_v2_health_from_status
+
     before = client.audio_playback_v2_status()
+    io_before = client.audio_io_v2_status()
+    codec_before = client.audio_codec_v2_status()
     if not no_prompt:
         input(
             "Snapshot inicial feito. Acione o wake/fale uma frase real e "
             "pressione Enter quando o turno terminar: "
         )
     after = client.audio_playback_v2_status()
+    io_after = client.audio_io_v2_status()
+    codec_after = client.audio_codec_v2_status()
+    codec_health = codec_v2_health_from_status(codec_after)
     delta_keys = [
         "say_chunks_received",
         "say_chunks_played",
@@ -872,22 +879,81 @@ def _run_playback_v2_delta(client, *, no_prompt: bool) -> dict[str, object]:
         "say_chunks_dropped_listening",
         "say_chunks_cancelled",
         "say_cancel_count",
+        "speaker_write_requests",
+        "speaker_write_failures",
+        "speaker_frames_committed",
+        "speaker_commit_failures",
     ]
     deltas = {
         key: _playback_v2_counter_delta(before, after, key)
         for key in delta_keys
     }
-    ok = bool(after.get("ok", False)) and deltas["say_chunks_dropped"] == 0
+    io_delta_keys = [
+        "dropped_frames",
+        "i2s_recoveries",
+        "speaker_handoff_failures",
+        "speaker_handoff_recoveries",
+    ]
+    io_deltas = {
+        key: _playback_v2_counter_delta(io_before, io_after, key)
+        for key in io_delta_keys
+    }
+    codec_delta_keys = [
+        "packet_drops",
+        "opus_egress_packet_drops",
+        "opus_codec_error",
+    ]
+    codec_deltas = {
+        key: _playback_v2_counter_delta(codec_before, codec_after, key)
+        for key in codec_delta_keys
+    }
+    queue_empty = int(after.get("say_queue_count", 0) or 0) == 0
+    normal_path_clean = (
+        deltas["say_chunks_dropped"] == 0 and
+        deltas["say_chunks_dropped_listening"] == 0
+    )
+    issues: list[str] = []
+    warnings: list[str] = []
+    if not bool(after.get("ok", False)):
+        issues.append("playback-v2 status retornou ok=false")
+    if not queue_empty:
+        issues.append(f"fila SAY nao vazia: {after.get('say_queue_count')}")
+    if not normal_path_clean:
+        issues.append("Playback v2 registrou drops SAY no intervalo")
+    if deltas["speaker_write_failures"] != 0:
+        issues.append(f"speaker_write_failures delta={deltas['speaker_write_failures']}")
+    if deltas["speaker_commit_failures"] != 0:
+        issues.append(f"speaker_commit_failures delta={deltas['speaker_commit_failures']}")
+    if any(io_deltas.get(key, 0) != 0 for key in io_deltas):
+        issues.append("Audio IO v2 registrou drops/recoveries/falhas no intervalo")
+    if any(codec_deltas.get(key, 0) != 0 for key in codec_deltas):
+        issues.append("Codec v2 registrou drops/erros no intervalo")
+    if not bool(codec_health.get("healthy", False)):
+        issues.extend(str(item) for item in codec_health.get("issues", []) or [])
+    codec_warnings = codec_health.get("warnings", []) or []
+    warnings.extend(str(item) for item in codec_warnings)
+    heap_internal_kb = int(io_after.get("heap_internal_free_kb", 0) or 0)
+    if 0 < heap_internal_kb < 16:
+        warnings.append(f"heap_internal_free_kb baixo: {heap_internal_kb}")
+    ok = not issues
+    status = "fail" if issues else "warn" if warnings else "ok"
     return {
         "ok": ok,
+        "status": status,
+        "issues": issues,
+        "warnings": warnings,
         "before": before,
         "after": after,
+        "audio_io_before": io_before,
+        "audio_io_after": io_after,
+        "codec_before": codec_before,
+        "codec_after": codec_after,
+        "codec_health": codec_health,
         "deltas": deltas,
-        "queue_empty": int(after.get("say_queue_count", 0) or 0) == 0,
-        "normal_path_clean": (
-            deltas["say_chunks_dropped"] == 0 and
-            deltas["say_chunks_dropped_listening"] == 0
-        ),
+        "audio_io_deltas": io_deltas,
+        "codec_deltas": codec_deltas,
+        "queue_empty": queue_empty,
+        "normal_path_clean": normal_path_clean,
     }
 
 
@@ -895,13 +961,31 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
     if "deltas" in payload:
         after = payload.get("after")
         deltas = payload.get("deltas")
+        io_deltas = payload.get("audio_io_deltas")
+        codec_deltas = payload.get("codec_deltas")
+        codec_health = payload.get("codec_health")
+        issues = payload.get("issues")
+        warnings = payload.get("warnings")
         if not isinstance(after, dict):
             after = {}
         if not isinstance(deltas, dict):
             deltas = {}
+        if not isinstance(io_deltas, dict):
+            io_deltas = {}
+        if not isinstance(codec_deltas, dict):
+            codec_deltas = {}
+        if not isinstance(codec_health, dict):
+            codec_health = {}
+        if not isinstance(issues, list):
+            issues = []
+        if not isinstance(warnings, list):
+            warnings = []
         return "\n".join([
             "Playback v2 delta:",
             f"- ok: {payload.get('ok')}",
+            f"- status: {payload.get('status')}",
+            f"- issues: {', '.join(str(item) for item in issues) if issues else 'nenhuma'}",
+            f"- warnings: {', '.join(str(item) for item in warnings) if warnings else 'nenhum'}",
             f"- queue_empty: {payload.get('queue_empty')}",
             f"- normal_path_clean: {payload.get('normal_path_clean')}",
             f"- delta.received: {deltas.get('say_chunks_received')}",
@@ -909,6 +993,14 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
             f"- delta.dropped: {deltas.get('say_chunks_dropped')}",
             f"- delta.dropped_listening: {deltas.get('say_chunks_dropped_listening')}",
             f"- delta.cancelled: {deltas.get('say_chunks_cancelled')}",
+            f"- delta.speaker_write_failures: {deltas.get('speaker_write_failures')}",
+            f"- delta.speaker_commit_failures: {deltas.get('speaker_commit_failures')}",
+            f"- delta.io_dropped_frames: {io_deltas.get('dropped_frames')}",
+            f"- delta.io_i2s_recoveries: {io_deltas.get('i2s_recoveries')}",
+            f"- delta.codec_packet_drops: {codec_deltas.get('packet_drops')}",
+            f"- delta.codec_egress_drops: {codec_deltas.get('opus_egress_packet_drops')}",
+            f"- codec_health: healthy={codec_health.get('healthy')} "
+            f"status={codec_health.get('status')}",
             f"- after.queue_count: {after.get('say_queue_count')}",
             f"- after.error: {after.get('error')}",
         ])
