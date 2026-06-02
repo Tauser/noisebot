@@ -298,6 +298,11 @@ Invariantes:
   `audio_playback_service_v2_speaker_note_empty()`. O `audio_service` ainda
   executa a transicao final de estado e evento, mas a decisao de quando o
   jitter/idle venceu passa a ser do Playback v2.
+- Na Fase N4.7, Playback v2 passa a orquestrar o write SAY por
+  `audio_playback_service_v2_speaker_write_next_frame()`: ele prepara o frame,
+  chama um callback de escrita fornecido pelo `audio_service`, registra commit
+  e expoe `speaker_write_*`. O callback ainda e o unico ponto com
+  `audio_hal_spk_write()`, preservando a camada HAL fora do Playback v2.
 
 ### Voice Activity v2
 

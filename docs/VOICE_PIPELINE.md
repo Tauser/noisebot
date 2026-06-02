@@ -101,6 +101,11 @@ Na Fase N4.6, a janela de fila SAY vazia tambem passa para Playback v2:
 `audio_playback_service_v2_speaker_note_empty()` acumula polls/ms vazios e
 decide quando o idle venceu. O `audio_service` ainda aplica a transicao final
 para `PLAY_IDLE` e o evento de fim.
+Na Fase N4.7, Playback v2 passa a orquestrar o write de frame SAY por
+`audio_playback_service_v2_speaker_write_next_frame()`: ele puxa/prepara o
+frame, chama um callback de escrita fornecido pelo `audio_service`, registra o
+commit e expoe `speaker_write_*`. O callback ainda e o unico ponto que chama o
+HAL fisico, mantendo rollback e camada HAL fora do Playback v2.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

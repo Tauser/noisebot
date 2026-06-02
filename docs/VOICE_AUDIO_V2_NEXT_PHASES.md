@@ -1193,6 +1193,29 @@ Incremento N4.6 iniciado:
   `speaker-owner-disarm` voltou Playback v2 para false/false/false e Audio IO v2
   para `DISABLED`.
 
+Incremento N4.7 iniciado:
+
+- Playback v2 ganhou `audio_playback_service_v2_speaker_write_next_frame()`,
+  que puxa/prepara o frame SAY, chama um callback de escrita fornecido pelo
+  `audio_service`, registra o commit e devolve `sample_count`/resultado ao loop
+  legado.
+- O `audio_service` nao chama mais `audio_hal_spk_write()` diretamente no bloco
+  `PLAY_BRIDGE_SAY`; ele fornece `audio_service_playback_v2_write_speaker()`
+  como callback. Assim o HAL fisico continua fora do Playback v2, mas a
+  orquestracao do write SAY passa para o contrato v2.
+- `/api/audio/playback-v2` agora expoe `speaker_write_requests`,
+  `speaker_write_samples`, `speaker_write_failures`,
+  `speaker_last_write_samples` e `speaker_last_write_result` para comparar
+  prepared/write/committed/played em lockstep.
+- Validacao local antes do flash: contrato focado Voice Audio v2 verde
+  (`7 passed`), facade do server verde (`178 passed`) e `idf.py build`
+  completo sem warnings. Gate fisico esperado: apos flash, armar
+  `speaker-owner`, executar resposta real curta e confirmar
+  `speaker_write_requests` crescendo no mesmo delta de `speaker_frames_prepared`,
+  `speaker_frames_committed` e `say_chunks_played`, com zero falhas de write,
+  zero drops/cancelamentos, Audio IO v2 sem recoveries/drops, Codec v2
+  saudavel e rollback por `speaker-owner-disarm`.
+
 ### N5 - Reduzir audio_service.c
 
 Ultima etapa, apos donos reais validados:

@@ -197,8 +197,12 @@ Incremento atual da Fase N3:
 - Fase N4.6 moveu a politica de fila SAY vazia para Playback v2:
   `audio_playback_service_v2_speaker_note_empty()` decide quando a janela de
   jitter/idle venceu; `audio_service` ainda faz a transicao final para IDLE.
+- Fase N4.7 move a orquestracao do write SAY para Playback v2 por
+  `audio_playback_service_v2_speaker_write_next_frame()`: Playback v2 chama um
+  callback fornecido pelo `audio_service`, registra commit e expoe
+  `speaker_write_*`.
 - O HAL/speaker continua fisicamente em `audio_service`; Playback v2 ainda nao
-  chama `audio_hal_*`.
+  chama `audio_hal_*` diretamente.
 
 ### Wake Word
 

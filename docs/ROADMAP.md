@@ -2438,6 +2438,19 @@ Implementação:
   `speaker_commit_failures=0`, Audio IO ficou sem falhas/recoveries/dropped/I2S
   recoveries e Codec v2 voltou a `healthy=true/status=ok` apos drenar 1 pacote
   egress residual. `speaker-owner-disarm` voltou Audio IO v2 para `DISABLED`.
+- [ ] Fase N4.7 iniciada: Playback v2 passou a orquestrar o write SAY por
+  `audio_playback_service_v2_speaker_write_next_frame()`. O `audio_service.c`
+  agora fornece `audio_service_playback_v2_write_speaker()` como callback de
+  escrita HAL, entao `audio_hal_spk_write()` continua fisicamente fora do
+  Playback v2, mas a sequencia puxar/preparar/escrever/commitar frame SAY fica
+  sob o contrato v2. O endpoint `/api/audio/playback-v2` expoe
+  `speaker_write_requests`, `speaker_write_samples`,
+  `speaker_write_failures`, `speaker_last_write_samples` e
+  `speaker_last_write_result`. Validacao local inicial: contrato Voice Audio v2
+  `7 passed`, server facade `178 passed` e `idf.py build` completo sem
+  warnings; pendente flash e gate fisico com `speaker-owner` armado para
+  comparar prepared/write/committed/played em lockstep, zero falhas de write,
+  zero drops e rollback por `speaker-owner-disarm`.
 
 ---
 
