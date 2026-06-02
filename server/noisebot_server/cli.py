@@ -152,6 +152,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     playback_v2.add_argument("--no-prompt", action="store_true", help="Nao aguardar Enter no modo delta")
     playback_v2.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    io_v2 = debug_sub.add_parser("io-v2")
+    io_v2.add_argument(
+        "action",
+        choices=["status", "speaker-handoff-enable", "speaker-handoff-disable"],
+        nargs="?",
+        default="status",
+    )
+    io_v2.add_argument("--firmware-url", default="")
+    io_v2.add_argument("--json", action="store_true", help="Emitir JSON")
+
     codec_v2 = debug_sub.add_parser("codec-v2")
     codec_v2.add_argument(
         "action",
@@ -648,6 +658,32 @@ def run_debug_command(args: argparse.Namespace) -> None:
         if not payload.get("ok", False):
             raise SystemExit(1)
         return
+    if args.debug_command == "io-v2":
+        from .internal.ops.firmware_diag import FirmwareDiagClient
+
+        firmware_url = args.firmware_url or os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "")
+        if not firmware_url:
+            host = args.host or os.environ.get("NOISEBOT_HOST", "")
+            if host:
+                firmware_url = f"http://{host}"
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+
+        client = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=1.5)
+        if args.action == "speaker-handoff-enable":
+            payload = client.audio_io_v2_speaker_handoff_enable()
+        elif args.action == "speaker-handoff-disable":
+            payload = client.audio_io_v2_speaker_handoff_disable()
+        else:
+            payload = client.audio_io_v2_status()
+
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(_format_io_v2_status(payload))
+        if not payload.get("ok", False):
+            raise SystemExit(1)
+        return
     if args.debug_command == "codec-v2":
         from .internal.ops.firmware_diag import FirmwareDiagClient
 
@@ -707,6 +743,36 @@ def run_debug_command(args: argparse.Namespace) -> None:
             raise SystemExit(1)
         return
     raise SystemExit(2)
+
+
+def _format_io_v2_status(payload: dict[str, object]) -> str:
+    return "\n".join(
+        [
+            "# Audio IO v2",
+            "",
+            f"- OK: {payload.get('ok', False)}",
+            f"- Inicializado: {payload.get('initialized', '')}",
+            f"- RX dispatch: {payload.get('rx_dispatch_calls', '')} calls / "
+            f"{payload.get('rx_dispatch_last_consumers', '')} consumidores",
+            f"- TX owner: {payload.get('tx_owner_observed', '')} / "
+            f"{payload.get('tx_owner_frames', '')} frames",
+            f"- TX real: {payload.get('tx_frames', '')} frames / "
+            f"{payload.get('tx_silence_frames', '')} silencio",
+            f"- I2S recoveries: {payload.get('i2s_recoveries', '')}",
+            f"- Drops: {payload.get('dropped_frames', '')}",
+            f"- Speaker handoff dry-run: "
+            f"{payload.get('speaker_handoff_dry_run_enabled', '')}",
+            f"- Speaker handoff active: {payload.get('speaker_handoff_active', '')}",
+            f"- Speaker handoff ready: {payload.get('speaker_handoff_ready', '')} "
+            f"({payload.get('speaker_handoff_block_reason', '')})",
+            f"- Speaker handoff frames: {payload.get('speaker_handoff_frames', '')} / "
+            f"{payload.get('speaker_handoff_silence_frames', '')} silencio",
+            f"- Speaker handoff falhas/recoveries: "
+            f"{payload.get('speaker_handoff_failures', '')}/"
+            f"{payload.get('speaker_handoff_recoveries', '')}",
+            f"- Erro: {payload.get('error', '')}",
+        ]
+    )
 
 
 def _format_codec_v2_status(payload: dict[str, object]) -> str:

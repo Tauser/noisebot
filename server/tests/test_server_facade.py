@@ -820,6 +820,33 @@ def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> N
     ]
 
 
+def test_server_firmware_diag_client_exposes_io_v2_endpoint(monkeypatch) -> None:
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    client = firmware_diag.FirmwareDiagClient("http://robot.local/")
+    get_paths: list[str] = []
+    post_paths: list[str] = []
+
+    def fake_get_json(self, path):
+        get_paths.append(path)
+        return {"ok": True, "speaker_handoff_active": False}
+
+    def fake_post_json(self, path, payload=None):
+        post_paths.append(path)
+        return {"ok": True, "speaker_handoff_active": False}
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "_get_json", fake_get_json)
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "_post_json", fake_post_json)
+
+    assert client.audio_io_v2_status()["ok"]
+    assert client.audio_io_v2_speaker_handoff_enable()["ok"]
+    assert client.audio_io_v2_speaker_handoff_disable()["ok"]
+    assert get_paths == ["api/audio/io-v2"]
+    assert post_paths == [
+        "api/audio/io-v2/speaker-handoff/enable",
+        "api/audio/io-v2/speaker-handoff/disable",
+    ]
+
+
 def test_server_codec_v2_health_flags_transport_issues() -> None:
     firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
 
@@ -1078,6 +1105,63 @@ def test_server_cli_runs_playback_v2_delta_debug_command(monkeypatch, capsys) ->
     assert '"say_chunks_received": 80' in captured.out
     assert '"say_chunks_dropped": 0' in captured.out
     assert '"normal_path_clean": true' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
+
+
+def test_server_cli_parses_io_v2_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "io-v2",
+        "speaker-handoff-enable",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "io-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "speaker-handoff-enable"
+    assert args.json
+
+
+def test_server_cli_runs_io_v2_speaker_handoff_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+
+    def fake_enable(self):
+        calls["base_url"] = self.base_url
+        return {
+            "ok": True,
+            "speaker_handoff_dry_run_enabled": True,
+            "speaker_handoff_active": False,
+            "speaker_handoff_ready": False,
+            "speaker_handoff_block_reason": "NO_TX",
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "audio_io_v2_speaker_handoff_enable",
+        fake_enable,
+    )
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "io-v2",
+        "speaker-handoff-enable",
+        "--json",
+    ])
+
+    captured = capsys.readouterr()
+    assert '"speaker_handoff_dry_run_enabled": true' in captured.out
+    assert '"speaker_handoff_active": false' in captured.out
+    assert '"speaker_handoff_block_reason": "NO_TX"' in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
 
 
