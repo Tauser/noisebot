@@ -73,6 +73,7 @@ class OpsHttpServer:
         self,
         app: Any,
         store: StatusStore,
+        app_state: AppStateStore | None = None,
         host: str = "127.0.0.1",
         port: int = 8765,
     ) -> None:
@@ -83,7 +84,7 @@ class OpsHttpServer:
         self._token = load_or_create_token()
         self._ctrl = ConfigController(app)
         self._metrics_api = MetricsApi(app._orchestrator.metrics, store)
-        self._app_state = AppStateStore()
+        self._app_state = app_state or AppStateStore()
         self._log_buffer = install_recent_log_handler()
         self._agenda_client = FirmwareAgendaClient.from_config(app._config)
         self._firmware_diag_client = FirmwareDiagClient.from_config(app._config)

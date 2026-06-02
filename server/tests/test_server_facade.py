@@ -4969,6 +4969,60 @@ def test_server_app_state_updates_and_deletes_agenda_items(tmp_path) -> None:
     assert store.delete_agenda_item(alarm["id"]) is False
 
 
+def test_server_app_state_applies_local_agenda_commands(tmp_path) -> None:
+    app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
+    store = app_state.AppStateStore(tmp_path / "app_state.json")
+
+    timer_result = store.apply_agenda_command({
+        "event": "AGENDA_COMMAND",
+        "action": "timer_create",
+        "label": "Cafe",
+        "duration_ms": 5 * 60 * 1000,
+    })
+    reminder_result = store.apply_agenda_command({
+        "event": "AGENDA_COMMAND",
+        "action": "reminder_create",
+        "label": "Agua",
+        "delay_ms": 10 * 60 * 1000,
+    })
+    alarm_result = store.apply_agenda_command({
+        "event": "AGENDA_COMMAND",
+        "action": "alarm_create",
+        "label": "Manha",
+        "hour": 7,
+        "minute": 30,
+        "weekdays_mask": 0x3E,
+        "enabled": True,
+    })
+
+    agenda = store.list_agenda()
+
+    assert timer_result["item"]["duration_min"] == 5
+    assert reminder_result["item"]["duration_min"] == 10
+    assert alarm_result["item"]["time"] == "07:30"
+    assert alarm_result["item"]["repeat"] == "dias úteis"
+    assert agenda["summary"]["timers"] == 1
+    assert agenda["summary"]["reminders"] == 1
+    assert agenda["summary"]["alarms"] == 1
+
+    disabled = store.apply_agenda_command({
+        "event": "AGENDA_COMMAND",
+        "action": "alarm_set_enabled",
+        "label": "Manha",
+        "enabled": False,
+    })
+    cancelled = store.apply_agenda_command({
+        "event": "AGENDA_COMMAND",
+        "action": "timer_cancel",
+        "label": "Cafe",
+    })
+
+    assert disabled["item"]["enabled"] is False
+    assert cancelled["changed"] is True
+    assert store.list_agenda()["summary"]["timers"] == 0
+    assert store.list_agenda()["summary"]["alarms"] == 0
+
+
 def test_server_app_state_maps_alarm_repeat_to_firmware_mask(tmp_path) -> None:
     app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
     store = app_state.AppStateStore(tmp_path / "app_state.json")
@@ -5311,6 +5365,38 @@ def test_server_agent_incomplete_agenda_does_not_promise_creation() -> None:
     assert result.intent_name == "local_agenda_incomplete"
     assert result.device_command is None
     assert "Ainda preciso" in result.reply_text
+
+
+def test_server_orchestrator_mirrors_local_agenda_intent_to_app_state(tmp_path) -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+    app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
+
+    store = app_state.AppStateStore(tmp_path / "app_state.json")
+    orchestrator = orchestrator_module.Orchestrator(
+        runtime.EventBus(),
+        app_state_store=store,
+    )
+    intent = runtime.IntentResolved(
+        turn_id=55,
+        intent_name="local_timer_create",
+        reply_text="Timer cafe iniciado.",
+        device_command={
+            "event": "AGENDA_COMMAND",
+            "action": "timer_create",
+            "label": "cafe",
+            "duration_ms": 5 * 60 * 1000,
+        },
+    )
+
+    orchestrator._apply_local_agenda_state(intent)
+
+    agenda = store.list_agenda()
+    assert agenda["summary"]["timers"] == 1
+    assert agenda["items"][0]["title"] == "cafe"
+    assert agenda["items"][0]["duration_min"] == 5
 
 
 def test_server_agent_llm_and_intents_are_server_owned() -> None:

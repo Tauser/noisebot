@@ -21,6 +21,7 @@ from .internal.agent import (
 )
 from .internal.agent.runtime import FirmwareConnected
 from .internal.ops import OpsHttpServer, StatusStore
+from .internal.ops.app_state import AppStateStore
 from .internal.ops.firmware_diag import FirmwareDiagClient
 from .internal.service import healthcheck_loop
 from .internal.transport import ConnectionSupervisor, create_transport_factory
@@ -53,6 +54,7 @@ class NoiseBotServer:
         )
 
         self._status_store = StatusStore()
+        self._app_state_store = AppStateStore()
         self._orchestrator = Orchestrator(
             self._bus,
             config,
@@ -61,6 +63,7 @@ class NoiseBotServer:
             llm_provider=llm_provider,
             tts_provider=self._tts_provider,
             status_store=self._status_store,
+            app_state_store=self._app_state_store,
         )
         self._ops_server = self._build_ops_server()
 
@@ -146,6 +149,7 @@ class NoiseBotServer:
         return OpsHttpServer(
             app=self,
             store=self._status_store,
+            app_state=self._app_state_store,
             host="127.0.0.1",
             port=self._config.ops.port,
         )

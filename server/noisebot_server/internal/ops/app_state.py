@@ -128,6 +128,55 @@ class AppStateStore:
             self._save_locked()
         return item
 
+    def apply_agenda_command(self, command: dict[str, Any]) -> dict[str, Any] | None:
+        if command.get("event") != "AGENDA_COMMAND":
+            return None
+
+        action = _clean_text(command.get("action"), 40)
+        label = _clean_text(command.get("label"), 80)
+        if action == "timer_create":
+            item = self.create_agenda_item(
+                "timer",
+                {
+                    "title": label or "Timer",
+                    "duration_min": _ms_to_min(command.get("duration_ms")),
+                },
+            )
+            return {"changed": True, "item": item}
+        if action == "reminder_create":
+            item = self.create_agenda_item(
+                "reminder",
+                {
+                    "title": label or "Lembrete",
+                    "duration_min": _ms_to_min(command.get("delay_ms")),
+                },
+            )
+            return {"changed": True, "item": item}
+        if action == "alarm_create":
+            hour = _clamp_int(command.get("hour"), 0, 23)
+            minute = _clamp_int(command.get("minute"), 0, 59)
+            weekdays_mask = _clamp_int(command.get("weekdays_mask"), 0, 127)
+            repeat = _weekdays_label(weekdays_mask)
+            item = self.create_agenda_item(
+                "alarm",
+                {
+                    "title": label or "Alarme",
+                    "time": f"{hour:02d}:{minute:02d}",
+                    "repeat": repeat,
+                    "weekdays_mask": weekdays_mask,
+                    "enabled": bool(command.get("enabled", True)),
+                },
+            )
+            return {"changed": True, "item": item}
+        if action in {"timer_cancel", "reminder_cancel", "alarm_cancel"}:
+            kind = action.split("_", 1)[0]
+            removed = self._remove_agenda_item_by_kind_label(kind, label)
+            return {"changed": removed is not None, "item": removed}
+        if action == "alarm_set_enabled":
+            item = self._set_alarm_enabled_by_label(label, bool(command.get("enabled", False)))
+            return {"changed": item is not None, "item": item}
+        return None
+
     def update_agenda_item(self, item_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         with self._lock:
             for index, current in enumerate(self._state["agenda"]["items"]):
@@ -168,6 +217,35 @@ class AppStateStore:
             if changed:
                 self._save_locked()
             return changed
+
+    def _remove_agenda_item_by_kind_label(
+        self,
+        kind: str,
+        label: str,
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            index = _find_agenda_index(self._state["agenda"]["items"], kind, label)
+            if index is None:
+                return None
+            removed = dict(self._state["agenda"]["items"].pop(index))
+            self._save_locked()
+            return removed
+
+    def _set_alarm_enabled_by_label(
+        self,
+        label: str,
+        enabled: bool,
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            index = _find_agenda_index(self._state["agenda"]["items"], "alarm", label)
+            if index is None:
+                return None
+            item = dict(self._state["agenda"]["items"][index])
+            item["enabled"] = enabled
+            item["status"] = _status_for_item(item)
+            self._state["agenda"]["items"][index] = item
+            self._save_locked()
+            return dict(item)
 
     def get_basic_settings(self) -> dict[str, bool | int]:
         with self._lock:
@@ -456,6 +534,25 @@ def _matches_imported_item(item: dict[str, Any], imported: list[dict[str, Any]])
             continue
         return True
     return False
+
+
+def _find_agenda_index(
+    items: list[dict[str, Any]],
+    kind: str,
+    label: str,
+) -> int | None:
+    clean_label = _clean_text(label, 80).lower()
+    fallback: int | None = None
+    for index, item in enumerate(items):
+        if item.get("kind") != kind:
+            continue
+        if not item.get("enabled", True):
+            continue
+        if fallback is None:
+            fallback = index
+        if clean_label and _clean_text(item.get("title"), 80).lower() == clean_label:
+            return index
+    return fallback if not clean_label else None
 
 
 def _ms_to_min(value: Any) -> int:

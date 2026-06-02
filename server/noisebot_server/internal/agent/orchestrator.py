@@ -152,6 +152,7 @@ class Orchestrator:
         llm_provider: Any | None = None,
         tts_provider: Any | None = None,
         status_store: Any | None = None,
+        app_state_store: Any | None = None,
     ) -> None:
         self._bus = bus
         self._config = config
@@ -185,6 +186,7 @@ class Orchestrator:
 
         # StatusStore Fase 9.5: telemetria para a ops API
         self._store: Any | None = status_store
+        self._app_state: Any | None = app_state_store
         self._last_status: dict[str, Any] = {}
 
         # Métricas Fase 4+
@@ -568,6 +570,7 @@ class Orchestrator:
             self._fsm.transition(TurnState.SPEAKING, turn_id=event.turn_id)
             session.mark("speaking_start")
             has_tts_reply = self._tts is not None and bool(intent.reply_text)
+            self._apply_local_agenda_state(intent, session)
             await self._robot.emit_for_intent(
                 intent,
                 self.adapter,
@@ -613,6 +616,28 @@ class Orchestrator:
             )
             self._fsm.try_transition(TurnState.IDLE)
             await self._finish_turn()
+
+    def _apply_local_agenda_state(
+        self,
+        intent: IntentResolved,
+        session: SessionContext | None = None,
+    ) -> None:
+        command = intent.device_command or {}
+        if command.get("event") != "AGENDA_COMMAND" or self._app_state is None:
+            return
+        apply_command = getattr(self._app_state, "apply_agenda_command", None)
+        if not callable(apply_command):
+            return
+        try:
+            result = apply_command(command)
+        except Exception:
+            log.exception(
+                "Turno %d: falha ao espelhar agenda local no app state",
+                intent.turn_id,
+            )
+            return
+        if result is not None and session is not None:
+            session.meta["agenda_state_changed"] = bool(result.get("changed"))
 
     def _should_prompt_after_empty_wake(
         self,
