@@ -347,6 +347,10 @@ Responsabilidade:
   handoff armado sem Capture v2 real. O release gate passou a aceitar
   `Capture v2 controlado`: baseline desligado/inativo ou capture+handoff
   ligados, sessao inativa, erro `ESP_OK` e drops zero.
+- Fechamento N1 em hardware: apos flash do hash `9fa8b6b`, turno curto,
+  barge-in/pare, no-echo curto e rollback PCM16 passaram com Capture v2 como
+  dono real do TX, zero drops de captura, `voice-release-check ok=true` e Opus
+  reativado ao final.
 - Validacao de aceite em hardware: o handoff real opt-in passou em turno curto
   por silencio e em barge-in. No turno curto, Capture v2 ficou dono do TX real
   com zero drops e Playback v2 recebeu/tocou todos os chunks SAY com fila final

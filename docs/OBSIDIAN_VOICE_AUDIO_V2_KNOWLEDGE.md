@@ -131,8 +131,21 @@ Inicio N1 em 2026-06-01:
   v2 real.
 - `voice-release-check` aceita o gate `Capture v2 controlado` em dois modos:
   baseline desligado/inativo sem drops, ou Capture+handoff ligados, sessao
-  inativa, `ESP_OK` e drops zero. Precisa de flash e validacao fisica antes de
-  fechar N1.
+  inativa, `ESP_OK` e drops zero.
+
+N1 fechada em hardware em 2026-06-02:
+
+- hash `9fa8b6b`, flash validado;
+- `capture-v2 tx-enable` coabilitou capture+handoff;
+- turno curto `Que horas são?`: Capture v2 dono real do TX, 35 chunks /
+  33600 samples, zero drops, TTS/SAY_END/texto completos;
+- barge-in/pare: historia interrompida por `barge_in`, comando seguinte
+  classificado como `local_stop` e resposta `Pronto, parei.`, Capture v2
+  `source=BARGE_IN`, 164 chunks / 157440 samples e zero drops;
+- no-echo curto: `Diga aí.` ficou como ultimo turno apos silencio, sem turno
+  fantasma, texto `2/2`, Capture v2 48 chunks / 46080 samples e zero drops;
+- rollback PCM16: `codec-v2 transport-disable` deixou `opus_enabled=false`,
+  health `status=ok` e `voice-release-check ok=true`; Opus foi reativado depois.
 
 Incremento atual da Fase I:
 

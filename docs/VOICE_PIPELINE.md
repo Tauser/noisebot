@@ -236,7 +236,16 @@ No inicio da Fase N1, ligar `voice_audio_v2_capture_tx_enabled` pelo
 `/api/config` tambem liga `voice_audio_v2_capture_enabled`, removendo o estado
 inconsistente "TX armado sem Capture v2 real". O gate `voice-release-check`
 passou a aceitar o baseline antigo desligado e o modo `Capture v2 controlado`
-ligado/inativo/sem drops; o fechamento ainda exige flash e validacao fisica.
+ligado/inativo/sem drops. A validacao fisica da N1 fechou em 2026-06-02: apos
+flash do hash `9fa8b6b`, `capture-v2 tx-enable` coabilitou capture+handoff; o
+turno curto `Que horas são?` ficou com Capture v2 dono real do TX, 35 chunks /
+33600 samples e zero drops; barge-in/pare interrompeu a historia no turno 105 e
+respondeu `Pronto, parei.` no turno 106 com Capture v2 `source=BARGE_IN`, 164
+chunks / 157440 samples e zero drops; no-echo curto `Diga aí.` permaneceu como
+ultimo turno 108 apos a janela de silencio, com texto `2/2`, TTS completo e
+Capture v2 com 48 chunks / 46080 samples e zero drops. Rollback PCM16 por
+`codec-v2 transport-disable` tambem passou com health `status=ok` e
+`voice-release-check ok=true`; Opus foi reativado em seguida.
 Validacao fisica apos flash tambem passou: com Opus ativo e
 `capture-v2 tx-enable`, o turno `ww -> que horas sao` fechou como local time
 com transcript correto, `voice_end_reason=silence`, TTS completo e

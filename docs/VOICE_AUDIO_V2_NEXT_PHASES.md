@@ -792,8 +792,34 @@ Inicio local em 2026-06-01:
 - `voice-release-check` agora chama o gate de `Capture v2 controlado` e aceita
   dois estados saudaveis: baseline antigo desligado/inativo sem drops, ou N1
   com `real_capture_enabled=true`, `bridge_tx_handoff_enabled=true`, sessao
-  inativa, erro `ESP_OK` e drops zero. Ainda falta flash e validacao fisica para
-  fechar N1.
+  inativa, erro `ESP_OK` e drops zero.
+
+Status em 2026-06-02: N1 fechada em hardware no hash `9fa8b6b`.
+
+- Pos-flash, `capture-v2 tx-enable` coabilitou corretamente
+  `real_capture_enabled=true` e `bridge_tx_handoff_enabled=true`; Opus foi
+  rearmado com `codec-v2 transport-enable`.
+- Turno curto `ww -> que horas sao`: turno `102` fechou como `local_time`, TTS
+  completo, `SAY_END`, texto `2/2`; Capture v2 foi dono real do TX
+  (`bridge_tx_owner=true`, `legacy_audio_service_tx_owner=false`) com
+  35 chunks / 33600 samples e zero drops. Apos drenar 1 pacote egress, Codec v2
+  voltou `status=ok`.
+- Barge-in/pare: a historia longa foi interrompida no turno `105`
+  (`discard_reason=barge_in`) e o comando seguinte virou `local_stop` no turno
+  `106`, com resposta `Pronto, parei.`. O STT transcreveu `Vale.`, mas a policy
+  classificou corretamente. Capture v2 ficou `source=BARGE_IN`, dono real do TX,
+  164 chunks / 157440 samples e zero drops; `voice-release-check` final ficou
+  `ok=true` apos drenar 1 pacote egress Opus.
+- No-echo: `ww -> diga oi` gerou turno `108`, resposta curta completa,
+  TTS/SAY_END e texto `2/2`; apos a janela manual de silencio, o ultimo turno
+  permaneceu `108`, sem turno fantasma. Capture v2 registrou 48 chunks /
+  46080 samples e zero drops.
+- Rollback PCM16: `codec-v2 transport-disable` retornou `opus_enabled=false`,
+  health `status=ok`, worker parado, filas/drops zero e `voice-release-check`
+  `ok=true`. Em seguida Opus foi reativado para manter o default local validado.
+- Playback v2 ficou com fila zero; os warnings restantes sao contadores
+  cumulativos de `say_chunks_dropped` e `say_chunks_dropped_listening` herdados
+  dos cancelamentos/barge-in, sem bloquear gate.
 
 ### N2 - Activity v2 Como Decisor Dentro Da Sessao
 
