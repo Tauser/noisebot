@@ -75,6 +75,7 @@ EMPTY_WAKE_REPLY = "Oi! Em que posso ajudar?"
 MISUNDERSTOOD_REPLY = "Eu ouvi, mas não entendi direito. Pode repetir?"
 MISUNDERSTOOD_PROMPT_COOLDOWN_S = 45.0
 MISUNDERSTOOD_MAX_NO_SPEECH_PROB = 0.50
+POST_TTS_EMPTY_WAKE_SUPPRESS_S = 8.0
 LLM_CONFIG_FALLBACK_REPLY = (
     "Estou sem acesso à IA agora, mas continuo ouvindo os comandos locais."
 )
@@ -191,6 +192,7 @@ class Orchestrator:
         self._empty_wake_prompted_at: float | None = None
         self._misunderstood_prompted_at: float | None = None
         self._misunderstood_prompt_pending = False
+        self._last_completed_speech_at: float | None = None
         self._recent_llm_replies: deque[str] = deque(maxlen=6)
 
         # Queue de eventos: o Orchestrator assina todos
@@ -618,6 +620,12 @@ class Orchestrator:
         """True quando houve wake/voz real, mas o usuario nao falou nada util."""
         if event.quality not in (TranscriptQuality.EMPTY, TranscriptQuality.NO_SPEECH):
             return False
+        if self._is_inside_post_tts_empty_wake_suppress_window():
+            log.info(
+                "Turno %d: wake vazio suprimido na janela anti-eco pos-TTS",
+                event.turn_id,
+            )
+            return False
         if self._empty_wake_prompted_at is not None:
             log.info(
                 "Turno %d: wake vazio ignorado; prompt ja enviado nesta sequencia",
@@ -625,6 +633,13 @@ class Orchestrator:
             )
             return False
         return session.total_samples >= 8000
+
+    def _is_inside_post_tts_empty_wake_suppress_window(self) -> bool:
+        if self._last_completed_speech_at is None:
+            return False
+        return (
+            time.monotonic() - self._last_completed_speech_at
+        ) <= POST_TTS_EMPTY_WAKE_SUPPRESS_S
 
     async def _prompt_after_empty_wake(
         self,
@@ -1218,6 +1233,8 @@ class Orchestrator:
         if session:
             session.meta["outcome"] = outcome
             await self._arm_followup_if_needed(session)
+            if session.meta.get("tts_completed") is True:
+                self._last_completed_speech_at = time.monotonic()
         await self._finish_turn()
 
     async def _on_barge_in(self, event: BargeInDetected) -> None:

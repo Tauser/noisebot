@@ -4069,6 +4069,59 @@ async def test_server_empty_wake_prompt_is_one_shot_until_real_speech() -> None:
         await asyncio.gather(task, return_exceptions=True)
 
 
+async def test_server_empty_wake_prompt_is_suppressed_right_after_tts() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class MockStt:
+        def __init__(self) -> None:
+            self.finalize_calls = 0
+
+        async def initialize(self) -> None:
+            pass
+
+        def feed(self, pcm: bytes) -> None:
+            pass
+
+        async def finalize(self, full_pcm: bytes, turn_id: int):
+            self.finalize_calls += 1
+            return runtime.FinalTranscript(
+                turn_id=turn_id,
+                text="",
+                quality=runtime.TranscriptQuality.NO_SPEECH,
+                no_speech_prob=0.92,
+            )
+
+        async def close(self) -> None:
+            pass
+
+    bus = runtime.EventBus(default_maxsize=512)
+    stt = MockStt()
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(),
+        get_adapter=lambda: None,
+        stt_provider=stt,
+    )
+    orchestrator._last_completed_speech_at = orchestrator_module.time.monotonic()
+    intents = bus.subscribe(runtime.IntentResolved)
+    task = asyncio.create_task(orchestrator.run())
+
+    try:
+        await _simulate_server_voice_session(bus, runtime)
+        await _wait_until(
+            lambda: stt.finalize_calls >= 1 and orchestrator._session is None
+        )
+
+        assert await _drain_queue(intents) == []
+    finally:
+        await orchestrator.shutdown()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 async def test_server_unclear_transcript_asks_user_to_repeat() -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     orchestrator_module = importlib.import_module(
