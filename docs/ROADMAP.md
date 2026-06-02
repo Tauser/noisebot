@@ -2322,6 +2322,16 @@ Implementação:
   Playback v2 fechou fila SAY em zero; Capture v2 manteve TX upstream real sem
   drops. Evidencia atual em PCM16; repetir com Opus v2 antes de qualquer owner
   real do speaker.
+- [x] Fase N3 repetiu o dry-run do handoff de speaker com Opus v2 ativo e CLI
+  novo do server (`debug io-v2`). `/ai/status` confirmou `audio.format=opus`;
+  o turno real curto `ww -> que horas sao` fechou com transcript bom,
+  `tts_completed=true`, `tts_say_end_sent=true`, 44 chunks Opus upstream e
+  Playback v2 com fila SAY zero. Audio IO v2 manteve
+  `speaker_handoff_active=false`, `ready=true`, `block_reason=NONE`,
+  `speaker_handoff_frames=123866`, 983 frames nao silenciosos observados,
+  `speaker_handoff_failures=0`, `speaker_handoff_recoveries=0`,
+  `dropped_frames=0` e `i2s_recoveries=0`. Um pacote egress Opus residual foi
+  drenado e `codec-v2 health` final voltou `healthy=true/status=ok`.
 
 ---
 

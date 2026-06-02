@@ -943,9 +943,33 @@ despachado pelo Audio IO v2, ainda sem handoff de HAL/TX.
   ficou dono real do TX upstream com zero drops. O Codec v2 estava em PCM16
   nesse teste, portanto a evidencia e N3 dry-run PCM16; repetir com Opus v2
   ativo antes de promover qualquer owner real.
-- Proximo incremento N3 recomendado: expor o handoff de speaker via proxy/CLI
-  do server e repetir o mesmo dry-run com Opus v2 ativo. Somente depois avaliar
-  um owner real controlado para Playback v2 via contrato Audio IO v2.
+- Incremento server-only fechado no hash `562ca9e`: o server passou a expor
+  `GET /api/device/audio/io-v2`,
+  `POST /api/device/audio/io-v2/speaker-handoff/enable|disable` e o CLI
+  `noisebot_server debug io-v2 status|speaker-handoff-enable|speaker-handoff-disable`.
+  Validacao local: `server/tests` com 185 testes verdes; validacao live pelo
+  CLI confirmou baseline `DISABLED`, enable em `NO_TX` e rollback para
+  `DISABLED`, sempre com `speaker_handoff_active=false`.
+- Validacao Opus v2 do dry-run: server conectado em Opus
+  (`/ai/status` com `audio.format=opus`, `codecs.opus=true`), `codec-v2 health`
+  inicialmente limpo, dry-run ligado via CLI e turno real curto
+  `ww -> que horas sao`. O turno `178` fechou com transcript bom, intent
+  `local_time`, `tts_completed=true`, `tts_say_end_sent=true`,
+  `voice_end_reason=silence`, 44 chunks Opus upstream e 383 chunks SAY. O
+  Audio IO v2 reportou `speaker_handoff_active=false`, `ready=true`,
+  `block_reason=NONE`, `speaker_handoff_frames=123866`,
+  `speaker_handoff_samples=31709696`, `speaker_handoff_silence_frames=122883`,
+  logo 983 frames nao silenciosos observados, `speaker_handoff_failures=0`,
+  `speaker_handoff_recoveries=0`, `dropped_frames=0`, `i2s_recoveries=0`.
+  Playback v2 terminou com `say_queue_count=0`; havia apenas 1 pacote egress
+  Opus residual, drenado por `codec-v2 egress-drain`, e o health final voltou
+  `healthy=true/status=ok`, fila egress zero e `opus_codec_error=0`. O dry-run
+  foi desabilitado ao final e voltou a `DISABLED`.
+- Proximo incremento N3 recomendado: desenhar o owner real controlado do
+  speaker pelo contrato Audio IO v2, ainda default-off e sem remover o caminho
+  legado do `audio_service`. O primeiro passo deve ser uma flag de owner
+  bloqueada por gates (`speaker_handoff_ready`, zero drops/recoveries, Opus
+  health ok e rollback imediato para `speaker-handoff-disable`).
 
 ### N4 - Playback v2 Assume HAL/Speaker
 
