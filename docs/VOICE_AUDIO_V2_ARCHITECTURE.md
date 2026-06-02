@@ -353,7 +353,11 @@ Responsabilidade:
   (`NOISEBOT_TTS_QUEUE_TARGET`), sem alterar firmware, wake, captura, codec ou
   HAL. Validacao fisica seguinte confirmou o ajuste: `Me diga uma fala com
   história curta.` gerou 326 chunks TTS completos e Playback v2 recebeu/tocou
-  +326 chunks com `say_chunks_dropped` inalterado em 56.
+  +326 chunks com `say_chunks_dropped` inalterado em 56. Refino posterior:
+  Playback v2 aumentou a fila SAY estatica para 32 chunks e o server passou a
+  usar default sem prebuffer inicial (`NOISEBOT_TTS_QUEUE_TARGET=0`) com envio
+  conservador de 18 ms por chunk (`NOISEBOT_TTS_SEND_INTERVAL_MS=18`), para
+  ampliar headroom na transicao wake -> resposta.
 - Validacao em hardware pos-flash confirmou o contrato passivo: shadow de
   1000 ms observou 63 frames, encerrou sozinho, classificou silencio e manteve
   `session_active=false`; `capture-v2` permaneceu desligado, Playback v2 ficou

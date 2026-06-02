@@ -11,6 +11,7 @@ from noisebot_server.internal.agent.playback import (
     CHUNK_DURATION_S,
     FIRMWARE_SAY_QUEUE,
     OutputScheduler,
+    SAY_SEND_INTERVAL_S,
 )
 
 
@@ -36,7 +37,11 @@ class SpeechCancelAdapter(AdapterProbe):
 
 
 def test_output_scheduler_default_prebuffer_leaves_firmware_queue_headroom() -> None:
-    assert FIRMWARE_SAY_QUEUE == 6
+    assert FIRMWARE_SAY_QUEUE == 0
+
+
+def test_output_scheduler_default_send_interval_is_slightly_conservative() -> None:
+    assert SAY_SEND_INTERVAL_S == pytest.approx(0.018)
 
 
 async def _iter_chunks(*chunks: bytes) -> AsyncIterator[bytes]:
@@ -108,8 +113,9 @@ async def test_output_scheduler_does_not_catch_up_with_bursts(monkeypatch) -> No
     paced_sleeps = [delay for delay in sleeps if delay > 0]
     assert len(adapter.chunks) == FIRMWARE_SAY_QUEUE + 3
     assert stats.chunks_sent == FIRMWARE_SAY_QUEUE + 3
-    assert len(paced_sleeps) == 3
-    assert all(delay == pytest.approx(CHUNK_DURATION_S) for delay in paced_sleeps)
+    expected_paced = len(adapter.chunks) - max(FIRMWARE_SAY_QUEUE, 1)
+    assert len(paced_sleeps) == expected_paced
+    assert all(delay == pytest.approx(SAY_SEND_INTERVAL_S) for delay in paced_sleeps)
 
 
 @pytest.mark.asyncio

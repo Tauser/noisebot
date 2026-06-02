@@ -261,6 +261,11 @@ Entregas:
   `received=2895/played=2892/dropped=56`, ou seja, +326 chunks recebidos e
   tocados com zero drops novos. `codec-v2 health` ficou `healthy=true/status=ok`
   e `capture-v2` permaneceu desligado em `IDLE_SESSION`.
+- Refino atual de headroom: fila SAY estatica do Playback v2 ampliada para 32
+  chunks, server sem prebuffer inicial por default
+  (`NOISEBOT_TTS_QUEUE_TARGET=0`) e pacing conservador de 18 ms por chunk
+  (`NOISEBOT_TTS_SEND_INTERVAL_MS=18`). Objetivo: reduzir risco de encher a
+  fila SAY na transicao wake -> resposta sem tocar wake, captura, codec ou HAL.
 - Validacao fisica de resposta mais longa: `ww -> me conte uma história um
   pouco mais longa` gerou `tts_chunks_sent=825`, `tts_completed=true`,
   `tts_say_end_sent=true`, `voice_alert=null` e 7 paginas visuais. Playback v2

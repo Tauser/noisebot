@@ -35,10 +35,10 @@ ela piorou a transcrição e aumentou risco de watchdog.
 - O server rechunkeia a saída TTS para frames exatos de 512 bytes antes de
   enviar `SAY`; chunks maiores vindos do gerador de áudio nunca cruzam o
   contrato TCP com o firmware.
-- O `OutputScheduler` do server pode fazer um prebuffer curto, mas depois deve
-  respeitar a cadencia de 16 ms por chunk. Pausas entre sentencas do TTS nao
-  podem gerar rajadas de catch-up, porque isso enche a fila SAY do firmware e
-  causa engasgos mesmo quando `tts_completed=true` e `SAY_END` foi enviado.
+- O `OutputScheduler` do server nao pode gerar rajadas de catch-up. O default
+  atual nao faz prebuffer inicial e envia SAY a cada 18 ms, levemente acima dos
+  16 ms do chunk fisico; `NOISEBOT_TTS_QUEUE_TARGET` e
+  `NOISEBOT_TTS_SEND_INTERVAL_MS` continuam como rollback/ajuste operacional.
 
 ## Contrato v2
 
@@ -58,7 +58,7 @@ O checklist/health de release da Fase M parcial fica em
 
 Status v2 atual: Audio I/O e playback ja possuem probes explicitos validados.
 Playback v2 tambem fechou o handoff parcial da Fase I pos-Opus no downlink SAY real:
-`audio_playback_service_v2` agora e dono da fila estatica SAY de 16 chunks e
+`audio_playback_service_v2` agora e dono da fila estatica SAY de 32 chunks e
 expoe `enqueue/dequeue/cancel/status`; `audio_service` continua dono do
 speaker/HAL e drena essa fila pelo contrato v2. Os campos aparecem em
 `/api/audio/playback-v2`, incluindo `bridge_say_queue_owner`, e preservam o
@@ -127,6 +127,12 @@ novos ficaram restritos a `say_chunks_dropped_listening`, como descarte de
 audio antigo durante a nova escuta. Ponto corrigido no firmware: ao receber
 `SPEECH_CANCEL` ou `LISTEN_START`, o `behavior_engine` agora limpa o texto
 visual antigo com `ui_overlay_clear_text()` antes de mostrar `Ouvindo...`.
+Refino posterior de headroom: a fila estatica SAY v2 subiu para 32 chunks, e
+o default do `OutputScheduler` passou a `NOISEBOT_TTS_QUEUE_TARGET=0` com
+`NOISEBOT_TTS_SEND_INTERVAL_MS=18`. Assim o server nao faz prebuffer inicial
+por padrao e envia um pouco mais conservador que os 16 ms do chunk fisico,
+reduzindo risco de encher a fila durante transicoes wake -> resposta. Rollback:
+voltar o env para 6/16 ms ou reverter o commit de pacing.
 Ponto corrigido no server apos validacao fisica: quando o usuario tenta
 `ww -> pare` logo apos barge-in, o STT pode confundir o comando curto com
 `Vale.` ou `Tchau.`. O `LocalIntentProvider` agora trata esses mishears como

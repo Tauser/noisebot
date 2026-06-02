@@ -378,7 +378,7 @@ Faz:
 - WAV local;
 - PCM raw local;
 - SAY do bridge;
-- fila SAY estatica de 16 chunks;
+- fila SAY estatica de 32 chunks;
 - enqueue/dequeue/cancel/drain;
 - volume;
 - cancel/stop;
@@ -395,8 +395,11 @@ Faz:
   uma rodada gerou +222 chunks SAY e zero drops novos, mas transcript diferente
   do comando esperado; a rodada seguinte ouviu `Me fala em historia curta.`,
   completou TTS e `SAY_END`, mas Playback v2 tocou +274 chunks com +18 drops.
-  O ajuste atual e server-only: default de `NOISEBOT_TTS_QUEUE_TARGET` reduzido
-  para 6 chunks, deixando mais headroom na fila SAY de 16 chunks do firmware.
+  O primeiro ajuste foi reduzir o default de `NOISEBOT_TTS_QUEUE_TARGET` para
+  6 chunks, deixando mais headroom na fila SAY. Refino atual: Playback v2 usa
+  fila SAY estatica de 32 chunks, e o server usa default sem prebuffer inicial
+  (`NOISEBOT_TTS_QUEUE_TARGET=0`) com envio conservador de 18 ms por chunk
+  (`NOISEBOT_TTS_SEND_INTERVAL_MS=18`).
 - Validacao fisica do default 6 chunks: `Me diga uma fala com história curta.`
   teve `transcript_quality=good`, 326 chunks TTS, `tts_completed=true`,
   `SAY_END`, `voice_alert=null`, texto visual em 3 paginas completas, Codec v2

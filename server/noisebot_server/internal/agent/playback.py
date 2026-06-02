@@ -20,11 +20,22 @@ def _env_int(key: str, default: int) -> int:
     except (TypeError, ValueError):
         return default
 
+
+def _env_float(key: str, default: float) -> float:
+    try:
+        return float(os.environ.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
 CHUNK_SAMPLES = 256
 SAMPLE_RATE = 16_000
 CHUNK_BYTES = CHUNK_SAMPLES * 2
 CHUNK_DURATION_S = CHUNK_SAMPLES / SAMPLE_RATE
-FIRMWARE_SAY_QUEUE = max(4, min(16, _env_int("NOISEBOT_TTS_QUEUE_TARGET", 6)))
+FIRMWARE_SAY_QUEUE = max(0, min(16, _env_int("NOISEBOT_TTS_QUEUE_TARGET", 0)))
+SAY_SEND_INTERVAL_S = max(
+    CHUNK_DURATION_S,
+    min(0.040, _env_float("NOISEBOT_TTS_SEND_INTERVAL_MS", 18.0) / 1000.0),
+)
 
 
 @dataclass(frozen=True)
@@ -168,7 +179,7 @@ class OutputScheduler:
     async def _pace_chunk(self) -> None:
         now = time.monotonic()
         if self._chunks_sent < FIRMWARE_SAY_QUEUE:
-            self._next_send_at = now + CHUNK_DURATION_S
+            self._next_send_at = now + SAY_SEND_INTERVAL_S
             return
 
         if self._next_send_at is None or self._next_send_at < now:
@@ -178,7 +189,7 @@ class OutputScheduler:
         if sleep_s > 0:
             await asyncio.sleep(sleep_s)
 
-        self._next_send_at += CHUNK_DURATION_S
+        self._next_send_at += SAY_SEND_INTERVAL_S
 
 
 async def _maybe_call_adapter(adapter: Any, method_name: str, *args: Any) -> bool:
@@ -204,5 +215,6 @@ __all__ = [
     "FIRMWARE_SAY_QUEUE",
     "OutputScheduler",
     "PlaybackStats",
+    "SAY_SEND_INTERVAL_S",
     "SAMPLE_RATE",
 ]
