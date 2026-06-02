@@ -358,13 +358,12 @@ Responsabilidade:
   usar default sem prebuffer inicial (`NOISEBOT_TTS_QUEUE_TARGET=0`) com envio
   conservador de 18 ms por chunk (`NOISEBOT_TTS_SEND_INTERVAL_MS=18`), para
   ampliar headroom na transicao wake -> resposta.
-- Refino seguinte de pacing server-only adicionou rampa inicial no
-  `OutputScheduler`: 64 chunks a 24 ms antes de voltar para 18 ms. Em teste
-  real `ww -> que horas sao?`, Playback v2 foi de
-  `received=2400/played=2398/dropped=15` para
-  `received=2811/played=2809/dropped=15`, com zero drops novos, fila final
-  zero, write/commit sem falhas, Audio IO v2 sem recoveries/drops e Codec v2
-  sem drops.
+- Refino seguinte de pacing server-only testou rampa inicial no
+  `OutputScheduler` (64 chunks a 24 ms antes de voltar para 18 ms). Em teste
+  real `ww -> que horas sao?`, ela evitou drops novos, mas aumentou a latencia
+  percebida da fala. Estado atual: rampa inicial desabilitada por default
+  (`NOISEBOT_TTS_STARTUP_CHUNKS=0`) e mantida apenas como ajuste opt-in de
+  bancada quando o hardware indicar drops recorrentes.
 - Validacao em hardware pos-flash confirmou o contrato passivo: shadow de
   1000 ms observou 63 frames, encerrou sozinho, classificou silencio e manteve
   `session_active=false`; `capture-v2` permaneceu desligado, Playback v2 ficou

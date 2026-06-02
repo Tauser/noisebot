@@ -1220,13 +1220,13 @@ Incremento N4.7 iniciado:
   `speaker_frames_committed` e `say_chunks_played`, com zero falhas de write,
   zero drops/cancelamentos, Audio IO v2 sem recoveries/drops, Codec v2
   saudavel e rollback por `speaker-owner-disarm`.
-- Refino server-only de pacing SAY apos validacao fisica: o `OutputScheduler`
-  agora usa rampa inicial conservadora (`NOISEBOT_TTS_STARTUP_CHUNKS=64`,
-  `NOISEBOT_TTS_STARTUP_INTERVAL_MS=24`) antes de voltar para o envio nominal
-  de 18 ms por chunk. Isso nao altera firmware, HAL, wake, captura ou codec.
-  Validacao local: `server/tests/test_playback.py` com 8 testes e
-  `server/tests/test_server_facade.py` com 181 testes verdes. Validacao em
-  hardware apos restart do server: baseline Playback v2
+- Refino server-only de pacing SAY apos validacao fisica: a rampa inicial
+  conservadora do `OutputScheduler` foi mantida como opt-in
+  (`NOISEBOT_TTS_STARTUP_CHUNKS`), mas desabilitada por default
+  (`NOISEBOT_TTS_STARTUP_CHUNKS=0`) porque aumentou a latencia percebida da
+  fala. O envio nominal continua em 18 ms por chunk. Isso nao altera firmware,
+  HAL, wake, captura ou codec. Validacao anterior em hardware apos restart do
+  server: baseline Playback v2
   `received=2400/played=2398/dropped=15`; turno real `ww -> que horas sao?`
   enviou 411 chunks TTS e fechou em `received=2811/played=2809/dropped=15`,
   fila final zero, `speaker_write_failures=0`, `speaker_commit_failures=0`,

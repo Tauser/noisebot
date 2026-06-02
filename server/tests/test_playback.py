@@ -46,8 +46,8 @@ def test_output_scheduler_default_send_interval_is_slightly_conservative() -> No
     assert SAY_SEND_INTERVAL_S == pytest.approx(0.018)
 
 
-def test_output_scheduler_default_startup_ramp_is_more_conservative() -> None:
-    assert SAY_STARTUP_CHUNKS == 64
+def test_output_scheduler_default_startup_ramp_is_disabled_for_responsiveness() -> None:
+    assert SAY_STARTUP_CHUNKS == 0
     assert SAY_STARTUP_INTERVAL_S == pytest.approx(0.024)
 
 
@@ -122,14 +122,15 @@ async def test_output_scheduler_does_not_catch_up_with_bursts(monkeypatch) -> No
     assert stats.chunks_sent == FIRMWARE_SAY_QUEUE + 3
     expected_paced = len(adapter.chunks) - max(FIRMWARE_SAY_QUEUE, 1)
     assert len(paced_sleeps) == expected_paced
-    assert all(delay == pytest.approx(SAY_STARTUP_INTERVAL_S) for delay in paced_sleeps)
+    assert all(delay == pytest.approx(SAY_SEND_INTERVAL_S) for delay in paced_sleeps)
 
 
 @pytest.mark.asyncio
 async def test_output_scheduler_returns_to_nominal_pacing_after_startup(monkeypatch) -> None:
+    monkeypatch.setattr(playback_module, "SAY_STARTUP_CHUNKS", 4)
     adapter = AdapterProbe()
     scheduler = OutputScheduler()
-    source = b"\x55" * CHUNK_BYTES * (SAY_STARTUP_CHUNKS + 3)
+    source = b"\x55" * CHUNK_BYTES * (playback_module.SAY_STARTUP_CHUNKS + 3)
     sleeps: list[float] = []
     now = 1000.0
 
@@ -148,8 +149,8 @@ async def test_output_scheduler_returns_to_nominal_pacing_after_startup(monkeypa
     stats = await scheduler.run(11, _iter_chunks(source), adapter)
 
     paced_sleeps = [delay for delay in sleeps if delay > 0]
-    assert len(adapter.chunks) == SAY_STARTUP_CHUNKS + 3
-    assert stats.chunks_sent == SAY_STARTUP_CHUNKS + 3
+    assert len(adapter.chunks) == playback_module.SAY_STARTUP_CHUNKS + 3
+    assert stats.chunks_sent == playback_module.SAY_STARTUP_CHUNKS + 3
     assert any(delay == pytest.approx(SAY_STARTUP_INTERVAL_S) for delay in paced_sleeps)
     assert any(delay == pytest.approx(SAY_SEND_INTERVAL_S) for delay in paced_sleeps)
 
