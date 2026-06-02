@@ -1,7 +1,8 @@
 # Voice Audio v2 - Release Checklist / Health
 
 Data: 2026-06-01
-Status: Fase M parcial, operacional, sem alteracao de firmware C.
+Status: Fase M parcial fechada localmente em 2026-06-01, operacional, sem
+alteracao de firmware C.
 Branch de referencia: `voice-reference-architecture`.
 
 Este checklist protege o estado bom atual antes de novas mudancas grandes no
@@ -547,6 +548,43 @@ Esperado:
   `NOISEBOT_AUDIO_DEFAULT_CODEC=opus-v2` ou usar o fluxo operacional vigente.
 
 ## Registro Da Rodada
+
+Resultado final de 2026-06-01, branch `voice-reference-architecture`:
+
+- Hashes de referencia: `f987196` para a correcao anti-eco pos-TTS no server;
+  `9ed030c` para o preflight que aceita Capture v2 desligado/inativo com
+  diagnostico retido em `DONE`.
+- Preflight final `voice-release-check --json`: `ok=true`.
+- Codec v2 / Opus: `healthy=true`, `status=ok`, worker `running`, fila egress
+  zero, `packet_drops=0`, `opus_egress_packet_drops=0`,
+  `opus_codec_error=0`.
+- Capture v2: desligado por default no release local
+  (`real_capture_enabled=false`, `session_active=false`), com ultima sessao
+  retida em `DONE` apenas como diagnostico e `ESP_OK`.
+- Playback v2: dono/observador da fila SAY real, fila final zero,
+  `received/played=9115/9102`, `ESP_OK`. Drops reportados sao cumulativos e
+  nao bloquearam o gate final.
+- Turno curto validado: `ww -> que horas sao?`, intent `local_time`,
+  `tts_completed=true`, `tts_say_end_sent=true`, fila SAY final zero e sem
+  drops novos na repeticao limpa.
+- Resposta longa validada: `ww -> me conte uma historia longa`,
+  `outcome=llm`, `transcript_quality=good`, `tts_completed=true`,
+  `tts_say_begin_sent=true`, `tts_say_end_sent=true`, fila SAY final zero.
+- Barge-in/pare validado: turno longo anterior ficou `outcome=interrupted` /
+  `discard_reason=barge_in`; turno seguinte reconheceu `Pare.` como
+  `local_stop` e respondeu `Pronto, parei.` sem LLM.
+- No-echo validado apos correcao anti-eco: o turno `90` respondeu a
+  `Me conte uma história longa.` e, apos janela manual de 10 s, continuou como
+  ultimo turno sem wake vazio, resposta aleatoria ou turno fantasma novo.
+- Rollback PCM16 exercitado: `codec-v2 transport-disable --json` retornou
+  `opus_enabled=false`; `codec-v2 health --json` ficou `healthy=true`,
+  `status=ok`, `format=pcm16`, worker parado e fila/drops zero. Em seguida,
+  `codec-v2 transport-enable --json` religou Opus v2 e o health final ficou
+  `healthy=true`, `status=ok`, worker `running`, fila/drops zero.
+- Observacao operacional: o helper interativo `no-echo-live --codec opus-v2`
+  ficou preso no `input()` no terminal TTY desta sessao; por isso o aceite de
+  no-echo foi confirmado por `/ai/metrics`, Playback v2 e Codec v2, que sao os
+  mesmos endpoints usados pelo helper.
 
 Para cada release local de voz, registrar:
 

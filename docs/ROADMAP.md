@@ -2884,6 +2884,10 @@ no protocolo.
       por teste automático: fala pendente e `SAY_END` antigo sao descartados,
       frames nao relacionados a fala sao preservados, o scheduler cancela sem
       `SAY_END` artificial e barge-in abre turno limpo mesmo se o cancel falhar.
+- [x] Fase M parcial fechada localmente em 2026-06-01: `voice-release-check`
+      final `ok=true`, turno curto, resposta longa, barge-in/pare, no-echo por
+      `/ai/metrics` sem turno fantasma, rollback PCM16 e retorno a Opus v2 com
+      health verde.
 
 ---
 

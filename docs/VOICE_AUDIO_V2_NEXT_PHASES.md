@@ -620,11 +620,28 @@ Rollback:
 Objetivo: transformar o que aprendemos em barreira de regressao antes de
 qualquer mudanca grande.
 
-Status parcial em 2026-06-01: checklist/health de release documentado em
-`docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md`, sem alterar firmware C. O escopo
-protege Opus v2, Playback v2 como dono da fila SAY, Capture v2 desligado,
-barge-live/no-echo-live e completude TTS/texto. Wake, VAD, AEC, follow-up,
-`audio_service.c` e HAL permanecem fora desta fase parcial.
+Status fechado localmente em 2026-06-01: checklist/health de release
+documentado em `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md`, sem alterar
+firmware C. O escopo protege Opus v2, Playback v2 como dono da fila SAY,
+Capture v2 desligado, barge-live/no-echo, rollback PCM16 e completude
+TTS/texto. Wake, VAD, AEC, follow-up, `audio_service.c` e HAL permanecem fora
+desta fase parcial.
+
+Resultado final da rodada de hardware:
+
+- `voice-release-check --json`: `ok=true`.
+- Codec v2: `healthy=true`, `status=ok`, worker `running`, fila egress zero,
+  drops zero e `opus_codec_error=0`.
+- Capture v2: `real_capture_enabled=false`, `session_active=false`, ultima
+  sessao retida em `DONE` apenas como diagnostico.
+- Playback v2: fila SAY final zero, dono/observador ativo e `ESP_OK`.
+- Turno curto, resposta longa, barge-in/pare e no-echo validados em hardware.
+- No-echo foi aceito por `/ai/metrics` apos janela manual de 10 s: `turn_id=90`
+  permaneceu como ultimo turno, sem wake vazio ou turno fantasma novo.
+- Rollback PCM16 foi exercitado e Opus v2 religado com health final verde.
+- Observacao: o helper interativo `no-echo-live --codec opus-v2` ficou preso no
+  `input()` do TTY desta sessao; o comportamento de voz foi validado pelos
+  endpoints usados pelo proprio helper.
 
 Entregas:
 
