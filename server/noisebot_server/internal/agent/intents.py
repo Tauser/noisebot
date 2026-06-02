@@ -685,8 +685,40 @@ class LocalIntentProvider:
                 emot_event_id=_EMOT_NEUTRAL,
             )
 
-        if _has(norm, "brilho da tela", "brilho tela", "tela mais clara", "tela mais escura",
-                "brilho do display", "display mais claro", "display mais escuro"):
+        wants_display_brightness = _has(
+            norm,
+            "brilho da tela",
+            "brilho tela",
+            "tela mais clara",
+            "tela mais escura",
+            "brilho do display",
+            "display mais claro",
+            "display mais escuro",
+        )
+        wants_led_brightness = _has(
+            norm,
+            "brilho do led",
+            "brilho dos leds",
+            "led mais forte",
+            "led mais fraco",
+            "luz mais forte",
+            "luzes mais fortes",
+            "luz mais fraca",
+            "luzes mais fracas",
+        )
+        wants_generic_brightness = _has(
+            norm,
+            "aumenta o brilho",
+            "aumente o brilho",
+            "diminui o brilho",
+            "diminua o brilho",
+            "abaixa o brilho",
+            "baixa o brilho",
+            "brilho mais forte",
+            "brilho mais fraco",
+        )
+
+        if wants_display_brightness:
             percent = _parse_percent(norm)
             if percent is None:
                 percent = 90 if _has(norm, "clara", "claro", "aumenta", "aumentar", "aumente") else 35
@@ -701,10 +733,7 @@ class LocalIntentProvider:
                 device_command=_settings_command(display_brightness=brightness),
             )
 
-        if _has(norm, "brilho do led", "brilho dos leds", "led mais forte", "led mais fraco",
-                "luz mais forte", "luzes mais fortes", "luz mais fraca", "luzes mais fracas",
-                "aumenta o brilho", "aumente o brilho", "diminui o brilho", "diminua o brilho",
-                "abaixa o brilho", "baixa o brilho", "brilho mais forte", "brilho mais fraco"):
+        if wants_led_brightness:
             percent = _parse_percent(norm)
             if percent is None:
                 percent = 90 if _has(norm, "forte", "fortes", "aumenta", "aumentar", "aumente") else 25
@@ -717,6 +746,24 @@ class LocalIntentProvider:
                 action_id=_ACTION_NONE,
                 emot_event_id=_EMOT_NEUTRAL,
                 device_command=_settings_command(led_brightness=brightness),
+            )
+
+        if wants_generic_brightness:
+            percent = _parse_percent(norm)
+            if percent is None:
+                percent = 90 if _has(norm, "forte", "fortes", "aumenta", "aumentar", "aumente") else 25
+            brightness = max(0, min(255, int(round(percent * 2.55))))
+            return IntentResolved(
+                turn_id=turn_id,
+                intent_name="local_brightness",
+                reply_text=f"Brilho em {percent} por cento.",
+                expression_id=_EXPR_ATTENTIVE,
+                action_id=_ACTION_NONE,
+                emot_event_id=_EMOT_NEUTRAL,
+                device_command=_settings_command(
+                    display_brightness=brightness,
+                    led_brightness=brightness,
+                ),
             )
 
         if _has(norm, "luz normal", "led normal", "cor normal", "volta a luz", "volte a luz"):

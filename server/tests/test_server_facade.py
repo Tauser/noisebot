@@ -5361,16 +5361,17 @@ def test_server_agent_light_color_intent_emits_led_command() -> None:
     }
 
 
-def test_server_agent_led_brightness_short_command_emits_settings_command() -> None:
+def test_server_agent_generic_brightness_short_command_emits_settings_command() -> None:
     agent = importlib.import_module("noisebot_server.internal.agent")
     provider = agent.LocalIntentProvider()
 
     result = provider.match("diminua o brilho", turn_id=53)
 
-    assert result.intent_name == "local_led_brightness"
-    assert result.reply_text == "Brilho dos LEDs em 25 por cento."
+    assert result.intent_name == "local_brightness"
+    assert result.reply_text == "Brilho em 25 por cento."
     assert result.device_command == {
         "event": "SETTINGS_COMMAND",
+        "display_brightness": 64,
         "led_brightness": 64,
     }
 

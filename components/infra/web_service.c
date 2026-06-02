@@ -30,6 +30,7 @@
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "led_service.h"
+#include "render_service.h"
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -723,7 +724,14 @@ static esp_err_t handle_api_config_post(httpd_req_t *req)
             (void)voice_capture_session_v2_set_bridge_tx_owner(false);
         }
     }
-    else if (strcmp(key, "brightness")   == 0) err = config_set_brightness((uint8_t)val);
+    else if (strcmp(key, "brightness")   == 0) {
+        uint8_t brightness = (uint8_t)val;
+        err = config_set_brightness(brightness);
+        if (err == ESP_OK) {
+            render_service_set_brightness(brightness);
+            led_set_brightness(brightness);
+        }
+    }
     else if (strcmp(key, "touch_sens")   == 0) err = config_set_touch_sensitivity((uint8_t)val);
     else if (strcmp(key, "idle_timeout") == 0) err = config_set_idle_timeout_s((uint32_t)val);
     else if (strcmp(key, "srv1_min")     == 0) err = config_set_servo_limit_min(1, (int16_t)val);

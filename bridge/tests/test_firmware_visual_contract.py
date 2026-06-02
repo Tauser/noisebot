@@ -58,3 +58,15 @@ def test_bridge_settings_command_uses_json_field_parser():
 
     assert 'session_json_u8(payload, "display_brightness", &brightness)' in block
     assert 'session_json_u8(payload, "led_brightness", &brightness)' in block
+
+
+def test_config_brightness_endpoint_applies_runtime_services():
+    src = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+
+    start = src.index('else if (strcmp(key, "brightness")')
+    end = src.index('else if (strcmp(key, "touch_sens")', start)
+    block = src[start:end]
+
+    assert "config_set_brightness(brightness)" in block
+    assert "render_service_set_brightness(brightness);" in block
+    assert "led_set_brightness(brightness);" in block
