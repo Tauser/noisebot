@@ -2421,6 +2421,14 @@ Implementação:
   zero cancelamentos, `speaker_handoff_active=true`, `block_reason=NONE`, zero
   falhas/recoveries/I2S recoveries e Codec v2 `healthy=true/status=ok`.
   `speaker-owner-disarm` voltou Audio IO v2 para `DISABLED`.
+- [ ] Fase N4.6 iniciada: Playback v2 passou a assumir a politica de idle da
+  fila SAY por `audio_playback_service_v2_speaker_note_empty()`. O
+  `audio_service.c` ainda faz a transicao final para `PLAY_IDLE` e emite
+  `PLAYBACK_END`, mas deixa de decidir sozinho a janela de jitter/idle. O
+  endpoint `/api/audio/playback-v2` agora expoe `speaker_empty_polls`,
+  `speaker_empty_ms` e `speaker_idle_end_count`. Validacao local antes do flash:
+  contrato Voice Audio v2 `7 passed`, server facade `171 passed`,
+  `git diff --check` limpo e `idf.py build` sem warnings.
 
 ---
 

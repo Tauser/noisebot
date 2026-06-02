@@ -194,6 +194,9 @@ Incremento atual da Fase N3:
   continua escrevendo no HAL, mas passa o resultado para
   `audio_playback_service_v2_speaker_commit_frame()`, que registra telemetria e
   aciona o marcador de handoff no Audio IO v2.
+- Fase N4.6 moveu a politica de fila SAY vazia para Playback v2:
+  `audio_playback_service_v2_speaker_note_empty()` decide quando a janela de
+  jitter/idle venceu; `audio_service` ainda faz a transicao final para IDLE.
 - O HAL/speaker continua fisicamente em `audio_service`; Playback v2 ainda nao
   chama `audio_hal_*`.
 

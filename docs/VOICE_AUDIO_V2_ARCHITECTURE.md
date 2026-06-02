@@ -294,6 +294,10 @@ Invariantes:
   `audio_playback_service_v2_speaker_commit_frame()` e aciona o marcador de
   handoff no Audio IO v2. Isso remove a chamada direta do `audio_service` para
   o marcador N4 de Playback/SAY, sem mover `audio_hal_*` para Playback v2.
+- Na Fase N4.6, Playback v2 assume a politica de fila SAY vazia por
+  `audio_playback_service_v2_speaker_note_empty()`. O `audio_service` ainda
+  executa a transicao final de estado e evento, mas a decisao de quando o
+  jitter/idle venceu passa a ser do Playback v2.
 
 ### Voice Activity v2
 

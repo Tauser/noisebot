@@ -97,6 +97,10 @@ Na Fase N4.5, o resultado do write SAY tambem volta para Playback v2 por
 ter telemetria de commit (`speaker_frames_committed`, falhas e ultimo resultado)
 e aciona o marcador de handoff no Audio IO v2, enquanto o HAL fisico continua no
 `audio_service`.
+Na Fase N4.6, a janela de fila SAY vazia tambem passa para Playback v2:
+`audio_playback_service_v2_speaker_note_empty()` acumula polls/ms vazios e
+decide quando o idle venceu. O `audio_service` ainda aplica a transicao final
+para `PLAY_IDLE` e o evento de fim.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

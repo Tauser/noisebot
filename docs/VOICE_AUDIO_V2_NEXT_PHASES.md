@@ -1157,6 +1157,25 @@ Incremento N4.5 iniciado:
   `healthy=true/status=ok`. O rollback `speaker-owner-disarm` voltou Playback v2
   para false/false/false e Audio IO v2 para `DISABLED`.
 
+Incremento N4.6 iniciado:
+
+- Playback v2 ganhou `audio_playback_service_v2_speaker_note_empty()` para
+  assumir a janela de fila SAY vazia antes de encerrar a fala. O `audio_service`
+  ainda muda `PLAY_BRIDGE_SAY` para `PLAY_IDLE` e emite `PLAYBACK_END`, mas
+  passa a perguntar ao Playback v2 quando a janela de idle venceu.
+- `/api/audio/playback-v2` expoe `speaker_empty_polls`, `speaker_empty_ms` e
+  `speaker_idle_end_count` para validar a politica de jitter/idle do SAY.
+- O preparo de frame, commit de write e agora a decisao de idle do SAY ficam no
+  Playback v2; o HAL fisico continua exclusivamente em `audio_service.c`.
+- Validacao local antes do flash: contrato focado Voice Audio v2 verde
+  (`7 passed`), facade do server verde (`171 passed`), `git diff --check`
+  limpo e `idf.py build` completo sem warnings. Gate fisico esperado: apos
+  flash, armar `speaker-owner`, executar resposta real curta e confirmar
+  prepared/committed/played em lockstep, `speaker_commit_failures=0`,
+  `speaker_empty_polls` crescendo apenas no final/jitter da fala,
+  `speaker_idle_end_count>=1`, fila final zero, zero drops/cancelamentos, Audio
+  IO v2 sem falhas/recoveries e rollback por `speaker-owner-disarm`.
+
 ### N5 - Reduzir audio_service.c
 
 Ultima etapa, apos donos reais validados:
