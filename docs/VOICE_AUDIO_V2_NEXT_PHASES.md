@@ -746,6 +746,29 @@ Antes de qualquer mudanca estrutural:
   estado Capture v2, `/ai/metrics.last_voice_session` e rollback PCM16.
 - Aceite: Fase M continua verde sem novos warnings bloqueantes.
 
+Status em 2026-06-01: N0 fechado em hardware no hash `0d97291`.
+
+- `voice-release-check --json`: `ok=true`.
+- Codec v2: `healthy=true`, `status=ok`, worker `running`, fila egress zero,
+  drops zero e `opus_codec_error=0`.
+- Playback v2 repouso: `playback-v2 delta --no-prompt --json` com deltas zero,
+  `queue_empty=true` e `normal_path_clean=true`.
+- Capture v2: `real_capture_enabled=false`, `session_active=false`,
+  `bridge_tx_handoff_enabled=false`, `bridge_tx_owner=false`,
+  `legacy_audio_service_tx_owner=true`; ultima sessao retida em `DONE` apenas
+  como diagnostico.
+- Barge-in: roteiro `ww -> me conte uma historia longa -> ww -> pare` validado
+  por `/ai/metrics`; turno `94` ficou `outcome=interrupted` /
+  `discard_reason=barge_in`, e turno `95` reconheceu `Pare.` como
+  `local_stop`, com resposta `Pronto, parei.` e TTS completo.
+- No-echo: turno `97` respondeu a `Me conte uma história longa.`, e apos
+  janela manual de 10 s continuou como ultimo turno, sem wake vazio ou turno
+  fantasma novo.
+- Observacao operacional: os helpers interativos `barge-live` e `no-echo-live`
+  ainda ficam presos no `input()` do TTY desta sessao; o aceite foi feito pelos
+  endpoints usados pelos proprios helpers (`/ai/metrics`, Playback v2 e Codec
+  v2).
+
 ### N1 - Capture v2 Default Controlado
 
 Nao ligar direto como default permanente:

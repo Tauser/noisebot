@@ -2894,6 +2894,10 @@ no protocolo.
       Audio IO v2; N4 promove Playback v2 ao caminho HAL/speaker; N5 reduz
       `audio_service.c` para ponte/compatibilidade. STT/LLM/TTS continuam fora
       do firmware.
+- [x] Fase N0 fechada em hardware no hash `0d97291`: release check final
+      `ok=true`, Codec v2 health `status=ok`, Playback v2 delta em repouso
+      com deltas zero, Capture v2 default-off, barge-in `turn_id=94 -> 95`
+      validado e no-echo `turn_id=97` sem turno fantasma apos 10 s.
 
 ---
 
