@@ -239,7 +239,7 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
                    peak >= SHADOW_SPEECH_PEAK_THRESHOLD);
 
     taskENTER_CRITICAL(&s_mux);
-    if (!s_status.shadow_running) {
+    if (!s_status.shadow_running && !s_status.session_compare_active) {
         taskEXIT_CRITICAL(&s_mux);
         return;
     }

@@ -292,6 +292,7 @@ def test_voice_activity_v2_shadow_is_explicit_and_passive():
     assert "unmuted_rms_max" in activity_h
     assert "SHADOW_SPEECH_RMS_THRESHOLD" in activity_c
     assert "SESSION_END_SILENCE_MS" in activity_c
+    assert "if (!s_status.shadow_running && !s_status.session_compare_active)" in activity_c
     assert "s_status.activity_end_observed = true;" in activity_c
     assert "#define SHADOW_MAX_DURATION_MS          30000U" in activity_c
     assert "zcr_permille(" in activity_c
