@@ -271,12 +271,14 @@ def decode_status(payload: bytes) -> dict[str, Any]:
     state = payload[0]
     valence, activation, attention = struct.unpack_from("<fff", payload, 1)
     health = payload[13]
+    volume = payload[14] if len(payload) >= 15 else None
     return {
         "state": state,
         "valence": valence,
         "activation": activation,
         "attention": attention,
         "health": health,
+        "volume": volume,
     }
 
 

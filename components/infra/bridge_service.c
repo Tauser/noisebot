@@ -778,15 +778,16 @@ static void tcp_io_loop(void)
             nb_bridge_status_t status_snap = s.status;
             xSemaphoreGive(s.mutex);
 
-            uint8_t payload[14];
+            uint8_t payload[15];
             payload[0] = status_snap.state;
             memcpy(&payload[1],  &status_snap.valence,     4u);
             memcpy(&payload[5],  &status_snap.activation,  4u);
             memcpy(&payload[9],  &status_snap.attention,   4u);
             payload[13] = status_snap.health_score;
+            payload[14] = status_snap.volume;
 
-            uint8_t frame[FRAME_OVERHEAD + 14u];
-            uint16_t flen = frame_encode(frame, NB_BRIDGE_MSG_STATUS, payload, 14u);
+            uint8_t frame[FRAME_OVERHEAD + 15u];
+            uint16_t flen = frame_encode(frame, NB_BRIDGE_MSG_STATUS, payload, 15u);
             if (!tcp_send_all(s.client_fd, frame, flen)) {
                 NB_LOGD(TAG, "TCP status send falhou — desconectando");
                 goto tcp_disconnect;
@@ -884,15 +885,16 @@ static void uart_io_loop(void)
             nb_bridge_status_t status_snap = s.status;
             xSemaphoreGive(s.mutex);
 
-            uint8_t payload[14];
+            uint8_t payload[15];
             payload[0] = status_snap.state;
             memcpy(&payload[1],  &status_snap.valence,    4u);
             memcpy(&payload[5],  &status_snap.activation, 4u);
             memcpy(&payload[9],  &status_snap.attention,  4u);
             payload[13] = status_snap.health_score;
+            payload[14] = status_snap.volume;
 
-            uint8_t frame[FRAME_OVERHEAD + 14u];
-            uint16_t flen = frame_encode(frame, NB_BRIDGE_MSG_STATUS, payload, 14u);
+            uint8_t frame[FRAME_OVERHEAD + 15u];
+            uint16_t flen = frame_encode(frame, NB_BRIDGE_MSG_STATUS, payload, 15u);
             uart_send(frame, flen);
             next_status_us = esp_timer_get_time() + 5000000LL;
         }

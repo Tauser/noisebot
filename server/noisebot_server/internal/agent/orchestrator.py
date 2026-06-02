@@ -283,6 +283,8 @@ class Orchestrator:
                     "attention": event.attention,
                     "health": event.health,
                 }
+                if event.volume is not None:
+                    self._last_status["volume"] = event.volume
                 log.debug("StatusUpdate: state=%d valence=%.2f", event.state, event.valence)
             case BargeInDetected():
                 await self._on_barge_in(event)

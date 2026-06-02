@@ -262,6 +262,7 @@ class FirmwareAdapter:
                         activation=status["activation"],
                         attention=status["attention"],
                         health=status["health"],
+                        volume=status["volume"],
                     )
                 )
             elif msg_type == MSG_SESSION:

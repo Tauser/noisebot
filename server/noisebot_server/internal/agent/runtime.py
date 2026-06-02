@@ -153,6 +153,7 @@ class StatusUpdate:
     activation: float
     attention: float
     health: int
+    volume: int | None = None
     t: float = field(default_factory=_now)
 
 

@@ -31,7 +31,7 @@
  * Mensagens ESP32 → Bridge:
  *   AUDIO_CHUNK: int16_t pcm[256] (256 samples × 2 bytes = 512 bytes DATA)
  *   EVENT      : uint32_t type + uint8_t data[8] (12 bytes DATA)
- *   STATUS     : state(1) + valence(4) + activation(4) + attention(4) + health(1) = 14 bytes
+ *   STATUS     : state(1) + valence(4) + activation(4) + attention(4) + health(1) + volume(1) = 15 bytes
  *
  * Mensagens Bridge → ESP32 (publicadas via event bus):
  *   SAY        → NB_EVT_BRIDGE_SAY       (data.ptr = nb_bridge_say_chunk_t*)
@@ -145,6 +145,7 @@ typedef struct {
     float    activation;      /* [-1..1] */
     float    attention;       /* [0..1]  */
     uint8_t  health_score;    /* 0..100  */
+    uint8_t  volume;          /* 0..100  */
 } nb_bridge_status_t;
 
 /* ── API ─────────────────────────────────────────────────────────────────── */

@@ -658,6 +658,7 @@ static void bridge_on_event(const nb_event_t *evt)
             .activation   = emotion_model_get_vec().activation,
             .attention    = attention_service_get_level(),
             .health_score = diagnostics_get_health_score(),
+            .volume       = config_get_volume(),
         };
         bridge_service_update_status(&st);
         break;

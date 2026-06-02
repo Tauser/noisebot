@@ -3116,6 +3116,21 @@ def test_server_transport_protocol_discards_bad_crc() -> None:
     assert buf == bytearray()
 
 
+def test_server_transport_protocol_decodes_status_with_optional_volume() -> None:
+    protocol = importlib.import_module("noisebot_server.internal.transport.protocol")
+
+    legacy_payload = bytes([3]) + struct.pack("<fff", 0.1, 0.2, 0.3) + bytes([91])
+    current_payload = legacy_payload + bytes([42])
+
+    legacy_status = protocol.decode_status(legacy_payload)
+    current_status = protocol.decode_status(current_payload)
+
+    assert legacy_status["state"] == 3
+    assert legacy_status["health"] == 91
+    assert legacy_status["volume"] is None
+    assert current_status["volume"] == 42
+
+
 def test_server_transport_factory_creates_tcp_transport() -> None:
     config_module = importlib.import_module("noisebot_server.config")
     factory_module = importlib.import_module(
