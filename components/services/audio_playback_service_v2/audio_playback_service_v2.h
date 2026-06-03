@@ -101,7 +101,6 @@ void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
                                                     esp_err_t result);
 bool audio_playback_service_v2_speaker_should_end_idle(void);
 uint32_t audio_playback_service_v2_say_cancel_active(void);
-uint32_t audio_playback_service_v2_say_pending_count(void);
 void audio_playback_service_v2_say_drop_listening(void);
 void audio_playback_service_v2_say_end_idle(void);
 

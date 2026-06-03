@@ -472,14 +472,6 @@ uint32_t audio_playback_service_v2_say_cancel_active(void)
     return pending;
 }
 
-uint32_t audio_playback_service_v2_say_pending_count(void)
-{
-    if (s_say_q == NULL) {
-        return 0U;
-    }
-    return (uint32_t)uxQueueMessagesWaiting(s_say_q);
-}
-
 void audio_playback_service_v2_say_drop_listening(void)
 {
     taskENTER_CRITICAL(&s_mux);

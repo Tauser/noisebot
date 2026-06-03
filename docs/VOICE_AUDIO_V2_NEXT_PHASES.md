@@ -1398,6 +1398,17 @@ Incremento N5.5 iniciado:
   `status=ok`, sem warnings e com zero drops/erros. O unico warning agregado
   final foi `heap_internal_free_kb baixo: 11`.
 
+Incremento N5.6 iniciado:
+
+- A API publica `audio_playback_service_v2_say_pending_count()` foi removida do
+  contrato Playback v2 porque ficou sem chamadores apos a N5.5.
+- A telemetria de profundidade da fila continua disponivel por
+  `/api/audio/playback-v2` via `say_queue_count`, alimentada internamente pelo
+  proprio Playback v2.
+- Esta etapa nao muda runtime, fila SAY, HAL fisico, wake, captura, Activity v2,
+  Codec v2 ou rollback; apenas reduz a superficie publica exposta para
+  `audio_service.c` e demais componentes.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
