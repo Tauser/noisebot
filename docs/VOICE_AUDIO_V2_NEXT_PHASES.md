@@ -1915,6 +1915,13 @@ Fechamento N6:
   passou para prebuffer curto de 4 chunks (`NOISEBOT_TTS_QUEUE_TARGET=4`) e
   cadencia nominal de 16 ms (`NOISEBOT_TTS_SEND_INTERVAL_MS=16`), preservando
   headroom da fila SAY v2 de 32 chunks sem alongar artificialmente o audio.
+- Validacao final pos-picote em hardware, apos restart do server: frase curta
+  (`ww -> me fale uma frase curta`) e frase media (`ww -> me conte uma
+  historia`) passaram com Opus ativo, `firmware_say_queue_target=4`,
+  `say_send_interval_ms=16.0`, `say_chunks_received=1908`,
+  `say_chunks_played=1908`, `say_queue_count=0`, `say_chunks_dropped=0`,
+  `speaker_write_failures=0`, `speaker_commit_failures=0` e
+  `codec-v2 health` saudavel. Incremento pos-N6 fechado.
 
 ## Ordem Recomendada
 

@@ -3054,6 +3054,12 @@ no protocolo.
       Avanco server-only posterior: CLI `debug playback-v2
       speaker-owner-real-window-gate` automatiza essa regressao antes de
       qualquer nova reducao de `audio_service.c`.
+- [x] Baseline pos-N6 de playback falado fechado no hash `425994f`: server
+      reiniciado com `NOISEBOT_TTS_QUEUE_TARGET=4` e
+      `NOISEBOT_TTS_SEND_INTERVAL_MS=16`; testes fisicos curto e medio
+      validaram `say_chunks_received=1908`, `say_chunks_played=1908`,
+      `say_queue_count=0`, `say_chunks_dropped=0`, zero falhas de write/commit
+      e `codec-v2 health` saudavel.
 
 ---
 
