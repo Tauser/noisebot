@@ -42,8 +42,9 @@ def test_output_scheduler_default_prebuffer_leaves_firmware_queue_headroom() -> 
     assert FIRMWARE_SAY_QUEUE == 0
 
 
-def test_output_scheduler_default_send_interval_matches_chunk_duration() -> None:
-    assert SAY_SEND_INTERVAL_S == pytest.approx(CHUNK_DURATION_S)
+def test_output_scheduler_default_send_interval_keeps_hardware_headroom() -> None:
+    assert SAY_SEND_INTERVAL_S == pytest.approx(0.018)
+    assert SAY_SEND_INTERVAL_S > CHUNK_DURATION_S
 
 
 def test_output_scheduler_default_startup_ramp_is_disabled_for_responsiveness() -> None:

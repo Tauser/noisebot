@@ -398,10 +398,10 @@ Faz:
 - volume;
 - cancel/stop;
 - descarte de fila velha.
-- O `OutputScheduler` do server deve enviar SAY com prebuffer curto e depois
-  cadencia real de 16 ms por chunk. Pausas entre sentencas do TTS nao devem
-  gerar rajadas de catch-up, porque isso enche a fila SAY e causa engasgos
-  mesmo com `tts_completed=true` e `SAY_END`.
+- O `OutputScheduler` do server deve enviar SAY sem prebuffer inicial por
+  default e com cadencia conservadora de 18 ms por chunk. Pausas entre
+  sentencas do TTS nao devem gerar rajadas de catch-up, porque isso enche a
+  fila SAY e causa engasgos mesmo com `tts_completed=true` e `SAY_END`.
 - Validacao real da correcao de pacing: apos restart do server, uma resposta
   curta gerou 398 chunks TTS e `SAY_END`; `/api/audio/playback-v2` saiu de
   `received=494/played=494/dropped=154` para

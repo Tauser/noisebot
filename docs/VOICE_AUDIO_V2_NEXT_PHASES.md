@@ -1772,6 +1772,19 @@ Incremento N6.5 iniciado:
   v2 desarmado e fila zero; `codec-v2 health` ficou `warn` por 1 pacote egress
   residual, drenado em seguida, e voltou `healthy=true/status=ok`.
 
+Incremento N6.6 iniciado:
+
+- O bloqueio de promocao do N6.5 (`say_chunks_dropped=3`) foi tratado primeiro
+  no server, sem alterar firmware, HAL, wake, captura, Activity v2 ou Codec v2.
+- A documentacao operacional ja indicava pacing conservador de 18 ms, mas o
+  default real do `OutputScheduler` ainda caia para 16 ms quando
+  `NOISEBOT_TTS_SEND_INTERVAL_MS` nao estava definido. O default runtime foi
+  alinhado para 18 ms, mantendo a variavel de ambiente como rollback/ajuste de
+  bancada.
+- Objetivo do gate seguinte: repetir `speaker-owner-gate --require-say` com
+  resposta real e exigir `real_owner_candidate=true` ou, no minimo, zero drops
+  novos antes de desenhar qualquer incremento de owner real.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
