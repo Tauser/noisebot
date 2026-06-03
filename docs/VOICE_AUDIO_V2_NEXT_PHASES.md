@@ -1618,6 +1618,34 @@ Incremento N6.1 iniciado:
   muda o caminho real de audio. Ela apenas torna N6.1 auditavel antes de um
   dry-run operacional.
 
+Validacao N6.1 pos-flash:
+
+- `/api/audio/playback-v2` expos os novos campos de readiness. Em idle/desarmado:
+  `speaker_owner_dry_run_enabled=false`, `speaker_owner_requested=false`,
+  `speaker_owner_block_reason=DISABLED`, contadores de readiness zerados e
+  `error=ESP_OK`.
+- `codec-v2 health` inicial ficou `healthy=true/status=ok`, zero drops, fila
+  egress zero e worker `running`; `io-v2 status` mostrou RX/TX observados,
+  `rx_dispatch_last_consumers=8`, `tx_owner_last_result=ESP_OK` e zero
+  `dropped_frames`/`i2s_recoveries`.
+- Ao armar pelo namespace Playback v2 (`debug playback-v2 speaker-owner-arm`),
+  o status ficou `speaker_owner_dry_run_enabled=true`,
+  `speaker_owner_requested=true` e `speaker_owner_block_reason=NO_TX`, esperado
+  enquanto ainda nao havia frame de playback.
+- Janela sem SAY real confirmou o dry-run em TX/silencio:
+  `speaker_owner_handoff_ready=true`, `speaker_owner_block_reason=NONE`,
+  zero failures/recoveries e `normal_path_clean=true`.
+- Resposta real curta com dry-run armado validou o caminho SAY: `370/370`
+  chunks SAY recebidos/tocados, zero drops, zero falhas de write/commit,
+  `speaker_owner_handoff_ready=true`, `speaker_owner_active=true`,
+  `speaker_owner_block_reason=NONE`, Audio IO sem drops/recoveries e Codec v2
+  sem drops/erro. O pacote egress residual (`opus_egress_queue_count=1`) foi
+  drenado apos o teste.
+- Rollback operacional confirmado: `debug playback-v2 speaker-owner-disarm`
+  voltou para `speaker_owner_dry_run_enabled=false`,
+  `speaker_owner_requested=false`, `speaker_owner_block_reason=DISABLED`;
+  `codec-v2 health` final voltou `healthy=true/status=ok`, fila egress zero.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
