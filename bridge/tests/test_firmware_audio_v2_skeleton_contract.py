@@ -508,6 +508,11 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "audio_playback_service_v2_speaker_should_end_idle()" in audio_service
     assert "audio_playback_service_v2_say_cancel_active(" in audio_service
     assert "audio_playback_service_v2_say_drop_listening(" in audio_service
+    bridge_say_chunk = audio_service[
+        audio_service.index("void audio_service_bridge_say_chunk("):
+        audio_service.index("/* ── Configuração")
+    ]
+    assert "audio_playback_service_v2_say_cancel_active(" not in bridge_say_chunk
     assert "audio_io_service_v2_speaker_handoff_note_playback_frame(false, wr);" not in audio_service
     assert "bridge_say_observer" in web
     assert "bridge_say_queue_owner" in web
@@ -544,6 +549,12 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "static void playback_v2_speaker_commit_frame(" in playback_c
     assert "audio_io_service_v2_speaker_handoff_note_playback_frame(false, result)" in playback_c
     assert "static bool playback_v2_speaker_note_empty(" in playback_c
+    drop_listening = playback_c[
+        playback_c.index("void audio_playback_service_v2_say_drop_listening("):
+        playback_c.index("void audio_playback_service_v2_say_end_idle(")
+    ]
+    assert "xQueueReset(queue)" in drop_listening
+    assert "s_status.say_chunks_cancelled += pending;" in drop_listening
     assert "audio_io_service_v2_set_speaker_handoff_owner_requested(" in playback_c
     assert "audio_hal_" not in playback_c
 

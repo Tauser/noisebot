@@ -1846,7 +1846,6 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
     bool started = false;
     if (listening) {
         s.play_state = PLAY_IDLE;
-        (void)audio_playback_service_v2_say_cancel_active();
     } else if (s.play_state != PLAY_BRIDGE_SAY) {
         s.play_state = PLAY_BRIDGE_SAY;
         started = true;

@@ -489,11 +489,22 @@ uint32_t audio_playback_service_v2_say_cancel_active(void)
 
 void audio_playback_service_v2_say_drop_listening(void)
 {
+    QueueHandle_t queue = s_say_q;
+    uint32_t pending = 0U;
+    if (queue != NULL) {
+        pending = (uint32_t)uxQueueMessagesWaiting(queue);
+        xQueueReset(queue);
+    }
+
     taskENTER_CRITICAL(&s_mux);
     s_status.bridge_say_observer = true;
     s_status.bridge_say_queue_owner = (s_say_q != NULL);
     s_status.say_chunks_dropped++;
     s_status.say_chunks_dropped_listening++;
+    s_status.say_chunks_cancelled += pending;
+    if (pending > 0U) {
+        s_status.say_cancel_count++;
+    }
     s_status.say_queue_count = 0;
     playback_v2_reset_speaker_empty_locked();
     s_status.last_error = ESP_OK;

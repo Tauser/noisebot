@@ -1502,6 +1502,19 @@ Validacao N5.9 pos-flash:
 - Warnings nao bloqueantes observados no agregado: `opus_egress_queue_count=1`
   e `heap_internal_free_kb baixo: 11`.
 
+Incremento N5.10 iniciado:
+
+- A politica de SAY recebido durante listening ficou mais encapsulada em
+  Playback v2: `audio_playback_service_v2_say_drop_listening()` agora tambem
+  limpa a fila SAY pendente e contabiliza cancelamento dos chunks antigos.
+- `audio_service_bridge_say_chunk()` continua decidindo o estado legado
+  (`PLAY_IDLE` durante escuta ou `PLAY_BRIDGE_SAY` no inicio da fala), mas nao
+  combina mais manualmente `say_cancel_active()` com `say_drop_listening()` para
+  esse caso.
+- Esta etapa nao muda HAL fisico, wake, VAD, Capture v2, Activity v2, Codec v2,
+  Opus/PCM16 ou policy; apenas move a semantica de descarte/cancelamento de SAY
+  antigo durante listening para o dono da fila.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
