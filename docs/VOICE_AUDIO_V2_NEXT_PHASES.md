@@ -2024,6 +2024,13 @@ barge-stop), e Codec v2 terminou com `packet_drops=0`,
 Com curto, medio, `pare` e barge/no-echo verdes, N2 esta fechada como decisor
 controlado opt-in.
 
+Incremento N2C local em 2026-06-03: Activity v2 foi promovido de opt-in manual
+para default controlado. `NB_CFG_DEFAULT_V2_ACT_DEC` passa a `1` e o
+`config_manager` aplica uma migracao one-shot via `v2act_mig`, para que placas
+que ja tinham `v2act_dec=false` por rollback manual sejam promovidas no primeiro
+boot deste firmware. Depois da migracao, `voice_audio_v2_activity_decider_enabled=false`
+continua sendo rollback persistente e nao e religado automaticamente.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

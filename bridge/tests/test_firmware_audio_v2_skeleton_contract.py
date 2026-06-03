@@ -713,9 +713,11 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
     assert '#define NB_CFG_KEY_V2_CAP_EN  "v2cap_en"' in config_keys
     assert '#define NB_CFG_KEY_V2_CAP_TX  "v2cap_tx_en"' in config_keys
     assert '#define NB_CFG_KEY_V2_ACT_DEC "v2act_dec"' in config_keys
+    assert '#define NB_CFG_KEY_V2_ACT_MIG "v2act_mig"' in config_keys
     assert "#define NB_CFG_DEFAULT_V2_CAP_EN          0" in config_keys
     assert "#define NB_CFG_DEFAULT_V2_CAP_TX          0" in config_keys
-    assert "#define NB_CFG_DEFAULT_V2_ACT_DEC         0" in config_keys
+    assert "#define NB_CFG_DEFAULT_V2_ACT_DEC         1" in config_keys
+    assert "#define NB_CFG_DEFAULT_V2_ACT_MIG         0" in config_keys
     assert "NB_CFG_SCHEMA_VERSION  3U" in config_keys
     assert "bool      config_get_voice_audio_v2_capture_enabled(void);" in config_h
     assert "esp_err_t config_set_voice_audio_v2_capture_enabled(bool enabled);" in config_h
@@ -752,7 +754,7 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
     assert "voice_capture_session_v2_finish(" in audio_service
 
 
-def test_voice_activity_v2_decider_flag_is_default_off_and_observable():
+def test_voice_activity_v2_decider_flag_is_default_controlled_and_observable():
     web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
     audio_service = (COMPONENTS / "audio_service" / "audio_service.c").read_text(
         encoding="utf-8"
@@ -764,9 +766,11 @@ def test_voice_activity_v2_decider_flag_is_default_off_and_observable():
     config_keys = CONFIG_KEYS.read_text(encoding="utf-8")
 
     assert '#define NB_CFG_KEY_V2_ACT_DEC "v2act_dec"' in config_keys
-    assert "#define NB_CFG_DEFAULT_V2_ACT_DEC         0" in config_keys
+    assert '#define NB_CFG_KEY_V2_ACT_MIG "v2act_mig"' in config_keys
+    assert "#define NB_CFG_DEFAULT_V2_ACT_DEC         1" in config_keys
     assert "NB_CFG_SCHEMA_VERSION  3U" in config_keys
     assert "NB_CFG_KEY_V2_ACT_DEC" in config_c
+    assert "NB_CFG_KEY_V2_ACT_MIG" in config_c
     assert "config_get_voice_audio_v2_activity_decider_enabled" in config_c
     assert "config_set_voice_audio_v2_activity_decider_enabled" in config_c
     assert "voice_audio_v2_activity_decider_enabled" in web
