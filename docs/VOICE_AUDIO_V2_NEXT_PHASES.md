@@ -2008,6 +2008,22 @@ ficou sem overflow/drop de fila; os `say_chunks_dropped_listening=109` foram
 descartes de SAY durante escuta/barge-stop, esperados nesse caminho. Codec v2
 permaneceu sem `packet_drops`/egress drops. A flag foi desligada ao final.
 
+Gate barge/no-echo N2B em 2026-06-03: com a flag ligada, o roteiro
+`ww -> me conte uma historia longa`, interrupcao durante fala com `ww -> pare`
+e silencio posterior passou. `/ai/metrics` registrou o turno da historia
+(`turn_id=11`) como `outcome=interrupted` e `discard_reason=barge_in`, seguido
+do turno `pare` (`turn_id=12`) como `local_stop`, `direct_stop`,
+`last_reply=Pronto, parei.` e sem LLM. Nenhum novo turno apareceu apos a janela
+manual de silencio. No firmware, Activity v2 encerrou sem divergencia
+(`activity_decider_end_used=true`, `activity_end_silence_ms=608`,
+`decision_diverged=false`), Capture v2 marcou `source=BARGE_IN` com TX owner e
+zero drops, Playback v2 ficou sem overflow/drop de fila (`say_queue_count=0`,
+`say_chunks_dropped_queue_full=0`; drops de listening/cancel esperados no
+barge-stop), e Codec v2 terminou com `packet_drops=0`,
+`opus_egress_packet_drops=0` e fila egress zero. A flag foi desligada ao final.
+Com curto, medio, `pare` e barge/no-echo verdes, N2 esta fechada como decisor
+controlado opt-in.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
