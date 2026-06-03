@@ -19,6 +19,8 @@ extern "C" {
 #define NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS  32U
 #define NB_AUDIO_PLAYBACK_V2_SAMPLE_RATE_HZ 16000U
 #define NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES  256U
+#define NB_AUDIO_PLAYBACK_V2_CHUNK_MS       16U
+#define NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS 1200U
 #define NB_AUDIO_PLAYBACK_V2_PROBE_HZ       440U
 
 typedef struct {
@@ -98,8 +100,7 @@ bool audio_playback_service_v2_speaker_write_next_frame(
     esp_err_t *result);
 void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
                                                     esp_err_t result);
-bool audio_playback_service_v2_speaker_note_empty(uint32_t chunk_ms,
-                                                  uint32_t idle_end_ms);
+bool audio_playback_service_v2_speaker_should_end_idle(void);
 uint32_t audio_playback_service_v2_say_cancel(void);
 uint32_t audio_playback_service_v2_say_pending_count(void);
 

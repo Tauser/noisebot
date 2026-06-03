@@ -426,8 +426,8 @@ void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
     taskEXIT_CRITICAL(&s_mux);
 }
 
-bool audio_playback_service_v2_speaker_note_empty(uint32_t chunk_ms,
-                                                  uint32_t idle_end_ms)
+static bool playback_v2_speaker_note_empty(uint32_t chunk_ms,
+                                           uint32_t idle_end_ms)
 {
     taskENTER_CRITICAL(&s_mux);
     s_status.speaker_empty_polls++;
@@ -441,6 +441,13 @@ bool audio_playback_service_v2_speaker_note_empty(uint32_t chunk_ms,
     s_status.last_error = ESP_OK;
     taskEXIT_CRITICAL(&s_mux);
     return should_end;
+}
+
+bool audio_playback_service_v2_speaker_should_end_idle(void)
+{
+    return playback_v2_speaker_note_empty(
+        NB_AUDIO_PLAYBACK_V2_CHUNK_MS,
+        NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS);
 }
 
 uint32_t audio_playback_service_v2_say_cancel(void)

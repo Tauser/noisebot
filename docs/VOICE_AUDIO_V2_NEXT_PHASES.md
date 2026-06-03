@@ -1289,6 +1289,22 @@ Incremento N5.1 iniciado:
   `dropped_frames`/`i2s_recoveries`/handoff failures, Codec v2 `healthy=true`
   com zero drops/erros. O unico warning foi `heap_internal_free_kb baixo: 11`.
 
+Incremento N5.2 iniciado:
+
+- A politica de idle/end do SAY deixou de ficar parametrizada no
+  `audio_service.c`: Playback v2 agora expoe
+  `audio_playback_service_v2_speaker_should_end_idle()`, com os limiares
+  `NB_AUDIO_PLAYBACK_V2_CHUNK_MS=16` e
+  `NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS=1200` no contrato v2.
+- O helper parametrizado de empty/idle ficou privado dentro de Playback v2, e o
+  estado legado `bridge_say_empty_ms` foi removido de `audio_service.c`.
+- `audio_service.c` ainda aplica a transicao `PLAY_BRIDGE_SAY -> PLAY_IDLE` e
+  emite `NB_AUDIO_EVT_PLAYBACK_END`, porque o event callback e o estado legado
+  ainda moram nele. O dono fisico do HAL continua inalterado.
+- Gate esperado: repetir o mesmo `playback-v2 delta --wait-s` com resposta real
+  curta e confirmar fila SAY final zero, zero drops/cancelamentos, zero falhas
+  de write/commit, Audio IO v2 sem drops/recoveries e Codec v2 sem drops/erros.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

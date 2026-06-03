@@ -216,7 +216,6 @@ static struct {
     /* Bridge (Etapa 12.2) */
     bool                 bridge_tx_active;   /* true = streaming mic para bridge */
     bool                 bridge_say_playing; /* true = play_state == PLAY_BRIDGE_SAY */
-    uint32_t             bridge_say_empty_ms;/* tolera jitter antes de encerrar  */
 
     /* Sessão de escuta (Etapa 12.3) */
     bool                 listen_session_active;       /* sessão aberta          */
@@ -236,7 +235,6 @@ static struct {
     bool                 listen_capture_v2_tx_owner;  /* v2 envia VOICE_START/CHUNK/END */
 } s;
 
-#define BRIDGE_SAY_IDLE_END_MS  1200U
 static uint32_t         s_bridge_say_drop_count;
 static uint32_t         s_bridge_say_rx_count;
 static uint32_t         s_bridge_say_play_count;
@@ -486,7 +484,6 @@ static bool audio_service_play_bridge_say_chunk(void)
             NULL,
             &n,
             &wr)) {
-        s.bridge_say_empty_ms = 0;
         audio_note_spk_result(wr, "bridge_say", n, false);
         if ((++s_bridge_say_play_count % 64U) == 1U) {
             ESP_LOGI(TAG, "Bridge SAY playback chunks=%lu q=%u",
@@ -498,12 +495,10 @@ static bool audio_service_play_bridge_say_chunk(void)
 
     /* Fila vazia pode ser jitter de TCP/TTS. Segura o modo SAY por
      * uma janela curta antes de encerrar para não cortar frases. */
-    if (audio_playback_service_v2_speaker_note_empty(CHUNK_DURATION_MS,
-                                                     BRIDGE_SAY_IDLE_END_MS)) {
+    if (audio_playback_service_v2_speaker_should_end_idle()) {
         xSemaphoreTake(s.mutex, portMAX_DELAY);
         s.play_state = PLAY_IDLE;
         s.bridge_say_playing = false;
-        s.bridge_say_empty_ms = 0;
         xSemaphoreGive(s.mutex);
         audio_playback_service_v2_note_say_idle();
         if (s.event_cb) {
@@ -1314,7 +1309,6 @@ static void audio_task(void *arg)
             xSemaphoreTake(s.mutex, portMAX_DELAY);
             s.play_state = PLAY_IDLE;
             s.bridge_say_playing = false;
-            s.bridge_say_empty_ms = 0;
             xSemaphoreGive(s.mutex);
         }
 
@@ -1609,7 +1603,6 @@ esp_err_t audio_service_init(void)
     s.rec_bridge_tx_source = false;
     s.bridge_tx_active            = false;
     s.bridge_say_playing          = false;
-    s.bridge_say_empty_ms         = 0;
     s.listen_session_active       = false;
     s.bridge_start_sent           = false;
     s.bridge_audio_sent           = false;
@@ -1693,7 +1686,6 @@ esp_err_t audio_play_stop(void)
         s.bridge_say_playing) {
         s.play_state = PLAY_STOP;
         s.bridge_say_playing = false;
-        s.bridge_say_empty_ms = 0;
         (void)audio_playback_service_v2_say_cancel();
     }
     xSemaphoreGive(s.mutex);
@@ -1874,7 +1866,6 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
     if (listening) {
         s.play_state = PLAY_IDLE;
         s.bridge_say_playing = false;
-        s.bridge_say_empty_ms = 0;
         (void)audio_playback_service_v2_say_cancel();
     }
     xSemaphoreGive(s.mutex);
@@ -1893,7 +1884,6 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         xSemaphoreTake(s.mutex, portMAX_DELAY);
         s.play_state      = PLAY_BRIDGE_SAY;
         s.bridge_say_playing = true;
-        s.bridge_say_empty_ms = 0;
         xSemaphoreGive(s.mutex);
         if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, 0);
         wake_service_rearm();
@@ -1905,7 +1895,6 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
                      (unsigned long)s_bridge_say_rx_count,
                      (unsigned)audio_playback_service_v2_say_pending_count());
         }
-        s.bridge_say_empty_ms = 0;
     } else {
         s_bridge_say_drop_count++;
         if ((s_bridge_say_drop_count % 32U) == 1U) {
