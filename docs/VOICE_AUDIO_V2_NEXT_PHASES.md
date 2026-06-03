@@ -1750,6 +1750,21 @@ Incremento N6.4 iniciado:
   `speaker_owner_block_reason=DISABLED`), fila SAY zero e Codec health
   `status=ok`, sem warnings.
 
+Incremento N6.5 iniciado:
+
+- O `speaker-owner-gate` passou a emitir um resumo de promocao:
+  `real_owner_candidate`, `real_owner_candidate_status` e
+  `real_owner_candidate_blockers`.
+- O candidato so fica pronto quando o gate roda com `--require-say`, nao tem
+  issues, nao tem `delta_error`, nao detecta reset de contadores, fica
+  `speaker_owner_handoff_ready=true`, `speaker_owner_active=true`, observa
+  `non_silence_frames>0` e confirma `speaker-owner-disarm` no rollback.
+- Warnings operacionais, como heap interno baixo, deixam o candidato em
+  `ready_with_warnings`; issues ou falta de SAY/active/non-silence bloqueiam.
+- Esta etapa nao liga owner real e nao altera firmware/HAL. Ela apenas separa
+  "dry-run saudavel" de "candidato forte o bastante para desenhar o proximo
+  incremento controlado".
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

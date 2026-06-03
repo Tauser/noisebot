@@ -1112,6 +1112,30 @@ def _run_playback_v2_speaker_owner_gate(
 
     ok = not issues
     status = "fail" if issues else "warn" if warnings else "ok"
+    real_owner_candidate_blockers: list[str] = []
+    if not require_say:
+        real_owner_candidate_blockers.append("gate executado sem --require-say")
+    if issues:
+        real_owner_candidate_blockers.extend(str(item) for item in issues)
+    if not bool(after.get("speaker_owner_handoff_ready", False)):
+        real_owner_candidate_blockers.append("speaker_owner_handoff_ready=false")
+    if not bool(after.get("speaker_owner_active", False)):
+        real_owner_candidate_blockers.append("speaker_owner_active=false")
+    if speaker_owner_non_silence_frames == 0:
+        real_owner_candidate_blockers.append("sem frame nao silencioso")
+    if delta_error:
+        real_owner_candidate_blockers.append("delta_error presente")
+    if bool(delta.get("counter_reset_detected", False)):
+        real_owner_candidate_blockers.append("counter_reset_detected=true")
+    if not bool(disarmed.get("ok", False)):
+        real_owner_candidate_blockers.append("rollback/disarm falhou")
+    real_owner_candidate = not real_owner_candidate_blockers
+    if real_owner_candidate and warnings:
+        real_owner_candidate_status = "ready_with_warnings"
+    elif real_owner_candidate:
+        real_owner_candidate_status = "ready"
+    else:
+        real_owner_candidate_status = "blocked"
     return {
         "ok": ok,
         "status": status,
@@ -1129,6 +1153,9 @@ def _run_playback_v2_speaker_owner_gate(
         "min_say_chunks": min_say_chunks,
         "required_say_chunks": required_say_chunks,
         "counter_reset_detected": bool(delta.get("counter_reset_detected", False)),
+        "real_owner_candidate": real_owner_candidate,
+        "real_owner_candidate_status": real_owner_candidate_status,
+        "real_owner_candidate_blockers": real_owner_candidate_blockers,
         "frames": after.get("speaker_owner_frames"),
         "samples": after.get("speaker_owner_samples"),
         "silence_frames": after.get("speaker_owner_silence_frames"),
@@ -1157,6 +1184,10 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
             f"required_chunks={payload.get('required_say_chunks')}",
             f"- counter_reset_detected: {payload.get('counter_reset_detected')}",
             f"- delta_error: {payload.get('delta_error') or 'nenhum'}",
+            f"- real_owner_candidate: {payload.get('real_owner_candidate')} "
+            f"status={payload.get('real_owner_candidate_status')}",
+            f"- real_owner_candidate_blockers: "
+            f"{', '.join(str(item) for item in payload.get('real_owner_candidate_blockers', []) or []) or 'nenhum'}",
             f"- frames/samples: {payload.get('frames')}/{payload.get('samples')}",
             f"- non_silence_frames: {payload.get('non_silence_frames')}",
             f"- delta.received: {payload.get('say_chunks_received_delta')}",
