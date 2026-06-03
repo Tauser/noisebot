@@ -67,11 +67,6 @@ typedef struct {
     esp_err_t last_error;
 } nb_audio_playback_v2_status_t;
 
-typedef struct {
-    int16_t samples[NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES];
-    uint16_t count;
-} nb_audio_playback_v2_say_chunk_t;
-
 typedef esp_err_t (*nb_audio_playback_v2_speaker_write_cb_t)(
     const int16_t *samples,
     uint16_t sample_count,

@@ -15,6 +15,11 @@
 #define PLAYBACK_PROBE_MAX_AMP          6000U
 #define PLAYBACK_SPEAKER_MAX_VOLUME     100U
 
+typedef struct {
+    int16_t samples[NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES];
+    uint16_t count;
+} nb_audio_playback_v2_say_chunk_t;
+
 static nb_audio_playback_v2_status_t s_status;
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_phase;

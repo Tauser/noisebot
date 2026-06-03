@@ -468,6 +468,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);" in playback_h
     assert "nb_audio_playback_v2_speaker_write_cb_t" in playback_h
     assert "audio_playback_service_v2_speaker_write_next_frame(" in playback_h
+    assert "nb_audio_playback_v2_say_chunk_t" not in playback_h
     assert "audio_playback_service_v2_speaker_next_frame(" not in playback_h
     assert "audio_playback_service_v2_speaker_commit_frame(" not in playback_h
     assert "audio_playback_service_v2_say_accept(" in playback_h
@@ -528,6 +529,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert '\\"speaker_empty_ms\\":%lu' in web
     assert '\\"speaker_idle_end_count\\":%lu' in web
     assert "say_chunks_received" in web
+    assert "} nb_audio_playback_v2_say_chunk_t;" in playback_c
     assert "playback_v2_say_dequeue(out)" in playback_c
     assert "static bool playback_v2_speaker_next_frame(" in playback_c
     assert "volume_percent" in playback_c

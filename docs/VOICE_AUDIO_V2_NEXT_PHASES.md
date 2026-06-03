@@ -1452,6 +1452,19 @@ Incremento N5.7 iniciado:
   Os warnings finais foram os conhecidos `opus_egress_queue_count=1` e
   `heap_internal_free_kb baixo: 11`.
 
+Incremento N5.8 iniciado:
+
+- O tipo interno `nb_audio_playback_v2_say_chunk_t` deixou de ser exposto no
+  header publico de Playback v2. Ele agora fica privado em
+  `audio_playback_service_v2.c`, porque nenhuma API publica recebe ou devolve
+  chunks SAY diretamente apos N5.7.
+- O contrato publico continua aceitando PCM por
+  `audio_playback_service_v2_say_accept()` e escrevendo speaker por
+  `audio_playback_service_v2_speaker_write_next_frame()`.
+- Esta etapa nao muda fila SAY, HAL fisico, wake, captura, Activity v2, Codec v2
+  ou rollback; apenas reduz a superficie de tipos visiveis e atualiza o teste de
+  contrato para proteger esse encapsulamento.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
