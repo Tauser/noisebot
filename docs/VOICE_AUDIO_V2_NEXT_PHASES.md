@@ -1372,6 +1372,20 @@ Incremento N5.4 iniciado:
   com zero drops/erros. O unico warning final foi `heap_internal_free_kb baixo:
   11`.
 
+Incremento N5.5 iniciado:
+
+- Os contadores locais duplicados de SAY em `audio_service.c`
+  (`s_bridge_say_*_count`) foram removidos. A fonte oficial de telemetria de
+  received/played/dropped/cancelled passa a ser somente Playback v2.
+- Os logs periodicos baseados nesses contadores legados tambem foram removidos;
+  o `audio_service` continua apenas iniciando o modo `PLAY_BRIDGE_SAY`,
+  rearmando wake e entregando chunks para `audio_playback_service_v2_say_accept()`.
+- Esta etapa nao muda HAL fisico, fila SAY, wake, captura, Activity v2, Codec v2
+  ou rollback. Gate esperado: build limpo, flash, baseline sem issues e turno
+  real curto com fila SAY final zero, received=played, zero drops/cancelamentos,
+  zero falhas de speaker write/commit, Audio IO v2 sem drops/recoveries e Codec
+  v2 sem drops/erros.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
