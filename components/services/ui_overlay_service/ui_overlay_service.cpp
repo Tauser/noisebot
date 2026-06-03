@@ -145,6 +145,23 @@ static void draw_sleep_bubble(LGFX_Sprite *spr, int64_t now_us,
 static constexpr uint8_t OVERLAY_Z_ORDER = 30;
 static constexpr int TEXT_MAX_LEN = 129; /* 128 bytes + NUL, igual ao bridge */
 
+static const lgfx::IFont * const UI_FONT_BODY  = &lgfx::fonts::lv_font_montserrat_16;
+static const lgfx::IFont * const UI_FONT_SMALL = &lgfx::fonts::lv_font_montserrat_14;
+static const lgfx::IFont * const UI_FONT_TITLE = &lgfx::fonts::lv_font_montserrat_20;
+static const lgfx::IFont * const UI_FONT_CLOCK = &lgfx::fonts::lv_font_montserrat_48;
+
+static void ui_set_font(LGFX_Sprite *spr, const lgfx::IFont *font)
+{
+    spr->setFont(font);
+    spr->setTextSize(1);
+}
+
+static void ui_reset_font(LGFX_Sprite *spr)
+{
+    spr->setFont(&lgfx::fonts::Font0);
+    spr->setTextSize(1);
+}
+
 typedef enum {
     OVERLAY_NONE = 0,
     OVERLAY_VOLUME,
@@ -309,13 +326,12 @@ static void draw_timer_badge(LGFX_Sprite *spr,
     spr->drawLine(cx, cy, cx + 4, cy + 2, fg);
     spr->drawLine(cx - 3, y + 1, cx + 3, y + 1, fg);
 
-    spr->setFont(&lgfx::fonts::Font0);
-    spr->setTextSize(2);
+    ui_set_font(spr, UI_FONT_BODY);
     spr->setTextColor(shadow);
-    spr->drawString(label, x + 23, y + 1);
+    spr->drawString(label, x + 24, y + 2);
     spr->setTextColor(fg);
-    spr->drawString(label, x + 22, y);
-    spr->setTextSize(1);
+    spr->drawString(label, x + 23, y + 1);
+    ui_reset_font(spr);
 }
 
 static bool parse_percent_text(const char *text, uint8_t *percent)
@@ -425,8 +441,10 @@ static void draw_volume_overlay(LGFX_Sprite *spr,
     char label[8];
     std::snprintf(label, sizeof(label), "%u%%", (unsigned)state->percent);
     spr->setTextColor(fg, TFT_BLACK);
-    spr->setTextSize(2);
-    spr->drawString(label, x + w - 52, y + 18);
+    ui_set_font(spr, UI_FONT_TITLE);
+    int label_w = spr->textWidth(label);
+    spr->drawString(label, x + w - 18 - label_w, y + 16);
+    ui_reset_font(spr);
 }
 
 typedef enum {
@@ -589,13 +607,12 @@ static void draw_message_bubble(LGFX_Sprite *spr,
     pt_text_mark_t marks[32];
     size_t mark_count = 0;
 
-    spr->setFont(&lgfx::fonts::Font0);
-    spr->setTextSize(2);
+    ui_set_font(spr, UI_FONT_BODY);
     build_pt_display_text(spr, text, display_text, sizeof(display_text),
                           marks, &mark_count, 32U);
 
     int text_w = spr->textWidth(display_text);
-    int text_h = 16;
+    int text_h = spr->fontHeight();
     int max_w = w - 18;
     int desired_w = text_w + (pad_x * 2);
     if (desired_w < 128) desired_w = 128;
@@ -624,7 +641,7 @@ static void draw_message_bubble(LGFX_Sprite *spr,
     if (text_w <= text_area_w) {
         spr->drawString(display_text, text_x, text_y);
         draw_pt_marks(spr, text_x, text_y, marks, mark_count, fg);
-        spr->setFont(&lgfx::fonts::Font0);
+        ui_reset_font(spr);
         return;
     }
 
@@ -643,7 +660,7 @@ static void draw_message_bubble(LGFX_Sprite *spr,
     spr->drawString(display_text, text_x - offset, text_y);
     draw_pt_marks(spr, text_x - offset, text_y, marks, mark_count, fg);
     spr->clearClipRect();
-    spr->setFont(&lgfx::fonts::Font0);
+    ui_reset_font(spr);
 }
 
 static void draw_text_overlay(LGFX_Sprite *spr,
@@ -682,20 +699,22 @@ static void draw_clock_overlay(LGFX_Sprite *spr,
     spr->fillRect(x, y, w, h, bg);
 
     spr->setTextColor(fg, bg);
-    spr->setTextSize(6);
+    ui_set_font(spr, UI_FONT_CLOCK);
     int label_w = spr->textWidth(time_label);
-    spr->drawString(time_label, x + ((w - label_w) / 2), y + 72);
+    spr->drawString(time_label, x + ((w - label_w) / 2), y + 64);
 
     spr->setTextColor(soft, bg);
-    spr->setTextSize(2);
+    ui_set_font(spr, UI_FONT_TITLE);
     const char *city = clock_city_label();
     int city_w = spr->textWidth(city);
     spr->drawString(city, x + ((w - city_w) / 2), y + 146);
     if (date_label[0] != '\0') {
         spr->setTextColor(dim, bg);
+        ui_set_font(spr, UI_FONT_BODY);
         int date_w = spr->textWidth(date_label);
         spr->drawString(date_label, x + ((w - date_w) / 2), y + 171);
     }
+    ui_reset_font(spr);
 }
 
 static void draw_status_overlay(LGFX_Sprite *spr,
@@ -728,10 +747,10 @@ static void draw_status_overlay(LGFX_Sprite *spr,
     spr->drawLine(x + 26, y + 34, x + 37, y + 21, bg);
 
     spr->setTextColor(fg, bg);
-    spr->setTextSize(2);
+    ui_set_font(spr, UI_FONT_TITLE);
     spr->drawString("Status", x + 54, y + 10);
     spr->setTextColor(dim, bg);
-    spr->setTextSize(1);
+    ui_set_font(spr, UI_FONT_SMALL);
     if (health >= 0 && attention >= 0) {
         char line[32];
         std::snprintf(line, sizeof(line), "saude %d%%  atencao %d%%", health, attention);
@@ -739,6 +758,7 @@ static void draw_status_overlay(LGFX_Sprite *spr,
     } else {
         spr->drawString("operacional", x + 56, y + 39);
     }
+    ui_reset_font(spr);
 }
 
 static void draw_connection_overlay(LGFX_Sprite *spr,
@@ -764,11 +784,12 @@ static void draw_connection_overlay(LGFX_Sprite *spr,
     spr->fillCircle(x + 30, y + 36, 3, fg);
 
     spr->setTextColor(fg, bg);
-    spr->setTextSize(2);
+    ui_set_font(spr, UI_FONT_TITLE);
     spr->drawString(label, x + 58, y + 10);
     spr->setTextColor(dim, bg);
-    spr->setTextSize(1);
+    ui_set_font(spr, UI_FONT_SMALL);
     spr->drawString(line, x + 60, y + 38);
+    ui_reset_font(spr);
 }
 
 static void toast_colors(LGFX_Sprite *spr,

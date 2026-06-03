@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BEHAVIOR_ENGINE = ROOT / "components" / "behavior" / "behavior_engine" / "behavior_engine.c"
+UI_OVERLAY = ROOT / "components" / "services" / "ui_overlay_service" / "ui_overlay_service.cpp"
 
 
 def _source() -> str:
@@ -70,3 +71,14 @@ def test_config_brightness_endpoint_applies_led_runtime_only():
     assert "config_set_brightness(brightness)" in block
     assert "led_set_brightness(brightness);" in block
     assert "render_service_set_brightness(brightness);" not in block
+
+
+def test_ui_overlay_uses_stackchan_montserrat_font_family():
+    src = UI_OVERLAY.read_text(encoding="utf-8")
+
+    assert "lv_font_montserrat_14" in src
+    assert "lv_font_montserrat_16" in src
+    assert "lv_font_montserrat_20" in src
+    assert "lv_font_montserrat_48" in src
+    assert "ui_set_font(spr, UI_FONT_BODY);" in src
+    assert "ui_set_font(spr, UI_FONT_TITLE);" in src
