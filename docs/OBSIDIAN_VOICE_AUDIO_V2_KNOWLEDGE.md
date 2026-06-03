@@ -217,7 +217,10 @@ Incremento atual da Fase N3:
   `speaker_owner_real_armed` quando o preflight do dry-run ja viu SAY real nao
   silencioso, owner active/ready, zero drops SAY/listening, zero falhas de
   write/commit e zero recoveries. Caso contrario,
-  `speaker_owner_real_block_reason` explica o bloqueio.
+  `speaker_owner_real_block_reason` explica o bloqueio. A validacao de bancada
+  confirmou bloqueio sem gate (`DISABLED`) e armamento real apenas depois de
+  uma fala com 360 chunks SAY recebidos/tocados, zero drops e zero falhas,
+  seguida de `real-disarm` e dry-run desligado.
 
 ### Wake Word
 

@@ -322,7 +322,10 @@ Invariantes:
   ativo, owner solicitado, handoff ready, frame SAY nao silencioso, zero falhas
   e zero recoveries. Drops SAY/listening e falhas de write/commit tambem
   bloqueiam o armamento como `TX_ERROR`. Se o preflight falhar,
-  `speaker_owner_real_block_reason` explica o bloqueio.
+  `speaker_owner_real_block_reason` explica o bloqueio. A validacao de bancada
+  fechou o corrimao com `real-arm` bloqueado sem gate, depois armado somente
+  apos 360/360 chunks SAY sem drops/falhas, seguido de `real-disarm` e dry-run
+  desligado.
 
 ### Voice Activity v2
 

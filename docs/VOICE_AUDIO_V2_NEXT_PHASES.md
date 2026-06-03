@@ -1816,10 +1816,14 @@ Incremento N6.7 iniciado:
   mostrou preflight ativo, mas tambem revelou `say_chunks_dropped=12`; o
   `real-arm` foi reforcado para bloquear qualquer drop SAY/listening ou falha
   de write/commit como `TX_ERROR`.
-- Proximo aceite apos flash: baseline deve mostrar `speaker_owner_real_armed=false`;
-  `speaker-owner-real-arm` sem gate deve bloquear; durante/apos gate com SAY real
-  deve armar somente se N6.6 continuar limpo, e `real-disarm` deve voltar ao
-  estado seguro com fila SAY zero.
+- Validacao apos o flash do reforco fechou o aceite do corrimao: baseline com
+  `speaker_owner_real_armed=false`, `real-arm` sem gate bloqueado como
+  `DISABLED` e sem traceback no CLI, Codec v2 `status=ok`, dry-run armado em
+  fala real via Ops API com 360 chunks SAY recebidos/tocados, zero drops,
+  zero falhas de write/commit, `speaker_owner_handoff_ready=true`; so entao
+  `speaker-owner-real-arm` armou (`speaker_owner_real_armed=true`). O teste
+  terminou com `real-disarm` e `speaker-owner-disarm`, deixando
+  `speaker_owner_real_armed=false`, dry-run desligado e fila SAY final zero.
 
 ## Ordem Recomendada
 
