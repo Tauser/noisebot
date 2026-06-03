@@ -461,11 +461,15 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert '{ .uri = "/api/audio/playback-v2/stop"' in web
     assert '{ .uri = "/api/audio/playback-v2/speaker-owner/arm"' in web
     assert '{ .uri = "/api/audio/playback-v2/speaker-owner/disarm"' in web
+    assert '{ .uri = "/api/audio/playback-v2/speaker-owner/real-arm"' in web
+    assert '{ .uri = "/api/audio/playback-v2/speaker-owner/real-disarm"' in web
     assert "audio_service_is_busy()" in web
     assert "esp_err_t audio_playback_service_v2_probe_start(" in playback_h
     assert "bool audio_playback_service_v2_fill_probe_chunk(" in playback_h
     assert "esp_err_t audio_playback_service_v2_speaker_owner_arm(void);" in playback_h
     assert "esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);" in playback_h
+    assert "esp_err_t audio_playback_service_v2_speaker_owner_real_arm(void);" in playback_h
+    assert "esp_err_t audio_playback_service_v2_speaker_owner_real_disarm(void);" in playback_h
     assert "nb_audio_playback_v2_speaker_write_cb_t" in playback_h
     assert "audio_playback_service_v2_speaker_write_next_frame(" in playback_h
     assert "nb_audio_playback_v2_say_chunk_t" not in playback_h
@@ -487,6 +491,9 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "bool speaker_owner_candidate;" in playback_h
     assert "bool speaker_owner_handoff_ready;" in playback_h
     assert "uint32_t speaker_owner_block_reason;" in playback_h
+    assert "bool speaker_owner_real_requested;" in playback_h
+    assert "bool speaker_owner_real_armed;" in playback_h
+    assert "uint32_t speaker_owner_real_block_reason;" in playback_h
     assert "uint32_t speaker_owner_frames;" in playback_h
     assert "uint32_t speaker_owner_samples;" in playback_h
     assert "uint32_t speaker_owner_silence_frames;" in playback_h
@@ -538,6 +545,9 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert '\\"speaker_owner_candidate\\":%s' in web
     assert '\\"speaker_owner_handoff_ready\\":%s' in web
     assert '\\"speaker_owner_block_reason\\":\\"%s\\"' in web
+    assert '\\"speaker_owner_real_requested\\":%s' in web
+    assert '\\"speaker_owner_real_armed\\":%s' in web
+    assert '\\"speaker_owner_real_block_reason\\":\\"%s\\"' in web
     assert '\\"speaker_owner_frames\\":%lu' in web
     assert '\\"speaker_owner_samples\\":%lu' in web
     assert '\\"speaker_owner_silence_frames\\":%lu' in web

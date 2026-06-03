@@ -1797,6 +1797,24 @@ Incremento N6.6 iniciado:
   apenas por `heap_internal_free_kb baixo: 11`. O rollback desarmou Playback v2
   e deixou a fila SAY final em zero.
 
+Incremento N6.7 iniciado:
+
+- Playback v2 ganhou um segundo nivel explicito de armamento:
+  `speaker-owner/real-arm` e `speaker-owner/real-disarm`.
+- O `real-arm` nao troca o dono fisico do HAL e nao faz Playback v2 chamar HAL
+  diretamente. Ele apenas marca `speaker_owner_real_requested/armed` quando o
+  preflight do owner ja esta forte: dry-run ligado, owner solicitado,
+  `speaker_owner_handoff_ready=true`, `speaker_owner_active=true`, frames SAY
+  nao silenciosos observados, zero falhas e zero recoveries.
+- Se o preflight nao estiver verde, `real-arm` retorna conflito e publica
+  `speaker_owner_real_block_reason` (`DISABLED`, `NO_TX`, `TX_ERROR` ou
+  `I2S_RECOVERY`). Esse passo cria o corrimao para o owner real sem alterar
+  wake, captura, codec, Activity v2, fila SAY ou escrita fisica do speaker.
+- Proximo aceite apos flash: baseline deve mostrar `speaker_owner_real_armed=false`;
+  `speaker-owner-real-arm` sem gate deve bloquear; durante/apos gate com SAY real
+  deve armar somente se N6.6 continuar limpo, e `real-disarm` deve voltar ao
+  estado seguro com fila SAY zero.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

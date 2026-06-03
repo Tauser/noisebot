@@ -883,10 +883,14 @@ def test_server_firmware_diag_client_exposes_playback_v2_owner_endpoint(monkeypa
     assert client.audio_playback_v2_status()["ok"]
     assert client.audio_playback_v2_speaker_owner_arm()["ok"]
     assert client.audio_playback_v2_speaker_owner_disarm()["ok"]
+    assert client.audio_playback_v2_speaker_owner_real_arm()["ok"]
+    assert client.audio_playback_v2_speaker_owner_real_disarm()["ok"]
     assert get_paths == ["api/audio/playback-v2"]
     assert post_paths == [
         "api/audio/playback-v2/speaker-owner/arm",
         "api/audio/playback-v2/speaker-owner/disarm",
+        "api/audio/playback-v2/speaker-owner/real-arm",
+        "api/audio/playback-v2/speaker-owner/real-disarm",
     ]
 
 
@@ -1113,6 +1117,18 @@ def test_server_cli_parses_playback_v2_speaker_owner_debug_command() -> None:
     assert args.host == "192.168.1.30"
     assert args.action == "speaker-owner-arm"
     assert args.json
+
+    real_args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "playback-v2",
+        "speaker-owner-real-arm",
+        "--json",
+    ])
+
+    assert real_args.action == "speaker-owner-real-arm"
+    assert real_args.json
 
 
 def test_server_cli_parses_playback_v2_speaker_owner_gate_debug_command() -> None:

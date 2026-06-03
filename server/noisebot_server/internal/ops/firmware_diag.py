@@ -195,6 +195,12 @@ class FirmwareDiagClient:
     def audio_playback_v2_speaker_owner_disarm(self) -> dict[str, Any]:
         return self._post_json("api/audio/playback-v2/speaker-owner/disarm")
 
+    def audio_playback_v2_speaker_owner_real_arm(self) -> dict[str, Any]:
+        return self._post_json("api/audio/playback-v2/speaker-owner/real-arm")
+
+    def audio_playback_v2_speaker_owner_real_disarm(self) -> dict[str, Any]:
+        return self._post_json("api/audio/playback-v2/speaker-owner/real-disarm")
+
     def audio_io_v2_status(self) -> dict[str, Any]:
         payload = self._get_json("api/audio/io-v2")
         if not isinstance(payload, dict):

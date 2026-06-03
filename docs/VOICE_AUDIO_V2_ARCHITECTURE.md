@@ -316,6 +316,12 @@ Invariantes:
   `wake_service_rearm()` e a escrita fisica no HAL, enquanto Playback v2 e dono
   da fila SAY, dos contadores, do preparo/commit e da orquestracao do write via
   callback.
+- Na Fase N6.7, Playback v2 adiciona `speaker-owner/real-arm` como segundo
+  nivel de armamento. Esse endpoint nao move o HAL; ele so marca
+  `speaker_owner_real_requested/armed` quando o preflight ja observou dry-run
+  ativo, owner solicitado, handoff ready, frame SAY nao silencioso, zero falhas
+  e zero recoveries. Se o preflight falhar, `speaker_owner_real_block_reason`
+  explica o bloqueio.
 
 ### Voice Activity v2
 

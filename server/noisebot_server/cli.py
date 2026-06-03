@@ -150,6 +150,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "delta",
             "speaker-owner-arm",
             "speaker-owner-disarm",
+            "speaker-owner-real-arm",
+            "speaker-owner-real-disarm",
             "speaker-owner-gate",
         ],
         nargs="?",
@@ -694,6 +696,10 @@ def run_debug_command(args: argparse.Namespace) -> None:
             payload = client.audio_playback_v2_speaker_owner_arm()
         elif args.action == "speaker-owner-disarm":
             payload = client.audio_playback_v2_speaker_owner_disarm()
+        elif args.action == "speaker-owner-real-arm":
+            payload = client.audio_playback_v2_speaker_owner_real_arm()
+        elif args.action == "speaker-owner-real-disarm":
+            payload = client.audio_playback_v2_speaker_owner_real_disarm()
         else:
             payload = client.audio_playback_v2_status()
 
@@ -1254,6 +1260,9 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
         f"candidate={payload.get('speaker_owner_candidate')} "
         f"handoff_ready={payload.get('speaker_owner_handoff_ready')} "
         f"block={payload.get('speaker_owner_block_reason')}",
+        f"- speaker_owner_real: requested={payload.get('speaker_owner_real_requested')} "
+        f"armed={payload.get('speaker_owner_real_armed')} "
+        f"block={payload.get('speaker_owner_real_block_reason')}",
         f"- speaker_owner_frames: {payload.get('speaker_owner_frames')}/"
         f"{payload.get('speaker_owner_samples')} samples "
         f"silence={payload.get('speaker_owner_silence_frames')} "

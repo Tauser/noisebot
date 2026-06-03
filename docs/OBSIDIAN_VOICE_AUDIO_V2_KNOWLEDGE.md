@@ -212,6 +212,11 @@ Incremento atual da Fase N3:
   callbacks de evento e `wake_service_rearm()` ficam no `audio_service`;
   Playback v2 fica dono da fila SAY, contadores, preparo/commit e orquestracao
   do write por callback.
+- Fase N6.7 adicionou `speaker-owner/real-arm`/`real-disarm` como segundo nivel
+  de armamento. O endpoint nao muda o HAL: ele so arma
+  `speaker_owner_real_armed` quando o preflight do dry-run ja viu SAY real nao
+  silencioso, owner active/ready, zero falhas e zero recoveries. Caso contrario,
+  `speaker_owner_real_block_reason` explica o bloqueio.
 
 ### Wake Word
 

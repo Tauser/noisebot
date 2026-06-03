@@ -29,6 +29,9 @@ typedef struct {
     bool speaker_owner_candidate;
     bool speaker_owner_handoff_ready;
     uint32_t speaker_owner_block_reason;
+    bool speaker_owner_real_requested;
+    bool speaker_owner_real_armed;
+    uint32_t speaker_owner_real_block_reason;
     uint32_t speaker_owner_frames;
     uint32_t speaker_owner_samples;
     uint32_t speaker_owner_silence_frames;
@@ -87,6 +90,8 @@ bool audio_playback_service_v2_is_playing(void);
 bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_count);
 esp_err_t audio_playback_service_v2_speaker_owner_arm(void);
 esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);
+esp_err_t audio_playback_service_v2_speaker_owner_real_arm(void);
+esp_err_t audio_playback_service_v2_speaker_owner_real_disarm(void);
 esp_err_t audio_playback_service_v2_say_accept(const int16_t *samples, uint16_t count);
 bool audio_playback_service_v2_speaker_write_next_frame(
     uint8_t volume_percent,

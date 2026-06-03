@@ -35,6 +35,14 @@ static uint8_t s_say_q_storage[NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS *
                                sizeof(nb_audio_playback_v2_say_chunk_t)];
 static StaticQueue_t s_say_q_static;
 
+static void playback_v2_clear_real_owner_locked(void)
+{
+    s_status.speaker_owner_real_requested = false;
+    s_status.speaker_owner_real_armed = false;
+    s_status.speaker_owner_real_block_reason =
+        (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
+}
+
 static void playback_v2_note_queue_count(uint32_t queue_count)
 {
     s_status.bridge_say_observer = true;
@@ -62,6 +70,10 @@ static void playback_v2_mirror_speaker_owner(nb_audio_playback_v2_status_t *stat
     status->speaker_owner_candidate = io->speaker_handoff_candidate;
     status->speaker_owner_handoff_ready = io->speaker_handoff_ready;
     status->speaker_owner_block_reason = (uint32_t)io->speaker_handoff_block_reason;
+    if (!status->speaker_owner_real_requested && !status->speaker_owner_real_armed) {
+        status->speaker_owner_real_block_reason =
+            (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
+    }
     status->speaker_owner_frames = io->speaker_handoff_frames;
     status->speaker_owner_samples = io->speaker_handoff_samples;
     status->speaker_owner_silence_frames = io->speaker_handoff_silence_frames;
@@ -94,6 +106,7 @@ esp_err_t audio_playback_service_v2_init(void)
     s_status.bridge_say_queue_owner = true;
     s_status.say_queue_depth = NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS;
     s_status.last_error = ESP_OK;
+    playback_v2_clear_real_owner_locked();
     taskEXIT_CRITICAL(&s_mux);
     return ESP_OK;
 }
@@ -270,10 +283,59 @@ esp_err_t audio_playback_service_v2_speaker_owner_disarm(void)
         s_status.speaker_owner_requested = false;
         s_status.speaker_owner_ready = false;
         s_status.speaker_owner_active = false;
+        playback_v2_clear_real_owner_locked();
     }
     s_status.last_error = err;
     taskEXIT_CRITICAL(&s_mux);
     return err;
+}
+
+esp_err_t audio_playback_service_v2_speaker_owner_real_arm(void)
+{
+    nb_audio_io_v2_status_t io;
+    audio_io_service_v2_get_status(&io);
+
+    uint32_t block = (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NONE;
+    esp_err_t err = ESP_OK;
+    uint32_t non_silence_frames = 0U;
+    if (io.speaker_handoff_frames > io.speaker_handoff_silence_frames) {
+        non_silence_frames = io.speaker_handoff_frames -
+                             io.speaker_handoff_silence_frames;
+    }
+
+    if (!io.speaker_handoff_dry_run_enabled ||
+        !io.speaker_handoff_owner_requested) {
+        block = (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
+        err = ESP_ERR_INVALID_STATE;
+    } else if (io.speaker_handoff_failures > 0U) {
+        block = (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_TX_ERROR;
+        err = ESP_ERR_INVALID_STATE;
+    } else if (io.speaker_handoff_recoveries > 0U) {
+        block = (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_I2S_RECOVERY;
+        err = ESP_ERR_INVALID_STATE;
+    } else if (!io.speaker_handoff_ready ||
+               !io.speaker_handoff_active ||
+               non_silence_frames == 0U) {
+        block = (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NO_TX;
+        err = ESP_ERR_INVALID_STATE;
+    }
+
+    taskENTER_CRITICAL(&s_mux);
+    s_status.speaker_owner_real_requested = true;
+    s_status.speaker_owner_real_armed = (err == ESP_OK);
+    s_status.speaker_owner_real_block_reason = block;
+    s_status.last_error = err;
+    taskEXIT_CRITICAL(&s_mux);
+    return err;
+}
+
+esp_err_t audio_playback_service_v2_speaker_owner_real_disarm(void)
+{
+    taskENTER_CRITICAL(&s_mux);
+    playback_v2_clear_real_owner_locked();
+    s_status.last_error = ESP_OK;
+    taskEXIT_CRITICAL(&s_mux);
+    return ESP_OK;
 }
 
 esp_err_t audio_playback_service_v2_say_accept(const int16_t *samples, uint16_t count)

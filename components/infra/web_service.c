@@ -2696,8 +2696,10 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
 
     const char *speaker_owner_block =
         audio_io_v2_speaker_handoff_block_name(st.speaker_owner_block_reason);
+    const char *speaker_owner_real_block =
+        audio_io_v2_speaker_handoff_block_name(st.speaker_owner_real_block_reason);
 
-    char buf[2400];
+    char buf[2700];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
@@ -2709,6 +2711,9 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              "\"speaker_owner_candidate\":%s,"
              "\"speaker_owner_handoff_ready\":%s,"
              "\"speaker_owner_block_reason\":\"%s\","
+             "\"speaker_owner_real_requested\":%s,"
+             "\"speaker_owner_real_armed\":%s,"
+             "\"speaker_owner_real_block_reason\":\"%s\","
              "\"speaker_owner_frames\":%lu,"
              "\"speaker_owner_samples\":%lu,"
              "\"speaker_owner_silence_frames\":%lu,"
@@ -2756,6 +2761,9 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              st.speaker_owner_candidate ? "true" : "false",
              st.speaker_owner_handoff_ready ? "true" : "false",
              speaker_owner_block,
+             st.speaker_owner_real_requested ? "true" : "false",
+             st.speaker_owner_real_armed ? "true" : "false",
+             speaker_owner_real_block,
              (unsigned long)st.speaker_owner_frames,
              (unsigned long)st.speaker_owner_samples,
              (unsigned long)st.speaker_owner_silence_frames,
@@ -2865,6 +2873,24 @@ static esp_err_t handle_api_audio_playback_v2_speaker_owner_arm(httpd_req_t *req
 static esp_err_t handle_api_audio_playback_v2_speaker_owner_disarm(httpd_req_t *req)
 {
     esp_err_t err = audio_playback_service_v2_speaker_owner_disarm();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "409 Conflict");
+    }
+    return send_audio_playback_v2_status(req, err);
+}
+
+static esp_err_t handle_api_audio_playback_v2_speaker_owner_real_arm(httpd_req_t *req)
+{
+    esp_err_t err = audio_playback_service_v2_speaker_owner_real_arm();
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "409 Conflict");
+    }
+    return send_audio_playback_v2_status(req, err);
+}
+
+static esp_err_t handle_api_audio_playback_v2_speaker_owner_real_disarm(httpd_req_t *req)
+{
+    esp_err_t err = audio_playback_service_v2_speaker_owner_real_disarm();
     if (err != ESP_OK) {
         httpd_resp_set_status(req, "409 Conflict");
     }
@@ -4225,6 +4251,8 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/audio/playback-v2/stop", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_stop },
     { .uri = "/api/audio/playback-v2/speaker-owner/arm", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_speaker_owner_arm },
     { .uri = "/api/audio/playback-v2/speaker-owner/disarm", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_speaker_owner_disarm },
+    { .uri = "/api/audio/playback-v2/speaker-owner/real-arm", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_speaker_owner_real_arm },
+    { .uri = "/api/audio/playback-v2/speaker-owner/real-disarm", .method = HTTP_POST, .handler = handle_api_audio_playback_v2_speaker_owner_real_disarm },
     { .uri = "/api/audio/capture-v2", .method = HTTP_GET, .handler = handle_api_voice_capture_v2_status },
     { .uri = "/api/audio/capture-v2/replay", .method = HTTP_POST, .handler = handle_api_voice_capture_v2_replay },
     { .uri = "/api/audio/capture-v2/cancel", .method = HTTP_POST, .handler = handle_api_voice_capture_v2_cancel },
