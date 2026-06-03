@@ -1764,6 +1764,13 @@ Incremento N6.5 iniciado:
 - Esta etapa nao liga owner real e nao altera firmware/HAL. Ela apenas separa
   "dry-run saudavel" de "candidato forte o bastante para desenhar o proximo
   incremento controlado".
+- Validacao N6.5 em hardware: o gate com `--require-say` observou resposta real
+  (`374/374` chunks SAY recebidos/tocados, `non_silence_frames=374`,
+  `ready=true`, `active=true`, `block_reason=NONE`, sem reset e sem falhas de
+  Audio IO), mas bloqueou corretamente `real_owner_candidate=false` porque
+  surgiram `say_chunks_dropped=3` no intervalo. O pos-check confirmou Playback
+  v2 desarmado e fila zero; `codec-v2 health` ficou `warn` por 1 pacote egress
+  residual, drenado em seguida, e voltou `healthy=true/status=ok`.
 
 ## Ordem Recomendada
 
