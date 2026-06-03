@@ -1515,6 +1515,24 @@ Incremento N5.10 iniciado:
   Opus/PCM16 ou policy; apenas move a semantica de descarte/cancelamento de SAY
   antigo durante listening para o dono da fila.
 
+Validacao N5.10 pos-flash:
+
+- Usuario confirmou build/flash/teste feitos.
+- Gate esperado para aceitar a etapa: `playback-v2 delta` em turno real curto
+  com fila SAY final zero, zero drops no caminho normal, zero falhas de
+  speaker write/commit, Audio IO sem drops/recoveries e Codec v2 saudavel.
+
+Incremento N5.11 iniciado:
+
+- O limite de tamanho do chunk SAY deixou de ser aplicado em
+  `audio_service_bridge_say_chunk()`.
+- O clamp permanece dentro de `audio_playback_service_v2_say_accept()`, usando
+  o limite interno `NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES`. Assim o dono da fila
+  tambem e dono da normalizacao do frame recebido.
+- Esta etapa nao muda fila SAY, HAL fisico, wake, VAD, Capture v2, Activity v2,
+  Codec v2, Opus/PCM16 ou policy; apenas remove uma decisao duplicada do
+  `audio_service.c`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

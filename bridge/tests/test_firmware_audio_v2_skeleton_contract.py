@@ -513,6 +513,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
         audio_service.index("/* ── Configuração")
     ]
     assert "audio_playback_service_v2_say_cancel_active(" not in bridge_say_chunk
+    assert "NB_BRIDGE_AUDIO_CHUNK_SAMPLES" not in bridge_say_chunk
     assert "audio_io_service_v2_speaker_handoff_note_playback_frame(false, wr);" not in audio_service
     assert "bridge_say_observer" in web
     assert "bridge_say_queue_owner" in web
@@ -540,6 +541,8 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "#define NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS   32U" in playback_c
     assert "#define NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES   256U" in playback_c
     assert "#define NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS 1200U" in playback_c
+    assert "if (count > NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES)" in playback_c
+    assert "count = NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES;" in playback_c
     assert "} nb_audio_playback_v2_say_chunk_t;" in playback_c
     assert "playback_v2_say_dequeue(out)" in playback_c
     assert "static bool playback_v2_speaker_next_frame(" in playback_c

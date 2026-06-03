@@ -1839,7 +1839,6 @@ bool audio_service_is_busy(void)
 void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
 {
     if (!s.initialized || !samples || count == 0) return;
-    if (count > NB_BRIDGE_AUDIO_CHUNK_SAMPLES) count = NB_BRIDGE_AUDIO_CHUNK_SAMPLES;
 
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     bool listening = s.listen_session_active;
