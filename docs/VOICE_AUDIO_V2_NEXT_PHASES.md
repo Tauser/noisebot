@@ -1959,6 +1959,15 @@ Incremento N2A iniciado em 2026-06-03: foi adicionada a flag persistente
 Activity v2 continua comparador/passivo e o VAD legado do `audio_service`
 permanece responsavel por encerrar a sessao ate a promocao controlada N2B.
 
+Incremento N2B local em 2026-06-03: com a flag ligada, o `audio_service`
+consulta `voice_activity_service_v2_session_end_observed()` depois do frame de
+Activity v2 e antes do VAD legado. A promocao fica limitada a sessoes ja
+abertas e com voz detectada; nao abre sessao em IDLE, nao altera wake, captura,
+codec, playback ou HAL. `/api/audio/activity-v2` passa a expor
+`activity_decider_owner_active`, `activity_decider_end_used`,
+`activity_decider_end_count` e `activity_decider_end_elapsed_ms` para validar o
+owner real e manter rollback por `voice_audio_v2_activity_decider_enabled=false`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

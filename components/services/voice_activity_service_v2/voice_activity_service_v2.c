@@ -207,6 +207,34 @@ void voice_activity_service_v2_session_compare_legacy_end(uint32_t reason,
     taskEXIT_CRITICAL(&s_mux);
 }
 
+bool voice_activity_service_v2_session_end_observed(uint32_t *elapsed_ms)
+{
+    taskENTER_CRITICAL(&s_mux);
+    bool observed = s_status.initialized &&
+                    s_status.session_compare_active &&
+                    s_status.session_active &&
+                    s_status.session_compare_speech_seen &&
+                    s_status.activity_end_observed;
+    uint32_t observed_elapsed_ms = s_status.activity_end_elapsed_ms;
+    taskEXIT_CRITICAL(&s_mux);
+
+    if (observed && elapsed_ms != NULL) {
+        *elapsed_ms = observed_elapsed_ms;
+    }
+    return observed;
+}
+
+void voice_activity_service_v2_note_decider_end(uint32_t elapsed_ms)
+{
+    taskENTER_CRITICAL(&s_mux);
+    if (s_status.initialized) {
+        s_status.activity_decider_end_used = true;
+        s_status.activity_decider_end_count++;
+        s_status.activity_decider_end_elapsed_ms = elapsed_ms;
+    }
+    taskEXIT_CRITICAL(&s_mux);
+}
+
 void voice_activity_service_v2_feed_frame(const int16_t *samples,
                                           uint16_t sample_count,
                                           bool session_active,

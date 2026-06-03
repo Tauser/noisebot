@@ -256,6 +256,7 @@ static uint32_t s_spk_fail_count = 0;
 static uint32_t s_mic_fail_count = 0;
 
 static void esp_vad_reset(void);
+static esp_err_t listen_session_finish(nb_listen_end_reason_t reason);
 
 static bool bridge_use_codec_v2_opus_worker(void)
 {
@@ -698,11 +699,39 @@ static void rx_dispatch_activity_cb(const nb_audio_io_v2_pcm_frame_t *frame,
                                          dispatch->activity_playback_context);
 }
 
+static bool activity_v2_decider_try_finish(void)
+{
+    if (!config_get_voice_audio_v2_activity_decider_enabled() ||
+        !s.listen_session_active ||
+        !s.listen_voice_detected ||
+        s.listen_phase == LISTEN_PHASE_IDLE ||
+        s.listen_phase == LISTEN_PHASE_WAITING_FOR_SPEECH) {
+        return false;
+    }
+
+    uint32_t activity_end_elapsed_ms = 0;
+    if (!voice_activity_service_v2_session_end_observed(&activity_end_elapsed_ms)) {
+        return false;
+    }
+
+    voice_activity_service_v2_note_decider_end(activity_end_elapsed_ms);
+    s.vad_state = VAD_SILENCE;
+    s.bridge_tx_active = false;
+    ESP_LOGI(TAG, "activity v2 encerrou sessao por silencio speech_ms=%u activity_ms=%u",
+             (unsigned)s.listen_speech_elapsed_ms,
+             (unsigned)activity_end_elapsed_ms);
+    listen_session_finish(NB_LISTEN_END_VAD_SILENCE);
+    return true;
+}
+
 static void rx_dispatch_vad_cb(const nb_audio_io_v2_pcm_frame_t *frame,
                                void *ctx)
 {
     const rx_dispatch_context_t *dispatch = (const rx_dispatch_context_t *)ctx;
     if (dispatch == NULL || dispatch->mic_samples == NULL) {
+        return;
+    }
+    if (activity_v2_decider_try_finish()) {
         return;
     }
     vad_update(dispatch->mic_samples,
