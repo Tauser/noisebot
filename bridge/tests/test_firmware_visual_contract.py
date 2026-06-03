@@ -103,7 +103,7 @@ def test_ui_overlay_uses_stackchan_montserrat_font_family():
     assert "lv_font_montserrat_14" in src
     assert "lv_font_montserrat_16" in src
     assert "lv_font_montserrat_48" in src
-    assert "UI_FONT_TEXT  = &lgfx::fonts::efontCN_16" in src
+    assert "UI_FONT_TEXT  = &lgfx::fonts::efontCN_24" in src
     assert "ui_set_font(spr, UI_FONT_BODY);" in src
     assert "ui_set_font(spr, UI_FONT_TEXT);" in src
     assert "ui_set_font(spr, UI_FONT_TITLE);" in src

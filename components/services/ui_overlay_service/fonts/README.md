@@ -11,6 +11,6 @@ Adaptação NoiseBot:
 - removido o campo `static_bitmap` do descritor `lv_font_t`, pois o shim LVGL
   embutido no LovyanGFX do NoiseBot não expõe esse campo;
 - uso limitado a títulos/destaques de overlay. Texto livre do balão de resposta
-  usa `lgfx::fonts::efontCN_16`, fonte Unicode embarcada no LovyanGFX, para
+  usa `lgfx::fonts::efontCN_24`, fonte Unicode embarcada no LovyanGFX, para
   preservar UTF-8/acento sem normalização no server e sem desenho manual de
   diacríticos.

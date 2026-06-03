@@ -1208,7 +1208,7 @@ Pendências:
   incompleta; truncamento apenas visual do `TEXT_SCROLL` vira diagnostico sem
   alerta. Refino posterior: o server preserva UTF-8/acento no `TEXT_SCROLL`; o
   firmware renderiza o balao de texto com fonte Unicode do LovyanGFX
-  (`efontCN_16`), removendo o desenho manual de acentos sobre a fonte
+  (`efontCN_24`), removendo o desenho manual de acentos sobre a fonte
   Montserrat ASCII.
 
 ## Ordem Recomendada
