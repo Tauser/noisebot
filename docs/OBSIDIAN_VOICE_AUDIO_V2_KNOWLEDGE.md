@@ -201,8 +201,17 @@ Incremento atual da Fase N3:
   `audio_playback_service_v2_speaker_write_next_frame()`: Playback v2 chama um
   callback fornecido pelo `audio_service`, registra commit e expoe
   `speaker_write_*`.
+- Fase N5 reduziu o contrato publico e as duplicacoes no `audio_service.c`:
+  helpers de dequeue/commit e tipo de chunk ficaram privados, constantes internas
+  sairam do header, o clamp do chunk SAY ficou em
+  `audio_playback_service_v2_say_accept()`, drops durante listening ficaram no
+  dono da fila, e o start de `PLAY_BRIDGE_SAY`/`NB_AUDIO_EVT_PLAYBACK_START`
+  passou a acontecer somente apos o primeiro chunk ser aceito por Playback v2.
 - O HAL/speaker continua fisicamente em `audio_service`; Playback v2 ainda nao
-  chama `audio_hal_*` diretamente.
+  chama `audio_hal_*` diretamente. O limite atual e intencional: estado legado,
+  callbacks de evento e `wake_service_rearm()` ficam no `audio_service`;
+  Playback v2 fica dono da fila SAY, contadores, preparo/commit e orquestracao
+  do write por callback.
 
 ### Wake Word
 

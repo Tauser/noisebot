@@ -1560,6 +1560,21 @@ Validacao N5.12 pos-flash:
 - Warnings nao bloqueantes no agregado real: `opus_egress_queue_count=1` e
   `heap_internal_free_kb baixo: 11`.
 
+Fechamento tecnico N5:
+
+- N5 esta consolidada como reducao segura do `audio_service.c` para o caminho
+  SAY/Playback v2 sem trocar o dono fisico do HAL.
+- Playback v2 e dono da fila SAY, contadores `say_*`, cancel/drop, clamp do
+  chunk, preparo/commit do frame de speaker, orquestracao do write por callback,
+  politica de fila vazia e detalhes internos/constantes privadas.
+- `audio_service.c` ainda mantem de forma intencional: estado legado
+  `PLAY_BRIDGE_SAY`, callbacks `NB_AUDIO_EVT_PLAYBACK_START/END`,
+  `wake_service_rearm()`, transicao final para `PLAY_IDLE` e a chamada fisica
+  `audio_hal_spk_write()` pelo callback.
+- Nao promover Playback v2 para HAL owner direto nesta fase. O proximo salto
+  estrutural precisa ser uma fase nova/gate proprio para speaker/HAL ownership,
+  com rollback explicito e validacao de barge/no-echo/Playback delta.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

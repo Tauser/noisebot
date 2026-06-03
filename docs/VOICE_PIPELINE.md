@@ -106,6 +106,13 @@ Na Fase N4.7, Playback v2 passa a orquestrar o write de frame SAY por
 frame, chama um callback de escrita fornecido pelo `audio_service`, registra o
 commit e expoe `speaker_write_*`. O callback ainda e o unico ponto que chama o
 HAL fisico, mantendo rollback e camada HAL fora do Playback v2.
+A Fase N5 reduziu o acoplamento sem trocar o dono fisico do HAL: Playback v2
+mantem a fila SAY de 32 chunks, normaliza o chunk aceito, contabiliza drops e
+cancelamentos, prepara/commita frames e orquestra o write por callback; o
+`audio_service` mantem apenas o estado legado `PLAY_BRIDGE_SAY`, os eventos
+`NB_AUDIO_EVT_PLAYBACK_START/END`, `wake_service_rearm()` e a escrita fisica.
+O start de SAY agora so ocorre apos `audio_playback_service_v2_say_accept()`
+aceitar o primeiro chunk, evitando evento de playback sem audio enfileirado.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

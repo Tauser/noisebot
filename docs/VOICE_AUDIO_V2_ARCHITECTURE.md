@@ -306,6 +306,16 @@ Invariantes:
   chama um callback de escrita fornecido pelo `audio_service`, registra commit
   e expoe `speaker_write_*`. O callback ainda e o unico ponto com
   `audio_hal_spk_write()`, preservando a camada HAL fora do Playback v2.
+- Na Fase N5, o contrato publico de Playback v2 foi reduzido e o
+  `audio_service.c` perdeu duplicacoes de fila/contadores/normalizacao SAY. Os
+  detalhes de chunk, constantes internas e helpers de dequeue/commit ficam
+  privados em `audio_playback_service_v2.c`; `audio_service_bridge_say_chunk()`
+  so inicia `PLAY_BRIDGE_SAY` depois de `audio_playback_service_v2_say_accept()`
+  aceitar o primeiro chunk. O limite preservado e intencional: `audio_service`
+  ainda mantem estado legado, callbacks `NB_AUDIO_EVT_PLAYBACK_START/END`,
+  `wake_service_rearm()` e a escrita fisica no HAL, enquanto Playback v2 e dono
+  da fila SAY, dos contadores, do preparo/commit e da orquestracao do write via
+  callback.
 
 ### Voice Activity v2
 
