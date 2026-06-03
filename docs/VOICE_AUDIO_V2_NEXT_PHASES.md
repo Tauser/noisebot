@@ -2031,6 +2031,14 @@ que ja tinham `v2act_dec=false` por rollback manual sejam promovidas no primeiro
 boot deste firmware. Depois da migracao, `voice_audio_v2_activity_decider_enabled=false`
 continua sendo rollback persistente e nao e religado automaticamente.
 
+Validacao hardware N2C em 2026-06-03: apos flash do commit `5b43f6c`,
+`/api/audio/activity-v2` e `/api/config/all` retornaram
+`activity_decider_enabled=true` sem arme manual, confirmando a migracao
+one-shot. Capture v2 permaneceu idle com TX owner configurado, Playback v2 com
+fila SAY zero e zero drops, e Codec v2 com worker ativo e zero drops. O rollback
+por `/api/config` foi testado: desligar retornou `activity_decider_enabled=false`
+e religar retornou `true`, sem sessao ativa e com `ESP_OK`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
