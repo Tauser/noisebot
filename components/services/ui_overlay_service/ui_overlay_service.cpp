@@ -23,6 +23,8 @@
 
 #define TAG "nb_ui"
 
+extern const lv_font_t MontserratSemiBold26;
+
 /* ── Sleep message geometry ──────────────────────────────────────────────── */
 /*
  * Balão discreto de sono durante NB_STATE_SLEEPING. Usa a mesma linguagem visual
@@ -145,9 +147,10 @@ static void draw_sleep_bubble(LGFX_Sprite *spr, int64_t now_us,
 static constexpr uint8_t OVERLAY_Z_ORDER = 30;
 static constexpr int TEXT_MAX_LEN = 129; /* 128 bytes + NUL, igual ao bridge */
 
+static const lgfx::LVGLfont UI_FONT_STACKCHAN_TITLE(&MontserratSemiBold26);
 static const lgfx::IFont * const UI_FONT_BODY  = &lgfx::fonts::lv_font_montserrat_16;
 static const lgfx::IFont * const UI_FONT_SMALL = &lgfx::fonts::lv_font_montserrat_14;
-static const lgfx::IFont * const UI_FONT_TITLE = &lgfx::fonts::lv_font_montserrat_20;
+static const lgfx::IFont * const UI_FONT_TITLE = &UI_FONT_STACKCHAN_TITLE;
 static const lgfx::IFont * const UI_FONT_CLOCK = &lgfx::fonts::lv_font_montserrat_48;
 
 static void ui_set_font(LGFX_Sprite *spr, const lgfx::IFont *font)
