@@ -1871,8 +1871,9 @@ Incremento N6.9 iniciado:
   ainda gerou drops SAY (`say_chunks_dropped=35`). Com pacing em 20 ms, o
   dry-run ficou limpo (`388/388`, zero drops), mas a janela real auto-desarmou
   com 344 frames reais e ainda acumulou 48 drops SAY. O proximo ajuste e
-  server-only: aumentar o pacing default do `OutputScheduler` para 24 ms antes
-  de repetir a janela N6.9.
+  firmware/diagnostico: nao subir mais o pacing, porque 24 ms piorou a
+  continuidade perceptivel do audio; investigar janela/estado/aceite dos
+  chunks SAY antes de repetir a janela N6.9.
 
 ## Ordem Recomendada
 

@@ -675,7 +675,7 @@ def test_server_ai_status_exposes_firmware_audio_capabilities() -> None:
         },
         playback_config={
             "firmware_say_queue_target": 0,
-            "say_send_interval_ms": 24.0,
+            "say_send_interval_ms": 20.0,
             "chunk_duration_ms": 16.0,
             "startup_chunks": 0,
             "startup_interval_ms": 24.0,
@@ -688,7 +688,7 @@ def test_server_ai_status_exposes_firmware_audio_capabilities() -> None:
     assert payload["firmware"]["codec_options"] == payload["codec_options"]
     assert payload["features"] == ["voice_session_v2", "opus_tx"]
     assert payload["firmware"]["features"] == payload["features"]
-    assert payload["tts_output_scheduler"]["say_send_interval_ms"] == 24.0
+    assert payload["tts_output_scheduler"]["say_send_interval_ms"] == 20.0
     assert (
         payload["tts_output_scheduler"]["say_send_interval_ms"]
         > payload["tts_output_scheduler"]["chunk_duration_ms"]

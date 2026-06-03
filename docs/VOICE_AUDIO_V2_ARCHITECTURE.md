@@ -338,8 +338,9 @@ Invariantes:
   `speaker_owner_real_window_completed`/`auto_disarm_count`. O caminho fisico
   continua pelo callback de `audio_service`. A primeira tentativa de bancada
   mostrou drops SAY ainda no gate; 20 ms limpou o dry-run, mas a janela real
-  ainda dropou. O pacing default do server foi reforcado para 24 ms por chunk
-  antes da repeticao.
+  ainda dropou. A tentativa de 24 ms piorou a continuidade perceptivel do
+  audio, entao o default voltou para 20 ms e a proxima repeticao deve focar a
+  janela/estado/aceite no firmware.
 
 ### Voice Activity v2
 

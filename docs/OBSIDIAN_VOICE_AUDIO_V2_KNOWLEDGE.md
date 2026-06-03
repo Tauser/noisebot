@@ -235,7 +235,8 @@ Incremento atual da Fase N3:
   validacao. O HAL fisico segue no callback do `audio_service`. A primeira
   repeticao limpa ainda gerou drops SAY no gate; 20 ms limpou o dry-run, mas a
   janela real ainda acumulou drops. O server ajustou o pacing default do
-  `OutputScheduler` para 24 ms por chunk antes de nova validacao.
+  `OutputScheduler` para 20 ms; 24 ms piorou a continuidade perceptivel do
+  audio, entao o proximo diagnostico e no firmware/estado de aceite.
 
 ### Wake Word
 
