@@ -1533,6 +1533,20 @@ Incremento N5.11 iniciado:
   Codec v2, Opus/PCM16 ou policy; apenas remove uma decisao duplicada do
   `audio_service.c`.
 
+Incremento N5.12 iniciado:
+
+- `audio_service_bridge_say_chunk()` passou a iniciar `PLAY_BRIDGE_SAY` e emitir
+  `NB_AUDIO_EVT_PLAYBACK_START` somente depois que
+  `audio_playback_service_v2_say_accept()` aceita o primeiro chunk.
+- Se a fila SAY estiver cheia ou indisponivel, Playback v2 contabiliza o erro
+  pelo proprio `say_accept()` e o `audio_service` nao gera start/evento de
+  playback sem audio enfileirado.
+- O estado legado, wake rearm e callback de evento continuam em
+  `audio_service.c`; Playback v2 continua dono da fila e dos contadores.
+- Esta etapa nao muda HAL fisico, wake, VAD, Capture v2, Activity v2, Codec v2,
+  Opus/PCM16 ou policy; apenas condiciona o start legado ao aceite real do dono
+  da fila SAY.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

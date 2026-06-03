@@ -1842,12 +1842,9 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
 
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     bool listening = s.listen_session_active;
-    bool started = false;
+    bool should_start = !listening && (s.play_state != PLAY_BRIDGE_SAY);
     if (listening) {
         s.play_state = PLAY_IDLE;
-    } else if (s.play_state != PLAY_BRIDGE_SAY) {
-        s.play_state = PLAY_BRIDGE_SAY;
-        started = true;
     }
     xSemaphoreGive(s.mutex);
 
@@ -1856,10 +1853,17 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         return;
     }
 
-    if (started) {
+    esp_err_t accept_err = audio_playback_service_v2_say_accept(samples, count);
+    if (accept_err != ESP_OK) {
+        return;
+    }
+
+    if (should_start) {
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s.play_state = PLAY_BRIDGE_SAY;
+        xSemaphoreGive(s.mutex);
         if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, 0);
         wake_service_rearm();
         ESP_LOGI(TAG, "Bridge SAY iniciado");
     }
-    (void)audio_playback_service_v2_say_accept(samples, count);
 }
