@@ -1868,8 +1868,10 @@ Incremento N6.9 iniciado:
 - Primeira tentativa apos flash confirmou os campos novos e o bloqueio seguro,
   mas nao fechou o aceite: uma rodada com baseline sujo acumulou drops antigos
   e bloqueou `real-arm` como `TX_ERROR`; apos reboot limpo, a fala de gate
-  ainda gerou drops SAY (`say_chunks_dropped=35`). O proximo ajuste e
-  server-only: aumentar o pacing default do `OutputScheduler` para 20 ms antes
+  ainda gerou drops SAY (`say_chunks_dropped=35`). Com pacing em 20 ms, o
+  dry-run ficou limpo (`388/388`, zero drops), mas a janela real auto-desarmou
+  com 344 frames reais e ainda acumulou 48 drops SAY. O proximo ajuste e
+  server-only: aumentar o pacing default do `OutputScheduler` para 24 ms antes
   de repetir a janela N6.9.
 
 ## Ordem Recomendada

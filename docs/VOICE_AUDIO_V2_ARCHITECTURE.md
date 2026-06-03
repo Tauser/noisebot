@@ -337,8 +337,9 @@ Invariantes:
   auto-desarma o owner real, preserva os contadores da janela e expõe
   `speaker_owner_real_window_completed`/`auto_disarm_count`. O caminho fisico
   continua pelo callback de `audio_service`. A primeira tentativa de bancada
-  mostrou drops SAY ainda no gate, entao o pacing default do server foi
-  reforcado para 20 ms por chunk antes da repeticao.
+  mostrou drops SAY ainda no gate; 20 ms limpou o dry-run, mas a janela real
+  ainda dropou. O pacing default do server foi reforcado para 24 ms por chunk
+  antes da repeticao.
 
 ### Voice Activity v2
 

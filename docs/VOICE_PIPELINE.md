@@ -36,10 +36,11 @@ ela piorou a transcrição e aumentou risco de watchdog.
   enviar `SAY`; chunks maiores vindos do gerador de áudio nunca cruzam o
   contrato TCP com o firmware.
 - O `OutputScheduler` do server nao pode gerar rajadas de catch-up. O default
-  atual nao faz prebuffer inicial e envia SAY a cada 18 ms, levemente acima dos
-  16 ms do chunk fisico. Apos drops recorrentes em N6.9, o default foi
-  elevado para 20 ms por chunk para dar mais folga ao firmware; `NOISEBOT_TTS_QUEUE_TARGET` e
-  `NOISEBOT_TTS_SEND_INTERVAL_MS` continuam como rollback/ajuste operacional.
+  atual nao faz prebuffer inicial e envia SAY acima dos 16 ms do chunk fisico.
+  Apos drops recorrentes em N6.9, 20 ms limpou o dry-run mas ainda dropou na
+  janela real; o default foi elevado para 24 ms por chunk para dar mais folga
+  ao firmware. `NOISEBOT_TTS_QUEUE_TARGET` e `NOISEBOT_TTS_SEND_INTERVAL_MS`
+  continuam como rollback/ajuste operacional.
 
 ## Contrato v2
 
@@ -137,10 +138,11 @@ audio antigo durante a nova escuta. Ponto corrigido no firmware: ao receber
 visual antigo com `ui_overlay_clear_text()` antes de mostrar `Ouvindo...`.
 Refino posterior de headroom: a fila estatica SAY v2 subiu para 32 chunks, e
 o default do `OutputScheduler` passou a `NOISEBOT_TTS_QUEUE_TARGET=0` e depois
-foi reforcado para `NOISEBOT_TTS_SEND_INTERVAL_MS=20`. Assim o server nao faz
+foi reforcado para `NOISEBOT_TTS_SEND_INTERVAL_MS=24`. Assim o server nao faz
 prebuffer inicial por padrao e envia mais conservador que os 16 ms do chunk
 fisico, reduzindo risco de encher a fila durante transicoes wake -> resposta.
-Rollback operacional: definir o env para 18 ms ou 16 ms e reiniciar o server.
+Rollback operacional: definir o env para 20 ms, 18 ms ou 16 ms e reiniciar o
+server.
 Ponto corrigido no server apos validacao fisica: quando o usuario tenta
 `ww -> pare` logo apos barge-in, o STT pode confundir o comando curto com
 `Vale.` ou `Tchau.`. O `LocalIntentProvider` agora trata esses mishears como

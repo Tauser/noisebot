@@ -233,8 +233,9 @@ Incremento atual da Fase N3:
   Playback v2 auto-desarma `speaker_owner_real_armed`, marca a janela como
   concluida e preserva os contadores `speaker_owner_real_write_*` para
   validacao. O HAL fisico segue no callback do `audio_service`. A primeira
-  repeticao limpa ainda gerou drops SAY no gate; o server ajustou o pacing
-  default do `OutputScheduler` para 20 ms por chunk antes de nova validacao.
+  repeticao limpa ainda gerou drops SAY no gate; 20 ms limpou o dry-run, mas a
+  janela real ainda acumulou drops. O server ajustou o pacing default do
+  `OutputScheduler` para 24 ms por chunk antes de nova validacao.
 
 ### Wake Word
 

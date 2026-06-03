@@ -43,7 +43,7 @@ def test_output_scheduler_default_prebuffer_leaves_firmware_queue_headroom() -> 
 
 
 def test_output_scheduler_default_send_interval_keeps_hardware_headroom() -> None:
-    assert SAY_SEND_INTERVAL_S == pytest.approx(0.020)
+    assert SAY_SEND_INTERVAL_S == pytest.approx(0.024)
     assert SAY_SEND_INTERVAL_S > CHUNK_DURATION_S
 
 
