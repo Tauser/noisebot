@@ -1997,6 +1997,17 @@ curta` passou com `activity_decider_end_used=true`,
 e Codec v2 `packet_drops=0`. O server respondeu por LLM com transcript
 `Me conte uma história curta.`. A flag foi desligada ao final para rollback.
 
+Gate `pare` N2B em 2026-06-03: com a flag ligada, `ww -> pare` passou sem
+resposta aleatoria e sem LLM. O Activity v2 encerrou o turno
+(`activity_decider_end_used=true`, `activity_end_silence_ms=608`,
+`decision_diverged=false`), Capture v2 ficou `SPEECH_COMPLETE` porque o
+cancelamento e uma politica local do server apos STT, nao um `CANCELLED`
+firmware, e o server classificou `intent_name=local_stop`,
+`turn_taking_decision=post_barge_stop`, `last_reply=Pronto, parei.`. Playback v2
+ficou sem overflow/drop de fila; os `say_chunks_dropped_listening=109` foram
+descartes de SAY durante escuta/barge-stop, esperados nesse caminho. Codec v2
+permaneceu sem `packet_drops`/egress drops. A flag foi desligada ao final.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
