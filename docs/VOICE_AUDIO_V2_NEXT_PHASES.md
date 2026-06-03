@@ -2039,6 +2039,16 @@ fila SAY zero e zero drops, e Codec v2 com worker ativo e zero drops. O rollback
 por `/api/config` foi testado: desligar retornou `activity_decider_enabled=false`
 e religar retornou `true`, sem sessao ativa e com `ESP_OK`.
 
+Incremento local seguinte: foi criado o gate consolidado
+`GET /api/audio/voice-v2`, sem mudar runtime de audio. Ele agrega status de
+Capture v2, Activity v2, Playback v2, Codec v2 e Audio IO v2 em um unico JSON
+com `ready`, `block_reason` e `rollback_available`. O gate considera prontos os
+defaults controlados (`capture`, `capture_tx`, `activity_decider`), o worker do
+Codec v2 ativo, Playback v2 como dono da fila SAY, runtime idle, filas vazias,
+zero drops/recoveries e ausencia de falhas de speaker. A intencao e congelar um
+snapshot de preflight antes de nova reducao estrutural do `audio_service.c`, sem
+trocar HAL, wake, VAD, captura ou protocolo.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
@@ -2048,9 +2058,10 @@ e religar retornou `true`, sem sessao ativa e com `ESP_OK`.
 4. Fase K: capture session v2 assume upstream por flag.
 5. Fase L: policy conversacional avancada, so depois de no-echo e captura
    estarem estaveis.
-6. Estado atual: Fase N0-N6 consolidada com excecao da promocao real de
-   Activity v2; o proximo incremento deve focar N2 decisor controlado, nao nova
-   troca de HAL owner.
+6. Estado atual: Fase N0-N6 consolidada e Activity v2 promovido para default
+   controlado com rollback. O proximo incremento deve usar
+   `/api/audio/voice-v2` como preflight antes de nova reducao do
+   `audio_service.c`.
 
 Essa ordem segue a regra central da arquitetura v2: separar I/O, playback,
 processor, codec e policy. No NoiseBot, a prioridade imediata e diminuir o

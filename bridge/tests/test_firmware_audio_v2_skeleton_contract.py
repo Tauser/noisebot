@@ -29,6 +29,35 @@ def test_audio_v2_components_exist_but_are_not_booted():
         assert f"{name}_init()" not in boot
 
 
+def test_voice_audio_v2_consolidated_gate_is_observable():
+    web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+
+    assert '{ .uri = "/api/audio/voice-v2"' in web
+    assert "handle_api_audio_voice_v2_status" in web
+    assert "voice_audio_v2_gate_block_reason(" in web
+    assert "audio_io_service_v2_get_status(&io_st)" in web
+    assert "voice_activity_service_v2_get_status(&activity_st)" in web
+    assert "audio_playback_service_v2_get_status(&playback_st)" in web
+    assert "voice_capture_session_v2_get_status(&capture_st)" in web
+    assert "audio_codec_service_v2_get_status(&codec_st)" in web
+    assert "config_get_voice_audio_v2_capture_enabled()" in web
+    assert "config_get_voice_audio_v2_capture_tx_enabled()" in web
+    assert "config_get_voice_audio_v2_activity_decider_enabled()" in web
+    assert '\\"ready\\":%s' in web
+    assert '\\"block_reason\\":\\"%s\\"' in web
+    assert '\\"rollback_available\\":true' in web
+    assert '\\"capture_enabled\\":%s' in web
+    assert '\\"capture_tx_enabled\\":%s' in web
+    assert '\\"activity_decider_enabled\\":%s' in web
+    assert '\\"audio_io_initialized\\":%s' in web
+    assert '\\"playback_queue_owner\\":%s' in web
+    assert '\\"codec_worker_active\\":%s' in web
+    assert '\\"runtime_idle\\":%s' in web
+    assert '\\"playback_say_queue_count\\":%lu' in web
+    assert '\\"codec_egress_queue_count\\":%lu' in web
+    assert '\\"audio_io_i2s_recoveries\\":%lu' in web
+
+
 def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     codec_h = (COMPONENTS / "audio_codec_service_v2" / "audio_codec_service_v2.h").read_text(
         encoding="utf-8"

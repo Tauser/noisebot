@@ -1887,6 +1887,155 @@ static const char *audio_codec_v2_format_name(nb_audio_codec_v2_format_t format)
     }
 }
 
+static const char *voice_audio_v2_gate_block_reason(
+    bool capture_enabled,
+    bool capture_tx_enabled,
+    bool activity_decider_enabled,
+    const nb_audio_io_v2_status_t *io,
+    const nb_voice_activity_v2_status_t *activity,
+    const nb_audio_playback_v2_status_t *playback,
+    const nb_voice_capture_v2_status_t *capture,
+    const nb_audio_codec_v2_status_t *codec)
+{
+    if (!capture_enabled) {
+        return "capture_disabled";
+    }
+    if (!capture_tx_enabled) {
+        return "capture_tx_disabled";
+    }
+    if (!activity_decider_enabled) {
+        return "activity_decider_disabled";
+    }
+    if (!io->initialized) {
+        return "audio_io_not_initialized";
+    }
+    if (!activity->initialized) {
+        return "activity_not_initialized";
+    }
+    if (!playback->initialized) {
+        return "playback_not_initialized";
+    }
+    if (!codec->worker_active) {
+        return "codec_worker_inactive";
+    }
+    if (!playback->bridge_say_queue_owner) {
+        return "playback_queue_not_owner";
+    }
+    if (capture->session_active || activity->session_active) {
+        return "session_active";
+    }
+    if (playback->playing || playback->say_queue_count > 0U) {
+        return "playback_active";
+    }
+    if (codec->queue_count > 0U || codec->opus_egress_queue_count > 0U) {
+        return "codec_queue_not_empty";
+    }
+    if (codec->packet_drops > 0U || codec->opus_egress_packet_drops > 0U) {
+        return "codec_drops";
+    }
+    if (playback->say_chunks_dropped > 0U ||
+        playback->speaker_write_failures > 0U ||
+        playback->speaker_commit_failures > 0U) {
+        return "playback_failures";
+    }
+    if (io->dropped_frames > 0U || io->i2s_recoveries > 0U) {
+        return "audio_io_recovery";
+    }
+    return "none";
+}
+
+static esp_err_t handle_api_audio_voice_v2_status(httpd_req_t *req)
+{
+    nb_audio_io_v2_status_t io_st;
+    nb_voice_activity_v2_status_t activity_st;
+    nb_audio_playback_v2_status_t playback_st;
+    nb_voice_capture_v2_status_t capture_st;
+    nb_audio_codec_v2_status_t codec_st;
+
+    audio_io_service_v2_get_status(&io_st);
+    voice_activity_service_v2_get_status(&activity_st);
+    audio_playback_service_v2_get_status(&playback_st);
+    voice_capture_session_v2_get_status(&capture_st);
+    audio_codec_service_v2_get_status(&codec_st);
+
+    const bool capture_enabled = config_get_voice_audio_v2_capture_enabled();
+    const bool capture_tx_enabled = config_get_voice_audio_v2_capture_tx_enabled();
+    const bool activity_decider_enabled =
+        config_get_voice_audio_v2_activity_decider_enabled();
+    const char *block_reason = voice_audio_v2_gate_block_reason(
+        capture_enabled,
+        capture_tx_enabled,
+        activity_decider_enabled,
+        &io_st,
+        &activity_st,
+        &playback_st,
+        &capture_st,
+        &codec_st);
+    const bool ready = strcmp(block_reason, "none") == 0;
+
+    char buf[1800];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":true,\"ready\":%s,\"block_reason\":\"%s\","
+             "\"rollback_available\":true,"
+             "\"capture_enabled\":%s,"
+             "\"capture_tx_enabled\":%s,"
+             "\"activity_decider_enabled\":%s,"
+             "\"audio_io_initialized\":%s,"
+             "\"activity_initialized\":%s,"
+             "\"playback_initialized\":%s,"
+             "\"capture_initialized\":%s,"
+             "\"codec_worker_active\":%s,"
+             "\"codec_worker_state\":\"%s\","
+             "\"playback_queue_owner\":%s,"
+             "\"playback_playing\":%s,"
+             "\"runtime_idle\":%s,"
+             "\"capture_session_active\":%s,"
+             "\"activity_session_active\":%s,"
+             "\"playback_say_queue_count\":%lu,"
+             "\"playback_say_drops\":%lu,"
+             "\"playback_speaker_write_failures\":%lu,"
+             "\"playback_speaker_commit_failures\":%lu,"
+             "\"codec_queue_count\":%lu,"
+             "\"codec_packet_drops\":%lu,"
+             "\"codec_egress_queue_count\":%lu,"
+             "\"codec_egress_drops\":%lu,"
+             "\"audio_io_dropped_frames\":%lu,"
+             "\"audio_io_i2s_recoveries\":%lu,"
+             "\"audio_io_heap_internal_free_kb\":%lu,"
+             "\"audio_io_heap_dma_free_kb\":%lu}",
+             ready ? "true" : "false",
+             block_reason,
+             capture_enabled ? "true" : "false",
+             capture_tx_enabled ? "true" : "false",
+             activity_decider_enabled ? "true" : "false",
+             io_st.initialized ? "true" : "false",
+             activity_st.initialized ? "true" : "false",
+             playback_st.initialized ? "true" : "false",
+             capture_st.initialized ? "true" : "false",
+             codec_st.worker_active ? "true" : "false",
+             audio_codec_service_v2_worker_state_name(codec_st.worker_state),
+             playback_st.bridge_say_queue_owner ? "true" : "false",
+             playback_st.playing ? "true" : "false",
+             (!capture_st.session_active && !activity_st.session_active &&
+              !playback_st.playing && playback_st.say_queue_count == 0U) ? "true" : "false",
+             capture_st.session_active ? "true" : "false",
+             activity_st.session_active ? "true" : "false",
+             (unsigned long)playback_st.say_queue_count,
+             (unsigned long)playback_st.say_chunks_dropped,
+             (unsigned long)playback_st.speaker_write_failures,
+             (unsigned long)playback_st.speaker_commit_failures,
+             (unsigned long)codec_st.queue_count,
+             (unsigned long)codec_st.packet_drops,
+             (unsigned long)codec_st.opus_egress_queue_count,
+             (unsigned long)codec_st.opus_egress_packet_drops,
+             (unsigned long)io_st.dropped_frames,
+             (unsigned long)io_st.i2s_recoveries,
+             (unsigned long)io_st.heap_internal_free_kb,
+             (unsigned long)io_st.heap_dma_free_kb);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
 static void bytes_to_hex(const uint8_t *bytes, uint8_t byte_count, char *out, size_t out_size)
 {
     static const char k_hex[] = "0123456789abcdef";
@@ -4286,6 +4435,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/gaze",           .method = HTTP_POST,   .handler = handle_api_gaze_post },
     { .uri = "/api/circadian",      .method = HTTP_GET,    .handler = handle_api_circadian },
     { .uri = "/api/audio",          .method = HTTP_GET,    .handler = handle_api_audio },
+    { .uri = "/api/audio/voice-v2", .method = HTTP_GET, .handler = handle_api_audio_voice_v2_status },
     { .uri = "/api/audio/io-v2", .method = HTTP_GET, .handler = handle_api_audio_io_v2_status },
     { .uri = "/api/audio/io-v2/probe", .method = HTTP_POST, .handler = handle_api_audio_io_v2_probe },
     { .uri = "/api/audio/io-v2/probe/stop", .method = HTTP_POST, .handler = handle_api_audio_io_v2_probe_stop },

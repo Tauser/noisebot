@@ -346,6 +346,13 @@ Invariantes:
   fechou N6.9: dry-run 393/393 sem drops, 237 filas cheias recuperadas por
   wait, janela real auto-desarmada com 393 writes reais / 100608 samples, zero
   falhas, zero drops e rollback limpo.
+- Apos o fechamento de N6 e a promocao controlada do Activity v2, o firmware
+  expoe `GET /api/audio/voice-v2` como gate consolidado de preflight. O endpoint
+  agrega Capture v2, Activity v2, Playback v2, Codec v2 e Audio IO v2 em
+  `ready`/`block_reason`, incluindo defaults controlados, worker do codec, dono
+  da fila SAY, idle runtime, filas, drops/recoveries e rollback. Ele nao muda
+  HAL, wake, VAD, captura, playback nem protocolo; serve para congelar um
+  snapshot antes de nova reducao estrutural do `audio_service.c`.
 
 ### Voice Activity v2
 
@@ -377,8 +384,12 @@ Responsabilidade:
   `activity_end_observed=true` e `decision_diverged=false`; no-echo curto nao
   criou turno fantasma e fechou com `speech_frames=29`; barge/pare fechou com
   `source=BARGE_IN`, comando seguinte `local_stop`, zero drops no Capture v2 e
-  Activity v2 sem divergencia (`speech_frames=18`). O owner real do fim de fala
-  continua sendo o VAD legado do `audio_service`.
+  Activity v2 sem divergencia (`speech_frames=18`).
+- Em 2026-06-03, Activity v2 foi promovido para decisor default controlado por
+  `voice_audio_v2_activity_decider_enabled`, com migracao one-shot e rollback
+  persistente por config. A decisao continua restrita a sessoes ja abertas por
+  wake/barge-in; Activity v2 nao abre sessao em `IDLE`, nao chama bridge e nao
+  acessa HAL.
 - Validacao em hardware do shadow 30 s confirmou o objetivo de observabilidade:
   turno real `ww -> me conte uma historia curta` gerou
   `session_frames=268`, `idle_frames=1607`, `muted_frames=478`,
