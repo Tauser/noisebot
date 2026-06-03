@@ -1740,6 +1740,15 @@ Incremento N6.4 iniciado:
   retornar `delta_error` estruturado e ainda tentar `speaker-owner-disarm`, em
   vez de soltar traceback quando o HTTP do firmware fica indisponivel no fim da
   janela.
+- Repeticao N6.4 final passou no gate estrito: `ok=true`,
+  `required_say_chunks=1`, `counter_reset_detected=false`, `delta_error=""`,
+  `ready=true`, `active=true`, `block_reason=NONE`, `381/381` chunks SAY
+  recebidos/tocados, `non_silence_frames=381`, zero drops, zero falhas de
+  write/commit, Audio IO sem drops/recoveries e Codec v2 `healthy=true`.
+- O pos-check confirmou rollback seguro: Playback v2 desarmado
+  (`speaker_owner_dry_run_enabled=false`, `speaker_owner_requested=false`,
+  `speaker_owner_block_reason=DISABLED`), fila SAY zero e Codec health
+  `status=ok`, sem warnings.
 
 ## Ordem Recomendada
 
