@@ -1781,6 +1781,10 @@ Incremento N6.6 iniciado:
   `NOISEBOT_TTS_SEND_INTERVAL_MS` nao estava definido. O default runtime foi
   alinhado para 18 ms, mantendo a variavel de ambiente como rollback/ajuste de
   bancada.
+- `/ai/status` passou a expor `tts_output_scheduler` com fila alvo, intervalo
+  de envio SAY, duracao fisica do chunk e rampa inicial. Isso permite confirmar
+  apos restart que o processo em execucao carregou o pacing esperado antes de
+  repetir o gate fisico.
 - Objetivo do gate seguinte: repetir `speaker-owner-gate --require-say` com
   resposta real e exigir `real_owner_candidate=true` ou, no minimo, zero drops
   novos antes de desenhar qualquer incremento de owner real.

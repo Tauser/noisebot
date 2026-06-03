@@ -43,6 +43,13 @@ from .log_buffer import install_recent_log_handler
 from .release_check import build_release_check
 from .security import check_token, load_or_create_token
 from .status import StatusStore
+from ..agent.playback import (
+    CHUNK_DURATION_S,
+    FIRMWARE_SAY_QUEUE,
+    SAY_SEND_INTERVAL_S,
+    SAY_STARTUP_CHUNKS,
+    SAY_STARTUP_INTERVAL_S,
+)
 from ..vision import VisionClient, VisionError
 from ..agent.runtime import (
     AudioChunkIn,
@@ -277,6 +284,13 @@ class OpsHttpServer:
             last_reply=store.last_reply,
             last_route=store.last_route,
             firmware_capabilities=capabilities,
+            playback_config={
+                "firmware_say_queue_target": FIRMWARE_SAY_QUEUE,
+                "say_send_interval_ms": round(SAY_SEND_INTERVAL_S * 1000.0, 3),
+                "chunk_duration_ms": round(CHUNK_DURATION_S * 1000.0, 3),
+                "startup_chunks": SAY_STARTUP_CHUNKS,
+                "startup_interval_ms": round(SAY_STARTUP_INTERVAL_S * 1000.0, 3),
+            },
         ))
 
     async def _get_ai_metrics(self, request: web.Request) -> web.Response:
