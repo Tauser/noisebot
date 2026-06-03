@@ -1703,6 +1703,17 @@ Incremento N6.3 iniciado:
   `ok=true`, `required_say_chunks>=1`, deltas SAY recebidos/tocados, zero drops
   e `disarmed.ok=true`.
 
+Observacao N6.3:
+
+- A primeira repeticao com `--require-say` falhou corretamente quando nenhum
+  SAY passou no intervalo (`0 < 1`), preservando rollback e health final limpo.
+- A repeticao seguinte revelou um caso diferente: os contadores do firmware
+  resetaram durante a janela (`say_chunks_received` caiu de 1889 para 0,
+  `rx_owner_frames` caiu de 168634 para 2914 e o gate voltou `DISABLED` antes
+  do snapshot final). O gate do server passou a detectar delta negativo como
+  `counter_reset_detected=true` e reportar "possivel reboot/reset diagnostico",
+  em vez de classificar isso como drop SAY comum ou falta de SAY real.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

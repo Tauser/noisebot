@@ -945,8 +945,19 @@ def _run_playback_v2_delta(client, *, no_prompt: bool, wait_s: float = 0.0) -> d
         key: _playback_v2_counter_delta(codec_before, codec_after, key)
         for key in codec_delta_keys
     }
+    negative_deltas = {
+        key: value
+        for key, value in {
+            **deltas,
+            **{f"audio_io.{key}": value for key, value in io_deltas.items()},
+            **{f"codec.{key}": value for key, value in codec_deltas.items()},
+        }.items()
+        if value < 0
+    }
+    counter_reset_detected = bool(negative_deltas)
     queue_empty = int(after.get("say_queue_count", 0) or 0) == 0
     normal_path_clean = (
+        not counter_reset_detected and
         deltas["say_chunks_dropped"] == 0 and
         deltas["say_chunks_dropped_listening"] == 0
     )
@@ -956,7 +967,9 @@ def _run_playback_v2_delta(client, *, no_prompt: bool, wait_s: float = 0.0) -> d
         issues.append("playback-v2 status retornou ok=false")
     if not queue_empty:
         issues.append(f"fila SAY nao vazia: {after.get('say_queue_count')}")
-    if not normal_path_clean:
+    if counter_reset_detected:
+        issues.append("contadores v2 resetaram no intervalo; possivel reboot/reset diagnostico")
+    elif not normal_path_clean:
         issues.append("Playback v2 registrou drops SAY no intervalo")
     if deltas["speaker_write_failures"] != 0:
         issues.append(f"speaker_write_failures delta={deltas['speaker_write_failures']}")
@@ -990,6 +1003,8 @@ def _run_playback_v2_delta(client, *, no_prompt: bool, wait_s: float = 0.0) -> d
         "deltas": deltas,
         "audio_io_deltas": io_deltas,
         "codec_deltas": codec_deltas,
+        "negative_deltas": negative_deltas,
+        "counter_reset_detected": counter_reset_detected,
         "queue_empty": queue_empty,
         "normal_path_clean": normal_path_clean,
     }
@@ -1063,7 +1078,9 @@ def _run_playback_v2_speaker_owner_gate(
         )
     say_chunks_received = _playback_v2_int(deltas, "say_chunks_received")
     required_say_chunks = max(1 if require_say else 0, min_say_chunks)
-    if required_say_chunks > 0 and say_chunks_received < required_say_chunks:
+    if bool(delta.get("counter_reset_detected", False)):
+        issues.append("gate SAY real invalido porque os contadores resetaram")
+    elif required_say_chunks > 0 and say_chunks_received < required_say_chunks:
         issues.append(
             "SAY real insuficiente no intervalo: "
             f"{say_chunks_received} < {required_say_chunks}"
@@ -1090,6 +1107,7 @@ def _run_playback_v2_speaker_owner_gate(
         "require_say": require_say,
         "min_say_chunks": min_say_chunks,
         "required_say_chunks": required_say_chunks,
+        "counter_reset_detected": bool(delta.get("counter_reset_detected", False)),
         "frames": after.get("speaker_owner_frames"),
         "samples": after.get("speaker_owner_samples"),
         "say_chunks_received_delta": deltas.get("say_chunks_received"),
@@ -1114,6 +1132,7 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
             f"- block_reason: {payload.get('block_reason')}",
             f"- require_say: {payload.get('require_say')} "
             f"required_chunks={payload.get('required_say_chunks')}",
+            f"- counter_reset_detected: {payload.get('counter_reset_detected')}",
             f"- frames/samples: {payload.get('frames')}/{payload.get('samples')}",
             f"- delta.received: {payload.get('say_chunks_received_delta')}",
             f"- delta.played: {payload.get('say_chunks_played_delta')}",
