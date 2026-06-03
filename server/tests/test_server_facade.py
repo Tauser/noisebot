@@ -783,6 +783,24 @@ def test_server_firmware_diag_client_exposes_capture_v2_endpoints(monkeypatch) -
     ]
 
 
+def test_server_firmware_diag_client_exposes_voice_v2_endpoint(monkeypatch) -> None:
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    client = firmware_diag.FirmwareDiagClient("http://robot.local/")
+    get_paths: list[str] = []
+
+    def fake_get_json(self, path):
+        get_paths.append(path)
+        return {"ok": True, "ready": True, "block_reason": "none"}
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "_get_json", fake_get_json)
+
+    payload = client.audio_voice_v2_status()
+
+    assert payload["ok"] is True
+    assert payload["ready"] is True
+    assert get_paths == ["api/audio/voice-v2"]
+
+
 def test_server_firmware_diag_client_exposes_codec_v2_endpoint(monkeypatch) -> None:
     firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
     client = firmware_diag.FirmwareDiagClient("http://robot.local/")
@@ -964,6 +982,74 @@ def test_server_codec_v2_health_accepts_clean_opus_status() -> None:
     assert health["status"] == "ok"
     assert health["issues"] == []
     assert health["warnings"] == []
+
+
+def test_server_cli_parses_voice_v2_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "voice-v2",
+        "status",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "voice-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "status"
+    assert args.json
+
+
+def test_server_cli_runs_voice_v2_debug_command(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {}
+
+    def fake_status(self):
+        calls["base_url"] = self.base_url
+        return {
+            "ok": True,
+            "ready": True,
+            "block_reason": "none",
+            "rollback_available": True,
+            "capture_enabled": True,
+            "capture_tx_enabled": True,
+            "activity_decider_enabled": True,
+            "capture_session_active": False,
+            "activity_session_active": False,
+            "codec_worker_state": "running",
+            "codec_worker_active": True,
+            "playback_queue_owner": True,
+            "runtime_idle": True,
+            "playback_say_queue_count": 0,
+            "playback_say_drops": 0,
+            "codec_queue_count": 0,
+            "codec_egress_queue_count": 0,
+            "codec_packet_drops": 0,
+            "codec_egress_drops": 0,
+            "audio_io_dropped_frames": 0,
+            "audio_io_i2s_recoveries": 0,
+        }
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_voice_v2_status", fake_status)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "voice-v2",
+        "status",
+    ])
+
+    captured = capsys.readouterr()
+    assert "Voice Audio v2" in captured.out
+    assert "Ready: True" in captured.out
+    assert "Block reason: none" in captured.out
+    assert "Codec worker: running" in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
 
 
 def test_server_cli_parses_capture_v2_debug_command() -> None:

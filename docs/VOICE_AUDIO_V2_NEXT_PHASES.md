@@ -2061,6 +2061,15 @@ ativo; `codec-v2 health` retornou `healthy=true`, `status=ok`, sem
 issues/warnings, `opus_codec_error=0` e egress zero. Capture v2 estava idle com
 captura/TX armados e Activity v2 default ligado, sem sessao ativa.
 
+Incremento server-only seguinte: o gate consolidado ganhou proxy operacional em
+`GET /api/device/audio/voice-v2` e CLI `debug voice-v2 status`. O comando usa o
+mesmo endpoint do firmware, sem alterar runtime, HAL, wake, VAD, captura,
+playback, codec, Opus ou PCM16. Validacao local passou em
+`server/tests/test_server_facade.py` (`199 passed`) e o CLI contra hardware
+retornou `ready=true`, `block_reason=none`, filas/drops zerados e Codec v2
+worker `running`. O proxy HTTP do server requer restart do processo para a nova
+rota ficar visivel na instancia ja aberta.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

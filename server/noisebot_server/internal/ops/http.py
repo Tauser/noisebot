@@ -152,6 +152,7 @@ class OpsHttpServer:
         wa.router.add_get("/api/device/audio/capture-v2", self._get_device_audio_capture_v2)
         wa.router.add_post("/api/device/audio/capture-v2/replay", self._post_device_audio_capture_v2_replay)
         wa.router.add_post("/api/device/audio/capture-v2/cancel", self._post_device_audio_capture_v2_cancel)
+        wa.router.add_get("/api/device/audio/voice-v2", self._get_device_audio_voice_v2)
         wa.router.add_post("/api/device/audio/playback-v2/speaker-owner/arm", self._post_device_audio_playback_v2_speaker_owner_arm)
         wa.router.add_post("/api/device/audio/playback-v2/speaker-owner/disarm", self._post_device_audio_playback_v2_speaker_owner_disarm)
         wa.router.add_get("/api/device/audio/io-v2", self._get_device_audio_io_v2)
@@ -541,6 +542,12 @@ class OpsHttpServer:
         self._require_token(request)
         return await self._proxy_firmware_diag_post(
             self._firmware_diag_client.audio_capture_v2_cancel
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _get_device_audio_voice_v2(self, request: web.Request) -> web.Response:
+        return await self._proxy_firmware_diag_get(
+            self._firmware_diag_client.audio_voice_v2_status
             if self._firmware_diag_client is not None else None
         )
 

@@ -114,6 +114,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     release_check.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     release_check.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    voice_v2 = debug_sub.add_parser("voice-v2")
+    voice_v2.add_argument("action", choices=["status"], nargs="?", default="status")
+    voice_v2.add_argument("--firmware-url", default="")
+    voice_v2.add_argument("--json", action="store_true", help="Emitir JSON")
+
     aec_live = debug_sub.add_parser("aec-live")
     aec_live.add_argument("--firmware-url", default="")
     aec_live.add_argument("--output", help="Arquivo Markdown/JSON de saida")
@@ -626,6 +631,27 @@ def run_debug_command(args: argparse.Namespace) -> None:
         if not trial.ok:
             raise SystemExit(1)
         return
+    if args.debug_command == "voice-v2":
+        from .internal.ops.firmware_diag import FirmwareDiagClient
+
+        firmware_url = args.firmware_url or os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "")
+        if not firmware_url:
+            host = args.host or os.environ.get("NOISEBOT_HOST", "")
+            if host:
+                firmware_url = f"http://{host}"
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+
+        client = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=1.5)
+        payload = client.audio_voice_v2_status()
+
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(_format_voice_v2_status(payload))
+        if not payload.get("ok", False):
+            raise SystemExit(1)
+        return
     if args.debug_command == "capture-v2":
         from .internal.ops.firmware_diag import FirmwareDiagClient
 
@@ -807,6 +833,36 @@ def run_debug_command(args: argparse.Namespace) -> None:
             raise SystemExit(1)
         return
     raise SystemExit(2)
+
+
+def _format_voice_v2_status(payload: dict[str, object]) -> str:
+    return "\n".join(
+        [
+            "# Voice Audio v2",
+            "",
+            f"- OK: {payload.get('ok', False)}",
+            f"- Ready: {payload.get('ready', False)}",
+            f"- Block reason: {payload.get('block_reason', '')}",
+            f"- Rollback disponivel: {payload.get('rollback_available', '')}",
+            f"- Capture: enabled={payload.get('capture_enabled', '')}, "
+            f"tx={payload.get('capture_tx_enabled', '')}, "
+            f"session_active={payload.get('capture_session_active', '')}",
+            f"- Activity decider: {payload.get('activity_decider_enabled', '')} "
+            f"(session_active={payload.get('activity_session_active', '')})",
+            f"- Codec worker: {payload.get('codec_worker_state', '')} "
+            f"(active={payload.get('codec_worker_active', '')})",
+            f"- Playback queue owner: {payload.get('playback_queue_owner', '')}",
+            f"- Runtime idle: {payload.get('runtime_idle', '')}",
+            f"- SAY queue/drops: {payload.get('playback_say_queue_count', '')}/"
+            f"{payload.get('playback_say_drops', '')}",
+            f"- Codec queue/egress: {payload.get('codec_queue_count', '')}/"
+            f"{payload.get('codec_egress_queue_count', '')}",
+            f"- Drops: codec={payload.get('codec_packet_drops', '')}, "
+            f"egress={payload.get('codec_egress_drops', '')}, "
+            f"io={payload.get('audio_io_dropped_frames', '')}",
+            f"- I2S recoveries: {payload.get('audio_io_i2s_recoveries', '')}",
+        ]
+    )
 
 
 def _format_io_v2_status(payload: dict[str, object]) -> str:
