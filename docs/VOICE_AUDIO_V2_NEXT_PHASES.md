@@ -1788,6 +1788,14 @@ Incremento N6.6 iniciado:
 - Objetivo do gate seguinte: repetir `speaker-owner-gate --require-say` com
   resposta real e exigir `real_owner_candidate=true` ou, no minimo, zero drops
   novos antes de desenhar qualquer incremento de owner real.
+- Validacao N6.6 com server reiniciado no default de 18 ms: `/ai/status`
+  confirmou `tts_output_scheduler.say_send_interval_ms=18.0`, o egress Opus foi
+  drenado para zero e o `speaker-owner-gate --require-say` com transcript
+  sintetico pelo Ops HTTP passou com `298/298` chunks SAY recebidos/tocados,
+  zero drops, zero falhas de write/commit, `non_silence_frames=802`,
+  `real_owner_candidate=true` e `real_owner_candidate_status=ready_with_warnings`
+  apenas por `heap_internal_free_kb baixo: 11`. O rollback desarmou Playback v2
+  e deixou a fila SAY final em zero.
 
 ## Ordem Recomendada
 
