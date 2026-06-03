@@ -1422,6 +1422,20 @@ Incremento N5.6 iniciado:
   `dropped_frames`/`i2s_recoveries`/handoff failures e Codec v2 `healthy=true`,
   `status=ok`, sem warnings e com zero drops/erros.
 
+Incremento N5.7 iniciado:
+
+- Os helpers de detalhe `audio_playback_service_v2_speaker_next_frame()` e
+  `audio_playback_service_v2_speaker_commit_frame()` deixaram de ser API
+  publica. Eles ficaram privados dentro de Playback v2 como
+  `playback_v2_speaker_next_frame()` e `playback_v2_speaker_commit_frame()`.
+- O contrato publico mantem apenas
+  `audio_playback_service_v2_speaker_write_next_frame()`, que puxa/prepara o
+  frame SAY, chama o callback de escrita fisica fornecido por `audio_service` e
+  registra commit/telemetria dentro de Playback v2.
+- Esta etapa nao muda HAL fisico, fila SAY, wake, captura, Activity v2, Codec v2
+  ou rollback; ela reduz a superficie publica e atualiza o teste de contrato
+  para exigir o desenho semantico atual.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

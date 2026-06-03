@@ -313,8 +313,8 @@ static bool playback_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out)
     return true;
 }
 
-bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out,
-                                                  uint8_t volume_percent)
+static bool playback_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out,
+                                           uint8_t volume_percent)
 {
     if (out == NULL) {
         taskENTER_CRITICAL(&s_mux);
@@ -357,6 +357,9 @@ bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk
     return true;
 }
 
+static void playback_v2_speaker_commit_frame(uint16_t sample_count,
+                                             esp_err_t result);
+
 bool audio_playback_service_v2_speaker_write_next_frame(
     uint8_t volume_percent,
     nb_audio_playback_v2_speaker_write_cb_t write_cb,
@@ -382,12 +385,12 @@ bool audio_playback_service_v2_speaker_write_next_frame(
         return false;
     }
 
-    if (!audio_playback_service_v2_speaker_next_frame(&frame, volume_percent)) {
+    if (!playback_v2_speaker_next_frame(&frame, volume_percent)) {
         return false;
     }
 
     esp_err_t wr = write_cb(frame.samples, frame.count, ctx);
-    audio_playback_service_v2_speaker_commit_frame(frame.count, wr);
+    playback_v2_speaker_commit_frame(frame.count, wr);
 
     taskENTER_CRITICAL(&s_mux);
     s_status.speaker_write_requests++;
@@ -409,8 +412,8 @@ bool audio_playback_service_v2_speaker_write_next_frame(
     return true;
 }
 
-void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
-                                                    esp_err_t result)
+static void playback_v2_speaker_commit_frame(uint16_t sample_count,
+                                             esp_err_t result)
 {
     audio_io_service_v2_speaker_handoff_note_playback_frame(false, result);
 

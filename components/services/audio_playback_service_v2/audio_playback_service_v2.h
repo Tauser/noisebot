@@ -89,16 +89,12 @@ bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_co
 esp_err_t audio_playback_service_v2_speaker_owner_arm(void);
 esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);
 esp_err_t audio_playback_service_v2_say_accept(const int16_t *samples, uint16_t count);
-bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out,
-                                                  uint8_t volume_percent);
 bool audio_playback_service_v2_speaker_write_next_frame(
     uint8_t volume_percent,
     nb_audio_playback_v2_speaker_write_cb_t write_cb,
     void *ctx,
     uint16_t *sample_count,
     esp_err_t *result);
-void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
-                                                    esp_err_t result);
 bool audio_playback_service_v2_speaker_should_end_idle(void);
 uint32_t audio_playback_service_v2_say_cancel_active(void);
 void audio_playback_service_v2_say_drop_listening(void);
