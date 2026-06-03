@@ -1687,6 +1687,22 @@ Validacao N6.2 em hardware:
   `codec-v2 health` final voltou `healthy=true/status=ok`, sem issues/warnings,
   fila egress zero e `opus_codec_error=0`.
 
+Incremento N6.3 iniciado:
+
+- O gate `debug playback-v2 speaker-owner-gate` ganhou modo estrito de SAY real
+  por `--require-say` e `--min-say-chunks N`.
+- Sem esse modo, uma janela sem SAY continua servindo como ensaio de idle/TX e
+  retorna apenas warning; com `--require-say`, o mesmo caso vira falha
+  operacional, mesmo que readiness, Audio IO e Codec estejam verdes.
+- Isso nao altera firmware, HAL, wake, VAD, Capture, Activity, Codec, Opus ou
+  PCM16. O objetivo e impedir promocao baseada em um dry-run que so viu
+  silencio/TX, deixando claro quando houve resposta real do bridge.
+- Gate esperado em hardware:
+  `noisebot_server --host 192.168.1.30 debug playback-v2 speaker-owner-gate --wait-s 120 --no-prompt --require-say --json`;
+  durante a janela, executar um turno real curto por wake e aceitar somente
+  `ok=true`, `required_say_chunks>=1`, deltas SAY recebidos/tocados, zero drops
+  e `disarmed.ok=true`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

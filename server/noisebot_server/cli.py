@@ -163,6 +163,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=0.0,
         help="Aguardar N segundos no modo delta antes do snapshot final",
     )
+    playback_v2.add_argument(
+        "--require-say",
+        action="store_true",
+        help="Falhar o gate se nenhum SAY real passar no intervalo",
+    )
+    playback_v2.add_argument(
+        "--min-say-chunks",
+        type=int,
+        default=0,
+        help="Minimo de chunks SAY recebidos para o speaker-owner-gate",
+    )
     playback_v2.add_argument("--json", action="store_true", help="Emitir JSON")
 
     io_v2 = debug_sub.add_parser("io-v2")
@@ -676,6 +687,8 @@ def run_debug_command(args: argparse.Namespace) -> None:
                 client,
                 no_prompt=args.no_prompt,
                 wait_s=args.wait_s,
+                require_say=args.require_say,
+                min_say_chunks=args.min_say_chunks,
             )
         elif args.action == "speaker-owner-arm":
             payload = client.audio_playback_v2_speaker_owner_arm()
@@ -994,6 +1007,8 @@ def _run_playback_v2_speaker_owner_gate(
     *,
     no_prompt: bool,
     wait_s: float = 0.0,
+    require_say: bool = False,
+    min_say_chunks: int = 0,
 ) -> dict[str, object]:
     issues: list[str] = []
     warnings: list[str] = []
@@ -1046,7 +1061,14 @@ def _run_playback_v2_speaker_owner_gate(
             "speaker_owner_recoveries="
             f"{after.get('speaker_owner_recoveries')}"
         )
-    if _playback_v2_int(deltas, "say_chunks_received") == 0:
+    say_chunks_received = _playback_v2_int(deltas, "say_chunks_received")
+    required_say_chunks = max(1 if require_say else 0, min_say_chunks)
+    if required_say_chunks > 0 and say_chunks_received < required_say_chunks:
+        issues.append(
+            "SAY real insuficiente no intervalo: "
+            f"{say_chunks_received} < {required_say_chunks}"
+        )
+    elif say_chunks_received == 0:
         warnings.append("sem SAY real no intervalo; gate validou apenas idle/TX")
     if not bool(disarmed.get("ok", False)):
         issues.append("speaker-owner-disarm retornou ok=false")
@@ -1065,6 +1087,9 @@ def _run_playback_v2_speaker_owner_gate(
         "ready": bool(after.get("speaker_owner_handoff_ready", False)),
         "block_reason": after.get("speaker_owner_block_reason"),
         "active": bool(after.get("speaker_owner_active", False)),
+        "require_say": require_say,
+        "min_say_chunks": min_say_chunks,
+        "required_say_chunks": required_say_chunks,
         "frames": after.get("speaker_owner_frames"),
         "samples": after.get("speaker_owner_samples"),
         "say_chunks_received_delta": deltas.get("say_chunks_received"),
@@ -1087,6 +1112,8 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
             f"- ready: {payload.get('ready')}",
             f"- active: {payload.get('active')}",
             f"- block_reason: {payload.get('block_reason')}",
+            f"- require_say: {payload.get('require_say')} "
+            f"required_chunks={payload.get('required_say_chunks')}",
             f"- frames/samples: {payload.get('frames')}/{payload.get('samples')}",
             f"- delta.received: {payload.get('say_chunks_received_delta')}",
             f"- delta.played: {payload.get('say_chunks_played_delta')}",
