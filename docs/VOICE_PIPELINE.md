@@ -42,6 +42,8 @@ ela piorou a transcrição e aumentou risco de watchdog.
   audio, entao o default ficou em 20 ms e os drops devem ser investigados pelo
   lado de janela/estado/aceite no firmware. O firmware agora absorve jitter de
   fila cheia com backpressure curto de ate 16 ms no accept SAY antes de dropar.
+  A validacao final de N6.9 confirmou 237 eventos de fila cheia recuperados por
+  wait e zero drops reais durante dry-run + janela real.
   `NOISEBOT_TTS_QUEUE_TARGET` e `NOISEBOT_TTS_SEND_INTERVAL_MS` continuam como
   rollback/ajuste operacional.
 

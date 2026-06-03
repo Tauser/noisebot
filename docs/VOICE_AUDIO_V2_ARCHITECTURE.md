@@ -342,7 +342,10 @@ Invariantes:
   audio, entao o default voltou para 20 ms e a proxima repeticao deve focar a
   janela/estado/aceite no firmware. O accept da fila SAY agora aplica
   backpressure curto de ate 16 ms quando a fila esta cheia e expoe contadores
-  de fila cheia, recuperacao por wait e drop por fila cheia.
+  de fila cheia, recuperacao por wait e drop por fila cheia. A validacao final
+  fechou N6.9: dry-run 393/393 sem drops, 237 filas cheias recuperadas por
+  wait, janela real auto-desarmada com 393 writes reais / 100608 samples, zero
+  falhas, zero drops e rollback limpo.
 
 ### Voice Activity v2
 

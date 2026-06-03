@@ -239,6 +239,10 @@ Incremento atual da Fase N3:
   audio. O diagnostico/correcao seguinte ficou no firmware: backpressure curto
   de ate 16 ms no `say_accept` quando a fila SAY esta cheia, com contadores de
   high-watermark, fila cheia, recuperacao por wait e drop por fila cheia.
+  Validacao final apos flash de `c045a57`: dry-run 393/393 sem drops, 237
+  filas cheias recuperadas por wait, janela real auto-desarmada com 393 writes
+  reais / 100608 samples, zero falhas, zero drops, fila SAY zero, Codec v2
+  saudavel e rollback final limpo. N6.9 fechado.
 
 ### Wake Word
 

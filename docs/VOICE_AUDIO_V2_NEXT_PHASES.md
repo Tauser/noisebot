@@ -1881,6 +1881,19 @@ Incremento N6.9 iniciado:
   `say_queue_high_watermark`, `say_accept_wait_ms`,
   `say_chunks_queue_full`, `say_chunks_queue_wait_recovered` e
   `say_chunks_dropped_queue_full` para separar jitter recuperado de drop real.
+- Validacao final apos flash de `c045a57`: `/api/audio/playback-v2` voltou a
+  responder com os campos novos e baseline limpo. Com server em 20 ms, o
+  dry-run recebeu/tocou 393/393 chunks SAY, zero drops, fila final zero,
+  `say_queue_high_watermark=32` e 237 eventos de fila cheia recuperados por
+  wait. O `speaker-owner-real-arm` abriu a janela real; a segunda fala
+  auto-desarmou com `speaker_owner_real_window_completed=true`,
+  `speaker_owner_real_auto_disarm_count=1`,
+  `speaker_owner_real_write_frames=393`,
+  `speaker_owner_real_write_samples=100608`, zero write/commit failures,
+  `say_chunks_received=786`, `say_chunks_played=786`,
+  `say_chunks_dropped=0`, `say_chunks_dropped_queue_full=0`, fila SAY zero e
+  `codec-v2 health` saudavel (`healthy=true`, drops zero). O disarm final
+  deixou o owner dry-run e real desarmados. N6.9 fechado.
 
 ## Ordem Recomendada
 
