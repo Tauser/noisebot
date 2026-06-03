@@ -2049,6 +2049,18 @@ zero drops/recoveries e ausencia de falhas de speaker. A intencao e congelar um
 snapshot de preflight antes de nova reducao estrutural do `audio_service.c`, sem
 trocar HAL, wake, VAD, captura ou protocolo.
 
+Validacao hardware do gate consolidado em 2026-06-03: apos flash do commit
+`7a45a6b`, `GET /api/audio/voice-v2` retornou `ready=true` e
+`block_reason=none`. O snapshot confirmou `capture_enabled=true`,
+`capture_tx_enabled=true`, `activity_decider_enabled=true`, Audio IO/Activity/
+Playback inicializados, Codec v2 worker `running`, Playback v2 como dono da
+fila SAY, runtime idle, `playback_say_queue_count=0`, zero drops/falhas de
+Playback, `codec_queue_count=0`, `codec_egress_queue_count=0`, zero drops de
+Codec e zero recoveries no Audio IO. O server local estava conectado com Opus
+ativo; `codec-v2 health` retornou `healthy=true`, `status=ok`, sem
+issues/warnings, `opus_codec_error=0` e egress zero. Capture v2 estava idle com
+captura/TX armados e Activity v2 default ligado, sem sessao ativa.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
