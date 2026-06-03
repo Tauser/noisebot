@@ -1304,6 +1304,16 @@ Incremento N5.2 iniciado:
 - Gate esperado: repetir o mesmo `playback-v2 delta --wait-s` com resposta real
   curta e confirmar fila SAY final zero, zero drops/cancelamentos, zero falhas
   de write/commit, Audio IO v2 sem drops/recoveries e Codec v2 sem drops/erros.
+- Validacao fisica apos flash: baseline sem prompt retornou `ok=true`,
+  `status=ok`, `issues=[]`, `warnings=[]` e deltas zerados. Turno real curto
+  com `debug playback-v2 delta --wait-s 35 --json` fechou com `ok=true`,
+  `status=warn`, `issues=[]`, fila SAY final zero,
+  `say_chunks_received=368`, `say_chunks_played=368`, zero
+  drops/cancelamentos, `speaker_write_requests=368`,
+  `speaker_write_failures=0`, `speaker_frames_committed=368`,
+  `speaker_commit_failures=0`, Audio IO v2 sem `dropped_frames`,
+  `i2s_recoveries` ou handoff failures, Codec v2 `healthy=true` com zero
+  drops/erros. O unico warning foi `heap_internal_free_kb baixo: 11`.
 
 ## Ordem Recomendada
 
