@@ -225,7 +225,10 @@ Incremento atual da Fase N3:
   `speaker_owner_real_write_*` sobem somente quando `speaker_owner_real_armed`
   esta verdadeiro e o write ocorre pelo callback do `audio_service`. Evidencia:
   Playback v2 continua sem chamada direta ao HAL; isso prepara a validacao de
-  um turno completo armado sem trocar ownership fisico.
+  um turno completo armado sem trocar ownership fisico. A validacao confirmou
+  uma fala pre-arm com contadores reais zerados e outra fala com `real-arm`
+  armado registrando 371 writes / 94976 samples, zero falhas, fila SAY zero e
+  rollback final limpo.
 
 ### Wake Word
 

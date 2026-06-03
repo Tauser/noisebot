@@ -329,7 +329,10 @@ Invariantes:
 - Na Fase N6.8, Playback v2 passa a expor contadores de write feitos enquanto
   `speaker_owner_real_armed=true`. Isso mede execucao armada real pelo mesmo
   callback do `audio_service`; nao muda o owner fisico do HAL e nao cria chamada
-  direta de Playback v2 para `audio_hal_*`.
+  direta de Playback v2 para `audio_hal_*`. Em bancada, a primeira fala antes
+  do `real-arm` manteve os contadores reais zerados; a fala seguinte com
+  `real-arm` armado registrou 371 writes / 94976 samples, zero falhas e
+  rollback limpo.
 
 ### Voice Activity v2
 

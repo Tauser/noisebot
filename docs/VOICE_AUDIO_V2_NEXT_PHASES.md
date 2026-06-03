@@ -1837,6 +1837,16 @@ Incremento N6.8 iniciado:
   e confirmar que frames/samples reais aparecem nesses contadores com zero
   falhas, fila SAY final zero, Codec v2 saudavel e rollback por `real-disarm`
   + `speaker-owner-disarm`.
+- Validacao apos flash fechou o incremento: baseline pos-flash trouxe
+  `speaker_owner_real_write_*` zerados; a primeira fala com dry-run armado
+  enviou 372 chunks SAY e manteve `speaker_owner_real_write_frames=0` porque
+  `real-arm` ainda nao estava armado. Depois de `speaker-owner-real-arm`, a
+  segunda fala enviou 371 chunks SAY e os contadores reais subiram para
+  `speaker_owner_real_write_frames=371`,
+  `speaker_owner_real_write_samples=94976`,
+  `speaker_owner_real_write_failures=0` e ultimo resultado `ESP_OK`. A fila
+  SAY ficou zero, Codec v2 ficou `status=ok`, e o rollback final por
+  `real-disarm` + `speaker-owner-disarm` voltou para estado seguro.
 
 ## Ordem Recomendada
 
