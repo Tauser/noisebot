@@ -1206,10 +1206,10 @@ Pendências:
   O `/ai/metrics` agora tambem transforma esses campos em `voice_alert` e
   `voice_diagnosis`: `tts_completed=false` vira alerta de fala possivelmente
   incompleta; truncamento apenas visual do `TEXT_SCROLL` vira diagnostico sem
-  alerta. Refino server-only posterior: o TTS/resposta original permanece com
-  acentos, mas o payload visual de `TEXT_SCROLL` e normalizado para ASCII sem
-  diacriticos antes da paginacao, evitando que o firmware desenhe acentos
-  manuais com aparencia diferente da fonte base do overlay.
+  alerta. Refino posterior: o server preserva UTF-8/acento no `TEXT_SCROLL`; o
+  firmware renderiza o balao de texto com fonte Unicode do LovyanGFX
+  (`efontCN_16`), removendo o desenho manual de acentos sobre a fonte
+  Montserrat ASCII.
 
 ## Ordem Recomendada
 

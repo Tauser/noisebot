@@ -149,6 +149,7 @@ static constexpr int TEXT_MAX_LEN = 129; /* 128 bytes + NUL, igual ao bridge */
 static const lgfx::LVGLfont UI_FONT_STACKCHAN_TITLE(&MontserratSemiBold26);
 static const lgfx::IFont * const UI_FONT_BODY  = &lgfx::fonts::lv_font_montserrat_16;
 static const lgfx::IFont * const UI_FONT_SMALL = &lgfx::fonts::lv_font_montserrat_14;
+static const lgfx::IFont * const UI_FONT_TEXT  = &lgfx::fonts::efontCN_16;
 static const lgfx::IFont * const UI_FONT_TITLE = &UI_FONT_STACKCHAN_TITLE;
 static const lgfx::IFont * const UI_FONT_CLOCK = &lgfx::fonts::lv_font_montserrat_48;
 
@@ -156,6 +157,7 @@ static void ui_set_font(LGFX_Sprite *spr, const lgfx::IFont *font)
 {
     spr->setFont(font);
     spr->setTextSize(1);
+    spr->setAttribute(lgfx::attribute_t::utf8_switch, 1);
 }
 
 static void ui_reset_font(LGFX_Sprite *spr)
@@ -449,150 +451,6 @@ static void draw_volume_overlay(LGFX_Sprite *spr,
     ui_reset_font(spr);
 }
 
-typedef enum {
-    PT_MARK_NONE = 0,
-    PT_MARK_ACUTE,
-    PT_MARK_GRAVE,
-    PT_MARK_CIRC,
-    PT_MARK_TILDE,
-    PT_MARK_CEDILLA,
-} pt_mark_t;
-
-typedef struct {
-    int x;
-    int w;
-    pt_mark_t mark;
-} pt_text_mark_t;
-
-static bool pt_char_from_codepoint(uint32_t cp, char *base, pt_mark_t *mark)
-{
-    *mark = PT_MARK_NONE;
-    switch (cp) {
-    case 0x00E1: *base = 'a'; *mark = PT_MARK_ACUTE; return true; /* á */
-    case 0x00C1: *base = 'A'; *mark = PT_MARK_ACUTE; return true; /* Á */
-    case 0x00E9: *base = 'e'; *mark = PT_MARK_ACUTE; return true; /* é */
-    case 0x00C9: *base = 'E'; *mark = PT_MARK_ACUTE; return true; /* É */
-    case 0x00ED: *base = 'i'; *mark = PT_MARK_ACUTE; return true; /* í */
-    case 0x00CD: *base = 'I'; *mark = PT_MARK_ACUTE; return true; /* Í */
-    case 0x00F3: *base = 'o'; *mark = PT_MARK_ACUTE; return true; /* ó */
-    case 0x00D3: *base = 'O'; *mark = PT_MARK_ACUTE; return true; /* Ó */
-    case 0x00FA: *base = 'u'; *mark = PT_MARK_ACUTE; return true; /* ú */
-    case 0x00DA: *base = 'U'; *mark = PT_MARK_ACUTE; return true; /* Ú */
-    case 0x00E0: *base = 'a'; *mark = PT_MARK_GRAVE; return true; /* à */
-    case 0x00C0: *base = 'A'; *mark = PT_MARK_GRAVE; return true; /* À */
-    case 0x00E2: *base = 'a'; *mark = PT_MARK_CIRC; return true;  /* â */
-    case 0x00CA: *base = 'E'; *mark = PT_MARK_CIRC; return true;  /* Ê */
-    case 0x00EA: *base = 'e'; *mark = PT_MARK_CIRC; return true;  /* ê */
-    case 0x00F4: *base = 'o'; *mark = PT_MARK_CIRC; return true;  /* ô */
-    case 0x00D4: *base = 'O'; *mark = PT_MARK_CIRC; return true;  /* Ô */
-    case 0x00E3: *base = 'a'; *mark = PT_MARK_TILDE; return true; /* ã */
-    case 0x00C3: *base = 'A'; *mark = PT_MARK_TILDE; return true; /* Ã */
-    case 0x00F5: *base = 'o'; *mark = PT_MARK_TILDE; return true; /* õ */
-    case 0x00D5: *base = 'O'; *mark = PT_MARK_TILDE; return true; /* Õ */
-    case 0x00E7: *base = 'c'; *mark = PT_MARK_CEDILLA; return true; /* ç */
-    case 0x00C7: *base = 'C'; *mark = PT_MARK_CEDILLA; return true; /* Ç */
-    default:
-        break;
-    }
-    return false;
-}
-
-static uint32_t utf8_next_codepoint(const char **p)
-{
-    const uint8_t *s = (const uint8_t *)(*p);
-    if (s[0] < 0x80u) {
-        (*p)++;
-        return s[0];
-    }
-    if ((s[0] & 0xE0u) == 0xC0u && (s[1] & 0xC0u) == 0x80u) {
-        *p += 2;
-        return ((uint32_t)(s[0] & 0x1Fu) << 6) | (uint32_t)(s[1] & 0x3Fu);
-    }
-    if ((s[0] & 0xF0u) == 0xE0u &&
-        (s[1] & 0xC0u) == 0x80u &&
-        (s[2] & 0xC0u) == 0x80u) {
-        *p += 3;
-        return ((uint32_t)(s[0] & 0x0Fu) << 12) |
-               ((uint32_t)(s[1] & 0x3Fu) << 6) |
-               (uint32_t)(s[2] & 0x3Fu);
-    }
-    (*p)++;
-    return '?';
-}
-
-static void build_pt_display_text(LGFX_Sprite *spr,
-                                  const char *src,
-                                  char *out,
-                                  size_t out_size,
-                                  pt_text_mark_t *marks,
-                                  size_t *mark_count,
-                                  size_t mark_capacity)
-{
-    if (!out || out_size == 0U) return;
-    out[0] = '\0';
-    *mark_count = 0;
-    if (!src) return;
-
-    size_t len = 0;
-    const char *p = src;
-    while (*p && len + 1U < out_size) {
-        uint32_t cp = utf8_next_codepoint(&p);
-        char base = '?';
-        pt_mark_t mark = PT_MARK_NONE;
-        if (cp < 0x80u) {
-            base = (char)cp;
-        } else if (!pt_char_from_codepoint(cp, &base, &mark)) {
-            base = ' ';
-        }
-
-        int before_w = spr->textWidth(out);
-        char tmp[2] = { base, '\0' };
-        int char_w = spr->textWidth(tmp);
-        out[len++] = base;
-        out[len] = '\0';
-
-        if (mark != PT_MARK_NONE && *mark_count < mark_capacity) {
-            marks[*mark_count] = { before_w, char_w, mark };
-            (*mark_count)++;
-        }
-    }
-}
-
-static void draw_pt_marks(LGFX_Sprite *spr,
-                          int text_x,
-                          int text_y,
-                          const pt_text_mark_t *marks,
-                          size_t mark_count,
-                          uint16_t color)
-{
-    for (size_t i = 0; i < mark_count; i++) {
-        int cx = text_x + marks[i].x + (marks[i].w / 2);
-        switch (marks[i].mark) {
-        case PT_MARK_ACUTE:
-            spr->drawLine(cx - 3, text_y - 2, cx + 2, text_y - 7, color);
-            break;
-        case PT_MARK_GRAVE:
-            spr->drawLine(cx - 2, text_y - 7, cx + 3, text_y - 2, color);
-            break;
-        case PT_MARK_CIRC:
-            spr->drawLine(cx - 4, text_y - 2, cx, text_y - 7, color);
-            spr->drawLine(cx, text_y - 7, cx + 4, text_y - 2, color);
-            break;
-        case PT_MARK_TILDE:
-            spr->drawLine(cx - 5, text_y - 4, cx - 2, text_y - 7, color);
-            spr->drawLine(cx - 2, text_y - 7, cx + 2, text_y - 4, color);
-            spr->drawLine(cx + 2, text_y - 4, cx + 5, text_y - 7, color);
-            break;
-        case PT_MARK_CEDILLA:
-            spr->drawLine(cx, text_y + 17, cx - 2, text_y + 20, color);
-            spr->drawLine(cx - 2, text_y + 20, cx + 1, text_y + 22, color);
-            break;
-        default:
-            break;
-        }
-    }
-}
-
 static void draw_message_bubble(LGFX_Sprite *spr,
                                 int x,
                                 int y,
@@ -604,14 +462,9 @@ static void draw_message_bubble(LGFX_Sprite *spr,
                                 int64_t now_us)
 {
     const int pad_x = 18;
+    const char *display_text = text ? text : "";
 
-    char display_text[TEXT_MAX_LEN];
-    pt_text_mark_t marks[32];
-    size_t mark_count = 0;
-
-    ui_set_font(spr, UI_FONT_BODY);
-    build_pt_display_text(spr, text, display_text, sizeof(display_text),
-                          marks, &mark_count, 32U);
+    ui_set_font(spr, UI_FONT_TEXT);
 
     int text_w = spr->textWidth(display_text);
     int text_h = spr->fontHeight();
@@ -642,7 +495,6 @@ static void draw_message_bubble(LGFX_Sprite *spr,
     spr->setTextColor(fg, bg);
     if (text_w <= text_area_w) {
         spr->drawString(display_text, text_x, text_y);
-        draw_pt_marks(spr, text_x, text_y, marks, mark_count, fg);
         ui_reset_font(spr);
         return;
     }
@@ -660,7 +512,6 @@ static void draw_message_bubble(LGFX_Sprite *spr,
 
     spr->setClipRect(text_x, bar_y, text_area_w, bar_h);
     spr->drawString(display_text, text_x - offset, text_y);
-    draw_pt_marks(spr, text_x - offset, text_y, marks, mark_count, fg);
     spr->clearClipRect();
     ui_reset_font(spr);
 }

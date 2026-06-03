@@ -5151,19 +5151,6 @@ def test_server_text_scroll_pages_are_utf8_safe() -> None:
     assert "Olá" in pages[0]
 
 
-def test_server_text_scroll_display_text_removes_diacritics() -> None:
-    orchestrator_module = importlib.import_module(
-        "noisebot_server.internal.agent.orchestrator"
-    )
-
-    assert (
-        orchestrator_module._text_scroll_display_text(
-            "Olá! São águas incríveis para você."
-        )
-        == "Ola! Sao aguas incriveis para voce."
-    )
-
-
 def test_server_text_scroll_pages_split_visually_wide_reply() -> None:
     orchestrator_module = importlib.import_module(
         "noisebot_server.internal.agent.orchestrator"
@@ -5209,16 +5196,14 @@ async def test_server_reply_text_scroll_sends_paginated_pages(monkeypatch) -> No
 
     assert len(adapter.texts) > 1
     assert all(len(page.encode("utf-8")) <= 128 for page in adapter.texts)
-    assert all(page.isascii() for page in adapter.texts)
     assert session.reply_text.startswith("Resposta longa.")
     assert session.meta["text_scroll_truncated"] is True
-    assert session.meta["text_scroll_display_ascii"] is True
     assert session.meta["text_scroll_pages"] == len(adapter.texts)
     assert session.meta["text_scroll_pages_sent"] == len(adapter.texts)
 
 
 @pytest.mark.asyncio
-async def test_server_reply_text_scroll_sends_ascii_visual_copy() -> None:
+async def test_server_reply_text_scroll_preserves_utf8_text() -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     orchestrator_module = importlib.import_module(
         "noisebot_server.internal.agent.orchestrator"
@@ -5242,9 +5227,8 @@ async def test_server_reply_text_scroll_sends_ascii_visual_copy() -> None:
 
     await orchestrator._send_reply_text_scroll(session)
 
-    assert adapter.texts == ["Ola! Sao aguas incriveis para voce."]
+    assert adapter.texts == ["Olá! São águas incríveis para você."]
     assert session.reply_text == "Olá! São águas incríveis para você."
-    assert session.meta["text_scroll_display_ascii"] is True
 
 
 def test_server_dashboard_renders_voice_diagnostics_panel() -> None:
