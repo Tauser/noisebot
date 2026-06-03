@@ -1666,6 +1666,27 @@ Incremento N6.2 iniciado:
   `ok=true`, `ready=true`, `block_reason=NONE`, `disarmed.ok=true` e deltas SAY
   recebidos/tocados sem drops.
 
+Validacao N6.2 em hardware:
+
+- Gate real de 120 s com turno curto por wake retornou `ok=true` e
+  `status=warn` apenas por warnings operacionais conhecidos
+  (`opus_egress_queue_count=1` e `heap_internal_free_kb=11`).
+- Readiness de speaker owner ficou verde durante a janela:
+  `ready=true`, `active=true`, `block_reason=NONE`,
+  `speaker_owner_failures=0` e `speaker_owner_recoveries=0`.
+- Playback v2 recebeu/tocou `186/186` chunks SAY no intervalo, com
+  `say_chunks_dropped=0`, `speaker_write_failures=0`,
+  `speaker_commit_failures=0`, `queue_empty=true` e
+  `normal_path_clean=true`.
+- Audio IO v2 nao registrou `dropped_frames`, `i2s_recoveries`, falhas ou
+  recoveries de speaker handoff; Codec v2 tambem ficou sem drops/erro.
+- Rollback operacional passou: `speaker-owner-gate` desarmou o owner no final
+  (`disarmed.ok=true`, `speaker_owner_dry_run_enabled=false`,
+  `speaker_owner_requested=false`, `speaker_owner_block_reason=DISABLED`).
+- O pacote egress residual foi drenado depois (`drained_packets=1`) e
+  `codec-v2 health` final voltou `healthy=true/status=ok`, sem issues/warnings,
+  fila egress zero e `opus_codec_error=0`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
