@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from collections.abc import Sequence
 
 from .config import LlmProvider, PipelineMode, find_env_file, load_config
@@ -150,6 +151,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     playback_v2.add_argument("--firmware-url", default="")
     playback_v2.add_argument("--no-prompt", action="store_true", help="Nao aguardar Enter no modo delta")
+    playback_v2.add_argument(
+        "--wait-s",
+        type=float,
+        default=0.0,
+        help="Aguardar N segundos no modo delta antes do snapshot final",
+    )
     playback_v2.add_argument("--json", action="store_true", help="Emitir JSON")
 
     io_v2 = debug_sub.add_parser("io-v2")
@@ -653,7 +660,11 @@ def run_debug_command(args: argparse.Namespace) -> None:
 
         client = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=1.5)
         if args.action == "delta":
-            payload = _run_playback_v2_delta(client, no_prompt=args.no_prompt)
+            payload = _run_playback_v2_delta(
+                client,
+                no_prompt=args.no_prompt,
+                wait_s=args.wait_s,
+            )
         elif args.action == "speaker-owner-arm":
             payload = client.audio_playback_v2_speaker_owner_arm()
         elif args.action == "speaker-owner-disarm":
@@ -857,13 +868,15 @@ def _playback_v2_counter_delta(before: dict[str, object],
         return 0
 
 
-def _run_playback_v2_delta(client, *, no_prompt: bool) -> dict[str, object]:
+def _run_playback_v2_delta(client, *, no_prompt: bool, wait_s: float = 0.0) -> dict[str, object]:
     from .internal.ops.firmware_diag import codec_v2_health_from_status
 
     before = client.audio_playback_v2_status()
     io_before = client.audio_io_v2_status()
     codec_before = client.audio_codec_v2_status()
-    if not no_prompt:
+    if wait_s > 0.0:
+        time.sleep(wait_s)
+    elif not no_prompt:
         input(
             "Snapshot inicial feito. Acione o wake/fale uma frase real e "
             "pressione Enter quando o turno terminar: "
