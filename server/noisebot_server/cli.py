@@ -1078,6 +1078,12 @@ def _run_playback_v2_speaker_owner_gate(
         )
     say_chunks_received = _playback_v2_int(deltas, "say_chunks_received")
     required_say_chunks = max(1 if require_say else 0, min_say_chunks)
+    speaker_owner_frames = _playback_v2_int(after, "speaker_owner_frames")
+    speaker_owner_silence_frames = _playback_v2_int(after, "speaker_owner_silence_frames")
+    speaker_owner_non_silence_frames = max(
+        0,
+        speaker_owner_frames - speaker_owner_silence_frames,
+    )
     if bool(delta.get("counter_reset_detected", False)):
         issues.append("gate SAY real invalido porque os contadores resetaram")
     elif required_say_chunks > 0 and say_chunks_received < required_say_chunks:
@@ -1085,6 +1091,10 @@ def _run_playback_v2_speaker_owner_gate(
             "SAY real insuficiente no intervalo: "
             f"{say_chunks_received} < {required_say_chunks}"
         )
+    elif require_say and not bool(after.get("speaker_owner_active", False)):
+        issues.append("speaker owner nao ficou ativo durante SAY real")
+    elif require_say and speaker_owner_non_silence_frames == 0:
+        issues.append("speaker owner nao observou frame nao silencioso")
     elif say_chunks_received == 0:
         warnings.append("sem SAY real no intervalo; gate validou apenas idle/TX")
     if not bool(disarmed.get("ok", False)):
@@ -1110,6 +1120,8 @@ def _run_playback_v2_speaker_owner_gate(
         "counter_reset_detected": bool(delta.get("counter_reset_detected", False)),
         "frames": after.get("speaker_owner_frames"),
         "samples": after.get("speaker_owner_samples"),
+        "silence_frames": after.get("speaker_owner_silence_frames"),
+        "non_silence_frames": speaker_owner_non_silence_frames,
         "say_chunks_received_delta": deltas.get("say_chunks_received"),
         "say_chunks_played_delta": deltas.get("say_chunks_played"),
     }
@@ -1134,6 +1146,7 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
             f"required_chunks={payload.get('required_say_chunks')}",
             f"- counter_reset_detected: {payload.get('counter_reset_detected')}",
             f"- frames/samples: {payload.get('frames')}/{payload.get('samples')}",
+            f"- non_silence_frames: {payload.get('non_silence_frames')}",
             f"- delta.received: {payload.get('say_chunks_received_delta')}",
             f"- delta.played: {payload.get('say_chunks_played_delta')}",
             f"- disarmed.ok: {(payload.get('disarmed') or {}).get('ok')}",

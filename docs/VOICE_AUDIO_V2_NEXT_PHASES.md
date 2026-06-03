@@ -1722,6 +1722,18 @@ Observacao N6.3:
   `speaker_owner_dry_run_enabled=false`, `speaker_owner_requested=false`,
   `speaker_owner_block_reason=DISABLED`, fila SAY zero e `ESP_OK`.
 
+Incremento N6.4 iniciado:
+
+- O gate estrito de Playback v2 passou a exigir, quando `--require-say` esta
+  ativo, que o speaker owner fique `active=true` e observe pelo menos um frame
+  nao silencioso (`speaker_owner_frames - speaker_owner_silence_frames > 0`).
+- Isso evita aceitar um caso em que os contadores SAY avancam, mas o dry-run do
+  owner do speaker so observou silencio/TX. O resultado passa a expor
+  `non_silence_frames` para auditoria.
+- A mudanca e server-only e nao altera firmware, HAL, wake, VAD, Capture,
+  Activity, Codec, Opus ou PCM16; apenas fortalece o criterio de promocao antes
+  de qualquer owner real.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
