@@ -3044,6 +3044,16 @@ no protocolo.
       `ok=true`, Codec v2 health `status=ok`, Playback v2 delta em repouso
       com deltas zero, Capture v2 default-off, barge-in `turn_id=94 -> 95`
       validado e no-echo `turn_id=97` sem turno fantasma apos 10 s.
+- [x] Fase N6 fechada em hardware no hash `c045a57`: Playback v2 manteve
+      HAL fisico no callback de `audio_service`, mas validou ownership
+      controlado por dry-run, `real-arm`, janela real de uma fala,
+      auto-disarm, backpressure de fila SAY e rollback. Validacao final:
+      dry-run 393/393 sem drops, 237 filas cheias recuperadas por wait,
+      janela real com 393 writes / 100608 samples, zero write/commit failures,
+      `say_chunks_dropped=0`, fila SAY zero e `codec-v2 health` saudavel.
+      Avanco server-only posterior: CLI `debug playback-v2
+      speaker-owner-real-window-gate` automatiza essa regressao antes de
+      qualquer nova reducao de `audio_service.c`.
 
 ---
 

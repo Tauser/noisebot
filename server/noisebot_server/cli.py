@@ -153,6 +153,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "speaker-owner-real-arm",
             "speaker-owner-real-disarm",
             "speaker-owner-gate",
+            "speaker-owner-real-window-gate",
         ],
         nargs="?",
         default="status",
@@ -692,6 +693,13 @@ def run_debug_command(args: argparse.Namespace) -> None:
                 require_say=args.require_say,
                 min_say_chunks=args.min_say_chunks,
             )
+        elif args.action == "speaker-owner-real-window-gate":
+            payload = _run_playback_v2_speaker_owner_real_window_gate(
+                client,
+                no_prompt=args.no_prompt,
+                wait_s=args.wait_s,
+                min_say_chunks=args.min_say_chunks,
+            )
         elif args.action == "speaker-owner-arm":
             payload = client.audio_playback_v2_speaker_owner_arm()
         elif args.action == "speaker-owner-disarm":
@@ -1171,7 +1179,261 @@ def _run_playback_v2_speaker_owner_gate(
     }
 
 
+def _run_playback_v2_speaker_owner_real_window_gate(
+    client,
+    *,
+    no_prompt: bool,
+    wait_s: float = 0.0,
+    min_say_chunks: int = 1,
+) -> dict[str, object]:
+    issues: list[str] = []
+    warnings: list[str] = []
+    dry_issues: list[str] = []
+    dry_warnings: list[str] = []
+    dry_armed: dict[str, object] = {}
+    dry_delta: dict[str, object] = {}
+    dry_run_gate: dict[str, object] = {}
+    real_armed: dict[str, object] = {}
+    real_delta: dict[str, object] = {}
+    disarmed: dict[str, object] = {}
+    dry_delta_error = ""
+    real_delta_error = ""
+    dry_after: dict[str, object] = {}
+    dry_deltas: dict[str, object] = {}
+    dry_candidate = False
+
+    try:
+        dry_armed = client.audio_playback_v2_speaker_owner_arm()
+        if not bool(dry_armed.get("ok", False)):
+            dry_issues.append("speaker-owner-arm retornou ok=false")
+        else:
+            dry_delta = _run_playback_v2_delta(
+                client,
+                no_prompt=no_prompt,
+                wait_s=wait_s,
+            )
+    except Exception as exc:  # pragma: no cover - defensive CLI reporting
+        dry_delta_error = str(exc)
+        dry_issues.append(f"dry-run gate falhou: {dry_delta_error}")
+
+    if dry_delta:
+        if not bool(dry_delta.get("ok", False)):
+            dry_issues.append("dry-run delta retornou ok=false")
+        for item in dry_delta.get("issues", []) or []:
+            dry_issues.append(str(item))
+        for item in dry_delta.get("warnings", []) or []:
+            dry_warnings.append(str(item))
+
+        maybe_after = dry_delta.get("after")
+        maybe_deltas = dry_delta.get("deltas")
+        if isinstance(maybe_after, dict):
+            dry_after = maybe_after
+        if isinstance(maybe_deltas, dict):
+            dry_deltas = maybe_deltas
+
+        dry_received = _playback_v2_int(dry_deltas, "say_chunks_received")
+        required_chunks = max(1, min_say_chunks)
+        dry_frames = _playback_v2_int(dry_after, "speaker_owner_frames")
+        dry_silence_frames = _playback_v2_int(dry_after, "speaker_owner_silence_frames")
+        dry_non_silence_frames = max(0, dry_frames - dry_silence_frames)
+
+        if not bool(dry_after.get("speaker_owner_dry_run_enabled", False)):
+            dry_issues.append("speaker owner dry-run nao ficou armado")
+        if not bool(dry_after.get("speaker_owner_candidate", False)):
+            dry_issues.append("Playback v2 nao ficou candidato a speaker owner")
+        if not bool(dry_after.get("speaker_owner_handoff_ready", False)):
+            dry_issues.append("speaker owner handoff nao ficou pronto")
+        if str(dry_after.get("speaker_owner_block_reason", "")) != "NONE":
+            dry_issues.append(
+                "speaker owner bloqueado: "
+                f"{dry_after.get('speaker_owner_block_reason')}"
+            )
+        if _playback_v2_int(dry_after, "speaker_owner_failures") != 0:
+            dry_issues.append(
+                "speaker_owner_failures="
+                f"{dry_after.get('speaker_owner_failures')}"
+            )
+        if _playback_v2_int(dry_after, "speaker_owner_recoveries") != 0:
+            dry_issues.append(
+                "speaker_owner_recoveries="
+                f"{dry_after.get('speaker_owner_recoveries')}"
+            )
+        if bool(dry_delta.get("counter_reset_detected", False)):
+            dry_issues.append("gate SAY real invalido porque os contadores resetaram")
+        if dry_received < required_chunks:
+            dry_issues.append(
+                "SAY real insuficiente no dry-run: "
+                f"{dry_received} < {required_chunks}"
+            )
+        if not bool(dry_after.get("speaker_owner_active", False)):
+            dry_issues.append("speaker owner nao ficou ativo durante SAY real")
+        if dry_non_silence_frames == 0:
+            dry_issues.append("speaker owner nao observou frame nao silencioso")
+    elif not dry_delta_error and bool(dry_armed.get("ok", False)):
+        dry_issues.append("dry-run delta nao foi coletado")
+
+    dry_candidate = not dry_issues
+    dry_run_gate = {
+        "ok": dry_candidate,
+        "status": "fail" if dry_issues else "warn" if dry_warnings else "ok",
+        "owner_readiness_gate": True,
+        "issues": dry_issues,
+        "warnings": dry_warnings,
+        "armed": dry_armed,
+        "delta": dry_delta,
+        "delta_error": dry_delta_error,
+        "ready": bool(dry_after.get("speaker_owner_handoff_ready", False)),
+        "block_reason": dry_after.get("speaker_owner_block_reason"),
+        "active": bool(dry_after.get("speaker_owner_active", False)),
+        "require_say": True,
+        "min_say_chunks": min_say_chunks,
+        "required_say_chunks": max(1, min_say_chunks),
+        "counter_reset_detected": bool(dry_delta.get("counter_reset_detected", False)),
+        "real_owner_candidate": dry_candidate,
+        "real_owner_candidate_status": (
+            "ready_with_warnings" if dry_candidate and dry_warnings
+            else "ready" if dry_candidate
+            else "blocked"
+        ),
+        "real_owner_candidate_blockers": dry_issues,
+        "frames": dry_after.get("speaker_owner_frames"),
+        "samples": dry_after.get("speaker_owner_samples"),
+        "silence_frames": dry_after.get("speaker_owner_silence_frames"),
+        "non_silence_frames": max(
+            0,
+            _playback_v2_int(dry_after, "speaker_owner_frames")
+            - _playback_v2_int(dry_after, "speaker_owner_silence_frames"),
+        ),
+        "say_chunks_received_delta": dry_deltas.get("say_chunks_received"),
+        "say_chunks_played_delta": dry_deltas.get("say_chunks_played"),
+    }
+
+    for item in dry_issues:
+        issues.append(str(item))
+    for item in dry_warnings:
+        warnings.append(str(item))
+
+    try:
+        if dry_candidate:
+            real_armed = client.audio_playback_v2_speaker_owner_real_arm()
+            if not bool(real_armed.get("ok", False)):
+                issues.append("speaker-owner-real-arm retornou ok=false")
+            elif not bool(real_armed.get("speaker_owner_real_armed", False)):
+                issues.append("speaker_owner_real_armed=false apos real-arm")
+            else:
+                real_delta = _run_playback_v2_delta(
+                    client,
+                    no_prompt=no_prompt,
+                    wait_s=wait_s,
+                )
+    except Exception as exc:  # pragma: no cover - defensive CLI reporting
+        real_delta_error = str(exc)
+        issues.append(f"real-window gate falhou: {real_delta_error}")
+    finally:
+        try:
+            disarmed = client.audio_playback_v2_speaker_owner_disarm()
+        except Exception as exc:  # pragma: no cover - defensive rollback reporting
+            disarmed = {"ok": False, "error": str(exc)}
+
+    if not bool(disarmed.get("ok", False)):
+        issues.append("speaker-owner-disarm retornou ok=false")
+
+    real_after = real_delta.get("after")
+    real_deltas = real_delta.get("deltas")
+    if not isinstance(real_after, dict):
+        real_after = {}
+    if not isinstance(real_deltas, dict):
+        real_deltas = {}
+
+    if real_delta:
+        if not bool(real_delta.get("ok", False)):
+            issues.append("real-window delta retornou ok=false")
+        for item in real_delta.get("issues", []) or []:
+            issues.append(str(item))
+        for item in real_delta.get("warnings", []) or []:
+            warnings.append(str(item))
+
+        real_received = _playback_v2_int(real_deltas, "say_chunks_received")
+        real_played = _playback_v2_int(real_deltas, "say_chunks_played")
+        real_write_frames = _playback_v2_int(real_after, "speaker_owner_real_write_frames")
+        real_write_failures = _playback_v2_int(real_after, "speaker_owner_real_write_failures")
+
+        if bool(real_after.get("speaker_owner_real_armed", False)):
+            issues.append("janela real permaneceu armada apos SAY")
+        if not bool(real_after.get("speaker_owner_real_window_completed", False)):
+            issues.append("janela real nao marcou completed=true")
+        if _playback_v2_int(real_after, "speaker_owner_real_auto_disarm_count") < 1:
+            issues.append("auto_disarm_count nao incrementou")
+        required_chunks = max(1, min_say_chunks)
+        if real_received < required_chunks:
+            issues.append(
+                "SAY real insuficiente na janela real: "
+                f"{real_received} < {required_chunks}"
+            )
+        if real_received != real_played:
+            issues.append(f"SAY real received/playback divergiu: {real_received}/{real_played}")
+        if real_write_frames <= 0:
+            issues.append("speaker_owner_real_write_frames=0")
+        if real_write_frames != real_received:
+            issues.append(
+                "real writes nao acompanharam chunks SAY: "
+                f"{real_write_frames} != {real_received}"
+            )
+        if real_write_failures != 0:
+            issues.append(
+                "speaker_owner_real_write_failures="
+                f"{real_after.get('speaker_owner_real_write_failures')}"
+            )
+
+    ok = not issues
+    status = "fail" if issues else "warn" if warnings else "ok"
+    return {
+        "ok": ok,
+        "status": status,
+        "owner_real_window_gate": True,
+        "issues": issues,
+        "warnings": warnings,
+        "dry_run_gate": dry_run_gate,
+        "real_armed": real_armed,
+        "real_delta": real_delta,
+        "real_delta_error": real_delta_error,
+        "disarmed": disarmed,
+        "real_window_completed": bool(real_after.get("speaker_owner_real_window_completed", False)),
+        "real_auto_disarm_count": real_after.get("speaker_owner_real_auto_disarm_count"),
+        "real_write_frames": real_after.get("speaker_owner_real_write_frames"),
+        "real_write_samples": real_after.get("speaker_owner_real_write_samples"),
+        "real_write_failures": real_after.get("speaker_owner_real_write_failures"),
+        "real_say_chunks_received_delta": real_deltas.get("say_chunks_received"),
+        "real_say_chunks_played_delta": real_deltas.get("say_chunks_played"),
+        "real_say_chunks_dropped_delta": real_deltas.get("say_chunks_dropped"),
+    }
+
+
 def _format_playback_v2_status(payload: dict[str, object]) -> str:
+    if payload.get("owner_real_window_gate"):
+        issues = payload.get("issues")
+        warnings = payload.get("warnings")
+        if not isinstance(issues, list):
+            issues = []
+        if not isinstance(warnings, list):
+            warnings = []
+        return "\n".join([
+            "Playback v2 speaker owner real-window gate:",
+            f"- ok: {payload.get('ok')}",
+            f"- status: {payload.get('status')}",
+            f"- real_window_completed: {payload.get('real_window_completed')}",
+            f"- real_auto_disarm_count: {payload.get('real_auto_disarm_count')}",
+            f"- real_write: {payload.get('real_write_frames')}/"
+            f"{payload.get('real_write_samples')} samples "
+            f"failures={payload.get('real_write_failures')}",
+            f"- real_delta.received: {payload.get('real_say_chunks_received_delta')}",
+            f"- real_delta.played: {payload.get('real_say_chunks_played_delta')}",
+            f"- real_delta.dropped: {payload.get('real_say_chunks_dropped_delta')}",
+            f"- real_delta_error: {payload.get('real_delta_error') or 'nenhum'}",
+            f"- disarmed.ok: {(payload.get('disarmed') or {}).get('ok')}",
+            f"- issues: {', '.join(str(item) for item in issues) if issues else 'nenhuma'}",
+            f"- warnings: {', '.join(str(item) for item in warnings) if warnings else 'nenhum'}",
+        ])
     if payload.get("owner_readiness_gate"):
         issues = payload.get("issues")
         warnings = payload.get("warnings")

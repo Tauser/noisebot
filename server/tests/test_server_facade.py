@@ -1184,6 +1184,125 @@ def test_server_cli_parses_playback_v2_speaker_owner_gate_debug_command() -> Non
     assert args.json
 
 
+def test_server_cli_parses_playback_v2_real_window_gate_debug_command() -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+
+    args = cli.parse_args([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "playback-v2",
+        "speaker-owner-real-window-gate",
+        "--wait-s",
+        "1",
+        "--min-say-chunks",
+        "10",
+        "--no-prompt",
+        "--json",
+    ])
+
+    assert args.command == "debug"
+    assert args.debug_command == "playback-v2"
+    assert args.host == "192.168.1.30"
+    assert args.action == "speaker-owner-real-window-gate"
+    assert args.wait_s == 1.0
+    assert args.min_say_chunks == 10
+    assert args.no_prompt
+    assert args.json
+
+
+def test_server_playback_v2_real_window_gate_rolls_back(monkeypatch) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    calls: list[str] = []
+
+    class FakeClient:
+        def audio_playback_v2_speaker_owner_arm(self):
+            calls.append("arm")
+            return {
+                "ok": True,
+                "speaker_owner_dry_run_enabled": True,
+            }
+
+        def audio_playback_v2_speaker_owner_real_arm(self):
+            calls.append("real-arm")
+            return {
+                "ok": True,
+                "speaker_owner_real_armed": True,
+            }
+
+        def audio_playback_v2_speaker_owner_disarm(self):
+            calls.append("disarm")
+            return {
+                "ok": True,
+                "speaker_owner_dry_run_enabled": False,
+            }
+
+    deltas = iter([
+        {
+            "ok": True,
+            "issues": [],
+            "warnings": [],
+            "counter_reset_detected": False,
+            "after": {
+                "speaker_owner_dry_run_enabled": True,
+                "speaker_owner_candidate": True,
+                "speaker_owner_handoff_ready": True,
+                "speaker_owner_block_reason": "NONE",
+                "speaker_owner_failures": 0,
+                "speaker_owner_recoveries": 0,
+                "speaker_owner_active": True,
+                "speaker_owner_frames": 12,
+                "speaker_owner_samples": 3072,
+                "speaker_owner_silence_frames": 0,
+            },
+            "deltas": {
+                "say_chunks_received": 12,
+                "say_chunks_played": 12,
+                "say_chunks_dropped": 0,
+            },
+        },
+        {
+            "ok": True,
+            "issues": [],
+            "warnings": [],
+            "after": {
+                "speaker_owner_real_armed": False,
+                "speaker_owner_real_window_completed": True,
+                "speaker_owner_real_auto_disarm_count": 1,
+                "speaker_owner_real_write_frames": 12,
+                "speaker_owner_real_write_samples": 3072,
+                "speaker_owner_real_write_failures": 0,
+            },
+            "deltas": {
+                "say_chunks_received": 12,
+                "say_chunks_played": 12,
+                "say_chunks_dropped": 0,
+            },
+        },
+    ])
+
+    def fake_delta(client, **kwargs):
+        calls.append("delta")
+        return next(deltas)
+
+    monkeypatch.setattr(cli, "_run_playback_v2_delta", fake_delta)
+
+    payload = cli._run_playback_v2_speaker_owner_real_window_gate(
+        FakeClient(),
+        no_prompt=True,
+        wait_s=1.0,
+        min_say_chunks=10,
+    )
+
+    assert payload["ok"] is True
+    assert payload["owner_real_window_gate"] is True
+    assert payload["real_window_completed"] is True
+    assert payload["real_write_frames"] == 12
+    assert payload["real_say_chunks_received_delta"] == 12
+    assert payload["disarmed"]["ok"] is True
+    assert calls == ["arm", "delta", "real-arm", "delta", "disarm"]
+
+
 def test_server_cli_runs_playback_v2_delta_debug_command(monkeypatch, capsys) -> None:
     cli = importlib.import_module("noisebot_server.cli")
     firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")

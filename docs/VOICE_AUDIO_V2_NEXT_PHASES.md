@@ -1895,6 +1895,21 @@ Incremento N6.9 iniciado:
   `codec-v2 health` saudavel (`healthy=true`, drops zero). O disarm final
   deixou o owner dry-run e real desarmados. N6.9 fechado.
 
+Fechamento N6:
+
+- N6 esta fechada como ownership controlado de speaker/HAL por gate e janela
+  real, ainda sem chamada direta de `audio_hal_*` dentro de Playback v2.
+- O caminho fisico continua no callback fornecido por `audio_service`, mas
+  Playback v2 agora domina a fila SAY, preparo/commit/write por contrato,
+  readiness, real-arm, janela real, auto-disarm, contadores reais e
+  backpressure de accept.
+- Avanco operacional pos-N6: o CLI `debug playback-v2
+  speaker-owner-real-window-gate` automatiza a sequencia
+  `dry-run gate -> real-arm -> real-window delta -> disarm`, sempre tentando
+  rollback no final. Isso torna a validacao N6.9 repetivel sem novo firmware e
+  deve ser usado como regressao antes de qualquer nova reducao do
+  `audio_service.c`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
@@ -1904,8 +1919,9 @@ Incremento N6.9 iniciado:
 4. Fase K: capture session v2 assume upstream por flag.
 5. Fase L: policy conversacional avancada, so depois de no-echo e captura
    estarem estaveis.
-6. Fase N0-N5: migracao estrutural do firmware v2, com gates antes de cada
-   troca de owner real.
+6. Fase N0-N6: migracao estrutural do firmware v2, com gates antes de cada
+   troca de owner real; N6 fechada com janela real controlada e regressao
+   operacional server-only.
 
 Essa ordem segue a regra central da arquitetura v2: separar I/O, playback,
 processor, codec e policy. No NoiseBot, a prioridade imediata e diminuir o
