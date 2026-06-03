@@ -145,7 +145,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     playback_v2 = debug_sub.add_parser("playback-v2")
     playback_v2.add_argument(
         "action",
-        choices=["status", "delta", "speaker-owner-arm", "speaker-owner-disarm"],
+        choices=[
+            "status",
+            "delta",
+            "speaker-owner-arm",
+            "speaker-owner-disarm",
+            "speaker-owner-gate",
+        ],
         nargs="?",
         default="status",
     )
@@ -665,6 +671,12 @@ def run_debug_command(args: argparse.Namespace) -> None:
                 no_prompt=args.no_prompt,
                 wait_s=args.wait_s,
             )
+        elif args.action == "speaker-owner-gate":
+            payload = _run_playback_v2_speaker_owner_gate(
+                client,
+                no_prompt=args.no_prompt,
+                wait_s=args.wait_s,
+            )
         elif args.action == "speaker-owner-arm":
             payload = client.audio_playback_v2_speaker_owner_arm()
         elif args.action == "speaker-owner-disarm":
@@ -970,7 +982,118 @@ def _run_playback_v2_delta(client, *, no_prompt: bool, wait_s: float = 0.0) -> d
     }
 
 
+def _playback_v2_int(payload: dict[str, object], key: str) -> int:
+    try:
+        return int(payload.get(key, 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _run_playback_v2_speaker_owner_gate(
+    client,
+    *,
+    no_prompt: bool,
+    wait_s: float = 0.0,
+) -> dict[str, object]:
+    issues: list[str] = []
+    warnings: list[str] = []
+    armed: dict[str, object] = {}
+    delta: dict[str, object] = {}
+    disarmed: dict[str, object] = {}
+    try:
+        armed = client.audio_playback_v2_speaker_owner_arm()
+        if not bool(armed.get("ok", False)):
+            issues.append("speaker-owner-arm retornou ok=false")
+        delta = _run_playback_v2_delta(client, no_prompt=no_prompt, wait_s=wait_s)
+    finally:
+        try:
+            disarmed = client.audio_playback_v2_speaker_owner_disarm()
+        except Exception as exc:  # pragma: no cover - defensive rollback reporting
+            disarmed = {"ok": False, "error": str(exc)}
+
+    after = delta.get("after")
+    deltas = delta.get("deltas")
+    if not isinstance(after, dict):
+        after = {}
+    if not isinstance(deltas, dict):
+        deltas = {}
+
+    if not bool(delta.get("ok", False)):
+        issues.append("playback-v2 delta retornou ok=false")
+    for item in delta.get("issues", []) or []:
+        issues.append(str(item))
+    for item in delta.get("warnings", []) or []:
+        warnings.append(str(item))
+
+    if not bool(after.get("speaker_owner_dry_run_enabled", False)):
+        issues.append("speaker owner dry-run nao ficou armado")
+    if not bool(after.get("speaker_owner_candidate", False)):
+        issues.append("Playback v2 nao ficou candidato a speaker owner")
+    if not bool(after.get("speaker_owner_handoff_ready", False)):
+        issues.append("speaker owner handoff nao ficou pronto")
+    if str(after.get("speaker_owner_block_reason", "")) != "NONE":
+        issues.append(
+            "speaker owner bloqueado: "
+            f"{after.get('speaker_owner_block_reason')}"
+        )
+    if _playback_v2_int(after, "speaker_owner_failures") != 0:
+        issues.append(
+            "speaker_owner_failures="
+            f"{after.get('speaker_owner_failures')}"
+        )
+    if _playback_v2_int(after, "speaker_owner_recoveries") != 0:
+        issues.append(
+            "speaker_owner_recoveries="
+            f"{after.get('speaker_owner_recoveries')}"
+        )
+    if _playback_v2_int(deltas, "say_chunks_received") == 0:
+        warnings.append("sem SAY real no intervalo; gate validou apenas idle/TX")
+    if not bool(disarmed.get("ok", False)):
+        issues.append("speaker-owner-disarm retornou ok=false")
+
+    ok = not issues
+    status = "fail" if issues else "warn" if warnings else "ok"
+    return {
+        "ok": ok,
+        "status": status,
+        "owner_readiness_gate": True,
+        "issues": issues,
+        "warnings": warnings,
+        "armed": armed,
+        "delta": delta,
+        "disarmed": disarmed,
+        "ready": bool(after.get("speaker_owner_handoff_ready", False)),
+        "block_reason": after.get("speaker_owner_block_reason"),
+        "active": bool(after.get("speaker_owner_active", False)),
+        "frames": after.get("speaker_owner_frames"),
+        "samples": after.get("speaker_owner_samples"),
+        "say_chunks_received_delta": deltas.get("say_chunks_received"),
+        "say_chunks_played_delta": deltas.get("say_chunks_played"),
+    }
+
+
 def _format_playback_v2_status(payload: dict[str, object]) -> str:
+    if payload.get("owner_readiness_gate"):
+        issues = payload.get("issues")
+        warnings = payload.get("warnings")
+        if not isinstance(issues, list):
+            issues = []
+        if not isinstance(warnings, list):
+            warnings = []
+        return "\n".join([
+            "Playback v2 speaker owner gate:",
+            f"- ok: {payload.get('ok')}",
+            f"- status: {payload.get('status')}",
+            f"- ready: {payload.get('ready')}",
+            f"- active: {payload.get('active')}",
+            f"- block_reason: {payload.get('block_reason')}",
+            f"- frames/samples: {payload.get('frames')}/{payload.get('samples')}",
+            f"- delta.received: {payload.get('say_chunks_received_delta')}",
+            f"- delta.played: {payload.get('say_chunks_played_delta')}",
+            f"- disarmed.ok: {(payload.get('disarmed') or {}).get('ok')}",
+            f"- issues: {', '.join(str(item) for item in issues) if issues else 'nenhuma'}",
+            f"- warnings: {', '.join(str(item) for item in warnings) if warnings else 'nenhum'}",
+        ])
     if "deltas" in payload:
         after = payload.get("after")
         deltas = payload.get("deltas")

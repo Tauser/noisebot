@@ -1646,6 +1646,26 @@ Validacao N6.1 pos-flash:
   `speaker_owner_requested=false`, `speaker_owner_block_reason=DISABLED`;
   `codec-v2 health` final voltou `healthy=true/status=ok`, fila egress zero.
 
+Incremento N6.2 iniciado:
+
+- O server ganhou o gate operacional
+  `debug playback-v2 speaker-owner-gate`, que encapsula a sequencia
+  `speaker-owner-arm -> playback-v2 delta -> readiness check -> speaker-owner-disarm`.
+- O gate avalia o readiness exposto na N6.1 pelo namespace Playback v2:
+  dry-run armado, candidato a speaker owner, `speaker_owner_handoff_ready`,
+  `speaker_owner_block_reason=NONE`, zero failures/recoveries, delta SAY limpo,
+  Audio IO sem drops/recoveries e Codec v2 saudavel.
+- O desarme roda em `finally`, para preservar rollback operacional mesmo se a
+  janela de delta ou a leitura de health falhar.
+- O comando nao altera firmware, nao move HAL para Playback v2, nao toca wake,
+  VAD, Capture, Activity, Codec, Opus ou PCM16. Ele apenas torna repetivel o
+  ensaio que antes era feito manualmente por arm/delta/disarm.
+- Uso esperado em hardware antes de qualquer owner real:
+  `noisebot_server --host 192.168.1.30 debug playback-v2 speaker-owner-gate --wait-s 120 --no-prompt --json`;
+  durante a janela, executar um turno real curto por wake e confirmar
+  `ok=true`, `ready=true`, `block_reason=NONE`, `disarmed.ok=true` e deltas SAY
+  recebidos/tocados sem drops.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
