@@ -1207,9 +1207,9 @@ Pendências:
   `voice_diagnosis`: `tts_completed=false` vira alerta de fala possivelmente
   incompleta; truncamento apenas visual do `TEXT_SCROLL` vira diagnostico sem
   alerta. Refino posterior: o server preserva UTF-8/acento no `TEXT_SCROLL`; o
-  firmware renderiza o balao de texto com fonte Unicode do LovyanGFX
-  (`efontCN_24`), removendo o desenho manual de acentos sobre a fonte
-  Montserrat ASCII.
+  firmware renderiza o balao de texto com `MontserratPtBr16`, fonte LVGL
+  customizada com Latin-1/PT-BR, removendo o desenho manual de acentos sobre a
+  fonte Montserrat ASCII.
 
 ## Ordem Recomendada
 

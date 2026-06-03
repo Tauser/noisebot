@@ -147,9 +147,10 @@ static constexpr uint8_t OVERLAY_Z_ORDER = 30;
 static constexpr int TEXT_MAX_LEN = 129; /* 128 bytes + NUL, igual ao bridge */
 
 static const lgfx::LVGLfont UI_FONT_STACKCHAN_TITLE(&MontserratSemiBold26);
+static const lgfx::LVGLfont UI_FONT_MONTSERRAT_PTBR(&MontserratPtBr16);
 static const lgfx::IFont * const UI_FONT_BODY  = &lgfx::fonts::lv_font_montserrat_16;
 static const lgfx::IFont * const UI_FONT_SMALL = &lgfx::fonts::lv_font_montserrat_14;
-static const lgfx::IFont * const UI_FONT_TEXT  = &lgfx::fonts::efontCN_24;
+static const lgfx::IFont * const UI_FONT_TEXT  = &UI_FONT_MONTSERRAT_PTBR;
 static const lgfx::IFont * const UI_FONT_TITLE = &UI_FONT_STACKCHAN_TITLE;
 static const lgfx::IFont * const UI_FONT_CLOCK = &lgfx::fonts::lv_font_montserrat_48;
 

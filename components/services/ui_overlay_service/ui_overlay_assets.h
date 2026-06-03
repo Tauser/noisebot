@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 extern const lv_font_t MontserratSemiBold26;
+extern const lv_font_t MontserratPtBr16;
 
 #ifdef __cplusplus
 }

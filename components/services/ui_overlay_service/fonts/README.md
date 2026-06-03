@@ -10,7 +10,7 @@ Adaptação NoiseBot:
   do `assets/assets.h` no StackChan;
 - removido o campo `static_bitmap` do descritor `lv_font_t`, pois o shim LVGL
   embutido no LovyanGFX do NoiseBot não expõe esse campo;
-- uso limitado a títulos/destaques de overlay. Texto livre do balão de resposta
-  usa `lgfx::fonts::efontCN_24`, fonte Unicode embarcada no LovyanGFX, para
-  preservar UTF-8/acento sem normalização no server e sem desenho manual de
-  diacríticos.
+- `MontserratPtBr16.c`: fonte LVGL gerada a partir de
+  `Montserrat-SemiBold.ttf`, com ASCII + Latin-1 (`0x20-0x7F,0xA0-0xFF`), usada
+  no balão de resposta para preservar UTF-8/acento sem normalização no server e
+  sem desenho manual de diacríticos.

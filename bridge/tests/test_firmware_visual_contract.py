@@ -20,6 +20,14 @@ STACKCHAN_TITLE_FONT = (
     / "fonts"
     / "MontserratSemiBold26.c"
 )
+MONTSERRAT_PTBR_FONT = (
+    ROOT
+    / "components"
+    / "services"
+    / "ui_overlay_service"
+    / "fonts"
+    / "MontserratPtBr16.c"
+)
 
 
 def _source() -> str:
@@ -97,13 +105,16 @@ def test_ui_overlay_uses_stackchan_montserrat_font_family():
 
     assert '#include "ui_overlay_assets.h"' in src
     assert "extern const lv_font_t MontserratSemiBold26;" in assets
+    assert "extern const lv_font_t MontserratPtBr16;" in assets
     assert "MontserratSemiBold26" in src
+    assert "MontserratPtBr16" in src
     assert "fonts/MontserratSemiBold26.c" in cmake
+    assert "fonts/MontserratPtBr16.c" in cmake
     assert "Montserrat-SemiBold.ttf" in font_src
     assert "lv_font_montserrat_14" in src
     assert "lv_font_montserrat_16" in src
     assert "lv_font_montserrat_48" in src
-    assert "UI_FONT_TEXT  = &lgfx::fonts::efontCN_24" in src
+    assert "UI_FONT_TEXT  = &UI_FONT_MONTSERRAT_PTBR" in src
     assert "ui_set_font(spr, UI_FONT_BODY);" in src
     assert "ui_set_font(spr, UI_FONT_TEXT);" in src
     assert "ui_set_font(spr, UI_FONT_TITLE);" in src
@@ -116,3 +127,13 @@ def test_text_overlay_preserves_utf8_without_manual_accent_marks():
     assert "draw_pt_marks" not in src
     assert "pt_char_from_codepoint" not in src
     assert "setAttribute(lgfx::attribute_t::utf8_switch, 1)" in src
+    assert "efontCN_" not in src
+
+
+def test_montserrat_ptbr_font_covers_latin1():
+    font_src = MONTSERRAT_PTBR_FONT.read_text(encoding="utf-8")
+
+    assert "const lv_font_t MontserratPtBr16" in font_src
+    assert ".range_start = 32, .range_length = 95" in font_src
+    assert ".range_start = 160, .range_length = 96" in font_src
+    assert "0x20-0x7F,0xA0-0xFF" in font_src
