@@ -207,9 +207,15 @@ Incremento atual da Fase N3:
 ### Wake Word
 
 - Nao refazer agora.
-- Nao ajustar threshold por impulso.
+- Nao ajustar threshold por impulso. Excecao registrada em 2026-06-03: falso
+  positivo real em conversa ambiente sem "Hi ESP" justificou voltar o
+  `wake_service` para `WAKE_WAKENET_THRESHOLD=0.55`, valor ja documentado como
+  validado na Etapa 12.8.
 - Wake word atual voltou a funcionar e deve ser preservada enquanto v2 nasce.
 - Wake em IDLE e wake durante RESPONDING sao casos diferentes.
+- `/api/diag/test/wake` deve ser usado apos flash para observar `armed`,
+  `suspended`, `last_raw_rms`, `last_raw_peak`, ganho, `last_post_peak` e
+  saturacao antes de novos ajustes.
 
 ### Barge-in
 

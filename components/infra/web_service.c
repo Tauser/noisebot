@@ -4026,13 +4026,30 @@ static esp_err_t handle_api_diag_snapshot(httpd_req_t *req)
 
 static esp_err_t handle_api_diag_wake(httpd_req_t *req)
 {
-    char buf[192];
+    nb_wake_detection_stats_t stats = {0};
+    bool have_stats = wake_service_get_last_detection_stats(&stats);
+
+    char buf[448];
     snprintf(buf, sizeof(buf),
         "{\"active\":%s,\"model\":\"WakeNet9\",\"keyword\":\"Hi ESP\","
-        "\"threshold\":%.2f,\"detections\":%lu}",
+        "\"threshold\":%.2f,\"detections\":%lu,"
+        "\"armed\":%s,\"suspended\":%s,"
+        "\"last_detection_stats_available\":%s,"
+        "\"last_raw_rms\":%lu,\"last_raw_peak\":%u,"
+        "\"last_gain_min\":%u,\"last_gain_max\":%u,"
+        "\"last_post_peak\":%u,\"last_saturated\":%u}",
         wake_service_is_active() ? "true" : "false",
         (double)wake_service_get_threshold(),
-        (unsigned long)wake_service_get_detect_count());
+        (unsigned long)wake_service_get_detect_count(),
+        wake_service_is_armed() ? "true" : "false",
+        wake_service_is_suspended() ? "true" : "false",
+        have_stats ? "true" : "false",
+        (unsigned long)stats.raw_rms,
+        (unsigned)stats.raw_peak,
+        (unsigned)stats.gain_min,
+        (unsigned)stats.gain_max,
+        (unsigned)stats.post_peak,
+        (unsigned)stats.saturated);
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);
 }

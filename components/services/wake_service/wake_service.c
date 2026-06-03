@@ -40,7 +40,7 @@
 #define WAKE_INPUT_GAIN_MAX      16
 #define WAKE_INPUT_GAIN_MIN       2
 #define WAKE_INPUT_TARGET_PEAK 18000
-#define WAKE_WAKENET_THRESHOLD 0.50f
+#define WAKE_WAKENET_THRESHOLD 0.55f
 #define WAKE_MIN_DETECT_RAW_RMS    80U
 #define WAKE_MIN_DETECT_RAW_PEAK  180U
 #define WAKE_MIN_DETECT_POST_PEAK 3000U
@@ -426,6 +426,17 @@ void wake_service_feed(const int16_t *pcm, uint16_t n)
 bool wake_service_is_active(void)
 {
     return s.initialized && s.enabled && (s.data != NULL);
+}
+
+bool wake_service_is_armed(void)
+{
+    return wake_service_is_active() && s.armed && !s.suspended &&
+           !s.detection_latched;
+}
+
+bool wake_service_is_suspended(void)
+{
+    return wake_service_is_active() && s.suspended;
 }
 
 void wake_service_suspend(void)

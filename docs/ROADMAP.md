@@ -1928,6 +1928,11 @@ No `boot_manager`/state flow:
 - [x] `wake_service_rearm()` tornou-se idempotente: touch não deve resetar/logar rearme quando WakeNet já está armado.
 - [x] Touch não abre mais escuta; `IDLE/SLEEPING → TOUCH_REACTING → IDLE` sem `[ PODE FALAR ]`.
 
+**Ajuste anti-falso-positivo (2026-06-03):**
+
+- [x] `wake_service` voltou a usar `WAKE_WAKENET_THRESHOLD=0.55`, alinhado à validação final da etapa 12.8 e ao padrão StackChan/XiaoZhi de WakeNet como gate explícito.
+- [x] `/api/diag/test/wake` passou a expor `armed`, `suspended` e métricas da última detecção (`raw_rms`, `raw_peak`, ganho, `post_peak`, saturação), para diagnosticar conversa ambiente sem mexer em VAD, Opus, sessão ou TTS.
+
 ---
 
 ### Etapa 12.9 — Turn-Taking Natural de Voz ✓

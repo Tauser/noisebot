@@ -120,7 +120,10 @@ Arquivos centrais:
 O que esta bom e deve ser preservado:
 
 - PCM16 como fallback de voz.
-- Wake word local.
+- Wake word local. Em 2026-06-03, falso positivo em conversa ambiente foi
+  tratado somente no gate do WakeNet: threshold `0.55` e diagnostico ampliado
+  em `/api/diag/test/wake`; sem mudar VAD, Opus, captura, playback, bridge,
+  STT/LLM/TTS ou politica de follow-up.
 - Barge-in por wake word durante resposta.
 - `VOICE_START`, `AUDIO_CHUNK`, `VOICE_END`.
 - Bridge protocol v2.

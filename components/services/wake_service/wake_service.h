@@ -70,6 +70,16 @@ void wake_service_feed(const int16_t *pcm, uint16_t n);
 bool wake_service_is_active(void);
 
 /**
+ * @brief Retorna true se o WakeNet esta armado para aceitar nova wake word.
+ */
+bool wake_service_is_armed(void);
+
+/**
+ * @brief Retorna true se o WakeNet esta suspenso por estado conversacional.
+ */
+bool wake_service_is_suspended(void);
+
+/**
  * @brief Número de wake words detectadas nesta sessão (desde o boot).
  * Thread-safe.
  */
