@@ -1464,6 +1464,17 @@ Incremento N5.8 iniciado:
 - Esta etapa nao muda fila SAY, HAL fisico, wake, captura, Activity v2, Codec v2
   ou rollback; apenas reduz a superficie de tipos visiveis e atualiza o teste de
   contrato para proteger esse encapsulamento.
+- Validacao fisica apos flash: baseline sem prompt retornou `ok=true`,
+  `status=ok`, `issues=[]`, `warnings=[]`, fila SAY zero, deltas criticos
+  zerados e Codec v2 `healthy=true/status=ok`. A janela real com comando curto
+  e `--wait-s 120` fechou limpa: `ok=true`, `status=warn`, `issues=[]`, fila
+  SAY final zero, `say_chunks_received=376`, `say_chunks_played=376`, zero
+  drops/cancelamentos, `speaker_write_requests=376`,
+  `speaker_write_failures=0`, `speaker_frames_committed=376`,
+  `speaker_commit_failures=0`, Audio IO v2 sem
+  `dropped_frames`/`i2s_recoveries`/handoff failures e Codec v2
+  `healthy=true/status=ok`, sem warnings e com zero drops/erros. O unico
+  warning agregado final foi `heap_internal_free_kb baixo: 11`.
 
 ## Ordem Recomendada
 
