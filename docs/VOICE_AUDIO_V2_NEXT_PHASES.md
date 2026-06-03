@@ -1968,6 +1968,18 @@ codec, playback ou HAL. `/api/audio/activity-v2` passa a expor
 `activity_decider_end_count` e `activity_decider_end_elapsed_ms` para validar o
 owner real e manter rollback por `voice_audio_v2_activity_decider_enabled=false`.
 
+Validacao hardware N2B em 2026-06-03: apos flash, baseline com a flag desligada
+confirmou `activity_decider_enabled=false`, `activity_decider_end_count=0`,
+Playback v2 com fila SAY zero e `codec-v2` sem drops. Com
+`voice_audio_v2_activity_decider_enabled=true`, o turno curto
+`ww -> que horas sao` terminou com `activity_decider_end_used=true`,
+`activity_decider_end_count=1`, `activity_end_observed=true`,
+`decision_diverged=false`, Capture v2 TX owner ativo sem drops,
+Playback v2 `say_chunks_received=370`, `say_chunks_played=370`,
+`say_chunks_dropped=0`, Codec v2 `packet_drops=0`/egress zero, e server
+`last_outcome=local_intent` com transcript `Que horas são?`. A flag foi
+desligada no final para rollback operacional.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
