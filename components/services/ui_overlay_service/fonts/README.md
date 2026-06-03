@@ -6,6 +6,8 @@ Fontes de overlay importadas/adaptadas de `D:\Projetos\StackChan`.
 
 Adaptação NoiseBot:
 
+- `ui_overlay_assets.h` centraliza a declaração da fonte, equivalente ao papel
+  do `assets/assets.h` no StackChan;
 - removido o campo `static_bitmap` do descritor `lv_font_t`, pois o shim LVGL
   embutido no LovyanGFX do NoiseBot não expõe esse campo;
 - uso limitado a títulos/destaques de overlay. Texto livre continua em fontes

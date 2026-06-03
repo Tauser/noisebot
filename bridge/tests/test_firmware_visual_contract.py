@@ -5,6 +5,13 @@ ROOT = Path(__file__).resolve().parents[2]
 BEHAVIOR_ENGINE = ROOT / "components" / "behavior" / "behavior_engine" / "behavior_engine.c"
 UI_OVERLAY = ROOT / "components" / "services" / "ui_overlay_service" / "ui_overlay_service.cpp"
 UI_OVERLAY_CMAKE = ROOT / "components" / "services" / "ui_overlay_service" / "CMakeLists.txt"
+UI_OVERLAY_ASSETS = (
+    ROOT
+    / "components"
+    / "services"
+    / "ui_overlay_service"
+    / "ui_overlay_assets.h"
+)
 STACKCHAN_TITLE_FONT = (
     ROOT
     / "components"
@@ -84,9 +91,12 @@ def test_config_brightness_endpoint_applies_led_runtime_only():
 
 def test_ui_overlay_uses_stackchan_montserrat_font_family():
     src = UI_OVERLAY.read_text(encoding="utf-8")
+    assets = UI_OVERLAY_ASSETS.read_text(encoding="utf-8")
     cmake = UI_OVERLAY_CMAKE.read_text(encoding="utf-8")
     font_src = STACKCHAN_TITLE_FONT.read_text(encoding="utf-8")
 
+    assert '#include "ui_overlay_assets.h"' in src
+    assert "extern const lv_font_t MontserratSemiBold26;" in assets
     assert "MontserratSemiBold26" in src
     assert "fonts/MontserratSemiBold26.c" in cmake
     assert "Montserrat-SemiBold.ttf" in font_src

@@ -6,6 +6,7 @@
 
 #include "ui_overlay_service.h"
 
+#include "ui_overlay_assets.h"
 #include "render_service.h"
 #include "display_hal.h"
 #include "display_lgfx_config.hpp"
@@ -22,8 +23,6 @@
 #include <cstring>
 
 #define TAG "nb_ui"
-
-extern const lv_font_t MontserratSemiBold26;
 
 /* ── Sleep message geometry ──────────────────────────────────────────────── */
 /*
