@@ -1345,6 +1345,21 @@ Incremento N5.3 iniciado:
   com zero drops/erros. O unico warning final foi `heap_internal_free_kb baixo:
   11`.
 
+Incremento N5.4 iniciado:
+
+- O estado duplicado `bridge_say_playing` foi removido de `audio_service.c`.
+  Dentro do servico legado, SAY ativo agora e representado somente por
+  `play_state == PLAY_BRIDGE_SAY`.
+- Os contextos de Activity v2, `audio_is_playing()`, `audio_service_is_busy()`,
+  stop/cancel e entrada de chunks SAY passaram a usar essa fonte unica.
+- O `audio_service` ainda aplica a transicao de estado e emite
+  `NB_AUDIO_EVT_PLAYBACK_START/END`; Playback v2 continua dono dos contadores,
+  fila, idle/end e ciclo semantico SAY. O HAL fisico segue inalterado.
+- Gate esperado: build limpo, flash, baseline `playback-v2 delta --no-prompt`
+  sem issues e turno real curto com fila SAY final zero, zero drops, zero
+  cancelamentos, zero falhas de speaker write/commit, Audio IO v2 sem
+  drops/recoveries e Codec v2 sem drops/erros.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
