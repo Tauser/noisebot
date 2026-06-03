@@ -81,6 +81,9 @@ static vprintf_like_t s_orig_vprintf = NULL;
 #define AUDIO_IO_V2_STATUS_BUF_SIZE 3400U
 static char s_audio_io_v2_status_buf[AUDIO_IO_V2_STATUS_BUF_SIZE];
 
+#define AUDIO_PLAYBACK_V2_STATUS_BUF_SIZE 3600U
+static char s_audio_playback_v2_status_buf[AUDIO_PLAYBACK_V2_STATUS_BUF_SIZE];
+
 static int log_hook_vprintf(const char *fmt, va_list args)
 {
     va_list copy;
@@ -2699,8 +2702,8 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
     const char *speaker_owner_real_block =
         audio_io_v2_speaker_handoff_block_name(st.speaker_owner_real_block_reason);
 
-    char buf[3600];
-    snprintf(buf, sizeof(buf),
+    char *buf = s_audio_playback_v2_status_buf;
+    snprintf(buf, AUDIO_PLAYBACK_V2_STATUS_BUF_SIZE,
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
              "\"bridge_say_queue_owner\":%s,"
