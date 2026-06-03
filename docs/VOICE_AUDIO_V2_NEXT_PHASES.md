@@ -1408,6 +1408,19 @@ Incremento N5.6 iniciado:
 - Esta etapa nao muda runtime, fila SAY, HAL fisico, wake, captura, Activity v2,
   Codec v2 ou rollback; apenas reduz a superficie publica exposta para
   `audio_service.c` e demais componentes.
+- Validacao fisica apos flash: baseline sem prompt retornou `ok=true`,
+  `status=warn`, `issues=[]`, fila SAY final zero, deltas criticos zerados,
+  Codec v2 `healthy=true/status=ok`, sem drops/erros; o unico warning foi
+  `heap_internal_free_kb baixo: 11`. A primeira janela real capturou SAY, mas
+  terminou com cauda de fila (`say_queue_count=4`); baseline imediato confirmou
+  drenagem para `say_queue_count=0` e `received=played=361`, sem drops/falhas.
+  Repeticao com `--wait-s 120` fechou o gate real com `ok=true`, `status=warn`,
+  `issues=[]`, fila SAY final zero, `say_chunks_received=105`,
+  `say_chunks_played=105`, zero drops/cancelamentos,
+  `speaker_write_requests=105`, `speaker_write_failures=0`,
+  `speaker_frames_committed=105`, `speaker_commit_failures=0`, Audio IO v2 sem
+  `dropped_frames`/`i2s_recoveries`/handoff failures e Codec v2 `healthy=true`,
+  `status=ok`, sem warnings e com zero drops/erros.
 
 ## Ordem Recomendada
 
