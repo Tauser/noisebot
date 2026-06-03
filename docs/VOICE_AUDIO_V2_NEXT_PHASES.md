@@ -1980,6 +1980,14 @@ Playback v2 `say_chunks_received=370`, `say_chunks_played=370`,
 `last_outcome=local_intent` com transcript `Que horas são?`. A flag foi
 desligada no final para rollback operacional.
 
+Gate medio N2B em 2026-06-03: com a flag ligada, `ww -> me conte uma historia
+curta` manteve server/Playback/Codec saudaveis, mas expôs divergencia do
+decisor: o VAD legado encerrou antes, enquanto Activity v2 ainda nao tinha
+atingido os 900 ms consecutivos de silencio (`silence_run_frames=38`, ~608 ms).
+A janela de fim de fala do Activity v2 foi reduzida para 600 ms e
+`activity_end_silence_ms` foi adicionado ao status para validar o novo gate sem
+inferir pela contagem de frames.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

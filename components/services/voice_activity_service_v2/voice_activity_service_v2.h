@@ -37,6 +37,7 @@ typedef struct {
     uint32_t shadow_duration_ms;
     uint32_t shadow_elapsed_ms;
     uint32_t activity_end_elapsed_ms;
+    uint32_t activity_end_silence_ms;
     uint32_t legacy_end_elapsed_ms;
     uint32_t legacy_end_reason;
     uint32_t activity_decider_end_count;

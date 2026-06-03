@@ -420,6 +420,7 @@ def test_voice_activity_v2_shadow_is_explicit_and_passive():
     assert "bool session_compare_active;" in activity_h
     assert "bool decision_diverged;" in activity_h
     assert "bool activity_decider_end_used;" in activity_h
+    assert "uint32_t activity_end_silence_ms;" in activity_h
     assert "zcr_last_permille" in activity_h
     assert "session_frames" in activity_h
     assert "speech_run_frames" in activity_h
@@ -431,7 +432,7 @@ def test_voice_activity_v2_shadow_is_explicit_and_passive():
     assert "SESSION_SPEECH_PEAK_THRESHOLD" in activity_c
     assert "? SESSION_SPEECH_RMS_THRESHOLD" in activity_c
     assert "? SESSION_SPEECH_PEAK_THRESHOLD" in activity_c
-    assert "SESSION_END_SILENCE_MS" in activity_c
+    assert "#define SESSION_END_SILENCE_MS          600U" in activity_c
     assert "voice_activity_service_v2_session_end_observed(" in activity_c
     assert "voice_activity_service_v2_note_decider_end(" in activity_c
     assert "if (!s_status.shadow_running && !s_status.session_compare_active)" in activity_c
@@ -773,6 +774,7 @@ def test_voice_activity_v2_decider_flag_is_default_off_and_observable():
     assert '\\"activity_decider_owner_active\\":%s,' in web
     assert '\\"activity_decider_end_used\\":%s,' in web
     assert '\\"activity_decider_end_count\\":%lu,' in web
+    assert '\\"activity_end_silence_ms\\":%lu,' in web
     assert "config_get_voice_audio_v2_activity_decider_enabled()" in audio_service
     assert "activity_v2_decider_try_finish()" in audio_service
     assert "voice_activity_service_v2_session_end_observed(&activity_end_elapsed_ms)" in audio_service

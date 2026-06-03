@@ -2599,7 +2599,9 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
              "\"state\":\"%s\","
              "\"session_compare_id\":%lu,"
              "\"shadow_duration_ms\":%lu,\"shadow_elapsed_ms\":%lu,"
-             "\"activity_end_elapsed_ms\":%lu,\"legacy_end_elapsed_ms\":%lu,"
+             "\"activity_end_elapsed_ms\":%lu,"
+             "\"activity_end_silence_ms\":%lu,"
+             "\"legacy_end_elapsed_ms\":%lu,"
              "\"legacy_end_reason\":%lu,"
              "\"activity_decider_end_count\":%lu,"
              "\"activity_decider_end_elapsed_ms\":%lu,"
@@ -2636,6 +2638,7 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.shadow_duration_ms,
              (unsigned long)st.shadow_elapsed_ms,
              (unsigned long)st.activity_end_elapsed_ms,
+             (unsigned long)st.activity_end_silence_ms,
              (unsigned long)st.legacy_end_elapsed_ms,
              (unsigned long)st.legacy_end_reason,
              (unsigned long)st.activity_decider_end_count,

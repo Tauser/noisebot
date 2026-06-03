@@ -14,7 +14,7 @@
 #define SHADOW_SPEECH_PEAK_THRESHOLD    2400U
 #define SESSION_SPEECH_RMS_THRESHOLD    200U
 #define SESSION_SPEECH_PEAK_THRESHOLD   700U
-#define SESSION_END_SILENCE_MS          900U
+#define SESSION_END_SILENCE_MS          600U
 
 static nb_voice_activity_v2_status_t s_status = {
     .state = NB_VOICE_ACTIVITY_V2_STATE_UNKNOWN,
@@ -350,6 +350,7 @@ void voice_activity_service_v2_feed_frame(const int16_t *samples,
             (s_status.silence_run_frames * ACTIVITY_V2_CHUNK_MS) >= SESSION_END_SILENCE_MS) {
             s_status.activity_end_observed = true;
             s_status.activity_end_elapsed_ms = s_status.shadow_elapsed_ms + ACTIVITY_V2_CHUNK_MS;
+            s_status.activity_end_silence_ms = s_status.silence_run_frames * ACTIVITY_V2_CHUNK_MS;
         }
     }
 
