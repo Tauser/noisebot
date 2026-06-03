@@ -474,6 +474,13 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "s_status.say_chunks_dropped_listening > 0U" in playback_c
     assert "s_status.speaker_write_failures > 0U" in playback_c
     assert "s_status.speaker_commit_failures > 0U" in playback_c
+    assert "NB_AUDIO_PLAYBACK_V2_SAY_ACCEPT_WAIT_MS" in playback_c
+    assert "pdMS_TO_TICKS(NB_AUDIO_PLAYBACK_V2_SAY_ACCEPT_WAIT_MS)" in playback_c
+    assert "say_queue_high_watermark" in playback_h
+    assert "say_accept_wait_ms" in playback_h
+    assert "say_chunks_dropped_queue_full" in playback_h
+    assert "say_chunks_queue_full" in playback_h
+    assert "say_chunks_queue_wait_recovered" in playback_h
     assert "nb_audio_playback_v2_speaker_write_cb_t" in playback_h
     assert "audio_playback_service_v2_speaker_write_next_frame(" in playback_h
     assert "nb_audio_playback_v2_say_chunk_t" not in playback_h

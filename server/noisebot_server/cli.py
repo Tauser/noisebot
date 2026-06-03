@@ -1295,11 +1295,16 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
         f"ms={payload.get('speaker_empty_ms')} "
         f"ends={payload.get('speaker_idle_end_count')}",
         f"- playing: {payload.get('playing')}",
-        f"- queue: {payload.get('say_queue_count')}/{payload.get('say_queue_depth')}",
+        f"- queue: {payload.get('say_queue_count')}/{payload.get('say_queue_depth')} "
+        f"high={payload.get('say_queue_high_watermark')} "
+        f"wait_ms={payload.get('say_accept_wait_ms')}",
         f"- received/played: {payload.get('say_chunks_received')}/"
         f"{payload.get('say_chunks_played')}",
         f"- dropped/listening: {payload.get('say_chunks_dropped')}/"
         f"{payload.get('say_chunks_dropped_listening')}",
+        f"- queue_full/recovered/dropped: {payload.get('say_chunks_queue_full')}/"
+        f"{payload.get('say_chunks_queue_wait_recovered')}/"
+        f"{payload.get('say_chunks_dropped_queue_full')}",
         f"- cancelled/cancel_count: {payload.get('say_chunks_cancelled')}/"
         f"{payload.get('say_cancel_count')}",
         f"- error: {payload.get('error')}",

@@ -40,8 +40,10 @@ ela piorou a transcrição e aumentou risco de watchdog.
   Apos drops recorrentes em N6.9, 20 ms limpou o dry-run mas ainda dropou na
   janela real. Uma tentativa de 24 ms piorou a continuidade perceptivel do
   audio, entao o default ficou em 20 ms e os drops devem ser investigados pelo
-  lado de janela/estado/aceite no firmware. `NOISEBOT_TTS_QUEUE_TARGET` e
-  `NOISEBOT_TTS_SEND_INTERVAL_MS` continuam como rollback/ajuste operacional.
+  lado de janela/estado/aceite no firmware. O firmware agora absorve jitter de
+  fila cheia com backpressure curto de ate 16 ms no accept SAY antes de dropar.
+  `NOISEBOT_TTS_QUEUE_TARGET` e `NOISEBOT_TTS_SEND_INTERVAL_MS` continuam como
+  rollback/ajuste operacional.
 
 ## Contrato v2
 

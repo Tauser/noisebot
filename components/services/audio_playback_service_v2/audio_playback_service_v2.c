@@ -13,6 +13,7 @@
 #define NB_AUDIO_PLAYBACK_V2_SAMPLE_RATE_HZ  16000U
 #define NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES   256U
 #define NB_AUDIO_PLAYBACK_V2_CHUNK_MS        16U
+#define NB_AUDIO_PLAYBACK_V2_SAY_ACCEPT_WAIT_MS NB_AUDIO_PLAYBACK_V2_CHUNK_MS
 #define NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS 1200U
 #define NB_AUDIO_PLAYBACK_V2_PROBE_HZ        440U
 
@@ -82,6 +83,10 @@ static void playback_v2_note_queue_count(uint32_t queue_count)
     s_status.bridge_say_queue_owner = (s_say_q != NULL);
     s_status.say_queue_depth = NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS;
     s_status.say_queue_count = queue_count;
+    if (queue_count > s_status.say_queue_high_watermark) {
+        s_status.say_queue_high_watermark = queue_count;
+    }
+    s_status.say_accept_wait_ms = NB_AUDIO_PLAYBACK_V2_SAY_ACCEPT_WAIT_MS;
 }
 
 static void playback_v2_reset_speaker_empty_locked(void)
@@ -138,6 +143,7 @@ esp_err_t audio_playback_service_v2_init(void)
     s_status.bridge_say_observer = true;
     s_status.bridge_say_queue_owner = true;
     s_status.say_queue_depth = NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS;
+    s_status.say_accept_wait_ms = NB_AUDIO_PLAYBACK_V2_SAY_ACCEPT_WAIT_MS;
     s_status.last_error = ESP_OK;
     playback_v2_clear_real_owner_locked();
     taskEXIT_CRITICAL(&s_mux);
@@ -401,10 +407,24 @@ esp_err_t audio_playback_service_v2_say_accept(const int16_t *samples, uint16_t 
     item.count = count;
     memcpy(item.samples, samples, count * sizeof(int16_t));
 
-    if (xQueueSend(queue, &item, 0) == pdTRUE) {
+    bool waited_for_room = false;
+    BaseType_t sent = xQueueSend(queue, &item, 0);
+    if (sent != pdTRUE) {
+        waited_for_room = true;
+        sent = xQueueSend(
+            queue,
+            &item,
+            pdMS_TO_TICKS(NB_AUDIO_PLAYBACK_V2_SAY_ACCEPT_WAIT_MS));
+    }
+
+    if (sent == pdTRUE) {
         uint32_t queue_count = (uint32_t)uxQueueMessagesWaiting(queue);
         taskENTER_CRITICAL(&s_mux);
         s_status.say_chunks_received++;
+        if (waited_for_room) {
+            s_status.say_chunks_queue_full++;
+            s_status.say_chunks_queue_wait_recovered++;
+        }
         playback_v2_reset_speaker_empty_locked();
         playback_v2_note_queue_count(queue_count);
         s_status.last_error = ESP_OK;
@@ -415,6 +435,8 @@ esp_err_t audio_playback_service_v2_say_accept(const int16_t *samples, uint16_t 
     uint32_t queue_count = (uint32_t)uxQueueMessagesWaiting(queue);
     taskENTER_CRITICAL(&s_mux);
     s_status.say_chunks_dropped++;
+    s_status.say_chunks_dropped_queue_full++;
+    s_status.say_chunks_queue_full++;
     playback_v2_note_queue_count(queue_count);
     s_status.last_error = ESP_ERR_NO_MEM;
     taskEXIT_CRITICAL(&s_mux);

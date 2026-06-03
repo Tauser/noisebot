@@ -1874,6 +1874,13 @@ Incremento N6.9 iniciado:
   firmware/diagnostico: nao subir mais o pacing, porque 24 ms piorou a
   continuidade perceptivel do audio; investigar janela/estado/aceite dos
   chunks SAY antes de repetir a janela N6.9.
+- Correcao N6.9 seguinte: manter o server em 20 ms e adicionar backpressure
+  curto no `audio_playback_service_v2_say_accept()`. O accept ainda tenta
+  enfileirar imediatamente, mas quando a fila SAY esta cheia espera ate 16 ms
+  (um chunk fisico) antes de dropar. `/api/audio/playback-v2` passa a expor
+  `say_queue_high_watermark`, `say_accept_wait_ms`,
+  `say_chunks_queue_full`, `say_chunks_queue_wait_recovered` e
+  `say_chunks_dropped_queue_full` para separar jitter recuperado de drop real.
 
 ## Ordem Recomendada
 

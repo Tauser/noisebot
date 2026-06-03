@@ -72,10 +72,15 @@ typedef struct {
     uint32_t amplitude;
     uint32_t say_queue_depth;
     uint32_t say_queue_count;
+    uint32_t say_queue_high_watermark;
+    uint32_t say_accept_wait_ms;
     uint32_t say_chunks_received;
     uint32_t say_chunks_played;
     uint32_t say_chunks_dropped;
+    uint32_t say_chunks_dropped_queue_full;
     uint32_t say_chunks_dropped_listening;
+    uint32_t say_chunks_queue_full;
+    uint32_t say_chunks_queue_wait_recovered;
     uint32_t say_chunks_cancelled;
     uint32_t say_cancel_count;
     esp_err_t last_error;

@@ -2699,7 +2699,7 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
     const char *speaker_owner_real_block =
         audio_io_v2_speaker_handoff_block_name(st.speaker_owner_real_block_reason);
 
-    char buf[3100];
+    char buf[3600];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
@@ -2750,9 +2750,14 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              "\"played_chunks\":%lu,\"dropped_chunks\":%lu,"
              "\"cancel_count\":%lu,\"amplitude\":%lu,"
              "\"say_queue_depth\":%lu,\"say_queue_count\":%lu,"
+             "\"say_queue_high_watermark\":%lu,"
+             "\"say_accept_wait_ms\":%lu,"
              "\"say_chunks_received\":%lu,\"say_chunks_played\":%lu,"
              "\"say_chunks_dropped\":%lu,"
+             "\"say_chunks_dropped_queue_full\":%lu,"
              "\"say_chunks_dropped_listening\":%lu,"
+             "\"say_chunks_queue_full\":%lu,"
+             "\"say_chunks_queue_wait_recovered\":%lu,"
              "\"say_chunks_cancelled\":%lu,\"say_cancel_count\":%lu,"
              "\"last_error\":\"%s\",\"error\":\"%s\"}",
              (err == ESP_OK) ? "true" : "false",
@@ -2811,10 +2816,15 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.amplitude,
              (unsigned long)st.say_queue_depth,
              (unsigned long)st.say_queue_count,
+             (unsigned long)st.say_queue_high_watermark,
+             (unsigned long)st.say_accept_wait_ms,
              (unsigned long)st.say_chunks_received,
              (unsigned long)st.say_chunks_played,
              (unsigned long)st.say_chunks_dropped,
+             (unsigned long)st.say_chunks_dropped_queue_full,
              (unsigned long)st.say_chunks_dropped_listening,
+             (unsigned long)st.say_chunks_queue_full,
+             (unsigned long)st.say_chunks_queue_wait_recovered,
              (unsigned long)st.say_chunks_cancelled,
              (unsigned long)st.say_cancel_count,
              esp_err_to_name(st.last_error),

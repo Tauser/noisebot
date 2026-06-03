@@ -340,7 +340,9 @@ Invariantes:
   mostrou drops SAY ainda no gate; 20 ms limpou o dry-run, mas a janela real
   ainda dropou. A tentativa de 24 ms piorou a continuidade perceptivel do
   audio, entao o default voltou para 20 ms e a proxima repeticao deve focar a
-  janela/estado/aceite no firmware.
+  janela/estado/aceite no firmware. O accept da fila SAY agora aplica
+  backpressure curto de ate 16 ms quando a fila esta cheia e expoe contadores
+  de fila cheia, recuperacao por wait e drop por fila cheia.
 
 ### Voice Activity v2
 

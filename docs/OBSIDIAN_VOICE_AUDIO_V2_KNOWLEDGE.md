@@ -236,7 +236,9 @@ Incremento atual da Fase N3:
   repeticao limpa ainda gerou drops SAY no gate; 20 ms limpou o dry-run, mas a
   janela real ainda acumulou drops. O server ajustou o pacing default do
   `OutputScheduler` para 20 ms; 24 ms piorou a continuidade perceptivel do
-  audio, entao o proximo diagnostico e no firmware/estado de aceite.
+  audio. O diagnostico/correcao seguinte ficou no firmware: backpressure curto
+  de ate 16 ms no `say_accept` quando a fila SAY esta cheia, com contadores de
+  high-watermark, fila cheia, recuperacao por wait e drop por fila cheia.
 
 ### Wake Word
 
