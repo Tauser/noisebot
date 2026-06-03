@@ -28,6 +28,7 @@ import asyncio
 import json
 import logging
 import time
+import unicodedata
 from collections import deque
 from typing import Any, Callable
 
@@ -1148,11 +1149,13 @@ class Orchestrator:
         if adapter is None or not text:
             return
         encoded = text.encode("utf-8")
-        pages = _split_text_scroll_pages(text)
+        display_text = _text_scroll_display_text(text)
+        pages = _split_text_scroll_pages(display_text)
         session.meta["text_scroll_chars"] = len(text)
         session.meta["text_scroll_bytes"] = len(encoded)
         session.meta["text_scroll_payload_bytes"] = min(len(encoded), TEXT_SCROLL_MAX_BYTES)
         session.meta["text_scroll_truncated"] = len(encoded) > TEXT_SCROLL_MAX_BYTES
+        session.meta["text_scroll_display_ascii"] = display_text != text
         session.meta["text_scroll_pages"] = len(pages)
         session.meta["text_scroll_pages_sent"] = 0
         try:
@@ -1543,6 +1546,7 @@ class Orchestrator:
             "text_scroll_bytes": session.meta.get("text_scroll_bytes"),
             "text_scroll_payload_bytes": session.meta.get("text_scroll_payload_bytes"),
             "text_scroll_truncated": session.meta.get("text_scroll_truncated"),
+            "text_scroll_display_ascii": session.meta.get("text_scroll_display_ascii"),
             "text_scroll_pages": session.meta.get("text_scroll_pages"),
             "text_scroll_pages_sent": session.meta.get("text_scroll_pages_sent"),
             "voice_end_to_stt_start_ms": delta_ms("voice_end", "stt_start"),
@@ -1591,6 +1595,13 @@ def _split_text_scroll_pages(
     if current:
         pages.append(current)
     return pages or []
+
+
+def _text_scroll_display_text(text: str) -> str:
+    """Return ASCII-safe display text for firmware fonts that lack PT-BR glyphs."""
+    normalized = unicodedata.normalize("NFKD", str(text or ""))
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    return " ".join(ascii_text.split())
 
 
 def _text_prefix(text: str, max_bytes: int, max_chars: int) -> str:

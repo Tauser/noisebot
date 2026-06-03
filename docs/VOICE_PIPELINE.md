@@ -1206,7 +1206,10 @@ Pendências:
   O `/ai/metrics` agora tambem transforma esses campos em `voice_alert` e
   `voice_diagnosis`: `tts_completed=false` vira alerta de fala possivelmente
   incompleta; truncamento apenas visual do `TEXT_SCROLL` vira diagnostico sem
-  alerta.
+  alerta. Refino server-only posterior: o TTS/resposta original permanece com
+  acentos, mas o payload visual de `TEXT_SCROLL` e normalizado para ASCII sem
+  diacriticos antes da paginacao, evitando que o firmware desenhe acentos
+  manuais com aparencia diferente da fonte base do overlay.
 
 ## Ordem Recomendada
 

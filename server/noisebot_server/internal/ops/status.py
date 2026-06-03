@@ -209,6 +209,7 @@ def _sanitize_session(value: dict) -> dict:
         "text_scroll_bytes",
         "text_scroll_payload_bytes",
         "text_scroll_truncated",
+        "text_scroll_display_ascii",
         "text_scroll_pages",
         "text_scroll_pages_sent",
         "voice_end_to_stt_start_ms",
