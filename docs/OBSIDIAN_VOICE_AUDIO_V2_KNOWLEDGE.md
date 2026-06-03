@@ -221,6 +221,11 @@ Incremento atual da Fase N3:
   confirmou bloqueio sem gate (`DISABLED`) e armamento real apenas depois de
   uma fala com 360 chunks SAY recebidos/tocados, zero drops e zero falhas,
   seguida de `real-disarm` e dry-run desligado.
+- Fase N6.8 iniciou telemetria de execucao armada: contadores
+  `speaker_owner_real_write_*` sobem somente quando `speaker_owner_real_armed`
+  esta verdadeiro e o write ocorre pelo callback do `audio_service`. Evidencia:
+  Playback v2 continua sem chamada direta ao HAL; isso prepara a validacao de
+  um turno completo armado sem trocar ownership fisico.
 
 ### Wake Word
 

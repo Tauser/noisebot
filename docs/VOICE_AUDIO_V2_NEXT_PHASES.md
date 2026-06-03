@@ -1825,6 +1825,19 @@ Incremento N6.7 iniciado:
   terminou com `real-disarm` e `speaker-owner-disarm`, deixando
   `speaker_owner_real_armed=false`, dry-run desligado e fila SAY final zero.
 
+Incremento N6.8 iniciado:
+
+- Playback v2 ganhou telemetria de execucao armada real:
+  `speaker_owner_real_write_frames`, `speaker_owner_real_write_samples`,
+  `speaker_owner_real_write_failures` e `speaker_owner_real_last_result`.
+- Esses contadores so sobem enquanto `speaker_owner_real_armed=true` e o frame
+  SAY e escrito pelo callback fornecido por `audio_service`. O HAL fisico ainda
+  permanece no `audio_service`; Playback v2 nao chama `audio_hal_*` diretamente.
+- O objetivo e validar um turno completo com `real-arm` ja armado antes da fala
+  e confirmar que frames/samples reais aparecem nesses contadores com zero
+  falhas, fila SAY final zero, Codec v2 saudavel e rollback por `real-disarm`
+  + `speaker-owner-disarm`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

@@ -32,6 +32,10 @@ typedef struct {
     bool speaker_owner_real_requested;
     bool speaker_owner_real_armed;
     uint32_t speaker_owner_real_block_reason;
+    uint32_t speaker_owner_real_write_frames;
+    uint32_t speaker_owner_real_write_samples;
+    uint32_t speaker_owner_real_write_failures;
+    esp_err_t speaker_owner_real_last_result;
     uint32_t speaker_owner_frames;
     uint32_t speaker_owner_samples;
     uint32_t speaker_owner_silence_frames;

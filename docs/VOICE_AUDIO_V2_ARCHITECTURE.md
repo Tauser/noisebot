@@ -326,6 +326,10 @@ Invariantes:
   fechou o corrimao com `real-arm` bloqueado sem gate, depois armado somente
   apos 360/360 chunks SAY sem drops/falhas, seguido de `real-disarm` e dry-run
   desligado.
+- Na Fase N6.8, Playback v2 passa a expor contadores de write feitos enquanto
+  `speaker_owner_real_armed=true`. Isso mede execucao armada real pelo mesmo
+  callback do `audio_service`; nao muda o owner fisico do HAL e nao cria chamada
+  direta de Playback v2 para `audio_hal_*`.
 
 ### Voice Activity v2
 

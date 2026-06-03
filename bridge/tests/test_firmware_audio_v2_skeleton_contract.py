@@ -498,6 +498,10 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "bool speaker_owner_real_requested;" in playback_h
     assert "bool speaker_owner_real_armed;" in playback_h
     assert "uint32_t speaker_owner_real_block_reason;" in playback_h
+    assert "uint32_t speaker_owner_real_write_frames;" in playback_h
+    assert "uint32_t speaker_owner_real_write_samples;" in playback_h
+    assert "uint32_t speaker_owner_real_write_failures;" in playback_h
+    assert "esp_err_t speaker_owner_real_last_result;" in playback_h
     assert "uint32_t speaker_owner_frames;" in playback_h
     assert "uint32_t speaker_owner_samples;" in playback_h
     assert "uint32_t speaker_owner_silence_frames;" in playback_h
@@ -552,6 +556,10 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert '\\"speaker_owner_real_requested\\":%s' in web
     assert '\\"speaker_owner_real_armed\\":%s' in web
     assert '\\"speaker_owner_real_block_reason\\":\\"%s\\"' in web
+    assert '\\"speaker_owner_real_write_frames\\":%lu' in web
+    assert '\\"speaker_owner_real_write_samples\\":%lu' in web
+    assert '\\"speaker_owner_real_write_failures\\":%lu' in web
+    assert '\\"speaker_owner_real_last_result\\":\\"%s\\"' in web
     assert '\\"speaker_owner_frames\\":%lu' in web
     assert '\\"speaker_owner_samples\\":%lu' in web
     assert '\\"speaker_owner_silence_frames\\":%lu' in web
@@ -589,6 +597,9 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "volume_percent" in playback_c
     assert "write_cb(frame.samples, frame.count, ctx)" in playback_c
     assert "playback_v2_speaker_commit_frame(frame.count, wr)" in playback_c
+    assert "if (s_status.speaker_owner_real_armed)" in playback_c
+    assert "s_status.speaker_owner_real_write_frames++" in playback_c
+    assert "s_status.speaker_owner_real_write_failures++" in playback_c
     assert "static void playback_v2_speaker_commit_frame(" in playback_c
     assert "audio_io_service_v2_speaker_handoff_note_playback_frame(false, result)" in playback_c
     assert "static bool playback_v2_speaker_note_empty(" in playback_c

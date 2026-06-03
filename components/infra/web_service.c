@@ -2699,7 +2699,7 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
     const char *speaker_owner_real_block =
         audio_io_v2_speaker_handoff_block_name(st.speaker_owner_real_block_reason);
 
-    char buf[2700];
+    char buf[2900];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
@@ -2714,6 +2714,10 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              "\"speaker_owner_real_requested\":%s,"
              "\"speaker_owner_real_armed\":%s,"
              "\"speaker_owner_real_block_reason\":\"%s\","
+             "\"speaker_owner_real_write_frames\":%lu,"
+             "\"speaker_owner_real_write_samples\":%lu,"
+             "\"speaker_owner_real_write_failures\":%lu,"
+             "\"speaker_owner_real_last_result\":\"%s\","
              "\"speaker_owner_frames\":%lu,"
              "\"speaker_owner_samples\":%lu,"
              "\"speaker_owner_silence_frames\":%lu,"
@@ -2764,6 +2768,10 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              st.speaker_owner_real_requested ? "true" : "false",
              st.speaker_owner_real_armed ? "true" : "false",
              speaker_owner_real_block,
+             (unsigned long)st.speaker_owner_real_write_frames,
+             (unsigned long)st.speaker_owner_real_write_samples,
+             (unsigned long)st.speaker_owner_real_write_failures,
+             esp_err_to_name(st.speaker_owner_real_last_result),
              (unsigned long)st.speaker_owner_frames,
              (unsigned long)st.speaker_owner_samples,
              (unsigned long)st.speaker_owner_silence_frames,

@@ -41,6 +41,10 @@ static void playback_v2_clear_real_owner_locked(void)
     s_status.speaker_owner_real_armed = false;
     s_status.speaker_owner_real_block_reason =
         (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
+    s_status.speaker_owner_real_write_frames = 0;
+    s_status.speaker_owner_real_write_samples = 0;
+    s_status.speaker_owner_real_write_failures = 0;
+    s_status.speaker_owner_real_last_result = ESP_OK;
 }
 
 static void playback_v2_note_queue_count(uint32_t queue_count)
@@ -484,6 +488,14 @@ bool audio_playback_service_v2_speaker_write_next_frame(
     playback_v2_speaker_commit_frame(frame.count, wr);
 
     taskENTER_CRITICAL(&s_mux);
+    if (s_status.speaker_owner_real_armed) {
+        s_status.speaker_owner_real_write_frames++;
+        s_status.speaker_owner_real_write_samples += frame.count;
+        s_status.speaker_owner_real_last_result = wr;
+        if (wr != ESP_OK) {
+            s_status.speaker_owner_real_write_failures++;
+        }
+    }
     s_status.speaker_write_requests++;
     s_status.speaker_write_samples += frame.count;
     s_status.speaker_last_write_samples = frame.count;
