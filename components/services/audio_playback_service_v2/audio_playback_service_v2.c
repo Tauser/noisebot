@@ -55,9 +55,20 @@ static void playback_v2_mirror_speaker_owner(nb_audio_playback_v2_status_t *stat
         return;
     }
 
+    status->speaker_owner_dry_run_enabled = io->speaker_handoff_dry_run_enabled;
     status->speaker_owner_requested = io->speaker_handoff_owner_requested;
     status->speaker_owner_ready = io->speaker_handoff_owner_ready;
     status->speaker_owner_active = io->speaker_handoff_active;
+    status->speaker_owner_candidate = io->speaker_handoff_candidate;
+    status->speaker_owner_handoff_ready = io->speaker_handoff_ready;
+    status->speaker_owner_block_reason = (uint32_t)io->speaker_handoff_block_reason;
+    status->speaker_owner_frames = io->speaker_handoff_frames;
+    status->speaker_owner_samples = io->speaker_handoff_samples;
+    status->speaker_owner_silence_frames = io->speaker_handoff_silence_frames;
+    status->speaker_owner_failures = io->speaker_handoff_failures;
+    status->speaker_owner_recoveries = io->speaker_handoff_recoveries;
+    status->speaker_owner_last_samples = io->speaker_handoff_last_samples;
+    status->speaker_owner_last_result = io->speaker_handoff_last_result;
 }
 
 esp_err_t audio_playback_service_v2_init(void)

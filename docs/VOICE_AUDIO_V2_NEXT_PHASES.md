@@ -1604,6 +1604,20 @@ Incremento N6.0 iniciado:
 - Proximo incremento N6.1 deve ser dry-run/status de readiness do HAL owner,
   ainda sem chamada direta de `audio_hal_*` por Playback v2.
 
+Incremento N6.1 iniciado:
+
+- `/api/audio/playback-v2` passa a espelhar o readiness completo de speaker/HAL
+  ownership calculado no Audio IO v2: `speaker_owner_dry_run_enabled`,
+  `speaker_owner_candidate`, `speaker_owner_handoff_ready`,
+  `speaker_owner_block_reason`, frames/samples/silencio, falhas, recoveries e
+  ultimo resultado.
+- O CLI `debug playback-v2 status` tambem mostra esse bloco de readiness para
+  que o gate de HAL owner possa ser visto pelo namespace de Playback v2.
+- Esta etapa nao muda HAL fisico, nao adiciona chamada `audio_hal_*` em
+  Playback v2, nao altera wake/VAD/Capture/Activity/Codec/Opus/PCM16 e nao
+  muda o caminho real de audio. Ela apenas torna N6.1 auditavel antes de um
+  dry-run operacional.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

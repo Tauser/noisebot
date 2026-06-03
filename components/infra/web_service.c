@@ -1665,32 +1665,31 @@ static esp_err_t send_audio_opus_worker_status(httpd_req_t *req, esp_err_t err)
     return httpd_resp_sendstr(req, buf);
 }
 
+static const char *audio_io_v2_speaker_handoff_block_name(uint32_t reason)
+{
+    switch ((nb_audio_io_v2_speaker_handoff_block_t)reason) {
+    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NONE:
+        return "NONE";
+    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED:
+        return "DISABLED";
+    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NO_TX:
+        return "NO_TX";
+    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_TX_ERROR:
+        return "TX_ERROR";
+    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_I2S_RECOVERY:
+        return "I2S_RECOVERY";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
 {
     nb_audio_io_v2_status_t st;
     audio_io_service_v2_get_status(&st);
 
-    const char *speaker_block = "UNKNOWN";
-    switch (st.speaker_handoff_block_reason) {
-    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NONE:
-        speaker_block = "NONE";
-        break;
-    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED:
-        speaker_block = "DISABLED";
-        break;
-    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_NO_TX:
-        speaker_block = "NO_TX";
-        break;
-    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_TX_ERROR:
-        speaker_block = "TX_ERROR";
-        break;
-    case NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_I2S_RECOVERY:
-        speaker_block = "I2S_RECOVERY";
-        break;
-    default:
-        break;
-    }
-
+    const char *speaker_block =
+        audio_io_v2_speaker_handoff_block_name((uint32_t)st.speaker_handoff_block_reason);
     char *buf = s_audio_io_v2_status_buf;
     snprintf(buf, AUDIO_IO_V2_STATUS_BUF_SIZE,
              "{\"ok\":%s,\"initialized\":%s,\"probe_running\":%s,"
@@ -2695,14 +2694,28 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
     nb_audio_playback_v2_status_t st;
     audio_playback_service_v2_get_status(&st);
 
-    char buf[1800];
+    const char *speaker_owner_block =
+        audio_io_v2_speaker_handoff_block_name(st.speaker_owner_block_reason);
+
+    char buf[2400];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
              "\"bridge_say_queue_owner\":%s,"
+             "\"speaker_owner_dry_run_enabled\":%s,"
              "\"speaker_owner_requested\":%s,"
              "\"speaker_owner_ready\":%s,"
              "\"speaker_owner_active\":%s,"
+             "\"speaker_owner_candidate\":%s,"
+             "\"speaker_owner_handoff_ready\":%s,"
+             "\"speaker_owner_block_reason\":\"%s\","
+             "\"speaker_owner_frames\":%lu,"
+             "\"speaker_owner_samples\":%lu,"
+             "\"speaker_owner_silence_frames\":%lu,"
+             "\"speaker_owner_failures\":%lu,"
+             "\"speaker_owner_recoveries\":%lu,"
+             "\"speaker_owner_last_samples\":%lu,"
+             "\"speaker_owner_last_result\":\"%s\","
              "\"speaker_frames_prepared\":%lu,"
              "\"speaker_samples_prepared\":%lu,"
              "\"speaker_last_samples\":%lu,"
@@ -2736,9 +2749,20 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              st.stop_requested ? "true" : "false",
              st.bridge_say_observer ? "true" : "false",
              st.bridge_say_queue_owner ? "true" : "false",
+             st.speaker_owner_dry_run_enabled ? "true" : "false",
              st.speaker_owner_requested ? "true" : "false",
              st.speaker_owner_ready ? "true" : "false",
              st.speaker_owner_active ? "true" : "false",
+             st.speaker_owner_candidate ? "true" : "false",
+             st.speaker_owner_handoff_ready ? "true" : "false",
+             speaker_owner_block,
+             (unsigned long)st.speaker_owner_frames,
+             (unsigned long)st.speaker_owner_samples,
+             (unsigned long)st.speaker_owner_silence_frames,
+             (unsigned long)st.speaker_owner_failures,
+             (unsigned long)st.speaker_owner_recoveries,
+             (unsigned long)st.speaker_owner_last_samples,
+             esp_err_to_name(st.speaker_owner_last_result),
              (unsigned long)st.speaker_frames_prepared,
              (unsigned long)st.speaker_samples_prepared,
              (unsigned long)st.speaker_last_samples,

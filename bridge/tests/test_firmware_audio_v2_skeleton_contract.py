@@ -480,9 +480,20 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "audio_playback_service_v2_say_end_idle(" in playback_h
     assert "bridge_say_observer" in playback_h
     assert "bridge_say_queue_owner" in playback_h
+    assert "bool speaker_owner_dry_run_enabled;" in playback_h
     assert "bool speaker_owner_requested;" in playback_h
     assert "bool speaker_owner_ready;" in playback_h
     assert "bool speaker_owner_active;" in playback_h
+    assert "bool speaker_owner_candidate;" in playback_h
+    assert "bool speaker_owner_handoff_ready;" in playback_h
+    assert "uint32_t speaker_owner_block_reason;" in playback_h
+    assert "uint32_t speaker_owner_frames;" in playback_h
+    assert "uint32_t speaker_owner_samples;" in playback_h
+    assert "uint32_t speaker_owner_silence_frames;" in playback_h
+    assert "uint32_t speaker_owner_failures;" in playback_h
+    assert "uint32_t speaker_owner_recoveries;" in playback_h
+    assert "uint32_t speaker_owner_last_samples;" in playback_h
+    assert "esp_err_t speaker_owner_last_result;" in playback_h
     assert "uint32_t speaker_frames_prepared;" in playback_h
     assert "uint32_t speaker_samples_prepared;" in playback_h
     assert "uint32_t speaker_last_samples;" in playback_h
@@ -520,9 +531,21 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "audio_io_service_v2_speaker_handoff_note_playback_frame(false, wr);" not in audio_service
     assert "bridge_say_observer" in web
     assert "bridge_say_queue_owner" in web
+    assert '\\"speaker_owner_dry_run_enabled\\":%s' in web
     assert '\\"speaker_owner_requested\\":%s' in web
     assert '\\"speaker_owner_ready\\":%s' in web
     assert '\\"speaker_owner_active\\":%s' in web
+    assert '\\"speaker_owner_candidate\\":%s' in web
+    assert '\\"speaker_owner_handoff_ready\\":%s' in web
+    assert '\\"speaker_owner_block_reason\\":\\"%s\\"' in web
+    assert '\\"speaker_owner_frames\\":%lu' in web
+    assert '\\"speaker_owner_samples\\":%lu' in web
+    assert '\\"speaker_owner_silence_frames\\":%lu' in web
+    assert '\\"speaker_owner_failures\\":%lu' in web
+    assert '\\"speaker_owner_recoveries\\":%lu' in web
+    assert '\\"speaker_owner_last_samples\\":%lu' in web
+    assert '\\"speaker_owner_last_result\\":\\"%s\\"' in web
+    assert "audio_io_v2_speaker_handoff_block_name(st.speaker_owner_block_reason)" in web
     assert '\\"speaker_frames_prepared\\":%lu' in web
     assert '\\"speaker_samples_prepared\\":%lu' in web
     assert '\\"speaker_last_samples\\":%lu' in web
@@ -562,6 +585,12 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "xQueueReset(queue)" in drop_listening
     assert "s_status.say_chunks_cancelled += pending;" in drop_listening
     assert "audio_io_service_v2_set_speaker_handoff_owner_requested(" in playback_c
+    assert "speaker_owner_dry_run_enabled = io->speaker_handoff_dry_run_enabled;" in playback_c
+    assert "speaker_owner_candidate = io->speaker_handoff_candidate;" in playback_c
+    assert "speaker_owner_handoff_ready = io->speaker_handoff_ready;" in playback_c
+    assert "speaker_owner_block_reason = (uint32_t)io->speaker_handoff_block_reason;" in playback_c
+    assert "speaker_owner_failures = io->speaker_handoff_failures;" in playback_c
+    assert "speaker_owner_recoveries = io->speaker_handoff_recoveries;" in playback_c
     assert "audio_hal_" not in playback_c
 
 

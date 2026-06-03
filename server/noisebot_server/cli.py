@@ -1025,6 +1025,17 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
         f"- speaker_owner: requested={payload.get('speaker_owner_requested')} "
         f"ready={payload.get('speaker_owner_ready')} "
         f"active={payload.get('speaker_owner_active')}",
+        f"- speaker_owner_readiness: dry_run={payload.get('speaker_owner_dry_run_enabled')} "
+        f"candidate={payload.get('speaker_owner_candidate')} "
+        f"handoff_ready={payload.get('speaker_owner_handoff_ready')} "
+        f"block={payload.get('speaker_owner_block_reason')}",
+        f"- speaker_owner_frames: {payload.get('speaker_owner_frames')}/"
+        f"{payload.get('speaker_owner_samples')} samples "
+        f"silence={payload.get('speaker_owner_silence_frames')} "
+        f"failures={payload.get('speaker_owner_failures')} "
+        f"recoveries={payload.get('speaker_owner_recoveries')} "
+        f"last={payload.get('speaker_owner_last_samples')} "
+        f"result={payload.get('speaker_owner_last_result')}",
         f"- speaker_prepared: {payload.get('speaker_frames_prepared')}/"
         f"{payload.get('speaker_samples_prepared')} samples "
         f"last={payload.get('speaker_last_samples')} "
