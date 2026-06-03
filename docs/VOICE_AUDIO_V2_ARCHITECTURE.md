@@ -333,6 +333,10 @@ Invariantes:
   do `real-arm` manteve os contadores reais zerados; a fala seguinte com
   `real-arm` armado registrou 371 writes / 94976 samples, zero falhas e
   rollback limpo.
+- Na Fase N6.9, esse armamento vira uma janela controlada: o fim de SAY
+  auto-desarma o owner real, preserva os contadores da janela e expõe
+  `speaker_owner_real_window_completed`/`auto_disarm_count`. O caminho fisico
+  continua pelo callback de `audio_service`.
 
 ### Voice Activity v2
 

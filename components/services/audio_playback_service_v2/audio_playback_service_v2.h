@@ -32,6 +32,9 @@ typedef struct {
     bool speaker_owner_real_requested;
     bool speaker_owner_real_armed;
     uint32_t speaker_owner_real_block_reason;
+    bool speaker_owner_real_window_active;
+    bool speaker_owner_real_window_completed;
+    uint32_t speaker_owner_real_auto_disarm_count;
     uint32_t speaker_owner_real_write_frames;
     uint32_t speaker_owner_real_write_samples;
     uint32_t speaker_owner_real_write_failures;

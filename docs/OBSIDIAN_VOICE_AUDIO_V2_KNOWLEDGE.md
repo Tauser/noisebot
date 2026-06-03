@@ -229,6 +229,10 @@ Incremento atual da Fase N3:
   uma fala pre-arm com contadores reais zerados e outra fala com `real-arm`
   armado registrando 371 writes / 94976 samples, zero falhas, fila SAY zero e
   rollback final limpo.
+- Fase N6.9 transformou o armamento real em janela de uma fala: ao fim do SAY,
+  Playback v2 auto-desarma `speaker_owner_real_armed`, marca a janela como
+  concluida e preserva os contadores `speaker_owner_real_write_*` para
+  validacao. O HAL fisico segue no callback do `audio_service`.
 
 ### Wake Word
 

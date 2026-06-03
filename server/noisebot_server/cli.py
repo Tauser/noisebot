@@ -1263,6 +1263,9 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
         f"- speaker_owner_real: requested={payload.get('speaker_owner_real_requested')} "
         f"armed={payload.get('speaker_owner_real_armed')} "
         f"block={payload.get('speaker_owner_real_block_reason')}",
+        f"- speaker_owner_real_window: active={payload.get('speaker_owner_real_window_active')} "
+        f"completed={payload.get('speaker_owner_real_window_completed')} "
+        f"auto_disarm={payload.get('speaker_owner_real_auto_disarm_count')}",
         f"- speaker_owner_real_write: {payload.get('speaker_owner_real_write_frames')}/"
         f"{payload.get('speaker_owner_real_write_samples')} samples "
         f"failures={payload.get('speaker_owner_real_write_failures')} "

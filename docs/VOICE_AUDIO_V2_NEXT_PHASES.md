@@ -1848,6 +1848,24 @@ Incremento N6.8 iniciado:
   SAY ficou zero, Codec v2 ficou `status=ok`, e o rollback final por
   `real-disarm` + `speaker-owner-disarm` voltou para estado seguro.
 
+Incremento N6.9 iniciado:
+
+- O `speaker-owner-real-arm` agora abre uma janela real controlada de playback.
+  Durante essa janela, os writes continuam passando pelo callback de
+  `audio_service`; Playback v2 ainda nao chama HAL diretamente.
+- Quando o fim de SAY e confirmado por `audio_playback_service_v2_say_end_idle()`,
+  Playback v2 auto-desarma `speaker_owner_real_requested/armed`, marca
+  `speaker_owner_real_window_completed=true` e incrementa
+  `speaker_owner_real_auto_disarm_count`, preservando
+  `speaker_owner_real_write_*` para leitura pos-turno.
+- Aceite apos flash: armar dry-run, gerar uma fala limpa para deixar o gate
+  verde, armar `real-arm`, gerar uma segunda fala e confirmar que, ao fim dela,
+  `speaker_owner_real_armed=false`,
+  `speaker_owner_real_window_completed=true`,
+  `speaker_owner_real_auto_disarm_count=1`, `speaker_owner_real_write_frames`
+  igual aos chunks SAY da segunda fala, zero falhas, fila SAY zero e Codec v2
+  saudavel.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

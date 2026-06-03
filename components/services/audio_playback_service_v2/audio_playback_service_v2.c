@@ -41,10 +41,39 @@ static void playback_v2_clear_real_owner_locked(void)
     s_status.speaker_owner_real_armed = false;
     s_status.speaker_owner_real_block_reason =
         (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
+    s_status.speaker_owner_real_window_active = false;
+    s_status.speaker_owner_real_window_completed = false;
+    s_status.speaker_owner_real_auto_disarm_count = 0;
     s_status.speaker_owner_real_write_frames = 0;
     s_status.speaker_owner_real_write_samples = 0;
     s_status.speaker_owner_real_write_failures = 0;
     s_status.speaker_owner_real_last_result = ESP_OK;
+}
+
+static void playback_v2_begin_real_owner_window_locked(void)
+{
+    s_status.speaker_owner_real_window_active = true;
+    s_status.speaker_owner_real_window_completed = false;
+    s_status.speaker_owner_real_write_frames = 0;
+    s_status.speaker_owner_real_write_samples = 0;
+    s_status.speaker_owner_real_write_failures = 0;
+    s_status.speaker_owner_real_last_result = ESP_OK;
+}
+
+static void playback_v2_finish_real_owner_window_locked(void)
+{
+    if (!s_status.speaker_owner_real_armed ||
+        !s_status.speaker_owner_real_window_active) {
+        return;
+    }
+
+    s_status.speaker_owner_real_requested = false;
+    s_status.speaker_owner_real_armed = false;
+    s_status.speaker_owner_real_block_reason =
+        (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_DISABLED;
+    s_status.speaker_owner_real_window_active = false;
+    s_status.speaker_owner_real_window_completed = true;
+    s_status.speaker_owner_real_auto_disarm_count++;
 }
 
 static void playback_v2_note_queue_count(uint32_t queue_count)
@@ -334,6 +363,9 @@ esp_err_t audio_playback_service_v2_speaker_owner_real_arm(void)
     s_status.speaker_owner_real_requested = true;
     s_status.speaker_owner_real_armed = (err == ESP_OK);
     s_status.speaker_owner_real_block_reason = block;
+    if (err == ESP_OK) {
+        playback_v2_begin_real_owner_window_locked();
+    }
     s_status.last_error = err;
     taskEXIT_CRITICAL(&s_mux);
     return err;
@@ -489,6 +521,7 @@ bool audio_playback_service_v2_speaker_write_next_frame(
 
     taskENTER_CRITICAL(&s_mux);
     if (s_status.speaker_owner_real_armed) {
+        s_status.speaker_owner_real_window_active = true;
         s_status.speaker_owner_real_write_frames++;
         s_status.speaker_owner_real_write_samples += frame.count;
         s_status.speaker_owner_real_last_result = wr;
@@ -607,6 +640,7 @@ void audio_playback_service_v2_say_end_idle(void)
     taskENTER_CRITICAL(&s_mux);
     s_status.bridge_say_observer = true;
     s_status.bridge_say_queue_owner = (s_say_q != NULL);
+    playback_v2_finish_real_owner_window_locked();
     playback_v2_reset_speaker_empty_locked();
     s_status.say_queue_count = 0;
     s_status.last_error = ESP_OK;
