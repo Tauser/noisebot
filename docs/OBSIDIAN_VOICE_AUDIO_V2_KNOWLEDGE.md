@@ -243,6 +243,12 @@ Incremento atual da Fase N3:
   filas cheias recuperadas por wait, janela real auto-desarmada com 393 writes
   reais / 100608 samples, zero falhas, zero drops, fila SAY zero, Codec v2
   saudavel e rollback final limpo. N6.9 fechado.
+- Correcao pos-N6 server-only: manter o `OutputScheduler` em 20 ms evitava
+  drops, mas ficava mais lento que o chunk fisico de 16 ms e voltou a causar
+  voz picotada por subalimentacao. O default foi ajustado para prebuffer curto
+  de 4 chunks (`NOISEBOT_TTS_QUEUE_TARGET=4`) e cadencia nominal de 16 ms
+  (`NOISEBOT_TTS_SEND_INTERVAL_MS=16`), preservando headroom na fila SAY v2 de
+  32 chunks.
 
 ### Wake Word
 
@@ -429,10 +435,10 @@ Faz:
 - volume;
 - cancel/stop;
 - descarte de fila velha.
-- O `OutputScheduler` do server deve enviar SAY sem prebuffer inicial por
-  default e com cadencia conservadora de 18 ms por chunk. Pausas entre
-  sentencas do TTS nao devem gerar rajadas de catch-up, porque isso enche a
-  fila SAY e causa engasgos mesmo com `tts_completed=true` e `SAY_END`.
+- O `OutputScheduler` do server deve enviar SAY com prebuffer curto e cadencia
+  sustentada igual ao chunk fisico. Pausas entre sentencas do TTS nao devem
+  gerar rajadas de catch-up, porque isso enche a fila SAY e causa engasgos
+  mesmo com `tts_completed=true` e `SAY_END`.
 - Validacao real da correcao de pacing: apos restart do server, uma resposta
   curta gerou 398 chunks TTS e `SAY_END`; `/api/audio/playback-v2` saiu de
   `received=494/played=494/dropped=154` para
@@ -442,10 +448,10 @@ Faz:
   do comando esperado; a rodada seguinte ouviu `Me fala em historia curta.`,
   completou TTS e `SAY_END`, mas Playback v2 tocou +274 chunks com +18 drops.
   O primeiro ajuste foi reduzir o default de `NOISEBOT_TTS_QUEUE_TARGET` para
-  6 chunks, deixando mais headroom na fila SAY. Refino atual: Playback v2 usa
-  fila SAY estatica de 32 chunks, e o server usa default sem prebuffer inicial
-  (`NOISEBOT_TTS_QUEUE_TARGET=0`) com envio conservador de 18 ms por chunk
-  (`NOISEBOT_TTS_SEND_INTERVAL_MS=18`).
+  6 chunks, deixando mais headroom na fila SAY. Refino pos-N6: Playback v2 usa
+  fila SAY estatica de 32 chunks, e o server usa prebuffer curto de 4 chunks
+  (`NOISEBOT_TTS_QUEUE_TARGET=4`) com envio nominal de 16 ms por chunk
+  (`NOISEBOT_TTS_SEND_INTERVAL_MS=16`).
 - Validacao fisica do default 6 chunks: `Me diga uma fala com história curta.`
   teve `transcript_quality=good`, 326 chunks TTS, `tts_completed=true`,
   `SAY_END`, `voice_alert=null`, texto visual em 3 paginas completas, Codec v2

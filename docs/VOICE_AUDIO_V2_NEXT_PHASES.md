@@ -1909,6 +1909,12 @@ Fechamento N6:
   rollback no final. Isso torna a validacao N6.9 repetivel sem novo firmware e
   deve ser usado como regressao antes de qualquer nova reducao do
   `audio_service.c`.
+- Correcao server-only pos-N6 para voz picotada: manter apenas
+  `NOISEBOT_TTS_SEND_INTERVAL_MS=20` reduzia overflow, mas subalimentava o
+  speaker porque o chunk fisico toca 16 ms. O default do `OutputScheduler`
+  passou para prebuffer curto de 4 chunks (`NOISEBOT_TTS_QUEUE_TARGET=4`) e
+  cadencia nominal de 16 ms (`NOISEBOT_TTS_SEND_INTERVAL_MS=16`), preservando
+  headroom da fila SAY v2 de 32 chunks sem alongar artificialmente o audio.
 
 ## Ordem Recomendada
 

@@ -35,15 +35,16 @@ ela piorou a transcrição e aumentou risco de watchdog.
 - O server rechunkeia a saída TTS para frames exatos de 512 bytes antes de
   enviar `SAY`; chunks maiores vindos do gerador de áudio nunca cruzam o
   contrato TCP com o firmware.
-- O `OutputScheduler` do server nao pode gerar rajadas de catch-up. O default
-  atual nao faz prebuffer inicial e envia SAY acima dos 16 ms do chunk fisico.
-  Apos drops recorrentes em N6.9, 20 ms limpou o dry-run mas ainda dropou na
-  janela real. Uma tentativa de 24 ms piorou a continuidade perceptivel do
-  audio, entao o default ficou em 20 ms e os drops devem ser investigados pelo
-  lado de janela/estado/aceite no firmware. O firmware agora absorve jitter de
-  fila cheia com backpressure curto de ate 16 ms no accept SAY antes de dropar.
-  A validacao final de N6.9 confirmou 237 eventos de fila cheia recuperados por
-  wait e zero drops reais durante dry-run + janela real.
+- O `OutputScheduler` do server nao pode gerar rajadas de catch-up. A tentativa
+  de resolver fila cheia apenas deixando o envio em 20 ms evitou drops, mas
+  ficou acima dos 16 ms do chunk fisico e voltou a causar audio picotado por
+  subalimentacao. O default atual usa prebuffer curto de 4 chunks e cadencia
+  nominal de 16 ms: a fila ganha margem inicial, mas o envio sustentado acompanha
+  o consumo real do speaker. O firmware continua absorvendo jitter de fila cheia
+  com backpressure curto de ate 16 ms no accept SAY antes de dropar. A validacao
+  final de N6.9 confirmou 237 eventos de fila cheia recuperados por wait e zero
+  drops reais durante dry-run + janela real; a correcao pos-N6 troca o pacing
+  anti-overflow de 20 ms pelo pacing com prebuffer 4 + 16 ms.
   `NOISEBOT_TTS_QUEUE_TARGET` e `NOISEBOT_TTS_SEND_INTERVAL_MS` continuam como
   rollback/ajuste operacional.
 
@@ -141,14 +142,15 @@ novos ficaram restritos a `say_chunks_dropped_listening`, como descarte de
 audio antigo durante a nova escuta. Ponto corrigido no firmware: ao receber
 `SPEECH_CANCEL` ou `LISTEN_START`, o `behavior_engine` agora limpa o texto
 visual antigo com `ui_overlay_clear_text()` antes de mostrar `Ouvindo...`.
-Refino posterior de headroom: a fila estatica SAY v2 subiu para 32 chunks, e
-o default do `OutputScheduler` passou a `NOISEBOT_TTS_QUEUE_TARGET=0` e depois
-foi reforcado para `NOISEBOT_TTS_SEND_INTERVAL_MS=20`. Assim o server nao faz
-prebuffer inicial por padrao e envia mais conservador que os 16 ms do chunk
-fisico, reduzindo risco de encher a fila durante transicoes wake -> resposta.
-Valores maiores, como 24 ms, podem piorar a continuidade perceptivel do audio
-por subalimentar o speaker. Rollback operacional: definir o env para 18 ms ou
-16 ms e reiniciar o server.
+Refino posterior de headroom: a fila estatica SAY v2 subiu para 32 chunks. O
+default do `OutputScheduler` passou por uma etapa anti-overflow com
+`NOISEBOT_TTS_QUEUE_TARGET=0` e `NOISEBOT_TTS_SEND_INTERVAL_MS=20`, mas esse
+envio abaixo do consumo fisico voltou a picotar a fala. O default atual usa
+`NOISEBOT_TTS_QUEUE_TARGET=4` e `NOISEBOT_TTS_SEND_INTERVAL_MS=16`: pequeno
+prebuffer para jitter inicial e cadencia sustentada igual ao chunk de 256
+samples. Valores maiores, como 20 ms ou 24 ms, podem piorar a continuidade
+perceptivel por subalimentar o speaker. Rollback operacional: definir envs
+explicitamente e reiniciar o server.
 Ponto corrigido no server apos validacao fisica: quando o usuario tenta
 `ww -> pare` logo apos barge-in, o STT pode confundir o comando curto com
 `Vale.` ou `Tchau.`. O `LocalIntentProvider` agora trata esses mishears como

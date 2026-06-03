@@ -39,12 +39,11 @@ class SpeechCancelAdapter(AdapterProbe):
 
 
 def test_output_scheduler_default_prebuffer_leaves_firmware_queue_headroom() -> None:
-    assert FIRMWARE_SAY_QUEUE == 0
+    assert FIRMWARE_SAY_QUEUE == 4
 
 
-def test_output_scheduler_default_send_interval_keeps_hardware_headroom() -> None:
-    assert SAY_SEND_INTERVAL_S == pytest.approx(0.020)
-    assert SAY_SEND_INTERVAL_S > CHUNK_DURATION_S
+def test_output_scheduler_default_send_interval_matches_hardware_rate() -> None:
+    assert SAY_SEND_INTERVAL_S == pytest.approx(CHUNK_DURATION_S)
 
 
 def test_output_scheduler_default_startup_ramp_is_disabled_for_responsiveness() -> None:
@@ -121,7 +120,7 @@ async def test_output_scheduler_does_not_catch_up_with_bursts(monkeypatch) -> No
     paced_sleeps = [delay for delay in sleeps if delay > 0]
     assert len(adapter.chunks) == FIRMWARE_SAY_QUEUE + 3
     assert stats.chunks_sent == FIRMWARE_SAY_QUEUE + 3
-    expected_paced = len(adapter.chunks) - max(FIRMWARE_SAY_QUEUE, 1)
+    expected_paced = len(adapter.chunks) - FIRMWARE_SAY_QUEUE
     assert len(paced_sleeps) == expected_paced
     assert all(delay == pytest.approx(SAY_SEND_INTERVAL_S) for delay in paced_sleeps)
 
