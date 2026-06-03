@@ -1385,6 +1385,18 @@ Incremento N5.5 iniciado:
   real curto com fila SAY final zero, received=played, zero drops/cancelamentos,
   zero falhas de speaker write/commit, Audio IO v2 sem drops/recoveries e Codec
   v2 sem drops/erros.
+- Validacao fisica apos flash: baseline sem prompt retornou `ok=true`,
+  `status=warn`, `issues=[]`, fila SAY zero e deltas criticos zerados, com
+  warnings conhecidos de `opus_egress_queue_count=1` e
+  `heap_internal_free_kb baixo: 11`. A janela real seguinte capturou resposta
+  nova com `ok=true`, `status=warn`, `issues=[]`, fila SAY final zero,
+  `say_chunks_received=243`, `say_chunks_played=243`, zero
+  drops/cancelamentos, `speaker_write_requests=243`,
+  `speaker_write_failures=0`, `speaker_frames_committed=243`,
+  `speaker_commit_failures=0`, Audio IO v2 sem
+  `dropped_frames`/`i2s_recoveries`/handoff failures e Codec v2 `healthy=true`,
+  `status=ok`, sem warnings e com zero drops/erros. O unico warning agregado
+  final foi `heap_internal_free_kb baixo: 11`.
 
 ## Ordem Recomendada
 
