@@ -1733,6 +1733,13 @@ Incremento N6.4 iniciado:
 - A mudanca e server-only e nao altera firmware, HAL, wake, VAD, Capture,
   Activity, Codec, Opus ou PCM16; apenas fortalece o criterio de promocao antes
   de qualquer owner real.
+- Observacao de bancada: uma repeticao N6.4 teve timeout no snapshot final de
+  `/api/audio/playback-v2`; o pos-check confirmou estado seguro
+  (`speaker_owner_*` desarmado, `380/380` SAY recebidos/tocados, zero drops,
+  Audio IO sem recoveries e `codec-v2 health` ok). O gate do server passou a
+  retornar `delta_error` estruturado e ainda tentar `speaker-owner-disarm`, em
+  vez de soltar traceback quando o HTTP do firmware fica indisponivel no fim da
+  janela.
 
 ## Ordem Recomendada
 

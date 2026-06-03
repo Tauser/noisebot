@@ -1030,11 +1030,15 @@ def _run_playback_v2_speaker_owner_gate(
     armed: dict[str, object] = {}
     delta: dict[str, object] = {}
     disarmed: dict[str, object] = {}
+    delta_error = ""
     try:
         armed = client.audio_playback_v2_speaker_owner_arm()
         if not bool(armed.get("ok", False)):
             issues.append("speaker-owner-arm retornou ok=false")
         delta = _run_playback_v2_delta(client, no_prompt=no_prompt, wait_s=wait_s)
+    except Exception as exc:  # pragma: no cover - exercised through CLI tests
+        delta_error = str(exc)
+        issues.append(f"playback-v2 gate falhou durante delta: {delta_error}")
     finally:
         try:
             disarmed = client.audio_playback_v2_speaker_owner_disarm()
@@ -1048,30 +1052,34 @@ def _run_playback_v2_speaker_owner_gate(
     if not isinstance(deltas, dict):
         deltas = {}
 
-    if not bool(delta.get("ok", False)):
+    if delta_error:
+        pass
+    elif not bool(delta.get("ok", False)):
         issues.append("playback-v2 delta retornou ok=false")
     for item in delta.get("issues", []) or []:
         issues.append(str(item))
     for item in delta.get("warnings", []) or []:
         warnings.append(str(item))
 
-    if not bool(after.get("speaker_owner_dry_run_enabled", False)):
+    if delta_error:
+        pass
+    elif not bool(after.get("speaker_owner_dry_run_enabled", False)):
         issues.append("speaker owner dry-run nao ficou armado")
-    if not bool(after.get("speaker_owner_candidate", False)):
+    if not delta_error and not bool(after.get("speaker_owner_candidate", False)):
         issues.append("Playback v2 nao ficou candidato a speaker owner")
-    if not bool(after.get("speaker_owner_handoff_ready", False)):
+    if not delta_error and not bool(after.get("speaker_owner_handoff_ready", False)):
         issues.append("speaker owner handoff nao ficou pronto")
-    if str(after.get("speaker_owner_block_reason", "")) != "NONE":
+    if not delta_error and str(after.get("speaker_owner_block_reason", "")) != "NONE":
         issues.append(
             "speaker owner bloqueado: "
             f"{after.get('speaker_owner_block_reason')}"
         )
-    if _playback_v2_int(after, "speaker_owner_failures") != 0:
+    if not delta_error and _playback_v2_int(after, "speaker_owner_failures") != 0:
         issues.append(
             "speaker_owner_failures="
             f"{after.get('speaker_owner_failures')}"
         )
-    if _playback_v2_int(after, "speaker_owner_recoveries") != 0:
+    if not delta_error and _playback_v2_int(after, "speaker_owner_recoveries") != 0:
         issues.append(
             "speaker_owner_recoveries="
             f"{after.get('speaker_owner_recoveries')}"
@@ -1084,7 +1092,9 @@ def _run_playback_v2_speaker_owner_gate(
         0,
         speaker_owner_frames - speaker_owner_silence_frames,
     )
-    if bool(delta.get("counter_reset_detected", False)):
+    if delta_error:
+        pass
+    elif bool(delta.get("counter_reset_detected", False)):
         issues.append("gate SAY real invalido porque os contadores resetaram")
     elif required_say_chunks > 0 and say_chunks_received < required_say_chunks:
         issues.append(
@@ -1110,6 +1120,7 @@ def _run_playback_v2_speaker_owner_gate(
         "warnings": warnings,
         "armed": armed,
         "delta": delta,
+        "delta_error": delta_error,
         "disarmed": disarmed,
         "ready": bool(after.get("speaker_owner_handoff_ready", False)),
         "block_reason": after.get("speaker_owner_block_reason"),
@@ -1145,6 +1156,7 @@ def _format_playback_v2_status(payload: dict[str, object]) -> str:
             f"- require_say: {payload.get('require_say')} "
             f"required_chunks={payload.get('required_say_chunks')}",
             f"- counter_reset_detected: {payload.get('counter_reset_detected')}",
+            f"- delta_error: {payload.get('delta_error') or 'nenhum'}",
             f"- frames/samples: {payload.get('frames')}/{payload.get('samples')}",
             f"- non_silence_frames: {payload.get('non_silence_frames')}",
             f"- delta.received: {payload.get('say_chunks_received_delta')}",

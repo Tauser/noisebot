@@ -1584,6 +1584,122 @@ def test_server_cli_fails_playback_v2_speaker_owner_gate_without_active_say(
     assert calls["sequence"] == ["arm", "status", "status", "disarm"]
 
 
+def test_server_cli_reports_playback_v2_speaker_owner_gate_delta_error(
+    monkeypatch,
+    capsys,
+) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    calls: dict[str, object] = {"sequence": []}
+    snapshots = [
+        {
+            "ok": True,
+            "say_queue_count": 0,
+            "say_queue_depth": 32,
+            "say_chunks_received": 100,
+            "say_chunks_played": 100,
+            "say_chunks_dropped": 0,
+            "say_chunks_dropped_listening": 0,
+            "say_chunks_cancelled": 0,
+            "say_cancel_count": 0,
+            "speaker_write_requests": 100,
+            "speaker_write_failures": 0,
+            "speaker_frames_committed": 100,
+            "speaker_commit_failures": 0,
+            "speaker_owner_dry_run_enabled": True,
+            "speaker_owner_candidate": True,
+            "speaker_owner_handoff_ready": True,
+            "speaker_owner_active": False,
+            "speaker_owner_block_reason": "NONE",
+            "speaker_owner_failures": 0,
+            "speaker_owner_recoveries": 0,
+            "speaker_owner_frames": 2,
+            "speaker_owner_silence_frames": 2,
+            "speaker_owner_samples": 512,
+            "error": "ESP_OK",
+        },
+    ]
+
+    def fake_arm(self):
+        calls["base_url"] = self.base_url
+        calls["sequence"].append("arm")
+        return {"ok": True, "speaker_owner_requested": True}
+
+    def fake_disarm(self):
+        calls["sequence"].append("disarm")
+        return {
+            "ok": True,
+            "speaker_owner_requested": False,
+            "speaker_owner_dry_run_enabled": False,
+        }
+
+    def fake_status(self):
+        calls["sequence"].append("status")
+        if snapshots:
+            return snapshots.pop(0)
+        raise RuntimeError("api/audio/playback-v2: timeout")
+
+    def fake_io_status(self):
+        return {
+            "ok": True,
+            "dropped_frames": 0,
+            "i2s_recoveries": 0,
+            "speaker_handoff_failures": 0,
+            "speaker_handoff_recoveries": 0,
+            "heap_internal_free_kb": 20,
+        }
+
+    def fake_codec_status(self):
+        return {
+            "ok": True,
+            "format": "opus",
+            "worker_state": "running",
+            "worker_active": True,
+            "transport_enabled": True,
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "opus_codec_error": 0,
+            "opus_egress_queue_count": 0,
+            "queue_count": 0,
+            "error": "ESP_OK",
+        }
+
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "audio_playback_v2_speaker_owner_arm",
+        fake_arm,
+    )
+    monkeypatch.setattr(
+        firmware_diag.FirmwareDiagClient,
+        "audio_playback_v2_speaker_owner_disarm",
+        fake_disarm,
+    )
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_playback_v2_status", fake_status)
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_io_v2_status", fake_io_status)
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "audio_codec_v2_status", fake_codec_status)
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main([
+            "--host",
+            "192.168.1.30",
+            "debug",
+            "playback-v2",
+            "speaker-owner-gate",
+            "--require-say",
+            "--no-prompt",
+            "--json",
+        ])
+
+    captured = capsys.readouterr()
+    assert excinfo.value.code == 1
+    assert '"ok": false' in captured.out
+    assert '"delta_error": "api/audio/playback-v2: timeout"' in captured.out
+    assert '"playback-v2 gate falhou durante delta: api/audio/playback-v2: timeout"' in captured.out
+    assert '"disarmed"' in captured.out
+    assert calls["base_url"] == "http://192.168.1.30/"
+    assert calls["sequence"] == ["arm", "status", "status", "disarm"]
+
+
 def test_server_cli_fails_playback_v2_speaker_owner_gate_without_required_say(
     monkeypatch,
     capsys,
