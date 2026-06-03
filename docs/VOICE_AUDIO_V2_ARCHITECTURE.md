@@ -336,7 +336,9 @@ Invariantes:
 - Na Fase N6.9, esse armamento vira uma janela controlada: o fim de SAY
   auto-desarma o owner real, preserva os contadores da janela e expõe
   `speaker_owner_real_window_completed`/`auto_disarm_count`. O caminho fisico
-  continua pelo callback de `audio_service`.
+  continua pelo callback de `audio_service`. A primeira tentativa de bancada
+  mostrou drops SAY ainda no gate, entao o pacing default do server foi
+  reforcado para 20 ms por chunk antes da repeticao.
 
 ### Voice Activity v2
 

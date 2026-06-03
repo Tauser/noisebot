@@ -1865,6 +1865,12 @@ Incremento N6.9 iniciado:
   `speaker_owner_real_auto_disarm_count=1`, `speaker_owner_real_write_frames`
   igual aos chunks SAY da segunda fala, zero falhas, fila SAY zero e Codec v2
   saudavel.
+- Primeira tentativa apos flash confirmou os campos novos e o bloqueio seguro,
+  mas nao fechou o aceite: uma rodada com baseline sujo acumulou drops antigos
+  e bloqueou `real-arm` como `TX_ERROR`; apos reboot limpo, a fala de gate
+  ainda gerou drops SAY (`say_chunks_dropped=35`). O proximo ajuste e
+  server-only: aumentar o pacing default do `OutputScheduler` para 20 ms antes
+  de repetir a janela N6.9.
 
 ## Ordem Recomendada
 
