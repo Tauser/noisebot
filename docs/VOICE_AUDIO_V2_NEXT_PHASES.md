@@ -1435,6 +1435,22 @@ Incremento N5.7 iniciado:
 - Esta etapa nao muda HAL fisico, fila SAY, wake, captura, Activity v2, Codec v2
   ou rollback; ela reduz a superficie publica e atualiza o teste de contrato
   para exigir o desenho semantico atual.
+- Validacao fisica apos flash: baseline sem prompt retornou `ok=true`,
+  `status=ok`, `issues=[]`, `warnings=[]`, fila SAY zero e deltas criticos
+  zerados. A primeira janela real capturou resposta completa do server
+  (`tts_completed=true`, `tts_say_end_sent=true`, `tts_chunks_sent=243`), mas
+  Playback v2 registrou `say_chunks_dropped=36`; fila final ficou zero,
+  speaker write/commit nao falharam e Audio IO/Codec v2 ficaram sem drops/erros.
+  Como gate, essa rodada foi tratada como falha de escoamento SAY e nao como
+  validacao. Repeticao com comando curto e `--wait-s 120` fechou limpo:
+  `ok=true`, `status=warn`, `issues=[]`, fila SAY final zero,
+  `say_chunks_received=367`, `say_chunks_played=367`, zero
+  drops/cancelamentos, `speaker_write_requests=367`,
+  `speaker_write_failures=0`, `speaker_frames_committed=367`,
+  `speaker_commit_failures=0`, Audio IO v2 sem
+  `dropped_frames`/`i2s_recoveries`/handoff failures e Codec v2 sem drops/erros.
+  Os warnings finais foram os conhecidos `opus_egress_queue_count=1` e
+  `heap_internal_free_kb baixo: 11`.
 
 ## Ordem Recomendada
 
