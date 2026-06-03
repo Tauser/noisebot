@@ -1988,6 +1988,15 @@ A janela de fim de fala do Activity v2 foi reduzida para 600 ms e
 `activity_end_silence_ms` foi adicionado ao status para validar o novo gate sem
 inferir pela contagem de frames.
 
+Reteste hardware do gate medio apos flash: com
+`voice_audio_v2_activity_decider_enabled=true`, `ww -> me conte uma historia
+curta` passou com `activity_decider_end_used=true`,
+`activity_decider_end_count=1`, `activity_end_silence_ms=608`,
+`decision_diverged=false`, Capture v2 TX owner ativo sem drops, Playback v2
+`say_chunks_received=1017`, `say_chunks_played=1016`, `say_chunks_dropped=0`
+e Codec v2 `packet_drops=0`. O server respondeu por LLM com transcript
+`Me conte uma história curta.`. A flag foi desligada ao final para rollback.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
