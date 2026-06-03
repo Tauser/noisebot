@@ -1713,6 +1713,14 @@ Observacao N6.3:
   do snapshot final). O gate do server passou a detectar delta negativo como
   `counter_reset_detected=true` e reportar "possivel reboot/reset diagnostico",
   em vez de classificar isso como drop SAY comum ou falta de SAY real.
+- Repeticao final do gate estrito com resposta real curta passou:
+  `ok=true`, `required_say_chunks=1`, `counter_reset_detected=false`,
+  `ready=true`, `active=true`, `block_reason=NONE`, `361/361` chunks SAY
+  recebidos/tocados, zero drops, zero falhas de write/commit, Audio IO sem
+  drops/recoveries e Codec v2 `healthy=true/status=ok`.
+- O rollback final tambem passou: Playback v2 voltou para
+  `speaker_owner_dry_run_enabled=false`, `speaker_owner_requested=false`,
+  `speaker_owner_block_reason=DISABLED`, fila SAY zero e `ESP_OK`.
 
 ## Ordem Recomendada
 
