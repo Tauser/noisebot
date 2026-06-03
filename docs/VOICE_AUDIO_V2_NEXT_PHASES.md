@@ -1575,6 +1575,35 @@ Fechamento tecnico N5:
   estrutural precisa ser uma fase nova/gate proprio para speaker/HAL ownership,
   com rollback explicito e validacao de barge/no-echo/Playback delta.
 
+### N6 - Playback v2 speaker/HAL ownership controlado
+
+Objetivo: preparar a troca real de ownership do speaker/HAL para Playback v2,
+sem pular direto para `audio_hal_*` dentro do Playback v2. A fase deve comecar
+por baseline e dry-run; owner real so entra por flag/gate proprio e com rollback
+imediato para o callback atual do `audio_service`.
+
+Incremento N6.0 iniciado:
+
+- Baseline/gates congelados antes de qualquer mudanca de HAL owner.
+- `codec-v2 health` ficou `healthy=true`, `status=ok`, zero drops, fila egress
+  zero e worker `running` apos drenar 1 pacote residual.
+- `io-v2 status` ficou `ok=true`, `rx_owner_active=true`,
+  `rx_dispatch_last_consumers=8`, `tx_owner_observed=true`,
+  `tx_owner_last_result=ESP_OK`, `dropped_frames=0`, `i2s_recoveries=0`,
+  handoff de speaker desarmado (`speaker_handoff_block_reason=DISABLED`) e heap
+  interno/DMA reportado em 11 KB.
+- Baseline quieto de `playback-v2 delta --no-prompt`: fila SAY vazia, zero
+  deltas de SAY/speaker, `normal_path_clean=true`, Codec v2 `status=ok` e unico
+  warning agregado `heap_internal_free_kb baixo: 11`.
+- Resposta real curta no gate `playback-v2 delta --wait-s 120`: recebeu/tocou
+  `372/372` chunks SAY, `say_chunks_dropped=0`, `speaker_write_failures=0`,
+  `speaker_commit_failures=0`, `queue_empty=true`, Audio IO sem
+  `dropped_frames`/`i2s_recoveries` e Codec v2 sem drops/erro. O unico warning
+  agregado real foi `opus_egress_queue_count=1` + heap baixo; o egress residual
+  foi drenado depois e voltou a zero.
+- Proximo incremento N6.1 deve ser dry-run/status de readiness do HAL owner,
+  ainda sem chamada direta de `audio_hal_*` por Playback v2.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
