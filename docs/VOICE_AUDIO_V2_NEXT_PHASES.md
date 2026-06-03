@@ -1279,6 +1279,15 @@ Incremento N5.1 iniciado:
   `speaker_commit_failures=0`, Audio IO v2 sem drops/recoveries e Codec v2 sem
   drops/erros. Warnings de heap/egress residual continuam nao bloqueantes se os
   deltas criticos permanecerem zerados.
+- Validacao fisica apos flash: baseline sem prompt retornou `ok=true`,
+  `status=ok`, zero warnings e deltas zerados. Com server local visivel e gate
+  temporizado `debug playback-v2 delta --wait-s 35 --json`, turno real curto
+  fechou com `ok=true`, `status=warn`, `issues=[]`, fila SAY final zero,
+  `say_chunks_received=386`, `say_chunks_played=386`, zero drops/cancelamentos,
+  `speaker_write_requests=386`, `speaker_write_failures=0`,
+  `speaker_frames_committed=386`, `speaker_commit_failures=0`, Audio IO v2 sem
+  `dropped_frames`/`i2s_recoveries`/handoff failures, Codec v2 `healthy=true`
+  com zero drops/erros. O unico warning foi `heap_internal_free_kb baixo: 11`.
 
 ## Ordem Recomendada
 
