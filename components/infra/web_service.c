@@ -647,16 +647,18 @@ static esp_err_t handle_api_vision_status(httpd_req_t *req)
 
 static esp_err_t handle_api_config_get(httpd_req_t *req)
 {
-    char buf[320];
+    char buf[384];
     snprintf(buf, sizeof(buf),
         "{\"volume\":%u,\"brightness\":%u,\"touch_sens\":%u,"
         "\"idle_timeout\":%lu,"
+        "\"voice_audio_v2_activity_decider_enabled\":%s,"
         "\"srv1_min\":%d,\"srv1_max\":%d,\"srv1_ctr\":%d,"
         "\"srv2_min\":%d,\"srv2_max\":%d,\"srv2_ctr\":%d}",
         (unsigned)config_get_volume(),
         (unsigned)config_get_brightness(),
         (unsigned)config_get_touch_sensitivity(),
         (unsigned long)config_get_idle_timeout_s(),
+        config_get_voice_audio_v2_activity_decider_enabled() ? "true" : "false",
         (int)config_get_servo_limit_min(1),
         (int)config_get_servo_limit_max(1),
         (int)config_get_servo_center(1),
@@ -725,6 +727,9 @@ static esp_err_t handle_api_config_post(httpd_req_t *req)
         if (err == ESP_OK && !tx_enabled) {
             (void)voice_capture_session_v2_set_bridge_tx_owner(false);
         }
+    }
+    else if (strcmp(key, "voice_audio_v2_activity_decider_enabled") == 0) {
+        err = config_set_voice_audio_v2_activity_decider_enabled(val != 0.0);
     }
     else if (strcmp(key, "brightness")   == 0) {
         uint8_t brightness = (uint8_t)val;
@@ -2581,10 +2586,11 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
     nb_voice_activity_v2_status_t st;
     voice_activity_service_v2_get_status(&st);
 
-    char buf[1800];
+    char buf[1900];
     snprintf(buf, sizeof(buf),
              "{\"ok\":%s,\"initialized\":%s,\"session_active\":%s,"
              "\"shadow_running\":%s,\"session_compare_active\":%s,"
+             "\"activity_decider_enabled\":%s,"
              "\"session_compare_speech_seen\":%s,"
              "\"activity_end_observed\":%s,\"legacy_end_observed\":%s,"
              "\"decision_diverged\":%s,\"state\":\"%s\","
@@ -2611,6 +2617,7 @@ static esp_err_t send_voice_activity_v2_status(httpd_req_t *req, esp_err_t err)
              st.session_active ? "true" : "false",
              st.shadow_running ? "true" : "false",
              st.session_compare_active ? "true" : "false",
+             config_get_voice_audio_v2_activity_decider_enabled() ? "true" : "false",
              st.session_compare_speech_seen ? "true" : "false",
              st.activity_end_observed ? "true" : "false",
              st.legacy_end_observed ? "true" : "false",
@@ -3496,6 +3503,7 @@ static esp_err_t handle_api_config_all(httpd_req_t *req)
         "{\"volume\":%u,\"brightness\":%u,\"touch_sens\":%u,"
         "\"idle_timeout\":%lu,\"voice_audio_v2_capture_enabled\":%s,"
         "\"voice_audio_v2_capture_tx_enabled\":%s,"
+        "\"voice_audio_v2_activity_decider_enabled\":%s,"
         "\"srv1_min\":%d,\"srv1_max\":%d,\"srv1_ctr\":%d,"
         "\"srv2_min\":%d,\"srv2_max\":%d,\"srv2_ctr\":%d,"
         "\"last_emotion\":%u,\"persona_seed\":%lu}",
@@ -3505,6 +3513,7 @@ static esp_err_t handle_api_config_all(httpd_req_t *req)
         (unsigned long)config_get_idle_timeout_s(),
         config_get_voice_audio_v2_capture_enabled() ? "true" : "false",
         config_get_voice_audio_v2_capture_tx_enabled() ? "true" : "false",
+        config_get_voice_audio_v2_activity_decider_enabled() ? "true" : "false",
         (int)config_get_servo_limit_min(1),
         (int)config_get_servo_limit_max(1),
         (int)config_get_servo_center(1),

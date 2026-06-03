@@ -706,16 +706,21 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
 
     assert '#define NB_CFG_KEY_V2_CAP_EN  "v2cap_en"' in config_keys
     assert '#define NB_CFG_KEY_V2_CAP_TX  "v2cap_tx_en"' in config_keys
+    assert '#define NB_CFG_KEY_V2_ACT_DEC "v2act_dec"' in config_keys
     assert "#define NB_CFG_DEFAULT_V2_CAP_EN          0" in config_keys
     assert "#define NB_CFG_DEFAULT_V2_CAP_TX          0" in config_keys
+    assert "#define NB_CFG_DEFAULT_V2_ACT_DEC         0" in config_keys
     assert "NB_CFG_SCHEMA_VERSION  3U" in config_keys
     assert "bool      config_get_voice_audio_v2_capture_enabled(void);" in config_h
     assert "esp_err_t config_set_voice_audio_v2_capture_enabled(bool enabled);" in config_h
     assert "bool      config_get_voice_audio_v2_capture_tx_enabled(void);" in config_h
     assert "esp_err_t config_set_voice_audio_v2_capture_tx_enabled(bool enabled);" in config_h
+    assert "bool      config_get_voice_audio_v2_activity_decider_enabled(void);" in config_h
+    assert "esp_err_t config_set_voice_audio_v2_activity_decider_enabled(bool enabled);" in config_h
     assert "ensure_voice_audio_v2_defaults" in config_c
     assert "voice_audio_v2_capture_enabled" in web
     assert "voice_audio_v2_capture_tx_enabled" in web
+    assert "voice_audio_v2_activity_decider_enabled" in web
     assert 'cfg.max_uri_handlers  = (uint16_t)((sizeof(k_uris) / sizeof(k_uris[0])) + 4U);' in web
     assert "err = config_set_voice_audio_v2_capture_enabled(true);" in web
     assert "(void)voice_capture_session_v2_set_bridge_tx_owner(false);" in web
@@ -739,3 +744,26 @@ def test_voice_capture_v2_real_path_is_opt_in_config_flag():
     assert "static uint8_t bridge_drain_opus_packets_if_enabled(bool capture_v2_tx_owner)" in audio_service
     assert "sent_packets * NB_AUDIO_CODEC_V2_OPUS_FRAME_SAMPLES" in audio_service
     assert "voice_capture_session_v2_finish(" in audio_service
+
+
+def test_voice_activity_v2_decider_flag_is_default_off_and_observable():
+    web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+    audio_service = (COMPONENTS / "audio_service" / "audio_service.c").read_text(
+        encoding="utf-8"
+    )
+    activity_c = (
+        COMPONENTS / "voice_activity_service_v2" / "voice_activity_service_v2.c"
+    ).read_text(encoding="utf-8")
+    config_c = CONFIG_C.read_text(encoding="utf-8")
+    config_keys = CONFIG_KEYS.read_text(encoding="utf-8")
+
+    assert '#define NB_CFG_KEY_V2_ACT_DEC "v2act_dec"' in config_keys
+    assert "#define NB_CFG_DEFAULT_V2_ACT_DEC         0" in config_keys
+    assert "NB_CFG_SCHEMA_VERSION  3U" in config_keys
+    assert "NB_CFG_KEY_V2_ACT_DEC" in config_c
+    assert "config_get_voice_audio_v2_activity_decider_enabled" in config_c
+    assert "config_set_voice_audio_v2_activity_decider_enabled" in config_c
+    assert "voice_audio_v2_activity_decider_enabled" in web
+    assert '\\"activity_decider_enabled\\":%s,' in web
+    assert "config_get_voice_audio_v2_activity_decider_enabled()" not in audio_service
+    assert "config_get_voice_audio_v2_activity_decider_enabled()" not in activity_c

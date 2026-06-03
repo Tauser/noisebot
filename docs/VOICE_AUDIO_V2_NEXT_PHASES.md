@@ -1952,6 +1952,13 @@ imediato para o VAD legado do `audio_service`. Antes de qualquer novo toque em
 HAL/I2S, tratar `heap_internal_free_kb`/`heap_dma_free_kb` baixos como risco de
 estabilidade a ser monitorado nos gates.
 
+Incremento N2A iniciado em 2026-06-03: foi adicionada a flag persistente
+`voice_audio_v2_activity_decider_enabled`, default `false`, exposta em
+`/api/config`, `/api/config/all` e como `activity_decider_enabled` em
+`/api/audio/activity-v2`. Esta etapa ainda nao altera o dono real da decisao:
+Activity v2 continua comparador/passivo e o VAD legado do `audio_service`
+permanece responsavel por encerrar a sessao ate a promocao controlada N2B.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

@@ -57,6 +57,7 @@
 #define NB_CFG_KEY_VOLUME     "volume"           /* u8 — 0..100 */
 #define NB_CFG_KEY_V2_CAP_EN  "v2cap_en"         /* u8 — capture v2 real opt-in */
 #define NB_CFG_KEY_V2_CAP_TX  "v2cap_tx_en"      /* u8 — capture v2 TX handoff opt-in */
+#define NB_CFG_KEY_V2_ACT_DEC "v2act_dec"        /* u8 — activity v2 decision opt-in */
 
 /* ── Chaves nb_cfg — Display ─────────────────────────────────────────────── */
 #define NB_CFG_KEY_BRIGHTNESS "brightness"       /* u8 — 0..255 */
@@ -80,6 +81,7 @@
 #define NB_CFG_DEFAULT_VOLUME            25     /* % — audível mas não alto */
 #define NB_CFG_DEFAULT_V2_CAP_EN          0     /* off por padrao: v1 continua ativo */
 #define NB_CFG_DEFAULT_V2_CAP_TX          0     /* off por padrao: bridge TX legado */
+#define NB_CFG_DEFAULT_V2_ACT_DEC         0     /* off por padrao: VAD legado decide */
 #define NB_CFG_DEFAULT_BRIGHTNESS       180     /* ~70% — confortável em ambiente escuro */
 #define NB_CFG_DEFAULT_TOUCH_SENS         1     /* 1% acima do baseline (copper pad, ESP32-S3) */
 #define NB_CFG_DEFAULT_IDLE_TIMEOUT_S   3600    /* 60 minutos */

@@ -64,6 +64,7 @@ static esp_err_t write_cfg_defaults(void)
     if ((err = nvs_hal_set_u8 (s_h_cfg, NB_CFG_KEY_VOLUME,    NB_CFG_DEFAULT_VOLUME))    != ESP_OK) return err;
     if ((err = nvs_hal_set_u8 (s_h_cfg, NB_CFG_KEY_V2_CAP_EN, NB_CFG_DEFAULT_V2_CAP_EN)) != ESP_OK) return err;
     if ((err = nvs_hal_set_u8 (s_h_cfg, NB_CFG_KEY_V2_CAP_TX, NB_CFG_DEFAULT_V2_CAP_TX)) != ESP_OK) return err;
+    if ((err = nvs_hal_set_u8 (s_h_cfg, NB_CFG_KEY_V2_ACT_DEC, NB_CFG_DEFAULT_V2_ACT_DEC)) != ESP_OK) return err;
     if ((err = nvs_hal_set_u8 (s_h_cfg, NB_CFG_KEY_BRIGHTNESS, NB_CFG_DEFAULT_BRIGHTNESS)) != ESP_OK) return err;
     if ((err = nvs_hal_set_u8 (s_h_cfg, NB_CFG_KEY_TOUCH_SENS, NB_CFG_DEFAULT_TOUCH_SENS)) != ESP_OK) return err;
     if ((err = nvs_hal_set_u32(s_h_cfg, NB_CFG_KEY_IDLE_TMO,   NB_CFG_DEFAULT_IDLE_TIMEOUT_S)) != ESP_OK) return err;
@@ -152,6 +153,16 @@ static esp_err_t ensure_voice_audio_v2_defaults(void)
         err = nvs_hal_set_u8(s_h_cfg,
                              NB_CFG_KEY_V2_CAP_TX,
                              NB_CFG_DEFAULT_V2_CAP_TX);
+        if (err != ESP_OK) {
+            return err;
+        }
+        changed = true;
+    }
+
+    if (!nvs_hal_key_exists(s_h_cfg, NB_CFG_KEY_V2_ACT_DEC)) {
+        err = nvs_hal_set_u8(s_h_cfg,
+                             NB_CFG_KEY_V2_ACT_DEC,
+                             NB_CFG_DEFAULT_V2_ACT_DEC);
         if (err != ESP_OK) {
             return err;
         }
@@ -323,6 +334,22 @@ esp_err_t config_set_voice_audio_v2_capture_tx_enabled(bool enabled)
 {
     esp_err_t err = nvs_hal_set_u8(s_h_cfg,
                                    NB_CFG_KEY_V2_CAP_TX,
+                                   enabled ? 1U : 0U);
+    if (err == ESP_OK) nvs_hal_commit(s_h_cfg);
+    return err;
+}
+
+bool config_get_voice_audio_v2_activity_decider_enabled(void)
+{
+    return nvs_hal_get_u8(s_h_cfg,
+                          NB_CFG_KEY_V2_ACT_DEC,
+                          NB_CFG_DEFAULT_V2_ACT_DEC) != 0U;
+}
+
+esp_err_t config_set_voice_audio_v2_activity_decider_enabled(bool enabled)
+{
+    esp_err_t err = nvs_hal_set_u8(s_h_cfg,
+                                   NB_CFG_KEY_V2_ACT_DEC,
                                    enabled ? 1U : 0U);
     if (err == ESP_OK) nvs_hal_commit(s_h_cfg);
     return err;
