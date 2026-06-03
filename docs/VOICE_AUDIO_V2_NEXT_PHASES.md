@@ -1333,6 +1333,17 @@ Incremento N5.3 iniciado:
 - Gate esperado: build limpo, flash, baseline `playback-v2 delta --no-prompt`
   limpo e turno real curto com zero drops, zero falhas de speaker write/commit,
   fila SAY final zero e Codec/Audio IO v2 sem drops/recoveries.
+- Validacao fisica apos flash: baseline sem prompt retornou `ok=true`,
+  `issues=[]`, fila SAY zero e deltas criticos zerados, com warnings conhecidos
+  de `opus_egress_queue_count=1` e `heap_internal_free_kb baixo: 11`. A primeira
+  janela real nao gerou SAY novo; repeticao com `--wait-s 50` capturou resposta
+  real com `ok=true`, `status=warn`, `issues=[]`, fila SAY final zero,
+  `say_chunks_received=409`, `say_chunks_played=409`, zero drops/cancelamentos,
+  `speaker_write_requests=409`, `speaker_write_failures=0`,
+  `speaker_frames_committed=409`, `speaker_commit_failures=0`, Audio IO v2 sem
+  `dropped_frames`/`i2s_recoveries`/handoff failures e Codec v2 `healthy=true`
+  com zero drops/erros. O unico warning final foi `heap_internal_free_kb baixo:
+  11`.
 
 ## Ordem Recomendada
 
