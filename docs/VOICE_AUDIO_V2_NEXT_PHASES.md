@@ -1547,6 +1547,19 @@ Incremento N5.12 iniciado:
   Opus/PCM16 ou policy; apenas condiciona o start legado ao aceite real do dono
   da fila SAY.
 
+Validacao N5.12 pos-flash:
+
+- Baseline quieto em `/api/audio/playback-v2`: `ok=true`, `status=ok`,
+  `issues=[]`, sem warnings, fila SAY vazia, zero drops/cancelamentos/falhas de
+  speaker, Audio IO sem `dropped_frames`/`i2s_recoveries` e Codec v2 healthy.
+- Resposta real curta: `say_chunks_received=521`, `say_chunks_played=521`,
+  `say_chunks_dropped=0`, `speaker_write_failures=0`,
+  `speaker_commit_failures=0`, `queue_empty=true` e `normal_path_clean=true`.
+- Audio IO continuou sem `dropped_frames`, `i2s_recoveries`,
+  `speaker_handoff_failures` ou `speaker_handoff_recoveries`.
+- Warnings nao bloqueantes no agregado real: `opus_egress_queue_count=1` e
+  `heap_internal_free_kb baixo: 11`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
