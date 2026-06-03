@@ -1923,6 +1923,35 @@ Fechamento N6:
   `speaker_write_failures=0`, `speaker_commit_failures=0` e
   `codec-v2 health` saudavel. Incremento pos-N6 fechado.
 
+## Estado Consolidado Pos-N6
+
+Leitura operacional em 2026-06-03:
+
+- N1 Capture v2 esta fechada como TX owner controlado: Capture v2 pode assumir
+  o TX real da sessao por flag/config, com rollback para o caminho legado do
+  `audio_service` e zero drops nas validacoes de turno curto, barge/pare,
+  no-echo, PCM16 rollback e Opus v2.
+- N2 Activity v2 esta verde como comparador dentro de sessoes reais, mas ainda
+  nao e o decisor principal de fim de fala. Esta e a principal pendencia
+  funcional antes de declarar o Voice Audio v2 inteiro como fechado.
+- N3 Audio IO v2 esta fechada para RX distribuido, TX observado, telemetria de
+  recovery e gate/dry-run de speaker. O HAL fisico ainda permanece protegido
+  pelo `audio_service`.
+- N4 Playback v2 esta fechada para contrato de speaker/SAY: Playback v2 fornece,
+  prepara, commita e orquestra o write por callback, mas nao chama
+  `audio_hal_*` diretamente.
+- N5 esta fechada como reducao segura do `audio_service.c` no caminho
+  SAY/Playback v2. Ainda restam estado legado, eventos, wake rearm e callback
+  fisico do HAL de forma intencional.
+- N6 esta fechada como ownership controlado por gate/janela real, com
+  auto-disarm, backpressure SAY, regressao CLI e baseline falado pos-picote.
+
+Proxima pendencia recomendada: promover Activity v2 de comparador para decisor
+controlado apenas dentro de sessao ja aberta por wake/barge, mantendo rollback
+imediato para o VAD legado do `audio_service`. Antes de qualquer novo toque em
+HAL/I2S, tratar `heap_internal_free_kb`/`heap_dma_free_kb` baixos como risco de
+estabilidade a ser monitorado nos gates.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
@@ -1932,9 +1961,9 @@ Fechamento N6:
 4. Fase K: capture session v2 assume upstream por flag.
 5. Fase L: policy conversacional avancada, so depois de no-echo e captura
    estarem estaveis.
-6. Fase N0-N6: migracao estrutural do firmware v2, com gates antes de cada
-   troca de owner real; N6 fechada com janela real controlada e regressao
-   operacional server-only.
+6. Estado atual: Fase N0-N6 consolidada com excecao da promocao real de
+   Activity v2; o proximo incremento deve focar N2 decisor controlado, nao nova
+   troca de HAL owner.
 
 Essa ordem segue a regra central da arquitetura v2: separar I/O, playback,
 processor, codec e policy. No NoiseBot, a prioridade imediata e diminuir o

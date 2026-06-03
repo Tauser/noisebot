@@ -3060,6 +3060,15 @@ no protocolo.
       validaram `say_chunks_received=1908`, `say_chunks_played=1908`,
       `say_queue_count=0`, `say_chunks_dropped=0`, zero falhas de write/commit
       e `codec-v2 health` saudavel.
+- [x] Consolidacao pos-N6: N1 esta fechada como Capture v2 TX owner controlado;
+      N3 esta fechada para RX distribuido, TX observado e gates de speaker;
+      N4/N5/N6 estao fechadas no caminho Playback v2/SAY com write por
+      callback, reducao segura do `audio_service.c`, janela real controlada e
+      baseline falado sem drops. A pendencia funcional remanescente da Fase N e
+      promover Activity v2 de comparador para decisor controlado dentro de
+      sessao ja aberta, com rollback para o VAD legado. Antes de nova troca de
+      HAL owner, monitorar `heap_internal_free_kb`/`heap_dma_free_kb` baixos nos
+      gates.
 
 ---
 
