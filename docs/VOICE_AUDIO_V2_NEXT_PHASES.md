@@ -1489,6 +1489,19 @@ Incremento N5.9 iniciado:
   ou rollback; apenas reduz a superficie de constantes visiveis e atualiza o
   teste de contrato para proteger esse encapsulamento.
 
+Validacao N5.9 pos-flash:
+
+- Baseline quieto em `/api/audio/playback-v2`: `ok=true`, `status=ok`,
+  `issues=[]`, fila SAY vazia, zero drops/cancelamentos/falhas de speaker,
+  Audio IO sem `dropped_frames`/`i2s_recoveries` e Codec v2 healthy.
+- Resposta real curta: `say_chunks_received=379`, `say_chunks_played=379`,
+  `say_chunks_dropped=0`, `speaker_write_failures=0`,
+  `speaker_commit_failures=0`, `queue_empty=true` e `normal_path_clean=true`.
+- Audio IO continuou sem `dropped_frames`, `i2s_recoveries`,
+  `speaker_handoff_failures` ou `speaker_handoff_recoveries`.
+- Warnings nao bloqueantes observados no agregado: `opus_egress_queue_count=1`
+  e `heap_internal_free_kb baixo: 11`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
