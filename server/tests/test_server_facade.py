@@ -894,6 +894,30 @@ def test_server_firmware_diag_client_exposes_playback_v2_owner_endpoint(monkeypa
     ]
 
 
+def test_server_firmware_diag_client_returns_json_http_conflict(monkeypatch) -> None:
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    client = firmware_diag.FirmwareDiagClient("http://robot.local/")
+
+    def fake_urlopen(request, timeout):
+        raise HTTPError(
+            request.full_url,
+            409,
+            "Conflict",
+            hdrs={},
+            fp=io.BytesIO(
+                b'{"ok":false,"speaker_owner_real_block_reason":"DISABLED"}'
+            ),
+        )
+
+    monkeypatch.setattr(firmware_diag, "urlopen", fake_urlopen)
+
+    payload = client.audio_playback_v2_speaker_owner_real_arm()
+
+    assert payload["ok"] is False
+    assert payload["http_status"] == 409
+    assert payload["speaker_owner_real_block_reason"] == "DISABLED"
+
+
 def test_server_codec_v2_health_flags_transport_issues() -> None:
     firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
 

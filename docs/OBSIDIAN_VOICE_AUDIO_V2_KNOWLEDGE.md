@@ -215,7 +215,8 @@ Incremento atual da Fase N3:
 - Fase N6.7 adicionou `speaker-owner/real-arm`/`real-disarm` como segundo nivel
   de armamento. O endpoint nao muda o HAL: ele so arma
   `speaker_owner_real_armed` quando o preflight do dry-run ja viu SAY real nao
-  silencioso, owner active/ready, zero falhas e zero recoveries. Caso contrario,
+  silencioso, owner active/ready, zero drops SAY/listening, zero falhas de
+  write/commit e zero recoveries. Caso contrario,
   `speaker_owner_real_block_reason` explica o bloqueio.
 
 ### Wake Word

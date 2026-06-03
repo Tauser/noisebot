@@ -1810,6 +1810,12 @@ Incremento N6.7 iniciado:
   `speaker_owner_real_block_reason` (`DISABLED`, `NO_TX`, `TX_ERROR` ou
   `I2S_RECOVERY`). Esse passo cria o corrimao para o owner real sem alterar
   wake, captura, codec, Activity v2, fila SAY ou escrita fisica do speaker.
+- Validacao inicial apos flash confirmou baseline seguro
+  (`speaker_owner_real_armed=false`, fila SAY zero) e bloqueio correto de
+  `real-arm` sem gate (`DISABLED`). Uma fala sintetica com dry-run armado
+  mostrou preflight ativo, mas tambem revelou `say_chunks_dropped=12`; o
+  `real-arm` foi reforcado para bloquear qualquer drop SAY/listening ou falha
+  de write/commit como `TX_ERROR`.
 - Proximo aceite apos flash: baseline deve mostrar `speaker_owner_real_armed=false`;
   `speaker-owner-real-arm` sem gate deve bloquear; durante/apos gate com SAY real
   deve armar somente se N6.6 continuar limpo, e `real-disarm` deve voltar ao

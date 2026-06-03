@@ -320,8 +320,9 @@ Invariantes:
   nivel de armamento. Esse endpoint nao move o HAL; ele so marca
   `speaker_owner_real_requested/armed` quando o preflight ja observou dry-run
   ativo, owner solicitado, handoff ready, frame SAY nao silencioso, zero falhas
-  e zero recoveries. Se o preflight falhar, `speaker_owner_real_block_reason`
-  explica o bloqueio.
+  e zero recoveries. Drops SAY/listening e falhas de write/commit tambem
+  bloqueiam o armamento como `TX_ERROR`. Se o preflight falhar,
+  `speaker_owner_real_block_reason` explica o bloqueio.
 
 ### Voice Activity v2
 

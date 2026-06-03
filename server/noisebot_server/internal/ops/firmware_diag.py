@@ -102,14 +102,23 @@ class FirmwareDiagClient:
         try:
             with urlopen(request, timeout=self.timeout_s) as response:
                 data = response.read().decode("utf-8")
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+                status = getattr(response, "status", 200)
+        except HTTPError as exc:
+            data = exc.read().decode("utf-8", errors="replace")
+            status = exc.code
+        except (URLError, TimeoutError, OSError) as exc:
             raise FirmwareDiagError(f"{path}: {exc}") from exc
         try:
             decoded = json.loads(data)
         except json.JSONDecodeError as exc:
+            if status >= 400:
+                raise FirmwareDiagError(f"{path}: HTTP {status}") from exc
             raise FirmwareDiagError(f"{path}: resposta nao e JSON") from exc
         if not isinstance(decoded, dict):
             raise FirmwareDiagError(f"{path}: resposta invalida")
+        if status >= 400:
+            decoded.setdefault("ok", False)
+            decoded.setdefault("http_status", status)
         return decoded
 
     def list_audio_files(self) -> dict[str, Any]:

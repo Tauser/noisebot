@@ -470,6 +470,10 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);" in playback_h
     assert "esp_err_t audio_playback_service_v2_speaker_owner_real_arm(void);" in playback_h
     assert "esp_err_t audio_playback_service_v2_speaker_owner_real_disarm(void);" in playback_h
+    assert "s_status.say_chunks_dropped > 0U" in playback_c
+    assert "s_status.say_chunks_dropped_listening > 0U" in playback_c
+    assert "s_status.speaker_write_failures > 0U" in playback_c
+    assert "s_status.speaker_commit_failures > 0U" in playback_c
     assert "nb_audio_playback_v2_speaker_write_cb_t" in playback_h
     assert "audio_playback_service_v2_speaker_write_next_frame(" in playback_h
     assert "nb_audio_playback_v2_say_chunk_t" not in playback_h

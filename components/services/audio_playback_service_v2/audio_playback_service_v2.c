@@ -310,6 +310,12 @@ esp_err_t audio_playback_service_v2_speaker_owner_real_arm(void)
     } else if (io.speaker_handoff_failures > 0U) {
         block = (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_TX_ERROR;
         err = ESP_ERR_INVALID_STATE;
+    } else if (s_status.say_chunks_dropped > 0U ||
+               s_status.say_chunks_dropped_listening > 0U ||
+               s_status.speaker_write_failures > 0U ||
+               s_status.speaker_commit_failures > 0U) {
+        block = (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_TX_ERROR;
+        err = ESP_ERR_INVALID_STATE;
     } else if (io.speaker_handoff_recoveries > 0U) {
         block = (uint32_t)NB_AUDIO_IO_V2_SPEAKER_HANDOFF_BLOCK_I2S_RECOVERY;
         err = ESP_ERR_INVALID_STATE;
