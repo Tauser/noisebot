@@ -469,6 +469,9 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "nb_audio_playback_v2_speaker_write_cb_t" in playback_h
     assert "audio_playback_service_v2_speaker_write_next_frame(" in playback_h
     assert "nb_audio_playback_v2_say_chunk_t" not in playback_h
+    assert "NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS" not in playback_h
+    assert "NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES" not in playback_h
+    assert "NB_AUDIO_PLAYBACK_V2_CHUNK_MS" not in playback_h
     assert "audio_playback_service_v2_speaker_next_frame(" not in playback_h
     assert "audio_playback_service_v2_speaker_commit_frame(" not in playback_h
     assert "audio_playback_service_v2_say_accept(" in playback_h
@@ -529,6 +532,9 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert '\\"speaker_empty_ms\\":%lu' in web
     assert '\\"speaker_idle_end_count\\":%lu' in web
     assert "say_chunks_received" in web
+    assert "#define NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS   32U" in playback_c
+    assert "#define NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES   256U" in playback_c
+    assert "#define NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS 1200U" in playback_c
     assert "} nb_audio_playback_v2_say_chunk_t;" in playback_c
     assert "playback_v2_say_dequeue(out)" in playback_c
     assert "static bool playback_v2_speaker_next_frame(" in playback_c

@@ -16,13 +16,6 @@
 extern "C" {
 #endif
 
-#define NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS  32U
-#define NB_AUDIO_PLAYBACK_V2_SAMPLE_RATE_HZ 16000U
-#define NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES  256U
-#define NB_AUDIO_PLAYBACK_V2_CHUNK_MS       16U
-#define NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS 1200U
-#define NB_AUDIO_PLAYBACK_V2_PROBE_HZ       440U
-
 typedef struct {
     bool initialized;
     bool playing;

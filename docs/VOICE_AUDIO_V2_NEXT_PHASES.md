@@ -1293,9 +1293,9 @@ Incremento N5.2 iniciado:
 
 - A politica de idle/end do SAY deixou de ficar parametrizada no
   `audio_service.c`: Playback v2 agora expoe
-  `audio_playback_service_v2_speaker_should_end_idle()`, com os limiares
+  `audio_playback_service_v2_speaker_should_end_idle()`, com os limiares internos
   `NB_AUDIO_PLAYBACK_V2_CHUNK_MS=16` e
-  `NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS=1200` no contrato v2.
+  `NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS=1200`.
 - O helper parametrizado de empty/idle ficou privado dentro de Playback v2, e o
   estado legado `bridge_say_empty_ms` foi removido de `audio_service.c`.
 - `audio_service.c` ainda aplica a transicao `PLAY_BRIDGE_SAY -> PLAY_IDLE` e
@@ -1475,6 +1475,19 @@ Incremento N5.8 iniciado:
   `dropped_frames`/`i2s_recoveries`/handoff failures e Codec v2
   `healthy=true/status=ok`, sem warnings e com zero drops/erros. O unico
   warning agregado final foi `heap_internal_free_kb baixo: 11`.
+
+Incremento N5.9 iniciado:
+
+- As constantes internas de Playback v2 (`NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS`,
+  `NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES`, `NB_AUDIO_PLAYBACK_V2_CHUNK_MS`,
+  `NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS`, `NB_AUDIO_PLAYBACK_V2_SAMPLE_RATE_HZ`
+  e `NB_AUDIO_PLAYBACK_V2_PROBE_HZ`) deixaram de ser expostas no header publico.
+- Elas agora ficam privadas em `audio_playback_service_v2.c`; a observabilidade
+  publica continua via `/api/audio/playback-v2`, especialmente
+  `say_queue_depth`, `say_queue_count`, `speaker_*` e `say_*`.
+- Esta etapa nao muda fila SAY, HAL fisico, wake, captura, Activity v2, Codec v2
+  ou rollback; apenas reduz a superficie de constantes visiveis e atualiza o
+  teste de contrato para proteger esse encapsulamento.
 
 ## Ordem Recomendada
 
