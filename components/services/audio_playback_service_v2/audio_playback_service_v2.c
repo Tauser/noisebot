@@ -253,7 +253,7 @@ esp_err_t audio_playback_service_v2_speaker_owner_disarm(void)
     return err;
 }
 
-esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t count)
+esp_err_t audio_playback_service_v2_say_accept(const int16_t *samples, uint16_t count)
 {
     if (samples == NULL || count == 0U) {
         return ESP_ERR_INVALID_ARG;
@@ -294,7 +294,7 @@ esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t
     return ESP_ERR_NO_MEM;
 }
 
-bool audio_playback_service_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out)
+static bool playback_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out)
 {
     if (out == NULL || s_say_q == NULL) {
         return false;
@@ -323,7 +323,7 @@ bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk
         return false;
     }
 
-    if (!audio_playback_service_v2_say_dequeue(out)) {
+    if (!playback_v2_say_dequeue(out)) {
         return false;
     }
 
@@ -450,7 +450,7 @@ bool audio_playback_service_v2_speaker_should_end_idle(void)
         NB_AUDIO_PLAYBACK_V2_SAY_IDLE_END_MS);
 }
 
-uint32_t audio_playback_service_v2_say_cancel(void)
+uint32_t audio_playback_service_v2_say_cancel_active(void)
 {
     QueueHandle_t queue = s_say_q;
     if (queue == NULL) {
@@ -480,68 +480,26 @@ uint32_t audio_playback_service_v2_say_pending_count(void)
     return (uint32_t)uxQueueMessagesWaiting(s_say_q);
 }
 
-void audio_playback_service_v2_note_say_queue_depth(uint32_t depth)
-{
-    taskENTER_CRITICAL(&s_mux);
-    s_status.bridge_say_observer = true;
-    s_status.bridge_say_queue_owner = (s_say_q != NULL);
-    s_status.say_queue_depth = depth;
-    if (s_status.say_queue_count > depth) {
-        s_status.say_queue_count = depth;
-    }
-    taskEXIT_CRITICAL(&s_mux);
-}
-
-void audio_playback_service_v2_note_say_enqueued(uint32_t queue_count)
-{
-    taskENTER_CRITICAL(&s_mux);
-    s_status.bridge_say_observer = true;
-    s_status.bridge_say_queue_owner = (s_say_q != NULL);
-    s_status.say_chunks_received++;
-    s_status.say_queue_count = queue_count;
-    taskEXIT_CRITICAL(&s_mux);
-}
-
-void audio_playback_service_v2_note_say_played(uint32_t queue_count)
-{
-    taskENTER_CRITICAL(&s_mux);
-    s_status.bridge_say_observer = true;
-    s_status.bridge_say_queue_owner = (s_say_q != NULL);
-    s_status.say_chunks_played++;
-    s_status.say_queue_count = queue_count;
-    taskEXIT_CRITICAL(&s_mux);
-}
-
-void audio_playback_service_v2_note_say_dropped(uint32_t queue_count, bool during_listen)
+void audio_playback_service_v2_say_drop_listening(void)
 {
     taskENTER_CRITICAL(&s_mux);
     s_status.bridge_say_observer = true;
     s_status.bridge_say_queue_owner = (s_say_q != NULL);
     s_status.say_chunks_dropped++;
-    if (during_listen) {
-        s_status.say_chunks_dropped_listening++;
-    }
-    s_status.say_queue_count = queue_count;
-    taskEXIT_CRITICAL(&s_mux);
-}
-
-void audio_playback_service_v2_note_say_cancelled(uint32_t pending_chunks)
-{
-    taskENTER_CRITICAL(&s_mux);
-    s_status.bridge_say_observer = true;
-    s_status.bridge_say_queue_owner = (s_say_q != NULL);
-    s_status.say_chunks_cancelled += pending_chunks;
-    s_status.say_cancel_count++;
+    s_status.say_chunks_dropped_listening++;
     s_status.say_queue_count = 0;
+    playback_v2_reset_speaker_empty_locked();
+    s_status.last_error = ESP_OK;
     taskEXIT_CRITICAL(&s_mux);
 }
 
-void audio_playback_service_v2_note_say_idle(void)
+void audio_playback_service_v2_say_end_idle(void)
 {
     taskENTER_CRITICAL(&s_mux);
     s_status.bridge_say_observer = true;
     s_status.bridge_say_queue_owner = (s_say_q != NULL);
     playback_v2_reset_speaker_empty_locked();
     s_status.say_queue_count = 0;
+    s_status.last_error = ESP_OK;
     taskEXIT_CRITICAL(&s_mux);
 }

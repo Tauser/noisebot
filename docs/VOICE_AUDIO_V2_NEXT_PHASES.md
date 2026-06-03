@@ -1315,6 +1315,25 @@ Incremento N5.2 iniciado:
   `i2s_recoveries` ou handoff failures, Codec v2 `healthy=true` com zero
   drops/erros. O unico warning foi `heap_internal_free_kb baixo: 11`.
 
+Incremento N5.3 iniciado:
+
+- O contrato de ciclo SAY ficou mais semantico em Playback v2: `audio_service`
+  passa a chamar `audio_playback_service_v2_say_accept()`,
+  `audio_playback_service_v2_say_cancel_active()`,
+  `audio_playback_service_v2_say_drop_listening()` e
+  `audio_playback_service_v2_say_end_idle()`.
+- As APIs publicas antigas de detalhe (`say_enqueue`, `say_dequeue`,
+  `note_say_*` e `say_cancel`) foram removidas do header; `say_dequeue` ficou
+  privado dentro de Playback v2, e a drenagem externa continua sendo
+  `audio_playback_service_v2_speaker_next_frame()` /
+  `audio_playback_service_v2_speaker_write_next_frame()`.
+- `audio_service.c` ainda decide quando entrar/sair de `PLAY_BRIDGE_SAY` e
+  emitir eventos de playback, mas nao manipula mais diretamente os contadores e
+  a fila SAY por APIs de baixo nivel.
+- Gate esperado: build limpo, flash, baseline `playback-v2 delta --no-prompt`
+  limpo e turno real curto com zero drops, zero falhas de speaker write/commit,
+  fila SAY final zero e Codec/Audio IO v2 sem drops/recoveries.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

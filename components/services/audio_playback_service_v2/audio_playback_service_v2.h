@@ -88,8 +88,7 @@ bool audio_playback_service_v2_is_playing(void);
 bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_count);
 esp_err_t audio_playback_service_v2_speaker_owner_arm(void);
 esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);
-esp_err_t audio_playback_service_v2_say_enqueue(const int16_t *samples, uint16_t count);
-bool audio_playback_service_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out);
+esp_err_t audio_playback_service_v2_say_accept(const int16_t *samples, uint16_t count);
 bool audio_playback_service_v2_speaker_next_frame(nb_audio_playback_v2_say_chunk_t *out,
                                                   uint8_t volume_percent);
 bool audio_playback_service_v2_speaker_write_next_frame(
@@ -101,15 +100,10 @@ bool audio_playback_service_v2_speaker_write_next_frame(
 void audio_playback_service_v2_speaker_commit_frame(uint16_t sample_count,
                                                     esp_err_t result);
 bool audio_playback_service_v2_speaker_should_end_idle(void);
-uint32_t audio_playback_service_v2_say_cancel(void);
+uint32_t audio_playback_service_v2_say_cancel_active(void);
 uint32_t audio_playback_service_v2_say_pending_count(void);
-
-void audio_playback_service_v2_note_say_queue_depth(uint32_t depth);
-void audio_playback_service_v2_note_say_enqueued(uint32_t queue_count);
-void audio_playback_service_v2_note_say_played(uint32_t queue_count);
-void audio_playback_service_v2_note_say_dropped(uint32_t queue_count, bool during_listen);
-void audio_playback_service_v2_note_say_cancelled(uint32_t pending_chunks);
-void audio_playback_service_v2_note_say_idle(void);
+void audio_playback_service_v2_say_drop_listening(void);
+void audio_playback_service_v2_say_end_idle(void);
 
 #ifdef __cplusplus
 }

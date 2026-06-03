@@ -500,7 +500,7 @@ static bool audio_service_play_bridge_say_chunk(void)
         s.play_state = PLAY_IDLE;
         s.bridge_say_playing = false;
         xSemaphoreGive(s.mutex);
-        audio_playback_service_v2_note_say_idle();
+        audio_playback_service_v2_say_end_idle();
         if (s.event_cb) {
             s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
         }
@@ -1303,7 +1303,7 @@ static void audio_task(void *arg)
                 fclose(wav_file);
                 wav_file = NULL;
             }
-            (void)audio_playback_service_v2_say_cancel();
+            (void)audio_playback_service_v2_say_cancel_active();
             (void)audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES, 0);
             if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
             xSemaphoreTake(s.mutex, portMAX_DELAY);
@@ -1686,7 +1686,7 @@ esp_err_t audio_play_stop(void)
         s.bridge_say_playing) {
         s.play_state = PLAY_STOP;
         s.bridge_say_playing = false;
-        (void)audio_playback_service_v2_say_cancel();
+        (void)audio_playback_service_v2_say_cancel_active();
     }
     xSemaphoreGive(s.mutex);
     return ESP_OK;
@@ -1866,13 +1866,13 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
     if (listening) {
         s.play_state = PLAY_IDLE;
         s.bridge_say_playing = false;
-        (void)audio_playback_service_v2_say_cancel();
+        (void)audio_playback_service_v2_say_cancel_active();
     }
     xSemaphoreGive(s.mutex);
 
     if (listening) {
         s_bridge_say_drop_count++;
-        audio_playback_service_v2_note_say_dropped(0, true);
+        audio_playback_service_v2_say_drop_listening();
         if ((s_bridge_say_drop_count % 32U) == 1U) {
             ESP_LOGW(TAG, "Bridge SAY descartado durante escuta drops=%lu",
                      (unsigned long)s_bridge_say_drop_count);
@@ -1889,7 +1889,7 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         wake_service_rearm();
         ESP_LOGI(TAG, "Bridge SAY iniciado");
     }
-    if (audio_playback_service_v2_say_enqueue(samples, count) == ESP_OK) {
+    if (audio_playback_service_v2_say_accept(samples, count) == ESP_OK) {
         if ((++s_bridge_say_rx_count % 64U) == 1U) {
             ESP_LOGI(TAG, "Bridge SAY recebido chunks=%lu q=%u",
                      (unsigned long)s_bridge_say_rx_count,
