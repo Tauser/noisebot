@@ -2226,3 +2226,20 @@ Essa ordem segue a regra central da arquitetura v2: separar I/O, playback,
 processor, codec e policy. No NoiseBot, a prioridade imediata e diminuir o
 acoplamento do `audio_service.c` sem trocar wake, VAD, AEC e follow-up no mesmo
 movimento.
+
+## Fase O - Fechamento Operacional Voice Audio v2
+
+Objetivo: sair da sequencia de handoffs N e transformar o estado atual em
+criterios operacionais de fechamento, sem tocar wake, VAD, HAL/I2S, bridge ou
+codec no mesmo passo.
+
+### O0 - Hardening de Gates
+
+Incremento server-only: `voice-release-check` passou a avisar quando
+`/api/audio/voice-v2` reporta `audio_io_heap_internal_free_kb` ou
+`audio_io_heap_dma_free_kb` entre 1 e 15 KB. O gate continua `ok=true` se todos
+os demais criterios estiverem verdes, mas o risco de heap baixo fica explicito
+no JSON/Markdown antes de qualquer novo toque em HAL/I2S. Valor `0` e tratado
+como nao informado, porque alguns snapshots de boot ainda retornam zero nesses
+campos. Validacao local: `server/tests/test_server_facade.py -k
+voice_release_check` com 9 testes verdes.

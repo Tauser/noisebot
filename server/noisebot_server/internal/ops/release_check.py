@@ -137,6 +137,12 @@ def _voice_gate(payload: dict[str, Any]) -> ReleaseGate:
         warnings.append(f"voice-v2 block_reason={payload.get('block_reason')}")
     if payload.get("runtime_idle") is False:
         warnings.append("runtime_idle=false")
+    heap_internal_kb = _int(payload.get("audio_io_heap_internal_free_kb"))
+    heap_dma_kb = _int(payload.get("audio_io_heap_dma_free_kb"))
+    if 0 < heap_internal_kb < 16:
+        warnings.append(f"audio_io_heap_internal_free_kb baixo: {heap_internal_kb}")
+    if 0 < heap_dma_kb < 16:
+        warnings.append(f"audio_io_heap_dma_free_kb baixo: {heap_dma_kb}")
     return ReleaseGate("Voice v2 consolidado", ok, detail, tuple(warnings))
 
 

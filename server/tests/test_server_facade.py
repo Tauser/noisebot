@@ -3881,6 +3881,80 @@ def test_server_voice_release_check_fails_when_voice_v2_gate_blocks() -> None:
     assert voice_gate.warnings == ("voice-v2 block_reason=codec_worker_inactive",)
 
 
+def test_server_voice_release_check_warns_on_low_audio_io_heap() -> None:
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+
+    check = release_check.build_release_check(
+        voice_v2={
+            "ok": True,
+            "ready": True,
+            "block_reason": "none",
+            "capture_enabled": True,
+            "capture_tx_enabled": True,
+            "activity_decider_enabled": True,
+            "codec_worker_state": "running",
+            "playback_say_queue_count": 0,
+            "playback_say_drops": 0,
+            "codec_packet_drops": 0,
+            "codec_egress_drops": 0,
+            "runtime_idle": True,
+            "audio_io_heap_internal_free_kb": 5,
+            "audio_io_heap_dma_free_kb": 7,
+        },
+        codec_v2={
+            "ok": True,
+            "healthy": True,
+            "status": "ok",
+            "format": "opus",
+            "worker_state": "running",
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "issues": [],
+            "warnings": [],
+        },
+        capture_v2={
+            "ok": True,
+            "real_capture_enabled": False,
+            "session_active": False,
+            "state": "IDLE_SESSION",
+            "last_error": "ESP_OK",
+        },
+        playback_v2={
+            "ok": True,
+            "bridge_say_observer": True,
+            "bridge_say_queue_owner": True,
+            "bridge_say_active": False,
+            "say_queue_count": 0,
+            "say_begin_count": 1,
+            "say_end_count": 1,
+            "say_chunks_received": 40,
+            "say_chunks_played": 40,
+            "say_chunks_dropped": 0,
+            "say_chunks_dropped_listening": 0,
+            "last_error": "ESP_OK",
+        },
+        metrics={
+            "last_voice_session": {
+                "turn_id": 10,
+                "outcome": "llm",
+                "turn_taking_decision": "llm",
+                "tts_completed": True,
+                "tts_say_end_sent": True,
+                "text_scroll_pages": 2,
+                "text_scroll_pages_sent": 2,
+            }
+        },
+    )
+
+    assert check.ok is True
+    voice_gate = check.gates[0]
+    assert voice_gate.ok is True
+    assert voice_gate.warnings == (
+        "audio_io_heap_internal_free_kb baixo: 5",
+        "audio_io_heap_dma_free_kb baixo: 7",
+    )
+
+
 def test_server_voice_release_check_accepts_retained_capture_done_state() -> None:
     release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
 

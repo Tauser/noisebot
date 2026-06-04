@@ -307,6 +307,10 @@ Incremento atual da Fase N3:
   completou LLM/TTS/SAY_END, Playback v2 `213/213` chunks SAY e zero
   drops/falhas, Capture v2 58 chunks / 55680 samples sem drops; 1 pacote Opus
   egress residual foi drenado e o release-check final voltou `ok=true`.
+- Fase O0 server-only: `voice-release-check` agora emite aviso quando
+  `audio_io_heap_internal_free_kb` ou `audio_io_heap_dma_free_kb` ficam entre
+  1 e 15 KB no `/api/audio/voice-v2`. Isso preserva o status OK quando o resto
+  esta verde, mas evidencia risco operacional antes de novas fases HAL/I2S.
 
 ### Wake Word
 

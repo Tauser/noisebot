@@ -392,6 +392,10 @@ Invariantes:
   completou LLM/TTS/SAY_END, Playback v2 recebeu/tocou `213/213` chunks SAY,
   Capture v2 enviou 58 chunks sem drops, Codec v2 voltou `status=ok` apos
   drenar 1 pacote egress residual, e o release-check final ficou `ok=true`.
+- Fase O0 server-only: o `voice-release-check` agora alerta quando o gate
+  consolidado reporta heap interno/DMA de Audio IO v2 baixo (1..15 KB). Isso
+  nao altera firmware nem audio; apenas torna visivel o risco operacional antes
+  de novas fases que encostem em HAL/I2S.
 
 ### Voice Activity v2
 

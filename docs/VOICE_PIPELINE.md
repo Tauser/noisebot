@@ -163,6 +163,10 @@ Validacao pos-flash da reducao RX: turno 24 transcreveu
 `Me fale uma frase curta.`, completou LLM/TTS/SAY_END em Opus v2, enviou 213
 chunks TTS/SAY sem drops/falhas, Capture v2 ficou sem drops e o release-check
 final voltou `ok=true` apos drenar 1 pacote Opus egress residual.
+Fase O0 server-only: `voice-release-check` passou a avisar quando
+`audio_io_heap_internal_free_kb` ou `audio_io_heap_dma_free_kb` ficam entre 1 e
+15 KB no gate consolidado, mantendo o status OK quando os demais criterios
+estao verdes. Isso nao muda firmware, protocolo ou audio real.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,
