@@ -2255,3 +2255,12 @@ heap baixo real de arredondamento/fragmentacao antes de qualquer proxima troca
 estrutural. Validacao local: contratos firmware focados com 15 testes verdes,
 `server/tests/test_server_facade.py -k voice_release_check` com 9 testes
 verdes, e `idf.py build` limpo.
+
+Incremento O0.1 de headroom: o primeiro corte de memoria evita mexer no audio e
+atua no perfil de rede. `sdkconfig.defaults` passa a habilitar
+`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y` e reduz
+`CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM` de 16 para 8. A intencao e deslocar
+buffers WiFi/LwIP elegiveis para PSRAM e reduzir DRAM interna reservada para
+TX WiFi, preservando o bridge TCP local e o dashboard. Rollback: reverter o
+commit de config se WiFi/bridge ficar instavel apos flash. Validacao local:
+contratos firmware focados com 15 testes verdes e `idf.py build` limpo.

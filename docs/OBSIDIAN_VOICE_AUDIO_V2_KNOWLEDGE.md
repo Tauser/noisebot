@@ -317,6 +317,10 @@ Incremento atual da Fase N3:
   Evidencia: `audio_io_service_v2` usa `heap_caps_get_free_size()` e
   `heap_caps_get_largest_free_block()` para o snapshot, e `web_service.c`
   publica esses campos no JSON.
+- O0.1: primeiro incremento de headroom atua em configuracao de rede, nao em
+  audio. `sdkconfig.defaults` habilita `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y`
+  e reduz `CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM` para 8. Evidencia: build
+  ESP-IDF limpo; precisa de flash para medir ganho real em heap interno/DMA.
 
 ### Wake Word
 

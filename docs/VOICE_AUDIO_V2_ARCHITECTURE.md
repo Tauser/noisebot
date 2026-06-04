@@ -401,6 +401,10 @@ Invariantes:
   release-check prefere esses campos e mantem fallback por KB para firmware
   antigo, permitindo distinguir heap realmente baixo de arredondamento ou
   fragmentacao antes de novos passos no HAL/I2S.
+- O0.1 prioriza headroom por configuracao de rede antes de novo audio: WiFi/LwIP
+  podem tentar PSRAM para buffers elegiveis e o TX estatico WiFi cai de 16 para
+  8 buffers. Isso preserva o pipeline de voz e da um rollback pequeno caso
+  bridge/dashboard fiquem instaveis.
 
 ### Voice Activity v2
 

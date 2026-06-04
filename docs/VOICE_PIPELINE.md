@@ -172,6 +172,9 @@ expor bytes livres e maior bloco livre de heap interno/DMA. O release-check
 prefere esses campos quando presentes e mantem fallback por KB, para separar
 risco real de memoria de arredondamento ou fragmentacao antes de novas mudancas
 em HAL/I2S.
+O0.1 inicia reducao de pressao em DRAM/DMA pelo perfil de rede: WiFi/LwIP tenta
+usar PSRAM para buffers elegiveis e o TX estatico WiFi cai para 8 buffers. Isso
+nao altera contrato PCM16/Opus, filas SAY, wake ou HAL.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,
