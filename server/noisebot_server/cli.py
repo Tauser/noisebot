@@ -121,6 +121,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     release_check.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     release_check.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    vision_soak = debug_sub.add_parser("vision-soak")
+    vision_soak.add_argument("--firmware-url", default="")
+    vision_soak.add_argument("--duration-s", type=float, default=1800.0)
+    vision_soak.add_argument("--interval-s", type=float, default=5.0)
+    vision_soak.add_argument("--timeout-s", type=float, default=8.0)
+    vision_soak.add_argument("--output", help="Arquivo Markdown/JSON de saida")
+    vision_soak.add_argument("--json", action="store_true", help="Emitir JSON")
+
     voice_v2 = debug_sub.add_parser("voice-v2")
     voice_v2.add_argument("action", choices=["status"], nargs="?", default="status")
     voice_v2.add_argument("--firmware-url", default="")
@@ -650,6 +658,35 @@ def run_debug_command(args: argparse.Namespace) -> None:
         else:
             print(text)
         if not trial.ok:
+            raise SystemExit(1)
+        return
+    if args.debug_command == "vision-soak":
+        from .internal.ops.vision_soak import (
+            format_vision_soak_json,
+            format_vision_soak_markdown,
+            run_vision_soak,
+        )
+
+        firmware_url = _resolve_firmware_url(args)
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+        result = run_vision_soak(
+            firmware_url=firmware_url,
+            duration_s=args.duration_s,
+            interval_s=args.interval_s,
+            timeout_s=args.timeout_s,
+        )
+        text = (
+            format_vision_soak_json(result)
+            if args.json
+            else format_vision_soak_markdown(result)
+        )
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        if not result.ok:
             raise SystemExit(1)
         return
     if args.debug_command == "voice-v2":

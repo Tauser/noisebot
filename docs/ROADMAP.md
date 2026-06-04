@@ -3336,7 +3336,12 @@ e confiável antes de acionar comportamento autônomo.
       sem iniciar nova captura durante o dump. Validado em hardware em
       2026-06-04 após `/api/vision/observe`: snapshot JSON parseável com
       `vision.available=true`, `valid=true`, 640×480 e dump em SD.
-- [ ] Observação visual repetida por 30 minutos sem degradação de heap ou latência.
+- [x] Observação visual repetida por 30 minutos sem degradação de heap ou latência:
+      `noisebot_server debug vision-soak --duration-s 1800 --interval-s 30`
+      validado em hardware em 2026-06-04 com 59/59 observações válidas,
+      zero falhas, zero reboots (`uptime_s` 956→2755), PSRAM mínima
+      5.965.060 bytes, DMA mínima 15.703 bytes, captura máxima 1445 ms,
+      câmera fechada no final e `voice-release-check ok=true`.
 
 ---
 

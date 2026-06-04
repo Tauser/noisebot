@@ -7740,6 +7740,126 @@ def test_server_vision_face_center_normalization() -> None:
     assert analysis.face_center_norm_y == -0.25
 
 
+def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
+    soak = importlib.import_module("noisebot_server.internal.ops.vision_soak")
+
+    calls: list[str] = []
+    uptimes = iter([10, 15])
+
+    def fake_get_json(base_url: str, path: str, timeout_s: float) -> dict:
+        calls.append(path)
+        if path == "api/vision/observe":
+            return {
+                "ok": True,
+                "observation": {
+                    "valid": True,
+                    "width": 640,
+                    "height": 480,
+                    "jpeg_bytes": 70000,
+                    "capture_ms": 900,
+                },
+            }
+        if path == "api/diag":
+            return {
+                "uptime_s": next(uptimes),
+                "fps": 25.1,
+                "memory": {"psram_free": 7_000_000},
+            }
+        if path == "api/camera/status":
+            return {
+                "heap_dma_free": 18_000,
+                "ready": False,
+                "active": False,
+            }
+        raise AssertionError(path)
+
+    def fake_post_json(base_url: str, path: str, timeout_s: float) -> dict:
+        calls.append(path)
+        assert path == "api/camera/session/close"
+        return {"ok": True}
+
+    ticks = iter([0.0, 0.0, 0.0, 1.0, 1.0])
+    monkeypatch.setattr(soak, "_get_json", fake_get_json)
+    monkeypatch.setattr(soak, "_post_json", fake_post_json)
+
+    result = soak.run_vision_soak(
+        firmware_url="http://192.168.1.30",
+        duration_s=1.0,
+        interval_s=1.0,
+        now_fn=lambda: next(ticks),
+        sleep_fn=lambda _: None,
+    )
+
+    assert result.ok is True
+    assert result.samples == 2
+    assert result.valid_observations == 2
+    assert result.reboots == 0
+    assert result.final_camera_active is False
+    assert calls.count("api/vision/observe") == 2
+
+
+def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    soak = importlib.import_module("noisebot_server.internal.ops.vision_soak")
+
+    calls: dict[str, object] = {}
+
+    def fake_run_vision_soak(
+        *,
+        firmware_url: str,
+        duration_s: float,
+        interval_s: float,
+        timeout_s: float,
+    ):
+        calls["firmware_url"] = firmware_url
+        calls["duration_s"] = duration_s
+        calls["interval_s"] = interval_s
+        calls["timeout_s"] = timeout_s
+        return soak.VisionSoakResult(
+            ok=True,
+            duration_s=duration_s,
+            interval_s=interval_s,
+            samples=1,
+            failures=0,
+            reboots=0,
+            valid_observations=1,
+            first_uptime_s=10,
+            last_uptime_s=10,
+            min_fps=25.0,
+            min_psram_free=7_000_000,
+            min_dma_free=18_000,
+            max_capture_ms=900,
+            max_jpeg_bytes=70_000,
+            final_camera_ready=False,
+            final_camera_active=False,
+            final_close_ok=True,
+            errors=[],
+        )
+
+    monkeypatch.setattr(soak, "run_vision_soak", fake_run_vision_soak)
+
+    cli.main([
+        "--host",
+        "192.168.1.30",
+        "debug",
+        "vision-soak",
+        "--duration-s",
+        "3",
+        "--interval-s",
+        "1",
+        "--timeout-s",
+        "2",
+        "--json",
+    ])
+
+    assert calls == {
+        "firmware_url": "http://192.168.1.30",
+        "duration_s": 3.0,
+        "interval_s": 1.0,
+        "timeout_s": 2.0,
+    }
+
+
 def test_server_app_contract_exposes_only_server_paths() -> None:
     api = importlib.import_module("noisebot_server.api")
 
