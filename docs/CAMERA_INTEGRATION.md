@@ -138,6 +138,12 @@ copying board-specific implementations from other products.
   `max_jpeg_bytes=0`, `min_psram_free=7132240`, `min_dma_free=16643` and final
   camera closed. It also measured `min_fps=24.0`, so long-run capture stability
   is validated while the render FPS acceptance gate remains open.
+- The expression renderer now uses dynamic dirty rectangles for the normal face
+  and light idle rotation, while keeping the full conservative face rect for
+  sleep, wake, speaking and out-of-eye effects. Hardware validation after flash
+  measured steady-state render at `fps=52.4`, `dirty=220x112` and
+  `push=18.8ms`; a 120s `vision-soak --min-fps 30` improved the valley but still
+  failed at `min_fps=27.3`, so the long-run FPS gate remains open.
 - Presence detection for Roadmap 13.1 is now present as on-demand shadow state
   in `vision_service`: `/api/vision/observe`, `/api/vision/status` and
   `/api/diag/snapshot` include a `presence` block, while

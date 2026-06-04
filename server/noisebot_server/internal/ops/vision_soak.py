@@ -120,6 +120,7 @@ def run_vision_soak(
             observation_payload = _get_json(base_url, "api/vision/observe", timeout_s)
             diag = _get_json(base_url, "api/diag", timeout_s)
             camera = _get_json(base_url, "api/camera/status", timeout_s)
+            render = _get_json(base_url, "api/render/status", timeout_s)
 
             observation = observation_payload.get("observation", {})
             if not observation_payload.get("ok", False):
@@ -155,7 +156,7 @@ def run_vision_soak(
                 errors.append(f"uptime_reset:{last_uptime}->{uptime}")
             last_uptime = uptime
 
-            fps = _float(diag.get("fps"))
+            fps = _float(render.get("fps")) or _float(diag.get("fps"))
             if fps > 0.0:
                 min_fps = fps if min_fps is None else min(min_fps, fps)
                 if min_fps_required is not None and fps < min_fps_required:

@@ -7894,6 +7894,26 @@ def test_firmware_camera_status_reports_last_real_frame() -> None:
     assert '"format":"jpeg","width":%lu,"height":%lu' not in web_c
 
 
+def test_firmware_expression_uses_dynamic_dirty_rect_for_normal_face() -> None:
+    root = Path(__file__).resolve().parents[2]
+    expression_cpp = (
+        root
+        / "components"
+        / "services"
+        / "expression_service"
+        / "expression_service.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "mark_face_dirty_normal" in expression_cpp
+    assert "mark_face_dirty_rotated" in expression_cpp
+    assert "mark_face_dirty_full" in expression_cpp
+    assert "s_prev_face_dirty_valid" in expression_cpp
+    assert "render_service_mark_dirty(s_prev_face_dirty_x" in expression_cpp
+    assert "bool has_face_fx = sleep_anim || wake_anim || speaking_anim ||" in expression_cpp
+    assert "} else if (use_rot) {" in expression_cpp
+    assert "mark_face_dirty_normal(left_cx, cy_l_f, face.open_l" in expression_cpp
+
+
 def test_firmware_render_metrics_contract_is_exposed() -> None:
     root = Path(__file__).resolve().parents[2]
     render_h = (
@@ -8025,6 +8045,8 @@ def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
                 "ready": False,
                 "active": False,
             }
+        if path == "api/render/status":
+            return {"fps": 30.5}
         raise AssertionError(path)
 
     def fake_post_json(base_url: str, path: str, timeout_s: float) -> dict:
@@ -8050,10 +8072,12 @@ def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
     assert result.samples == 2
     assert result.valid_observations == 2
     assert result.reboots == 0
+    assert result.min_fps == 30.5
     assert result.presence_false_positive_count == 0
     assert result.max_presence_score == 40
     assert result.final_camera_active is False
     assert calls.count("api/vision/observe") == 2
+    assert calls.count("api/render/status") == 2
 
 
 def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:

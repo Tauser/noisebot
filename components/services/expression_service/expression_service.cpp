@@ -174,6 +174,12 @@ static constexpr int ROT_MARGIN    = 22;
 static constexpr int FACE_DIRTY_Y0 = (int)EYE_CY_BASE - (int)MAX_HH_F - (int)Y_TRAVEL_PX - (int)MAX_CURVE_PX - ROT_MARGIN;
 static constexpr int FACE_DIRTY_Y1 = (int)EYE_CY_BASE + (int)MAX_HH_F + (int)Y_TRAVEL_PX + (int)MAX_CURVE_PX + ROT_MARGIN + 8;
 
+static bool s_prev_face_dirty_valid = false;
+static int  s_prev_face_dirty_x = FACE_DIRTY_X0;
+static int  s_prev_face_dirty_y = FACE_DIRTY_Y0;
+static int  s_prev_face_dirty_w = FACE_DIRTY_X1 - FACE_DIRTY_X0;
+static int  s_prev_face_dirty_h = FACE_DIRTY_Y1 - FACE_DIRTY_Y0;
+
 /* ── Sprite de face combinado (rotação) ──────────────────────────────────── */
 /* Sprite único 320×96px cobrindo os dois olhos. A rotação acontece ao redor
  * do centro da face (x=160), não do centro de cada olho — os dois giram
@@ -546,6 +552,69 @@ static const nb_face_state_t k_wake_sequence[WAKE_SEQ_COUNT] = {
 static inline float clamp01(float v)
 {
     return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+}
+
+static void mark_face_dirty_rect(int x, int y, int w, int h)
+{
+    if (w <= 0 || h <= 0) return;
+
+    render_service_mark_dirty(x, y, w, h);
+    if (s_prev_face_dirty_valid) {
+        render_service_mark_dirty(s_prev_face_dirty_x, s_prev_face_dirty_y,
+                                  s_prev_face_dirty_w, s_prev_face_dirty_h);
+    }
+
+    s_prev_face_dirty_x = x;
+    s_prev_face_dirty_y = y;
+    s_prev_face_dirty_w = w;
+    s_prev_face_dirty_h = h;
+    s_prev_face_dirty_valid = true;
+}
+
+static void mark_face_dirty_full(void)
+{
+    mark_face_dirty_rect(FACE_DIRTY_X0, FACE_DIRTY_Y0,
+                         FACE_DIRTY_X1 - FACE_DIRTY_X0,
+                         FACE_DIRTY_Y1 - FACE_DIRTY_Y0);
+}
+
+static void mark_face_dirty_eyes(int16_t left_cx, float cy_l, float open_l,
+                                 int16_t right_cx, float cy_r, float open_r,
+                                 int extra_x, int extra_y)
+{
+    const int pad_x = (int)BLINK_BAR_EXTRA_HW + 8 + extra_x;
+    const int pad_y = (int)MAX_CURVE_PX + 8 + extra_y;
+
+    int x0 = (int)left_cx - (int)HW_I - pad_x;
+    int x1 = (int)right_cx + (int)HW_I + pad_x;
+    int y0_l = (int)(cy_l - (open_l * MAX_HH_F) - (float)pad_y);
+    int y1_l = (int)(cy_l + (open_l * MAX_HH_F) + (float)pad_y + 1.0f);
+    int y0_r = (int)(cy_r - (open_r * MAX_HH_F) - (float)pad_y);
+    int y1_r = (int)(cy_r + (open_r * MAX_HH_F) + (float)pad_y + 1.0f);
+    int y0 = (y0_l < y0_r) ? y0_l : y0_r;
+    int y1 = (y1_l > y1_r) ? y1_l : y1_r;
+
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > NB_DISP_WIDTH) x1 = NB_DISP_WIDTH;
+    if (y1 > NB_DISP_HEIGHT) y1 = NB_DISP_HEIGHT;
+
+    mark_face_dirty_rect(x0, y0, x1 - x0, y1 - y0);
+}
+
+static void mark_face_dirty_normal(int16_t left_cx, float cy_l,
+                                   float open_l, int16_t right_cx,
+                                   float cy_r, float open_r)
+{
+    mark_face_dirty_eyes(left_cx, cy_l, open_l, right_cx, cy_r, open_r, 0, 0);
+}
+
+static void mark_face_dirty_rotated(int16_t left_cx, float cy_l,
+                                    float open_l, int16_t right_cx,
+                                    float cy_r, float open_r)
+{
+    mark_face_dirty_eyes(left_cx, cy_l, open_l, right_cx, cy_r, open_r,
+                         ROT_MARGIN + 12, ROT_MARGIN + 12);
 }
 
 static inline float clamp_abs(float v, float max_abs)
@@ -1662,13 +1731,20 @@ static void render_layer_cb(nb_display_sprite_t canvas_handle, void * /*ctx*/)
         draw_anger_mark(spr);
     }
 
-    /* Declara região suja. Rect conservador cobre todos os pixels possíveis
-     * dos olhos (gaze shift, x_off, blink bar). Ser fixo garante que pixels
-     * do frame anterior — sempre dentro do mesmo envelope — sejam cobertos
-     * pelo canvas limpo e efetivamente apagados no display. */
-    render_service_mark_dirty(FACE_DIRTY_X0, FACE_DIRTY_Y0,
-                              FACE_DIRTY_X1 - FACE_DIRTY_X0,
-                              FACE_DIRTY_Y1 - FACE_DIRTY_Y0);
+    bool has_face_fx = sleep_anim || wake_anim || speaking_anim ||
+                       s_blush_overlay.active || s_heart_overlay.active ||
+                       s_active_expr == NB_EXPR_SUSPICIOUS ||
+                       s_active_expr == NB_EXPR_ALARMED ||
+                       s_active_expr == NB_EXPR_ANGRY;
+    if (has_face_fx) {
+        mark_face_dirty_full();
+    } else if (use_rot) {
+        mark_face_dirty_rotated(left_cx, cy_l_f, face.open_l,
+                                right_cx, cy_r_f, face.open_r);
+    } else {
+        mark_face_dirty_normal(left_cx, cy_l_f, face.open_l,
+                               right_cx, cy_r_f, face.open_r);
+    }
 }
 
 /* ── API pública (extern "C") ────────────────────────────────────────────── */
