@@ -267,6 +267,14 @@ Incremento atual da Fase N3:
   inicio/fim do SAY em helpers internos dedicados. Playback v2 segue dono da
   fila e lifecycle; `audio_service` permanece dono dos eventos, wake rearm,
   estado legado e callback fisico do HAL.
+- Validacao pos-flash dessa reducao: turno real curto fechou
+  `say_begin_count=1`/`say_end_count=1`, `216/216` chunks SAY
+  recebidos/tocados, fila final zero, zero drops/falhas e
+  `voice-release-check ok=true` com metricas do turno 17 completas.
+- Repeticao a aproximadamente 4 m tambem ficou verde: turno 18 transcrito como
+  `Que horas são?`, intent local de hora, TTS/SAY_END completos,
+  `say_begin_count=2`/`say_end_count=2`, `585/585` chunks acumulados e zero
+  drops/falhas.
 
 ### Wake Word
 

@@ -2121,6 +2121,18 @@ continua dono do lifecycle/fila/contadores; `audio_service` ainda mantem
 superficie do loop legado sem alterar wake, VAD, captura, codec, Opus/PCM16,
 bridge ou ownership fisico do speaker.
 
+Validacao pos-flash do incremento: turno real curto (`ww -> fale uma frase
+curta`) manteve o contrato. Playback v2 fechou `say_begin_count=1` e
+`say_end_count=1`, recebeu/tocou `216/216` chunks SAY, fila final zero, zero
+drops, zero falhas de write/commit e `last_error=ESP_OK`. O
+`voice-release-check` retornou `ok=true`: Voice v2 pronto, Playback v2 SAY
+`active=false`, `begin/end=1/1`, metricas do turno `17` com
+`tts_completed=true`, `tts_say_end_sent=true` e texto visual em `2/2` paginas.
+Uma repeticao operacional a aproximadamente 4 m tambem passou: turno `18`
+transcrito como `Que horas são?`, `local_intent`, TTS completo e Playback v2
+acumulado em `say_begin_count=2`/`say_end_count=2`, `585/585` chunks
+recebidos/tocados, fila zero, zero drops e `voice-release-check ok=true`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
