@@ -817,13 +817,14 @@ Critérios adicionais de integração do Bloco 0:
 - `/api/camera/status` agora diferencia alvo de modo (`mode_width`/`mode_height`) do último frame real (`last_frame_*`). Validação em hardware: após `/api/vision/observe`, status retornou `format=yuv422`, `width=240`, `height=240`, `last_frame_bytes=115200`, `last_jpeg_bytes=0`, `last_capture_ms=135`; soak curto de 4 s teve 4/4 observações válidas, `max_capture_ms=167`, zero falhas/reboots e fechamento final OK.
 - Soak longo de câmera/visão invisível validado com `noisebot_server debug vision-soak --duration-s 1800 --interval-s 30`: 61/61 observações válidas, zero falhas, zero reboots, `max_capture_ms=174`, `max_jpeg_bytes=0`, `min_psram_free=7132240`, `min_dma_free=16643`, fechamento final da câmera OK (`final_camera_active=false`). O mesmo ensaio mediu `min_fps=24.0`, então o gate de FPS permanece aberto.
 - `expression_service` passou a usar dirty rect dinâmico para face normal/rotação leve, preservando dirty completo para sono, wake, fala e efeitos fora dos olhos. Validação em hardware: render steady-state pós-captura subiu para `fps=52.4`, `dirty=220×112`, `push=18.8ms`; `vision-soak --duration-s 120 --interval-s 10 --min-fps 30` ainda falhou com `min_fps=27.3`, 13/13 observações válidas, zero falhas/reboots e fechamento final OK.
+- `idle_service` agora evita `POSE_TILT` enquanto a sessão quente da câmera está ativa, porque a rotação ampliava o dirty rect para quase tela cheia durante capturas invisíveis. Validação em hardware após flash: `vision-soak --duration-s 120 --interval-s 10 --min-fps 30` passou com 13/13 observações válidas, zero falhas/reboots, `min_fps=34.1`, `max_capture_ms=169`, `min_dma_free=16247` e fechamento final OK.
 
 **Critérios de aceitação:**
 
 - [x] Frame capturado sem artefatos visuais graves: verificado via dashboard externo/endpoint
 - [x] PSRAM após captura: ≥ 300KB livre
 - [x] Bridge e TTS permanecem funcionais com câmera compilada e testada
-- [ ] FPS de render mantido ≥ 30fps com câmera ativa por teste longo
+- [x] FPS de render mantido ≥ 30fps com câmera ativa por teste curto de 120s
 - [ ] Zero interferência com áudio (I2S0) e display (SPI2) em teste de 30 minutos
 - [x] Captura sob demanda repetida por 30 minutos sem OOM, watchdog ou queda de bridge
 

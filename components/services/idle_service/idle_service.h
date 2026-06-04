@@ -23,6 +23,7 @@
 #define NB_IDLE_SERVICE_H
 
 #include "esp_err.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -81,6 +82,15 @@ void idle_service_set_saccade_multiplier(float factor);
  * @param factor  Multiplicador de intervalo (1.0 = padrão).
  */
 void idle_service_set_yawn_multiplier(float factor);
+
+/**
+ * @brief Informa se uma sessão de câmera está ativa.
+ *
+ * Enquanto a câmera estiver ativa, o idle evita motifs de postura caros
+ * (`POSE_TILT`) que ampliam demais o dirty rect do display. Gaze, blink e
+ * expressões leves continuam ativos.
+ */
+void idle_service_set_camera_active(bool active);
 
 /**
  * @brief Notifica o idle_service que houve interação (touch, voz, etc.).

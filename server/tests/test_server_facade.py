@@ -7914,6 +7914,35 @@ def test_firmware_expression_uses_dynamic_dirty_rect_for_normal_face() -> None:
     assert "mark_face_dirty_normal(left_cx, cy_l_f, face.open_l" in expression_cpp
 
 
+def test_firmware_idle_suppresses_pose_tilt_while_camera_active() -> None:
+    root = Path(__file__).resolve().parents[2]
+    idle_h = (
+        root
+        / "components"
+        / "services"
+        / "idle_service"
+        / "idle_service.h"
+    ).read_text(encoding="utf-8")
+    idle_c = (
+        root
+        / "components"
+        / "services"
+        / "idle_service"
+        / "idle_service.c"
+    ).read_text(encoding="utf-8")
+    boot_c = (root / "components" / "infra" / "boot_manager.c").read_text(
+        encoding="utf-8"
+    )
+
+    assert "idle_service_set_camera_active" in idle_h
+    assert "static volatile bool s_camera_active = false;" in idle_c
+    assert "s_camera_active ? IDLE_MOTIF_GAZE_H" in idle_c
+    assert "active && s_motif == IDLE_MOTIF_POSE_TILT" in idle_c
+    assert "expression_service_set_idle_rotation(0.0f, 0.0f);" in idle_c
+    assert "idle_service_set_camera_active(true);" in boot_c
+    assert "idle_service_set_camera_active(false);" in boot_c
+
+
 def test_firmware_render_metrics_contract_is_exposed() -> None:
     root = Path(__file__).resolve().parents[2]
     render_h = (

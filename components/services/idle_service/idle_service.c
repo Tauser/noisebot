@@ -31,7 +31,7 @@
  *   GAZE_H            : gaze horizontal esq ↔ dir (puro gaze, só em NEUTRAL)
  *   GAZE_V            : gaze vertical cima ↕ baixo (puro gaze, só em NEUTRAL)
  *   GAZE_CORNERS      : ciclo pelos 4 cantos (puro gaze, só em NEUTRAL)
- *   POSE_TILT         : rotação 30° via sprite (pura postura, só em NEUTRAL)
+ *   POSE_TILT         : rotação leve via sprite (pura postura, só em NEUTRAL)
  *   EXPR_CURIOUS_FLASH: flash CURIOUS + micro gaze (composto, só em NEUTRAL)
  *   EXPR_CURIOUS_HOLD : CURIOUS sustentado 3.5–5s (composto, só em NEUTRAL)
  *
@@ -168,6 +168,7 @@ static bool     s_was_idle          = false;
 static float    s_saccade_mult      = 1.0f;
 static float    s_yawn_mult         = 1.0f;
 static uint32_t s_involuntary_ms    = 0;
+static volatile bool s_camera_active = false;
 static portMUX_TYPE s_mult_mux      = portMUX_INITIALIZER_UNLOCKED;
 
 static nb_idle_alone_cb_t s_alone_cb = NULL;
@@ -274,7 +275,8 @@ static void begin_idle_motif(bool is_idle_now)
         else if (r < 0.45f) s_motif = IDLE_MOTIF_GAZE_V;
         else if (r < 0.60f) s_motif = IDLE_MOTIF_GAZE_CORNERS;
         else if (r < 0.85f) s_motif = IDLE_MOTIF_EXPR_CURIOUS_HOLD;
-        else                s_motif = IDLE_MOTIF_POSE_TILT;
+        else                s_motif = s_camera_active ? IDLE_MOTIF_GAZE_H
+                                                       : IDLE_MOTIF_POSE_TILT;
     } else {
         /* ATTENTIVE */
         if      (r < 0.25f) s_motif = IDLE_MOTIF_GAZE_H;
@@ -536,6 +538,15 @@ void idle_service_set_yawn_multiplier(float factor)
     taskENTER_CRITICAL(&s_mult_mux);
     s_yawn_mult = factor;
     taskEXIT_CRITICAL(&s_mult_mux);
+}
+
+void idle_service_set_camera_active(bool active)
+{
+    s_camera_active = active;
+    if (active && s_motif == IDLE_MOTIF_POSE_TILT) {
+        expression_service_set_idle_rotation(0.0f, 0.0f);
+        finish_idle_motif();
+    }
 }
 
 esp_err_t idle_service_init(void)

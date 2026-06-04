@@ -144,6 +144,13 @@ copying board-specific implementations from other products.
   measured steady-state render at `fps=52.4`, `dirty=220x112` and
   `push=18.8ms`; a 120s `vision-soak --min-fps 30` improved the valley but still
   failed at `min_fps=27.3`, so the long-run FPS gate remains open.
+- `idle_service` now suppresses `POSE_TILT` while the camera hot session is
+  active, keeping blink, gaze and light expressions available but avoiding the
+  near-full-screen dirty rectangle caused by rotated eyes during invisible
+  captures. Hardware validation after flash passed a 120s
+  `vision-soak --duration-s 120 --interval-s 10 --min-fps 30` with 13/13 valid
+  observations, zero failures/reboots, `min_fps=34.1`, `max_capture_ms=169`,
+  `min_dma_free=16247` and final camera closed.
 - Presence detection for Roadmap 13.1 is now present as on-demand shadow state
   in `vision_service`: `/api/vision/observe`, `/api/vision/status` and
   `/api/diag/snapshot` include a `presence` block, while
