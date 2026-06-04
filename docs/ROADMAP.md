@@ -3324,7 +3324,12 @@ e confiável antes de acionar comportamento autônomo.
 - [x] Camera, bridge e TTS operam no mesmo firmware sem erro imediato.
 - [x] Bridge v2 possui caminho de visão real para rosto em snapshot JPEG
       (`pip install .[vision]` no ambiente do bridge).
-- [ ] Métricas de visão registradas no snapshot de diagnóstico.
+- [x] Métricas de visão registradas no snapshot de diagnóstico:
+      `/api/diag/snapshot` inclui `vision.available` e a última observação
+      (`valid`, cena, resolução, JPEG, captura, brilho, contraste e movimento)
+      sem iniciar nova captura durante o dump. Validado em hardware em
+      2026-06-04 após `/api/vision/observe`: snapshot JSON parseável com
+      `vision.available=true`, `valid=true`, 640×480 e dump em SD.
 - [ ] Observação visual repetida por 30 minutos sem degradação de heap ou latência.
 
 ---

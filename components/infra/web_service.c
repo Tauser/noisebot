@@ -4283,32 +4283,31 @@ static esp_err_t handle_api_diag_snapshot(httpd_req_t *req)
                      ? ((count > n) ? count - n : 0u)
                      : ((head + LOG_RING_SIZE - n) % LOG_RING_SIZE);
 
-    char buf[768];
+    nb_vision_observation_t vision_obs;
+    vision_service_get_last(&vision_obs);
+    char vision_buf[384];
+    vision_observation_json(&vision_obs, vision_buf, sizeof(vision_buf));
+
+    char buf[1280];
     int pos = snprintf(buf, sizeof(buf),
         "{\"ok\":true,\"version\":\"%.31s\","
         "\"health\":%u,\"uptime_s\":%lu,"
         "\"config\":{\"volume\":%u},"
+        "\"vision\":{\"available\":%s,\"observation\":%s},"
         "\"recent_logs\":[",
         d->version,
         (unsigned)diagnostics_get_health_score(),
         (unsigned long)diagnostics_get_uptime_s(),
-        (unsigned)vol);
+        (unsigned)vol,
+        vision_service_is_available() ? "true" : "false",
+        vision_buf);
 
     for (uint32_t i = 0; i < n && pos < (int)sizeof(buf) - 8; i++) {
         uint32_t idx = (start + i) % LOG_RING_SIZE;
-        char line[LOG_LINE_MAX + 4];
-        /* Escapa aspas simples para JSON seguro. */
-        const char *src = s_log_ring[idx];
-        int lp = 0;
-        line[lp++] = '"';
-        for (int j = 0; src[j] && lp < (int)sizeof(line) - 3; j++) {
-            if (src[j] == '"' || src[j] == '\\') line[lp++] = '\\';
-            line[lp++] = src[j];
-        }
-        line[lp++] = '"';
-        line[lp]   = '\0';
+        char esc[LOG_LINE_MAX * 2];
+        json_escape(s_log_ring[idx], esc, sizeof(esc));
         pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos,
-                        "%s%s", (i > 0 ? "," : ""), line);
+                        "%s\"%s\"", (i > 0 ? "," : ""), esc);
     }
     if (pos < (int)sizeof(buf) - 4) {
         pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "]}");

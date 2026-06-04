@@ -124,6 +124,10 @@ copying board-specific implementations from other products.
 - `/api/vision/observe` exposes the first behavior-facing observation:
   resolution, JPEG size, capture time, luma average/min/max, contrast and a
   simple motion score.
+- `/api/diag/snapshot` includes the latest vision observation without taking a
+  new picture during the diagnostic dump. Hardware validation on 2026-06-04
+  returned parseable JSON with `vision.available=true`, `valid=true`, 640x480
+  observation metrics and an SD diagnostic dump.
 - The bridge v2 can answer local vision questions from that endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection
@@ -133,8 +137,6 @@ copying board-specific implementations from other products.
 
 - Run a 30 minute soak with repeated `/api/vision/observe` calls while bridge
   and TTS remain active.
-- Add vision metrics to `/api/diag` snapshots so field reports include the last
-  capture status.
 - Promote the basic observation into presence detection (`PRESENCE_DETECTED` /
   `PRESENCE_LOST`) only after shadow/lighting false positives are measured.
 - Keep MJPEG streaming out of the main product loop until snapshot mode has a
