@@ -2160,6 +2160,16 @@ por EOF com `NB_AUDIO_EVT_PLAYBACK_END`. Nao altera Voice v2, wake, VAD,
 captura, codec, fila SAY ou ownership do speaker; apenas tira o caminho local
 de asset do loop que tambem hospeda o pipeline v2.
 
+Validacao pos-flash do incremento `PLAY_ACTIVE`: baseline ficou
+`voice-release-check ok=true`. O turno real seguinte foi feito de longe, com TV
+e ruido de sala; o STT transcreveu de forma distorcida (`Uma frara que curta.`)
+mas marcou qualidade boa e o pipeline completou LLM/TTS/SAY_END. Playback v2
+fechou `say_begin_count=1`, `say_end_count=1`, `273/273` chunks SAY
+recebidos/tocados, fila zero, zero drops e zero falhas. O primeiro health
+pos-turno viu 1 pacote Opus egress residual; `codec-v2 egress-drain` drenou 1
+pacote e o `voice-release-check` final voltou `ok=true`, com Codec v2
+`healthy=true/status=ok`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

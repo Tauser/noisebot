@@ -286,6 +286,10 @@ Incremento atual da Fase N3:
 - Nova reducao firmware: `PLAY_ACTIVE` local (WAV/PCM raw) foi isolado em
   `audio_service_play_active_chunk()`. Isso preserva asset local, volume,
   write fisico e EOF, sem mudar Voice v2/wake/VAD/captura/codec/fila SAY.
+- Validacao pos-flash dessa reducao: baseline verde; turno real de longe com TV
+  e ruido de sala transcreveu torto (`Uma frara que curta.`), mas completou
+  LLM/TTS/SAY_END, Playback v2 fechou `273/273` chunks SAY, zero drops/falhas;
+  1 pacote egress residual foi drenado e o release-check final voltou `ok=true`.
 
 ### Wake Word
 
