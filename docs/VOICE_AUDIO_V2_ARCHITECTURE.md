@@ -257,11 +257,12 @@ Responsabilidade:
   (`tx_owner_frames=54188` / `tx_frames=54188`), ultimo TX `ESP_OK`, silencio em
   idle, `i2s_recoveries=0`, `dropped_frames=0`, Capture v2/Playback v2 sem
   drops e Codec v2 final `status=ok` apos drenar fila egress residual.
-- Estado N4.2: o handoff de speaker ja tem gate de owner via Playback v2 e
-  active-shadow no Audio IO v2. `speaker_handoff_active=true` significa que um
-  frame nao silencioso de Playback v2/SAY passou pelo gate armado com write
-  `ESP_OK`; nao significa que Playback v2 esteja chamando HAL diretamente.
-  `audio_service` continua dono unico da escrita fisica no speaker.
+- Estado N4.2 historico: o handoff de speaker ganhou gate de owner via Playback
+  v2 e active-shadow no Audio IO v2, ainda sem chamada HAL direta por Playback
+  v2 naquele momento. No fechamento tecnico posterior, SAY/probe passaram a
+  escrever pelo proprio Playback v2; `audio_service` permanece como loop
+  fisico/compatibilidade para WAV local, synth, silencio, recovery HAL, eventos
+  legados, wake rearm e rollback v1.
 
 Invariantes:
 
@@ -733,7 +734,7 @@ Entregas:
 - `POST /api/audio/io-v2/probe/stop` para encerrar manualmente;
 - metricas de chunks RX, TX silencio, drops, RMS/peak e heap.
 
-Implementacao atual:
+Implementacao inicial:
 
 - O probe e passivo: `audio_service` continua dono unico do `audio_hal`.
 - O v2 recebe copia do PCM16 ja condicionado (`s_sa_buf`) somente enquanto o
@@ -741,6 +742,8 @@ Implementacao atual:
 - O v2 contabiliza TX de silencio quando o loop v1 ja esta alimentando o
   speaker com silencio.
 - Nao ha task v2, disputa de I2S, bridge, wake, VAD, Opus ou playback v2.
+- Estado apos fechamento tecnico: Audio IO v2 continua sem assumir o HAL/I2S
+  fisico; SAY/probe do Playback v2 ja escrevem pelo proprio Playback v2.
 
 Aceite:
 
@@ -776,7 +779,7 @@ Entregas:
 - stop/cancel v2 limpa chunks pendentes;
 - teste de contrato garante que playback v2 nao chama `audio_hal`.
 
-Implementacao atual:
+Implementacao inicial:
 
 - `audio_playback_service_v2` gera tom sintetico PCM16 de bancada.
 - O servico v2 nao cria task e nao possui o I2S.
@@ -789,6 +792,11 @@ Implementacao atual:
   downlink SAY real: `audio_service` notifica enqueue/play/drop/cancel/idle,
   e `/api/audio/playback-v2` passou a expor contadores de fila SAY. Isso ainda
   nao troca a fila, nao toca HAL e nao altera o caminho de audio.
+- Estado apos fechamento tecnico: Playback v2 virou dono da fila/lifecycle SAY,
+  do estado ativo, do write SAY e do write do probe. O `audio_service` deixou de
+  ser o unico escritor do speaker nesses caminhos, mas segue como ponte de
+  compatibilidade para WAV local, synth, silencio, recovery, eventos legados e
+  rollback v1.
 
 Aceite:
 

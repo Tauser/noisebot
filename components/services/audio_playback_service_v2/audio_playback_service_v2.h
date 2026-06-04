@@ -1,8 +1,9 @@
 /*
  * audio_playback_service_v2.h - Playback v2 contract (Layer 4)
  *
- * Playback v2 probe does not own I2S. The active audio_service pulls synthetic
- * frames explicitly while the probe is running.
+ * Playback v2 owns the SAY/probe frame path and writes those frames through the
+ * speaker HAL. audio_service remains the compatibility loop for local WAV,
+ * synth, silence, HAL recovery, legacy events, wake rearm, and v1 rollback.
  */
 
 #ifndef NB_AUDIO_PLAYBACK_SERVICE_V2_H

@@ -1898,11 +1898,13 @@ Incremento N6.9 iniciado:
 Fechamento N6:
 
 - N6 esta fechada como ownership controlado de speaker/HAL por gate e janela
-  real, ainda sem chamada direta de `audio_hal_*` dentro de Playback v2.
-- O caminho fisico continua no callback fornecido por `audio_service`, mas
-  Playback v2 agora domina a fila SAY, preparo/commit/write por contrato,
-  readiness, real-arm, janela real, auto-disarm, contadores reais e
-  backpressure de accept.
+  real. Historicamente a janela N6 ainda usava callback de `audio_service`;
+  no fechamento tecnico posterior, SAY/probe passaram a escrever pelo proprio
+  Playback v2.
+- Playback v2 agora domina a fila SAY, preparo/commit/write, readiness,
+  real-arm, janela real, auto-disarm, contadores reais e backpressure de accept.
+  `audio_service` permanece ponte de compatibilidade para WAV local, synth,
+  silencio, recovery HAL, eventos legados e rollback v1.
 - Avanco operacional pos-N6: o CLI `debug playback-v2
   speaker-owner-real-window-gate` automatiza a sequencia
   `dry-run gate -> real-arm -> real-window delta -> disarm`, sempre tentando
