@@ -24,7 +24,7 @@
  * Threshold:
  *   threshold_on  = baseline × (1 + sensitivity)
  *   threshold_off = baseline × (1 + sensitivity × HYSTERESIS_FACTOR)
- *   HYSTERESIS_FACTOR = 0.6 (threshold_off é 60% do span de sensitivity)
+ *   HYSTERESIS_FACTOR = 0.4 (threshold_off é 40% do span de sensitivity)
  *
  * Thread safety:
  *   touch_service_update() deve ser chamado de uma única task.
@@ -95,10 +95,10 @@ void touch_service_update(uint32_t dt_ms);
 void touch_service_set_event_cb(nb_touch_event_cb_t cb);
 
 /**
- * @brief Ajusta o fator de sensibilidade [0.01, 1.0].
+ * @brief Ajusta o fator de sensibilidade [0.002, 1.0].
  *
  * threshold_on  = baseline × (1 + factor)
- * threshold_off = baseline × (1 + factor × 0.6)
+ * threshold_off = baseline × (1 + factor × 0.4)
  */
 void touch_service_set_sensitivity(float factor);
 

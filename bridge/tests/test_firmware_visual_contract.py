@@ -12,6 +12,7 @@ UI_OVERLAY_ASSETS = (
     / "ui_overlay_service"
     / "ui_overlay_assets.h"
 )
+BOOT_MANAGER = ROOT / "components" / "infra" / "boot_manager.c"
 STACKCHAN_TITLE_FONT = (
     ROOT
     / "components"
@@ -95,6 +96,15 @@ def test_config_brightness_endpoint_applies_led_runtime_only():
     assert "config_set_brightness(brightness)" in block
     assert "led_set_brightness(brightness);" in block
     assert "render_service_set_brightness(brightness);" not in block
+
+
+def test_touch_boot_uses_persisted_sensitivity():
+    src = BOOT_MANAGER.read_text(encoding="utf-8")
+
+    assert "config_get_touch_sensitivity()" in src
+    assert "touch_sens_pct / 100.0f" in src
+    assert "touch_service_set_sensitivity(sens_factor);" in src
+    assert "sens_factor = 0.5f" not in src
 
 
 def test_ui_overlay_uses_stackchan_montserrat_font_family():

@@ -992,22 +992,8 @@ static esp_err_t phase_hal(void)
 
     /* Touch (Etapa 2.2) */
     {
-        /*
-         * Threshold = baseline × (1 + sens_factor).
-         *
-         * Medições no hardware (GPIO2, pad de cobre):
-         *   baseline calibrado: ~72500–73000
-         *   idle real (drift):  ~73400–73500  (+1.3% acima do baseline)
-         *   toque forte:        ~300000–350000 (+340% acima do baseline)
-         *
-         * sens_factor = 0.5f → threshold = baseline × 1.5 ≈ 109000
-         *   - idle (~73490) fica bem abaixo → sem falsos disparos
-         *   - toque (~320000) fica muito acima → detecção confiável
-         *
-         * Referência: NodeBot (mesmo hardware) usa mean × 150% com sucesso.
-         * O drift de 1.3% não afeta com threshold de 50%.
-         */
-        float sens_factor = 0.5f;
+        uint8_t touch_sens_pct = config_get_touch_sensitivity();
+        float sens_factor = (float)touch_sens_pct / 100.0f;
 
         err = touch_service_init();
         if (err != ESP_OK) {
