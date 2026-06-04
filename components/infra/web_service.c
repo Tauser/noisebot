@@ -18,6 +18,7 @@
 #include "circadian_service.h"
 #include "idle_service.h"
 #include "motion_service.h"
+#include "render_service.h"
 #include "servo_hal.h"
 #include "conductor.h"
 #include "rhythm_service.h"
@@ -348,6 +349,29 @@ static esp_err_t handle_api_persona(httpd_req_t *req)
         "{\"warmth\":%.3f,\"energy\":%.3f,\"curiosity\":%.3f,\"trust\":%.3f}",
         (double)persona_get_warmth(), (double)persona_get_energy(),
         (double)persona_get_curiosity(), (double)persona_get_trust());
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_render_status(httpd_req_t *req)
+{
+    nb_render_metrics_t metrics;
+    render_service_get_metrics(&metrics);
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+             "{\"fps\":%.1f,\"avg_clear_ms\":%.2f,\"avg_layer_ms\":%.2f,"
+             "\"last_push_ms\":%.1f,\"dirty_w\":%ld,\"dirty_h\":%ld,"
+             "\"full_push_count\":%lu,\"partial_push_count\":%lu,"
+             "\"skipped_push_count\":%lu}",
+             (double)metrics.fps,
+             (double)metrics.avg_clear_ms,
+             (double)metrics.avg_layer_ms,
+             (double)metrics.last_push_ms,
+             (long)metrics.dirty_w,
+             (long)metrics.dirty_h,
+             (unsigned long)metrics.full_push_count,
+             (unsigned long)metrics.partial_push_count,
+             (unsigned long)metrics.skipped_push_count);
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);
 }
@@ -4491,6 +4515,7 @@ static esp_err_t handle_api_ai_get(httpd_req_t *req)
 
 static const httpd_uri_t k_uris[] = {
     { .uri = "/api/status",  .method = HTTP_GET,  .handler = handle_api_status },
+    { .uri = "/api/render/status", .method = HTTP_GET, .handler = handle_api_render_status },
     { .uri = "/api/persona", .method = HTTP_GET,  .handler = handle_api_persona },
     { .uri = "/api/camera/status", .method = HTTP_GET, .handler = handle_api_camera_status },
     { .uri = "/api/camera/mode", .method = HTTP_POST, .handler = handle_api_camera_mode },

@@ -117,8 +117,7 @@ def run_vision_presence_trial(
     errors: list[str] = []
 
     try:
-        baseline_diag = _get_json(base_url, "api/diag", timeout_s)
-        baseline_value = _float(baseline_diag.get("fps"))
+        baseline_value = _read_fps(base_url, timeout_s)
         if baseline_value > 0.0:
             baseline_fps = baseline_value
     except Exception as exc:
@@ -137,7 +136,6 @@ def run_vision_presence_trial(
                     errors.append("close_each_sample_not_ok")
             if fps_sample_delay_s > 0.0:
                 sleep(fps_sample_delay_s)
-            diag = _get_json(base_url, "api/diag", timeout_s)
             observation = payload.get("observation", {})
             presence = payload.get("presence", {})
 
@@ -171,7 +169,7 @@ def run_vision_presence_trial(
                     if first_absent_elapsed_ms is None:
                         first_absent_elapsed_ms = elapsed_ms
 
-            fps = _float(diag.get("fps"))
+            fps = _read_fps(base_url, timeout_s)
             if fps > 0.0:
                 min_fps = fps if min_fps is None else min(min_fps, fps)
                 if min_fps_required is not None and fps < min_fps_required:
@@ -276,6 +274,18 @@ def _get_json(base_url: str, path: str, timeout_s: float) -> dict[str, Any]:
 
 def _post_json(base_url: str, path: str, timeout_s: float) -> dict[str, Any]:
     return _request_json(base_url, path, timeout_s, method="POST")
+
+
+def _read_fps(base_url: str, timeout_s: float) -> float:
+    try:
+        render = _get_json(base_url, "api/render/status", timeout_s)
+        fps = _float(render.get("fps"))
+        if fps > 0.0:
+            return fps
+    except VisionPresenceTrialError:
+        pass
+    diag = _get_json(base_url, "api/diag", timeout_s)
+    return _float(diag.get("fps"))
 
 
 def _request_json(base_url: str, path: str, timeout_s: float, method: str) -> dict[str, Any]:

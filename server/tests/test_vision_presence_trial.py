@@ -18,7 +18,7 @@ def test_vision_presence_trial_detects_presence_latency(monkeypatch) -> None:
                 "observation": {"valid": True},
                 "presence": {"state": next(states), "score": next(scores)},
             }
-        if path == "api/diag":
+        if path == "api/render/status":
             return {"fps": 25.4}
         raise AssertionError(path)
 
@@ -65,7 +65,7 @@ def test_vision_presence_trial_flags_absence_false_positive(monkeypatch) -> None
                 "observation": {"valid": True},
                 "presence": {"state": "present", "score": 80},
             }
-        if path == "api/diag":
+        if path == "api/render/status":
             return {"fps": 25.0}
         raise AssertionError(path)
 

@@ -150,11 +150,28 @@ void render_service_set_brightness(uint8_t level);
 
 /* ── Métricas ────────────────────────────────────────────────────────────── */
 
+typedef struct {
+    float fps;
+    float avg_clear_ms;
+    float avg_layer_ms;
+    float last_push_ms;
+    int32_t dirty_w;
+    int32_t dirty_h;
+    uint32_t full_push_count;
+    uint32_t partial_push_count;
+    uint32_t skipped_push_count;
+} nb_render_metrics_t;
+
 /**
  * @brief Retorna o último FPS medido. Atualizado a cada 5s. Zero antes do
  *        primeiro intervalo completo.
  */
 float render_service_get_fps(void);
+
+/**
+ * @brief Retorna o último snapshot de métricas do pipeline de render.
+ */
+void render_service_get_metrics(nb_render_metrics_t *out);
 
 #ifdef __cplusplus
 }

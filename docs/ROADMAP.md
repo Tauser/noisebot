@@ -3405,6 +3405,20 @@ e confiável antes de acionar comportamento autônomo.
   mostrou `baseline_fps=22.9` e `min_fps=22.9`: ausência continuou sem falso
   positivo, mas o gate de FPS está bloqueado pelo baseline atual antes de
   concluir a presença contínua.
+- `/api/render/status` expõe métricas vivas do `render_service` para separar FPS
+  de diagnóstico defasado de FPS real do pipeline: FPS, tempos de clear/layer,
+  último push, tamanho dirty e contadores de push completo/parcial/pulado.
+- O gargalo de baseline foi medido em hardware em 2026-06-04: com threshold de
+  push completo em 85%, a face EMO sujava 320x240, usava push completo em todos
+  os frames, `push=42.4ms` e `fps=22.9`. Com threshold em 95%, a mesma cena usa
+  push parcial 305x228, `push~=36ms`, `baseline_fps=27.1` e libera o gate de
+  FPS para trials pontuais.
+- Após essa correção, o cenário `absence` com
+  `--close-each-sample --fps-sample-delay-s 4 --min-fps 25` passou em hardware:
+  3/3 observações válidas, zero falsos positivos, score máximo 42,
+  `baseline_fps=27.1`, `min_fps=26.7` e câmera fechada no final. Os critérios
+  formais continuam abertos até validar presença real, perda após ausência longa
+  e iluminação variável.
 
 **Integração:**
 

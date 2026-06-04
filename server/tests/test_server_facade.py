@@ -7769,6 +7769,31 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert "vision_service_get_presence(&presence)" in web_c
 
 
+def test_firmware_render_metrics_contract_is_exposed() -> None:
+    root = Path(__file__).resolve().parents[2]
+    render_h = (
+        root
+        / "components"
+        / "services"
+        / "render_service"
+        / "render_service.h"
+    ).read_text(encoding="utf-8")
+    render_c = (
+        root
+        / "components"
+        / "services"
+        / "render_service"
+        / "render_service.cpp"
+    ).read_text(encoding="utf-8")
+    web_c = (root / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+
+    assert "nb_render_metrics_t" in render_h
+    assert "render_service_get_metrics" in render_h
+    assert "s_full_push_count" in render_c
+    assert "avg_clear_ms" in web_c
+    assert '"/api/render/status"' in web_c
+
+
 def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
     soak = importlib.import_module("noisebot_server.internal.ops.vision_soak")
 

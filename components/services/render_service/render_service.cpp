@@ -46,10 +46,10 @@
 
 /*
  * Limiar para decidir entre push parcial (row-by-row) e push completo.
- * Se dirty cobre >= 85% do display, pushSprite() único é mais eficiente
+ * Se dirty cobre >= 95% do display, pushSprite() único é mais eficiente
  * que iterar linha por linha.
  */
-#define FULL_PUSH_THRESHOLD_PCT   85
+#define FULL_PUSH_THRESHOLD_PCT   95
 
 /* ── Tipos internos ──────────────────────────────────────────────────────── */
 
@@ -100,6 +100,11 @@ static volatile int32_t   s_last_push_us100 = 0;
 static volatile int32_t   s_last_dirty_w    = 0;
 static volatile int32_t   s_last_dirty_h    = 0;
 static volatile float     s_last_fps        = 0.0f;
+static volatile float     s_last_clear_ms   = 0.0f;
+static volatile float     s_last_layer_ms   = 0.0f;
+static volatile uint32_t  s_full_push_count = 0;
+static volatile uint32_t  s_partial_push_count = 0;
+static volatile uint32_t  s_skipped_push_count = 0;
 static volatile uint8_t   s_brightness      = 255U;
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
@@ -157,6 +162,11 @@ static void apply_software_brightness(LGFX_Sprite *canvas)
     }
 }
 
+static void increment_counter(volatile uint32_t *counter)
+{
+    *counter = *counter + 1U;
+}
+
 /* ── Push task (Core 1) ──────────────────────────────────────────────────── */
 
 static void push_task(void *arg)
@@ -176,6 +186,7 @@ static void push_task(void *arg)
             s_last_push_us100 = 0;
             s_last_dirty_w    = 0;
             s_last_dirty_h    = 0;
+            increment_counter(&s_skipped_push_count);
         } else {
             int dw = dr->x1 - dr->x0;
             int dh = dr->y1 - dr->y0;
@@ -186,11 +197,13 @@ static void push_task(void *arg)
                 s_buf[fi]->pushSprite(0, 0);
                 s_last_dirty_w = NB_DISP_WIDTH;
                 s_last_dirty_h = NB_DISP_HEIGHT;
+                increment_counter(&s_full_push_count);
             } else {
                 /* Push parcial: apenas o bounding box sujo */
                 push_dirty_region(s_buf[fi], dr->x0, dr->y0, dr->x1, dr->y1);
                 s_last_dirty_w = dw;
                 s_last_dirty_h = dh;
+                increment_counter(&s_partial_push_count);
             }
 
             s_last_push_us100 = (int32_t)((esp_timer_get_time() - t0) / 100);
@@ -296,6 +309,8 @@ static void render_task(void *arg)
             int   dh           = s_last_dirty_h;
 
             s_last_fps = fps;
+            s_last_clear_ms = avg_clear_ms;
+            s_last_layer_ms = avg_layer_ms;
             ESP_LOGI(TAG,
                      "fps=%.1f  clear=%.2fms  layer=%.2fms  push=%.1fms"
                      "  dirty=%dx%d  PSRAM_free=%uKB",
@@ -519,6 +534,20 @@ void render_service_set_brightness(uint8_t level)
 float render_service_get_fps(void)
 {
     return s_last_fps;
+}
+
+void render_service_get_metrics(nb_render_metrics_t *out)
+{
+    if (!out) return;
+    out->fps = s_last_fps;
+    out->avg_clear_ms = s_last_clear_ms;
+    out->avg_layer_ms = s_last_layer_ms;
+    out->last_push_ms = (float)s_last_push_us100 / 10.0f;
+    out->dirty_w = s_last_dirty_w;
+    out->dirty_h = s_last_dirty_h;
+    out->full_push_count = s_full_push_count;
+    out->partial_push_count = s_partial_push_count;
+    out->skipped_push_count = s_skipped_push_count;
 }
 
 } /* extern "C" */

@@ -152,7 +152,16 @@ copying board-specific implementations from other products.
   A 2026-06-04 run with `--close-each-sample --fps-sample-delay-s 2 --min-fps 25`
   showed `baseline_fps=22.9` and `min_fps=22.9`, confirming the current FPS gate
   is blocked before attributing additional loss to vision polling.
-- The bridge v2 can answer local vision questions from that endpoint without
+- `/api/render/status` now exposes live render metrics for camera/presence
+  trials: FPS, clear/layer/push time, dirty rect size and full/partial/skipped
+  push counters. Hardware evidence on 2026-06-04 showed the old 85% full-push
+  threshold forcing full 320x240 pushes at `fps=22.9` and `push=42.4ms`; raising
+  it to 95% keeps the face path on partial 305x228 pushes at `baseline_fps=27.1`.
+- With the render metric endpoint and the 95% threshold, a 2026-06-04 absence
+  trial using `--close-each-sample --fps-sample-delay-s 4 --min-fps 25` passed:
+  3/3 valid observations, zero false positives, max presence score 42,
+  `min_fps=26.7`, final presence state `absent` and final camera closed.
+- The bridge v2 can answer local vision questions from the vision endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection
   and TTS playback working together in the same firmware build.
