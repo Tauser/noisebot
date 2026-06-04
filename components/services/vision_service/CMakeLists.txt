@@ -4,6 +4,7 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES
         camera_service
+        infra
         esp_timer
         freertos
         log

@@ -7740,6 +7740,35 @@ def test_server_vision_face_center_normalization() -> None:
     assert analysis.face_center_norm_y == -0.25
 
 
+def test_firmware_vision_presence_contract_is_exposed() -> None:
+    root = Path(__file__).resolve().parents[2]
+    events_h = (root / "components" / "infra" / "nb_events.h").read_text(encoding="utf-8")
+    vision_h = (
+        root
+        / "components"
+        / "services"
+        / "vision_service"
+        / "vision_service.h"
+    ).read_text(encoding="utf-8")
+    vision_c = (
+        root
+        / "components"
+        / "services"
+        / "vision_service"
+        / "vision_service.c"
+    ).read_text(encoding="utf-8")
+    web_c = (root / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+
+    assert "NB_EVT_PRESENCE_DETECTED" in events_h
+    assert "NB_EVT_PRESENCE_LOST" in events_h
+    assert "nb_vision_presence_status_t" in vision_h
+    assert "vision_service_evaluate_presence" in vision_h
+    assert "NB_VISION_PRESENCE_LOST_MS 120000U" in vision_c
+    assert "nb_event_publish_async(&evt)" in vision_c
+    assert "vision_presence_json" in web_c
+    assert "vision_service_get_presence(&presence)" in web_c
+
+
 def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
     soak = importlib.import_module("noisebot_server.internal.ops.vision_soak")
 

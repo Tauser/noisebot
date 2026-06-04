@@ -132,6 +132,12 @@ copying board-specific implementations from other products.
   records failures, reboots, FPS, heap and capture latency. Hardware validation
   on 2026-06-04 ran for 1801.5s with 59/59 valid observations, zero failures,
   zero reboots, final camera closed and Voice Audio v2 release-check still green.
+- Presence detection for Roadmap 13.1 is now present as on-demand shadow state
+  in `vision_service`: `/api/vision/observe`, `/api/vision/status` and
+  `/api/diag/snapshot` include a `presence` block, while
+  `NB_EVT_PRESENCE_DETECTED`/`NB_EVT_PRESENCE_LOST` are emitted only on debounced
+  transitions. Continuous capture and behavior/attention integration remain
+  gated on false-positive measurements.
 - The bridge v2 can answer local vision questions from that endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection
@@ -140,6 +146,7 @@ copying board-specific implementations from other products.
 ## Open camera/vision work
 
 - Promote the basic observation into presence detection (`PRESENCE_DETECTED` /
-  `PRESENCE_LOST`) only after shadow/lighting false positives are measured.
+  `PRESENCE_LOST`) continuous mode only after shadow/lighting false positives
+  are measured.
 - Keep MJPEG streaming out of the main product loop until snapshot mode has a
   long-run memory profile.

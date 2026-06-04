@@ -597,6 +597,29 @@ static void vision_observation_json(const nb_vision_observation_t *obs,
              (unsigned)obs->motion_score);
 }
 
+static void vision_presence_json(const nb_vision_presence_status_t *presence,
+                                 char *buf,
+                                 size_t buf_len)
+{
+    if (!presence || !buf || buf_len == 0U) {
+        return;
+    }
+
+    snprintf(buf, buf_len,
+             "{\"state\":\"%s\",\"score\":%u,\"candidate_since_ms\":%lu,"
+             "\"absent_since_ms\":%lu,\"last_transition_ms\":%lu,"
+             "\"stable_samples\":%lu,\"absent_samples\":%lu,"
+             "\"transition_count\":%lu}",
+             vision_service_presence_state_name(presence->state),
+             (unsigned)presence->score,
+             (unsigned long)presence->candidate_since_ms,
+             (unsigned long)presence->absent_since_ms,
+             (unsigned long)presence->last_transition_ms,
+             (unsigned long)presence->stable_samples,
+             (unsigned long)presence->absent_samples,
+             (unsigned long)presence->transition_count);
+}
+
 static esp_err_t handle_api_vision_observe(httpd_req_t *req)
 {
     if (audio_service_is_busy()) {
@@ -617,10 +640,16 @@ static esp_err_t handle_api_vision_observe(httpd_req_t *req)
     }
 
     char obs_buf[384];
+    nb_vision_presence_status_t presence;
+    vision_service_get_presence(&presence);
+    char presence_buf[256];
     vision_observation_json(&obs, obs_buf, sizeof(obs_buf));
+    vision_presence_json(&presence, presence_buf, sizeof(presence_buf));
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr_chunk(req, "{\"ok\":true,\"observation\":");
     httpd_resp_sendstr_chunk(req, obs_buf);
+    httpd_resp_sendstr_chunk(req, ",\"presence\":");
+    httpd_resp_sendstr_chunk(req, presence_buf);
     httpd_resp_sendstr_chunk(req, "}");
     return httpd_resp_sendstr_chunk(req, NULL);
 }
@@ -630,12 +659,18 @@ static esp_err_t handle_api_vision_status(httpd_req_t *req)
     nb_vision_observation_t obs;
     vision_service_get_last(&obs);
     char obs_buf[384];
+    nb_vision_presence_status_t presence;
+    vision_service_get_presence(&presence);
+    char presence_buf[256];
     vision_observation_json(&obs, obs_buf, sizeof(obs_buf));
+    vision_presence_json(&presence, presence_buf, sizeof(presence_buf));
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr_chunk(req, "{\"available\":");
     httpd_resp_sendstr_chunk(req, vision_service_is_available() ? "true" : "false");
     httpd_resp_sendstr_chunk(req, ",\"observation\":");
     httpd_resp_sendstr_chunk(req, obs_buf);
+    httpd_resp_sendstr_chunk(req, ",\"presence\":");
+    httpd_resp_sendstr_chunk(req, presence_buf);
     httpd_resp_sendstr_chunk(req, "}");
     return httpd_resp_sendstr_chunk(req, NULL);
 }
@@ -4286,21 +4321,26 @@ static esp_err_t handle_api_diag_snapshot(httpd_req_t *req)
     nb_vision_observation_t vision_obs;
     vision_service_get_last(&vision_obs);
     char vision_buf[384];
+    nb_vision_presence_status_t vision_presence;
+    vision_service_get_presence(&vision_presence);
+    char vision_presence_buf[256];
     vision_observation_json(&vision_obs, vision_buf, sizeof(vision_buf));
+    vision_presence_json(&vision_presence, vision_presence_buf, sizeof(vision_presence_buf));
 
-    char buf[1280];
+    char buf[1536];
     int pos = snprintf(buf, sizeof(buf),
         "{\"ok\":true,\"version\":\"%.31s\","
         "\"health\":%u,\"uptime_s\":%lu,"
         "\"config\":{\"volume\":%u},"
-        "\"vision\":{\"available\":%s,\"observation\":%s},"
+        "\"vision\":{\"available\":%s,\"observation\":%s,\"presence\":%s},"
         "\"recent_logs\":[",
         d->version,
         (unsigned)diagnostics_get_health_score(),
         (unsigned long)diagnostics_get_uptime_s(),
         (unsigned)vol,
         vision_service_is_available() ? "true" : "false",
-        vision_buf);
+        vision_buf,
+        vision_presence_buf);
 
     for (uint32_t i = 0; i < n && pos < (int)sizeof(buf) - 8; i++) {
         uint32_t idx = (start + i) % LOG_RING_SIZE;

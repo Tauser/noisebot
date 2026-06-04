@@ -41,11 +41,33 @@ typedef struct {
     nb_vision_scene_t scene;
 } nb_vision_observation_t;
 
+typedef enum {
+    NB_VISION_PRESENCE_UNKNOWN = 0,
+    NB_VISION_PRESENCE_ABSENT,
+    NB_VISION_PRESENCE_CANDIDATE,
+    NB_VISION_PRESENCE_PRESENT,
+} nb_vision_presence_state_t;
+
+typedef struct {
+    nb_vision_presence_state_t state;
+    uint8_t score;
+    uint32_t candidate_since_ms;
+    uint32_t absent_since_ms;
+    uint32_t last_transition_ms;
+    uint32_t stable_samples;
+    uint32_t absent_samples;
+    uint32_t transition_count;
+} nb_vision_presence_status_t;
+
 esp_err_t vision_service_init(void);
 bool vision_service_is_available(void);
 esp_err_t vision_service_observe(nb_vision_observation_t *out);
+esp_err_t vision_service_evaluate_presence(const nb_vision_observation_t *obs,
+                                           nb_vision_presence_status_t *out);
 void vision_service_get_last(nb_vision_observation_t *out);
+void vision_service_get_presence(nb_vision_presence_status_t *out);
 const char *vision_service_scene_name(nb_vision_scene_t scene);
+const char *vision_service_presence_state_name(nb_vision_presence_state_t state);
 
 #ifdef __cplusplus
 }

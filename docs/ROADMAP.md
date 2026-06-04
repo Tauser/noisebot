@@ -3362,6 +3362,20 @@ e confiável antes de acionar comportamento autônomo.
   - Frame de referência atualizado apenas quando a cena estiver estável.
   - Debounce temporal para não confundir sombra/iluminação com presença.
 
+**Implementado / em validação:**
+
+- `vision_service` mantém `nb_vision_presence_status_t` com estado
+  `absent`/`candidate`/`present`, score, amostras estáveis, amostras ausentes e
+  contador de transições.
+- `/api/vision/observe`, `/api/vision/status` e `/api/diag/snapshot` expõem o
+  bloco `presence` sem ativar captura contínua.
+- `NB_EVT_PRESENCE_DETECTED` e `NB_EVT_PRESENCE_LOST` foram adicionados ao
+  event bus; publicação acontece apenas em transições, com payload `data.u32`
+  contendo o score.
+- A detecção ainda roda sob demanda junto com observações explícitas. O loop
+  contínuo e a integração com `attention_service`/comportamento permanecem
+  pendentes até medir falsos positivos de sombra/iluminação.
+
 **Integração:**
 
 - Substitui o timer cego do `NB_EMOT_EVT_IDLE_LONG` por confirmação visual de ausência.
