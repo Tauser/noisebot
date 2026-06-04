@@ -54,6 +54,7 @@ class VisionPresenceTrialResult:
     start_delay_s: float
     fps_sample_delay_s: float
     close_each_sample: bool
+    reset_presence: bool
     min_fps_required: float | None
     max_latency_ms: float | None
     require_initial_state: str | None
@@ -98,6 +99,7 @@ class VisionPresenceTrialResult:
             "start_delay_s": round(self.start_delay_s, 3),
             "fps_sample_delay_s": round(self.fps_sample_delay_s, 3),
             "close_each_sample": self.close_each_sample,
+            "reset_presence": self.reset_presence,
             "min_fps_required": self.min_fps_required,
             "max_latency_ms": self.max_latency_ms,
             "require_initial_state": self.require_initial_state,
@@ -118,6 +120,7 @@ def run_vision_presence_trial(
     start_delay_s: float = 0.0,
     fps_sample_delay_s: float = 0.0,
     close_each_sample: bool = False,
+    reset_presence: bool = False,
     min_fps_required: float | None = None,
     require_initial_state: str | None = None,
     require_final_state: str | None = None,
@@ -167,6 +170,16 @@ def run_vision_presence_trial(
     baseline_fps: float | None = None
     min_fps: float | None = None
     errors: list[str] = []
+
+    if reset_presence:
+        try:
+            reset_payload = _post_json(base_url, "api/vision/presence/reset", timeout_s)
+            if not reset_payload.get("ok", False):
+                failures += 1
+                errors.append("reset_presence_not_ok")
+        except Exception as exc:
+            failures += 1
+            errors.append(f"reset_presence:{exc}")
 
     try:
         baseline_value = _read_fps(base_url, timeout_s)
@@ -279,6 +292,10 @@ def run_vision_presence_trial(
         latency_ok = first_present_elapsed_ms is not None and _positive_delta(detected_event_delta)
         if max_latency_ms is not None:
             latency_ok = latency_ok and first_present_elapsed_ms <= max_latency_ms
+            if first_present_elapsed_ms is not None and first_present_elapsed_ms > max_latency_ms:
+                errors.append(
+                    f"presence_latency_ms:{first_present_elapsed_ms:.1f}>{max_latency_ms:.1f}"
+                )
         if not _positive_delta(detected_event_delta):
             errors.append("presence_detected_event_not_observed")
     elif mode == "lost":
@@ -289,6 +306,10 @@ def run_vision_presence_trial(
         )
         if max_latency_ms is not None:
             latency_ok = latency_ok and first_absent_elapsed_ms <= max_latency_ms
+            if first_absent_elapsed_ms is not None and first_absent_elapsed_ms > max_latency_ms:
+                errors.append(
+                    f"lost_latency_ms:{first_absent_elapsed_ms:.1f}>{max_latency_ms:.1f}"
+                )
         if lost_transition_count == 0:
             errors.append("presence_lost_transition_not_observed")
         if not _positive_delta(lost_event_delta):
@@ -352,6 +373,7 @@ def run_vision_presence_trial(
         start_delay_s=start_delay_s,
         fps_sample_delay_s=fps_sample_delay_s,
         close_each_sample=close_each_sample,
+        reset_presence=reset_presence,
         min_fps_required=min_fps_required,
         max_latency_ms=max_latency_ms,
         require_initial_state=require_initial_state,
@@ -385,6 +407,7 @@ def format_vision_presence_trial_markdown(result: VisionPresenceTrialResult) -> 
         f"- Delay antes da medição: {result.start_delay_s} s",
         f"- Delay de amostragem FPS: {result.fps_sample_delay_s} s",
         f"- Fecha câmera a cada amostra: {result.close_each_sample}",
+        f"- Reseta presença antes do trial: {result.reset_presence}",
         f"- FPS mínimo exigido: {result.min_fps_required}",
         f"- Latência máxima exigida: {result.max_latency_ms} ms",
         f"- Estado inicial exigido: {result.require_initial_state}",

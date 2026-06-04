@@ -24,6 +24,9 @@ static nb_vision_presence_status_t s_presence = {
 #define NB_VISION_PRESENCE_DETECTED_MS 300U
 #define NB_VISION_PRESENCE_LOST_MS 120000U
 #define NB_VISION_PRESENCE_SCORE_DETECTED 55U
+#define NB_VISION_PRESENCE_SCORE_STRONG 80U
+#define NB_VISION_PRESENCE_RETAIN_MS 2500U
+#define NB_VISION_PRESENCE_MIN_SAMPLES 2U
 
 static nb_vision_scene_t classify_scene(const nb_camera_scene_metrics_t *m)
 {
@@ -227,14 +230,26 @@ esp_err_t vision_service_evaluate_presence(const nb_vision_observation_t *obs,
     bool publish_detected = false;
     bool publish_lost = false;
     uint8_t score = presence_score(obs);
+    uint8_t event_score = score;
     uint32_t now_ms = obs->timestamp_ms;
     if (now_ms == 0U) {
         now_ms = (uint32_t)(esp_timer_get_time() / 1000LL);
     }
-    bool candidate = score >= NB_VISION_PRESENCE_SCORE_DETECTED;
+    bool raw_candidate = score >= NB_VISION_PRESENCE_SCORE_DETECTED;
 
     if (s_mutex && xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         status = s_presence;
+        uint8_t previous_score = status.score;
+        bool retained_candidate =
+            !raw_candidate &&
+            status.state == NB_VISION_PRESENCE_CANDIDATE &&
+            status.candidate_since_ms != 0U &&
+            previous_score >= NB_VISION_PRESENCE_SCORE_STRONG &&
+            (now_ms - status.candidate_since_ms) <= NB_VISION_PRESENCE_RETAIN_MS;
+        bool candidate = raw_candidate || retained_candidate;
+        if (retained_candidate) {
+            event_score = previous_score;
+        }
         status.score = score;
 
         if (candidate) {
@@ -245,6 +260,7 @@ esp_err_t vision_service_evaluate_presence(const nb_vision_observation_t *obs,
             status.absent_samples = 0U;
             status.stable_samples++;
             if (status.state != NB_VISION_PRESENCE_PRESENT &&
+                status.stable_samples >= NB_VISION_PRESENCE_MIN_SAMPLES &&
                 (now_ms - status.candidate_since_ms) >= NB_VISION_PRESENCE_DETECTED_MS) {
                 status.state = NB_VISION_PRESENCE_PRESENT;
                 status.last_transition_ms = now_ms;
@@ -278,7 +294,7 @@ esp_err_t vision_service_evaluate_presence(const nb_vision_observation_t *obs,
     }
 
     if (publish_detected) {
-        if (publish_presence_event(NB_EVT_PRESENCE_DETECTED, score, now_ms) == ESP_OK) {
+        if (publish_presence_event(NB_EVT_PRESENCE_DETECTED, event_score, now_ms) == ESP_OK) {
             record_presence_event_publish(NB_EVT_PRESENCE_DETECTED, now_ms);
         }
     } else if (publish_lost) {
@@ -317,5 +333,14 @@ void vision_service_get_presence(nb_vision_presence_status_t *out)
     } else {
         memset(out, 0, sizeof(*out));
         out->state = NB_VISION_PRESENCE_UNKNOWN;
+    }
+}
+
+void vision_service_reset_presence(void)
+{
+    if (s_mutex && xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        memset(&s_presence, 0, sizeof(s_presence));
+        s_presence.state = NB_VISION_PRESENCE_ABSENT;
+        xSemaphoreGive(s_mutex);
     }
 }

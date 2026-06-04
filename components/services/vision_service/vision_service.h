@@ -69,6 +69,7 @@ esp_err_t vision_service_evaluate_presence(const nb_vision_observation_t *obs,
                                            nb_vision_presence_status_t *out);
 void vision_service_get_last(nb_vision_observation_t *out);
 void vision_service_get_presence(nb_vision_presence_status_t *out);
+void vision_service_reset_presence(void);
 const char *vision_service_scene_name(nb_vision_scene_t scene);
 const char *vision_service_presence_state_name(nb_vision_presence_state_t state);
 

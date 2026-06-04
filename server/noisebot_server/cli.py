@@ -141,6 +141,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     vision_presence.add_argument("--start-delay-s", type=float, default=0.0)
     vision_presence.add_argument("--fps-sample-delay-s", type=float, default=0.0)
     vision_presence.add_argument("--close-each-sample", action="store_true")
+    vision_presence.add_argument("--reset-presence", action="store_true")
     vision_presence.add_argument("--min-fps", type=float, default=None)
     vision_presence.add_argument(
         "--require-initial-state",
@@ -737,6 +738,7 @@ def run_debug_command(args: argparse.Namespace) -> None:
             start_delay_s=args.start_delay_s,
             fps_sample_delay_s=args.fps_sample_delay_s,
             close_each_sample=args.close_each_sample,
+            reset_presence=args.reset_presence,
             min_fps_required=args.min_fps,
             require_initial_state=args.require_initial_state,
             require_final_state=args.require_final_state,

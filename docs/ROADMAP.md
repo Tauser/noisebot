@@ -3444,6 +3444,23 @@ e confiável antes de acionar comportamento autônomo.
   a janela de latência só depois do atraso. Com isso, o operador pode disparar o
   comando, entrar no campo da câmera durante o delay e medir `PRESENCE_DETECTED`
   a partir do fim da contagem, evitando misturar tempo de preparo com latência.
+- Comparação com StackChan em 2026-06-04: a implementação local de câmera dele
+  usa dispositivo V4L2/`esp_video`, mantém streaming/buffers ativos e consome
+  frames continuamente (`Capture()` descarta buffers iniciais; `StreamCaptures()`
+  lê frame corrente). Não há detector de presença embarcado equivalente; a lição
+  aplicável ao NoiseBot é manter estado visual quente/contínuo em vez de depender
+  de snapshots isolados.
+- `vision_service` ganhou retenção curta de candidato inspirada nesse modelo de
+  estado sustentado: picos fortes (`score>=80`) mantêm `candidate` por até 2,5s
+  e ainda exigem 2 amostras antes de publicar `PRESENCE_DETECTED`. Também foi
+  adicionado `/api/vision/presence/reset` para limpar estado entre trials.
+- Hardware após essa mudança: trial `absence` com `--reset-presence` passou
+  (3/3 válidas, zero falsos positivos, `max_score=48`, `min_fps=25.2`). Trial
+  `presence` com entrada controlada publicou `PRESENCE_DETECTED` em 1371ms
+  quando houve pico `score=86`, mas ainda falhou o critério de 500ms; outro
+  trial sem pico forte ficou ausente (`max_score=48`). Conclusão: a heurística
+  melhora sustentação, mas o critério <500ms depende de modo contínuo/stream-like
+  semelhante ao StackChan, não de captura sob demanda.
 
 **Integração:**
 

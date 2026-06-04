@@ -185,6 +185,20 @@ copying board-specific implementations from other products.
   starts latency measurement after the delay. Use it to start the command first,
   enter the camera field during the delay, and measure `PRESENCE_DETECTED`
   without counting operator preparation time.
+- StackChan comparison on 2026-06-04: its local camera path uses
+  V4L2/`esp_video` with streaming buffers kept active; `Capture()` discards early
+  buffers and `StreamCaptures()` reads the current frame. It does not provide an
+  equivalent embedded presence detector, but it does point NoiseBot toward a
+  warm continuous vision loop instead of isolated snapshots for sub-500ms
+  presence latency.
+- NoiseBot now retains a strong presence candidate (`score>=80`) for up to 2.5s
+  and still requires 2 samples before publishing `PRESENCE_DETECTED`. The
+  firmware also exposes `/api/vision/presence/reset` for clean validation runs.
+  Hardware validation after the change: absence with `--reset-presence` passed
+  with 3/3 valid observations, zero false positives, `max_score=48` and
+  `min_fps=25.2`; a controlled presence run published `PRESENCE_DETECTED` at
+  1371ms when score peaked at 86, so correctness improved but the 500ms latency
+  criterion remains blocked by snapshot capture latency.
 - The bridge v2 can answer local vision questions from the vision endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection

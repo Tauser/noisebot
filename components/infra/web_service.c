@@ -703,6 +703,13 @@ static esp_err_t handle_api_vision_status(httpd_req_t *req)
     return httpd_resp_sendstr_chunk(req, NULL);
 }
 
+static esp_err_t handle_api_vision_presence_reset(httpd_req_t *req)
+{
+    vision_service_reset_presence();
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}");
+}
+
 static esp_err_t handle_api_config_get(httpd_req_t *req)
 {
     char buf[384];
@@ -4527,6 +4534,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/camera/snapshot", .method = HTTP_GET, .handler = handle_api_camera_snapshot },
     { .uri = "/api/vision/status", .method = HTTP_GET, .handler = handle_api_vision_status },
     { .uri = "/api/vision/observe", .method = HTTP_GET, .handler = handle_api_vision_observe },
+    { .uri = "/api/vision/presence/reset", .method = HTTP_POST, .handler = handle_api_vision_presence_reset },
     { .uri = "/api/config",  .method = HTTP_GET,  .handler = handle_api_config_get },
     { .uri = "/api/config",  .method = HTTP_POST, .handler = handle_api_config_post },
     { .uri = "/api/command",        .method = HTTP_POST,   .handler = handle_api_command },

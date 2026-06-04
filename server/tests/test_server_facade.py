@@ -7763,13 +7763,19 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert "NB_EVT_PRESENCE_LOST" in events_h
     assert "nb_vision_presence_status_t" in vision_h
     assert "vision_service_evaluate_presence" in vision_h
+    assert "vision_service_reset_presence" in vision_h
     assert "detected_event_count" in vision_h
     assert "lost_event_count" in vision_h
     assert "NB_VISION_PRESENCE_LOST_MS 120000U" in vision_c
     assert "nb_event_publish_async(&evt)" in vision_c
     assert "record_presence_event_publish" in vision_c
+    assert "NB_VISION_PRESENCE_SCORE_STRONG 80U" in vision_c
+    assert "NB_VISION_PRESENCE_RETAIN_MS 2500U" in vision_c
+    assert "NB_VISION_PRESENCE_MIN_SAMPLES 2U" in vision_c
+    assert "vision_service_reset_presence" in vision_c
     assert "vision_presence_json" in web_c
     assert "vision_service_get_presence(&presence)" in web_c
+    assert '"/api/vision/presence/reset"' in web_c
     assert "detected_event_count" in web_c
     assert "lost_event_count" in web_c
 
