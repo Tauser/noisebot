@@ -3434,6 +3434,12 @@ e confiável antes de acionar comportamento autônomo.
   `last_event_ms=0`; `/api/render/status` manteve `fps=27.0`. Smoke `absence`
   com os novos campos antes do ajuste final de buffer passou: 3/3 observações
   válidas, zero falsos positivos, `min_fps=26.6`, `baseline_fps=25.4`.
+- O trial agora reporta `first_candidate_elapsed_ms` e estatísticas de score
+  (`min`/`avg`/`p95`/`max`) para separar score insuficiente, debounce sem
+  sustentação e ausência de evento publicado. Em 2026-06-04, um trial
+  `presence` de 10s sem entrada física controlada falhou como esperado: 8/8
+  observações válidas, 1 `candidate`, 0 `present`, score `40/44.25/66/66`,
+  nenhum `PRESENCE_DETECTED`, `baseline_fps=26.4` e `min_fps=24.5`.
 
 **Integração:**
 

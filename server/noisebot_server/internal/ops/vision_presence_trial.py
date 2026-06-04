@@ -32,8 +32,12 @@ class VisionPresenceTrialResult:
     false_positive_count: int
     present_transition_count: int
     lost_transition_count: int
+    first_candidate_elapsed_ms: float | None
     first_present_elapsed_ms: float | None
     first_absent_elapsed_ms: float | None
+    min_presence_score: int | None
+    avg_presence_score: float | None
+    p95_presence_score: int | None
     max_presence_score: int | None
     final_presence_state: str | None
     initial_transition_count: int | None
@@ -71,8 +75,12 @@ class VisionPresenceTrialResult:
             "false_positive_count": self.false_positive_count,
             "present_transition_count": self.present_transition_count,
             "lost_transition_count": self.lost_transition_count,
+            "first_candidate_elapsed_ms": _round_optional(self.first_candidate_elapsed_ms),
             "first_present_elapsed_ms": _round_optional(self.first_present_elapsed_ms),
             "first_absent_elapsed_ms": _round_optional(self.first_absent_elapsed_ms),
+            "min_presence_score": self.min_presence_score,
+            "avg_presence_score": _round_optional(self.avg_presence_score),
+            "p95_presence_score": self.p95_presence_score,
             "max_presence_score": self.max_presence_score,
             "final_presence_state": self.final_presence_state,
             "initial_transition_count": self.initial_transition_count,
@@ -138,8 +146,10 @@ def run_vision_presence_trial(
     false_positive_count = 0
     present_transition_count = 0
     lost_transition_count = 0
+    first_candidate_elapsed_ms: float | None = None
     first_present_elapsed_ms: float | None = None
     first_absent_elapsed_ms: float | None = None
+    score_samples: list[int] = []
     max_presence_score: int | None = None
     final_presence_state: str | None = None
     previous_presence_state: str | None = None
@@ -189,6 +199,7 @@ def run_vision_presence_trial(
             if isinstance(presence, dict):
                 state = str(presence.get("state", "unknown"))
                 score = _int(presence.get("score"))
+                score_samples.append(score)
                 transition_count = _optional_int(presence.get("transition_count"))
                 detected_event_count = _optional_int(presence.get("detected_event_count"))
                 lost_event_count = _optional_int(presence.get("lost_event_count"))
@@ -219,6 +230,8 @@ def run_vision_presence_trial(
                         errors.append(f"presence_false_positive:score={score}")
                 elif state == "candidate":
                     candidate_samples += 1
+                    if first_candidate_elapsed_ms is None:
+                        first_candidate_elapsed_ms = elapsed_ms
                 elif state == "absent":
                     absent_samples += 1
                     if first_absent_elapsed_ms is None:
@@ -307,8 +320,12 @@ def run_vision_presence_trial(
         false_positive_count=false_positive_count,
         present_transition_count=present_transition_count,
         lost_transition_count=lost_transition_count,
+        first_candidate_elapsed_ms=first_candidate_elapsed_ms,
         first_present_elapsed_ms=first_present_elapsed_ms,
         first_absent_elapsed_ms=first_absent_elapsed_ms,
+        min_presence_score=min(score_samples) if score_samples else None,
+        avg_presence_score=_avg(score_samples),
+        p95_presence_score=_percentile_nearest(score_samples, 0.95),
         max_presence_score=max_presence_score,
         final_presence_state=final_presence_state,
         initial_transition_count=initial_transition_count,
@@ -344,9 +361,10 @@ def format_vision_presence_trial_markdown(result: VisionPresenceTrialResult) -> 
         f"- Presença present/candidate/absent: {result.present_samples}/{result.candidate_samples}/{result.absent_samples}",
         f"- Falsos positivos: {result.false_positive_count}",
         f"- Transições present/lost observadas: {result.present_transition_count}/{result.lost_transition_count}",
+        f"- Primeiro candidate: {result.first_candidate_elapsed_ms} ms",
         f"- Primeiro present: {result.first_present_elapsed_ms} ms",
         f"- Primeiro absent: {result.first_absent_elapsed_ms} ms",
-        f"- Score máximo: {result.max_presence_score}",
+        f"- Score min/avg/p95/max: {result.min_presence_score}/{result.avg_presence_score}/{result.p95_presence_score}/{result.max_presence_score}",
         f"- Estado final: {result.final_presence_state}",
         f"- Transition count inicial/final/delta: {result.initial_transition_count}/{result.final_transition_count}/{result.transition_delta}",
         f"- Eventos detected inicial/final/delta: {result.initial_detected_event_count}/{result.final_detected_event_count}/{result.detected_event_delta}",
@@ -430,6 +448,20 @@ def _float(value: Any) -> float:
 
 def _round_optional(value: float | None) -> float | None:
     return None if value is None else round(value, 3)
+
+
+def _avg(values: list[int]) -> float | None:
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _percentile_nearest(values: list[int], percentile: float) -> int | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = int(round((len(ordered) - 1) * percentile))
+    return ordered[max(0, min(index, len(ordered) - 1))]
 
 
 def _transition_delta(initial: int | None, final: int | None) -> int | None:

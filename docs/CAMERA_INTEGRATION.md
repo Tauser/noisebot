@@ -176,6 +176,11 @@ copying board-specific implementations from other products.
   `/api/render/status` stayed at `fps=27.0`. An absence smoke with the new
   fields passed before the final buffer-size adjustment: 3/3 valid observations,
   zero false positives, `baseline_fps=25.4` and `min_fps=26.6`.
+- The presence trial now reports `first_candidate_elapsed_ms` and score
+  min/average/p95/max. A 2026-06-04 uncontrolled `presence` run failed with
+  8/8 valid observations, one `candidate`, no `present`, score
+  `40/44.25/66/66`, no `PRESENCE_DETECTED`, `baseline_fps=26.4` and
+  `min_fps=24.5`; a controlled person-entry run is still required.
 - The bridge v2 can answer local vision questions from the vision endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection

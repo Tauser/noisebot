@@ -60,6 +60,10 @@ def test_vision_presence_trial_detects_presence_latency(monkeypatch) -> None:
     assert result.fps_sample_delay_s == 0.0
     assert result.close_each_sample is False
     assert result.max_presence_score == 76
+    assert result.min_presence_score == 58
+    assert result.avg_presence_score == 68.66666666666667
+    assert result.p95_presence_score == 76
+    assert result.first_candidate_elapsed_ms == 0.0
     assert result.present_transition_count == 1
     assert result.lost_transition_count == 0
     assert result.transition_delta == 1
