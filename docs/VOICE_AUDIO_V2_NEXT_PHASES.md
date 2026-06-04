@@ -2133,6 +2133,14 @@ transcrito como `Que horas são?`, `local_intent`, TTS completo e Playback v2
 acumulado em `say_begin_count=2`/`say_end_count=2`, `585/585` chunks
 recebidos/tocados, fila zero, zero drops e `voice-release-check ok=true`.
 
+Incremento firmware seguinte: o tratamento legado de `PLAY_STOP` tambem saiu
+do corpo principal do `audio_task` e foi concentrado em
+`audio_service_handle_play_stop()`. O helper preserva exatamente o fluxo atual:
+fecha WAV aberto, cancela SAY ativo em Playback v2, escreve silencio curto,
+emite `NB_AUDIO_EVT_PLAYBACK_END` e devolve `play_state` para `PLAY_IDLE`.
+Nao muda wake, VAD, captura, codec, Opus/PCM16, fila SAY ou ownership fisico
+do speaker; apenas reduz mais um bloco de transicao legada no loop.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

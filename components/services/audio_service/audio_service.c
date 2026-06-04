@@ -493,6 +493,22 @@ static void audio_service_finish_bridge_say_playback(void)
     }
 }
 
+static void audio_service_handle_play_stop(FILE **wav_file)
+{
+    if (wav_file != NULL && *wav_file != NULL) {
+        fclose(*wav_file);
+        *wav_file = NULL;
+    }
+    (void)audio_playback_service_v2_say_cancel_active();
+    (void)audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES, 0);
+    if (s.event_cb) {
+        s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
+    }
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s.play_state = PLAY_IDLE;
+    xSemaphoreGive(s.mutex);
+}
+
 static bool audio_service_play_bridge_say_chunk(void)
 {
     uint16_t n = 0;
@@ -1335,16 +1351,7 @@ static void audio_task(void *arg)
         bool wrote_audio = false;
         /* ── Stop pedido ── */
         if (play_state == PLAY_STOP) {
-            if (wav_file) {
-                fclose(wav_file);
-                wav_file = NULL;
-            }
-            (void)audio_playback_service_v2_say_cancel_active();
-            (void)audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES, 0);
-            if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
-            xSemaphoreTake(s.mutex, portMAX_DELAY);
-            s.play_state = PLAY_IDLE;
-            xSemaphoreGive(s.mutex);
+            audio_service_handle_play_stop(&wav_file);
         }
 
         /* ── Reprodução ativa ── */

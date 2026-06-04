@@ -275,6 +275,10 @@ Incremento atual da Fase N3:
   `Que horas são?`, intent local de hora, TTS/SAY_END completos,
   `say_begin_count=2`/`say_end_count=2`, `585/585` chunks acumulados e zero
   drops/falhas.
+- Nova reducao firmware: `PLAY_STOP` saiu do corpo principal do `audio_task` e
+  foi isolado em `audio_service_handle_play_stop()`, preservando fechamento de
+  WAV, cancelamento SAY, silencio curto, evento de fim e retorno a `PLAY_IDLE`
+  sem mexer em wake/VAD/captura/codec/HAL.
 
 ### Wake Word
 

@@ -364,6 +364,10 @@ Invariantes:
   inicio/fim do SAY em helpers internos dedicados. O servico legado ainda emite
   eventos, rearma wake e preserva `PLAY_BRIDGE_SAY`/`PLAY_IDLE`, mas o caminho
   fica mais isolado para novas reducoes sem misturar fila, lifecycle e HAL.
+- O tratamento de `PLAY_STOP` tambem foi extraido do corpo principal do
+  `audio_task` para `audio_service_handle_play_stop()`. Ele preserva o
+  fechamento de WAV, cancelamento SAY, silencio curto, evento de fim e retorno
+  a `PLAY_IDLE`, sem alterar HAL, wake, VAD, captura, codec ou fila SAY.
 
 ### Voice Activity v2
 

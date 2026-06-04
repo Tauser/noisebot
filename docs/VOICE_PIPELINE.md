@@ -138,6 +138,10 @@ Na reducao seguinte, `audio_service.c` concentrou o inicio/fim legado de SAY em
 helpers internos. Isso nao muda runtime: Playback v2 segue dono da fila e do
 lifecycle, enquanto `audio_service` preserva os eventos, wake rearm, estado
 legado e callback de HAL fisico.
+O tratamento de stop legado tambem foi isolado em
+`audio_service_handle_play_stop()`: ele fecha WAV, cancela SAY ativo, escreve
+silencio curto, emite `PLAYBACK_END` e retorna a `PLAY_IDLE` sem mudar o
+caminho real de HAL/wake/VAD/captura/codec.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,
