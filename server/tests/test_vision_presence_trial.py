@@ -16,7 +16,11 @@ def test_vision_presence_trial_detects_presence_latency(monkeypatch) -> None:
             return {
                 "ok": True,
                 "observation": {"valid": True},
-                "presence": {"state": next(states), "score": next(scores)},
+                "presence": {
+                    "state": next(states),
+                    "score": next(scores),
+                    "transition_count": 0 if len(calls) <= 2 else 1,
+                },
             }
         if path == "api/render/status":
             return {"fps": 25.4}
@@ -52,7 +56,96 @@ def test_vision_presence_trial_detects_presence_latency(monkeypatch) -> None:
     assert result.fps_sample_delay_s == 0.0
     assert result.close_each_sample is False
     assert result.max_presence_score == 76
+    assert result.present_transition_count == 1
+    assert result.lost_transition_count == 0
+    assert result.transition_delta == 1
     assert calls.count("api/vision/observe") == 3
+
+
+def test_vision_presence_trial_requires_lost_transition(monkeypatch) -> None:
+    trial = importlib.import_module("noisebot_server.internal.ops.vision_presence_trial")
+
+    states = iter(["present", "present", "absent"])
+    transitions = iter([3, 3, 4])
+
+    def fake_get_json(base_url: str, path: str, timeout_s: float) -> dict:
+        if path == "api/vision/observe":
+            return {
+                "ok": True,
+                "observation": {"valid": True},
+                "presence": {
+                    "state": next(states),
+                    "score": 20,
+                    "transition_count": next(transitions),
+                },
+            }
+        if path == "api/render/status":
+            return {"fps": 26.1}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(trial, "_get_json", fake_get_json)
+    monkeypatch.setattr(
+        trial,
+        "_post_json",
+        lambda base_url, path, timeout_s: {"ok": True},
+    )
+
+    ticks = iter([0.0, 0.0, 0.0, 0.2, 0.2, 0.4, 0.4])
+    result = trial.run_vision_presence_trial(
+        firmware_url="http://192.168.1.30",
+        mode="lost",
+        duration_s=0.4,
+        interval_s=0.2,
+        max_latency_ms=500.0,
+        min_fps_required=25.0,
+        require_initial_state="present",
+        require_final_state="absent",
+        now_fn=lambda: next(ticks),
+        sleep_fn=lambda _: None,
+    )
+
+    assert result.ok is True
+    assert result.lost_transition_count == 1
+    assert result.first_absent_elapsed_ms == 400.0
+    assert result.initial_transition_count == 3
+    assert result.final_transition_count == 4
+    assert result.transition_delta == 1
+
+
+def test_vision_presence_trial_rejects_lost_when_already_absent(monkeypatch) -> None:
+    trial = importlib.import_module("noisebot_server.internal.ops.vision_presence_trial")
+
+    def fake_get_json(base_url: str, path: str, timeout_s: float) -> dict:
+        if path == "api/vision/observe":
+            return {
+                "ok": True,
+                "observation": {"valid": True},
+                "presence": {"state": "absent", "score": 0, "transition_count": 9},
+            }
+        if path == "api/render/status":
+            return {"fps": 26.0}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(trial, "_get_json", fake_get_json)
+    monkeypatch.setattr(
+        trial,
+        "_post_json",
+        lambda base_url, path, timeout_s: {"ok": True},
+    )
+
+    ticks = iter([0.0, 0.0, 0.0, 0.02, 0.02])
+    result = trial.run_vision_presence_trial(
+        firmware_url="http://192.168.1.30",
+        mode="lost",
+        duration_s=0.01,
+        interval_s=1.0,
+        now_fn=lambda: next(ticks),
+        sleep_fn=lambda _: None,
+    )
+
+    assert result.ok is False
+    assert result.lost_transition_count == 0
+    assert result.errors == ["presence_lost_transition_not_observed"]
 
 
 def test_vision_presence_trial_flags_absence_false_positive(monkeypatch) -> None:

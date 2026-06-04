@@ -141,6 +141,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     vision_presence.add_argument("--fps-sample-delay-s", type=float, default=0.0)
     vision_presence.add_argument("--close-each-sample", action="store_true")
     vision_presence.add_argument("--min-fps", type=float, default=None)
+    vision_presence.add_argument(
+        "--require-initial-state",
+        choices=["absent", "candidate", "present"],
+        default=None,
+    )
+    vision_presence.add_argument(
+        "--require-final-state",
+        choices=["absent", "candidate", "present"],
+        default=None,
+    )
     vision_presence.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     vision_presence.add_argument("--json", action="store_true", help="Emitir JSON")
 
@@ -726,6 +736,8 @@ def run_debug_command(args: argparse.Namespace) -> None:
             fps_sample_delay_s=args.fps_sample_delay_s,
             close_each_sample=args.close_each_sample,
             min_fps_required=args.min_fps,
+            require_initial_state=args.require_initial_state,
+            require_final_state=args.require_final_state,
         )
         text = (
             format_vision_presence_trial_json(result)

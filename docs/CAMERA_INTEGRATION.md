@@ -161,6 +161,11 @@ copying board-specific implementations from other products.
   trial using `--close-each-sample --fps-sample-delay-s 4 --min-fps 25` passed:
   3/3 valid observations, zero false positives, max presence score 42,
   `min_fps=26.7`, final presence state `absent` and final camera closed.
+- The presence trial now reports observed `present`/`lost` transitions plus the
+  firmware `transition_count` initial/final/delta, and accepts
+  `--require-initial-state`/`--require-final-state`. `mode=lost` requires an
+  observed `present -> absent` transition instead of accepting a run that was
+  already absent at the start.
 - The bridge v2 can answer local vision questions from the vision endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection

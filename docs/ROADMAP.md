@@ -3419,6 +3419,11 @@ e confiável antes de acionar comportamento autônomo.
   `baseline_fps=27.1`, `min_fps=26.7` e câmera fechada no final. Os critérios
   formais continuam abertos até validar presença real, perda após ausência longa
   e iluminação variável.
+- O trial de presença agora registra transições observadas para `present` e
+  `lost`, `transition_count` inicial/final/delta do firmware e suporta
+  `--require-initial-state`/`--require-final-state`. O modo `lost` só aprova se
+  observar a transição real `present -> absent`, evitando falso verde quando o
+  teste já começa ausente.
 
 **Integração:**
 

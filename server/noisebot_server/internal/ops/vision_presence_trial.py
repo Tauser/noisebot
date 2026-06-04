@@ -30,16 +30,23 @@ class VisionPresenceTrialResult:
     candidate_samples: int
     absent_samples: int
     false_positive_count: int
+    present_transition_count: int
+    lost_transition_count: int
     first_present_elapsed_ms: float | None
     first_absent_elapsed_ms: float | None
     max_presence_score: int | None
     final_presence_state: str | None
+    initial_transition_count: int | None
+    final_transition_count: int | None
+    transition_delta: int | None
     baseline_fps: float | None
     min_fps: float | None
     fps_sample_delay_s: float
     close_each_sample: bool
     min_fps_required: float | None
     max_latency_ms: float | None
+    require_initial_state: str | None
+    require_final_state: str | None
     final_close_ok: bool | None
     errors: list[str]
 
@@ -56,16 +63,23 @@ class VisionPresenceTrialResult:
             "candidate_samples": self.candidate_samples,
             "absent_samples": self.absent_samples,
             "false_positive_count": self.false_positive_count,
+            "present_transition_count": self.present_transition_count,
+            "lost_transition_count": self.lost_transition_count,
             "first_present_elapsed_ms": _round_optional(self.first_present_elapsed_ms),
             "first_absent_elapsed_ms": _round_optional(self.first_absent_elapsed_ms),
             "max_presence_score": self.max_presence_score,
             "final_presence_state": self.final_presence_state,
+            "initial_transition_count": self.initial_transition_count,
+            "final_transition_count": self.final_transition_count,
+            "transition_delta": self.transition_delta,
             "baseline_fps": self.baseline_fps,
             "min_fps": self.min_fps,
             "fps_sample_delay_s": round(self.fps_sample_delay_s, 3),
             "close_each_sample": self.close_each_sample,
             "min_fps_required": self.min_fps_required,
             "max_latency_ms": self.max_latency_ms,
+            "require_initial_state": self.require_initial_state,
+            "require_final_state": self.require_final_state,
             "final_close_ok": self.final_close_ok,
             "errors": self.errors,
         }
@@ -82,6 +96,8 @@ def run_vision_presence_trial(
     fps_sample_delay_s: float = 0.0,
     close_each_sample: bool = False,
     min_fps_required: float | None = None,
+    require_initial_state: str | None = None,
+    require_final_state: str | None = None,
     now_fn: Callable[[], float] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
 ) -> VisionPresenceTrialResult:
@@ -108,10 +124,16 @@ def run_vision_presence_trial(
     candidate_samples = 0
     absent_samples = 0
     false_positive_count = 0
+    present_transition_count = 0
+    lost_transition_count = 0
     first_present_elapsed_ms: float | None = None
     first_absent_elapsed_ms: float | None = None
     max_presence_score: int | None = None
     final_presence_state: str | None = None
+    previous_presence_state: str | None = None
+    initial_presence_state: str | None = None
+    initial_transition_count: int | None = None
+    final_transition_count: int | None = None
     baseline_fps: float | None = None
     min_fps: float | None = None
     errors: list[str] = []
@@ -151,10 +173,21 @@ def run_vision_presence_trial(
             if isinstance(presence, dict):
                 state = str(presence.get("state", "unknown"))
                 score = _int(presence.get("score"))
+                transition_count = _optional_int(presence.get("transition_count"))
+                if initial_presence_state is None:
+                    initial_presence_state = state
+                    initial_transition_count = transition_count
+                final_transition_count = transition_count
                 final_presence_state = state
                 max_presence_score = (
                     score if max_presence_score is None else max(max_presence_score, score)
                 )
+                if previous_presence_state is not None:
+                    if previous_presence_state != "present" and state == "present":
+                        present_transition_count += 1
+                    elif previous_presence_state == "present" and state == "absent":
+                        lost_transition_count += 1
+                previous_presence_state = state
                 if state == "present":
                     present_samples += 1
                     if first_present_elapsed_ms is None:
@@ -197,9 +230,20 @@ def run_vision_presence_trial(
         if max_latency_ms is not None:
             latency_ok = latency_ok and first_present_elapsed_ms <= max_latency_ms
     elif mode == "lost":
-        latency_ok = first_absent_elapsed_ms is not None
+        latency_ok = first_absent_elapsed_ms is not None and lost_transition_count > 0
         if max_latency_ms is not None:
             latency_ok = latency_ok and first_absent_elapsed_ms <= max_latency_ms
+        if lost_transition_count == 0:
+            errors.append("presence_lost_transition_not_observed")
+
+    initial_state_ok = (
+        require_initial_state is None or initial_presence_state == require_initial_state
+    )
+    final_state_ok = require_final_state is None or final_presence_state == require_final_state
+    if not initial_state_ok:
+        errors.append(f"initial_state:{initial_presence_state}!={require_initial_state}")
+    if not final_state_ok:
+        errors.append(f"final_state:{final_presence_state}!={require_final_state}")
 
     fps_ok = min_fps_required is None or (min_fps is not None and min_fps >= min_fps_required)
     ok = (
@@ -209,6 +253,8 @@ def run_vision_presence_trial(
         and false_positive_count == 0
         and latency_ok
         and fps_ok
+        and initial_state_ok
+        and final_state_ok
         and close_ok is True
     )
 
@@ -224,16 +270,23 @@ def run_vision_presence_trial(
         candidate_samples=candidate_samples,
         absent_samples=absent_samples,
         false_positive_count=false_positive_count,
+        present_transition_count=present_transition_count,
+        lost_transition_count=lost_transition_count,
         first_present_elapsed_ms=first_present_elapsed_ms,
         first_absent_elapsed_ms=first_absent_elapsed_ms,
         max_presence_score=max_presence_score,
         final_presence_state=final_presence_state,
+        initial_transition_count=initial_transition_count,
+        final_transition_count=final_transition_count,
+        transition_delta=_transition_delta(initial_transition_count, final_transition_count),
         baseline_fps=baseline_fps,
         min_fps=min_fps,
         fps_sample_delay_s=fps_sample_delay_s,
         close_each_sample=close_each_sample,
         min_fps_required=min_fps_required,
         max_latency_ms=max_latency_ms,
+        require_initial_state=require_initial_state,
+        require_final_state=require_final_state,
         final_close_ok=close_ok,
         errors=errors[:20],
     )
@@ -249,16 +302,20 @@ def format_vision_presence_trial_markdown(result: VisionPresenceTrialResult) -> 
         f"- Falhas: {result.failures}",
         f"- Presença present/candidate/absent: {result.present_samples}/{result.candidate_samples}/{result.absent_samples}",
         f"- Falsos positivos: {result.false_positive_count}",
+        f"- Transições present/lost observadas: {result.present_transition_count}/{result.lost_transition_count}",
         f"- Primeiro present: {result.first_present_elapsed_ms} ms",
         f"- Primeiro absent: {result.first_absent_elapsed_ms} ms",
         f"- Score máximo: {result.max_presence_score}",
         f"- Estado final: {result.final_presence_state}",
+        f"- Transition count inicial/final/delta: {result.initial_transition_count}/{result.final_transition_count}/{result.transition_delta}",
         f"- FPS baseline: {result.baseline_fps}",
         f"- FPS mínimo: {result.min_fps}",
         f"- Delay de amostragem FPS: {result.fps_sample_delay_s} s",
         f"- Fecha câmera a cada amostra: {result.close_each_sample}",
         f"- FPS mínimo exigido: {result.min_fps_required}",
         f"- Latência máxima exigida: {result.max_latency_ms} ms",
+        f"- Estado inicial exigido: {result.require_initial_state}",
+        f"- Estado final exigido: {result.require_final_state}",
         f"- Close final: {result.final_close_ok}",
         f"- Erros: {result.errors}",
     ])
@@ -312,6 +369,15 @@ def _int(value: Any) -> int:
         return 0
 
 
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _float(value: Any) -> float:
     try:
         return float(value or 0.0)
@@ -321,6 +387,12 @@ def _float(value: Any) -> float:
 
 def _round_optional(value: float | None) -> float | None:
     return None if value is None else round(value, 3)
+
+
+def _transition_delta(initial: int | None, final: int | None) -> int | None:
+    if initial is None or final is None:
+        return None
+    return final - initial
 
 
 __all__ = [
