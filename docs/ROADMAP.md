@@ -3451,6 +3451,12 @@ e confiável antes de acionar comportamento autônomo.
   lê frame corrente). Não há detector de presença embarcado equivalente; a lição
   aplicável ao NoiseBot é manter estado visual quente/contínuo em vez de depender
   de snapshots isolados.
+- Comparação com StackChan/Xiaozhi em 2026-06-04: o caminho V4L2 deles não expõe
+  troca explícita de resolução por finalidade; em vez disso mede custo de
+  captura/JPEG, usa JPEG quality 20 no streaming e baixa prioridade antes de
+  capturar foto para IA. NoiseBot adota a política equivalente para seu firmware:
+  percepção invisível via `vision_service` força `safe`/QQVGA 160x120, enquanto
+  diagnóstico humano pode solicitar `better`/QVGA 320x240.
 - `vision_service` ganhou retenção curta de candidato inspirada nesse modelo de
   estado sustentado: picos fortes (`score>=80`) mantêm `candidate` por até 2,5s
   e ainda exigem 2 amostras antes de publicar `PRESENCE_DETECTED`. Também foi

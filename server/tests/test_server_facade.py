@@ -7773,11 +7773,37 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert "NB_VISION_PRESENCE_RETAIN_MS 2500U" in vision_c
     assert "NB_VISION_PRESENCE_MIN_SAMPLES 2U" in vision_c
     assert "vision_service_reset_presence" in vision_c
+    assert "camera_service_get_mode() != NB_CAMERA_MODE_SAFE_QQVGA" in vision_c
+    assert "camera_service_set_mode(NB_CAMERA_MODE_SAFE_QQVGA)" in vision_c
     assert "vision_presence_json" in web_c
     assert "vision_service_get_presence(&presence)" in web_c
     assert '"/api/vision/presence/reset"' in web_c
     assert "detected_event_count" in web_c
     assert "lost_event_count" in web_c
+
+
+def test_firmware_camera_hal_forces_selected_mode_resolution() -> None:
+    root = Path(__file__).resolve().parents[2]
+    camera_h = (
+        root
+        / "components"
+        / "nb_hal"
+        / "camera_hal.h"
+    ).read_text(encoding="utf-8")
+    camera_c = (
+        root
+        / "components"
+        / "nb_hal"
+        / "camera_hal.c"
+    ).read_text(encoding="utf-8")
+
+    assert "NB_CAMERA_MODE_SAFE_QQVGA" in camera_h
+    assert "NB_CAMERA_MODE_BETTER_QVGA" in camera_h
+    assert "return (mode == NB_CAMERA_MODE_BETTER_QVGA) ? 320U : 160U;" in camera_c
+    assert "return (mode == NB_CAMERA_MODE_BETTER_QVGA) ? 240U : 120U;" in camera_c
+    assert "fmt.fmt.pix.width = (uint32_t)camera_hal_mode_width(s_mode);" in camera_c
+    assert "fmt.fmt.pix.height = (uint32_t)camera_hal_mode_height(s_mode);" in camera_c
+    assert "current_fmt.fmt.pix.width ? current_fmt.fmt.pix.width" not in camera_c
 
 
 def test_firmware_render_metrics_contract_is_exposed() -> None:

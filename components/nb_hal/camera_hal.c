@@ -321,10 +321,8 @@ esp_err_t camera_hal_init(void)
 
     struct v4l2_format fmt = {0};
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width = current_fmt.fmt.pix.width ? current_fmt.fmt.pix.width :
-        (uint32_t)camera_hal_mode_width(s_mode);
-    fmt.fmt.pix.height = current_fmt.fmt.pix.height ? current_fmt.fmt.pix.height :
-        (uint32_t)camera_hal_mode_height(s_mode);
+    fmt.fmt.pix.width = (uint32_t)camera_hal_mode_width(s_mode);
+    fmt.fmt.pix.height = (uint32_t)camera_hal_mode_height(s_mode);
     fmt.fmt.pix.pixelformat = pixfmt;
     bool format_set = false;
     for (uint32_t attempt = 0; attempt < NB_CAMERA_SET_FORMAT_ATTEMPTS; ++attempt) {

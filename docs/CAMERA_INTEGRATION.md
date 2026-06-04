@@ -196,6 +196,14 @@ copying board-specific implementations from other products.
   firmware UI keeps small status indicators as icons. NoiseBot mirrors that
   product behavior with a camera badge in `ui_overlay_service`: the badge is on
   while the camera hot session is active and is cleared when the session closes.
+- Low-resolution policy after StackChan/Xiaozhi comparison on 2026-06-04:
+  their V4L2 path does not expose a separate resolution mode per purpose; it
+  keeps streaming buffers warm, measures capture/JPEG time, uses JPEG quality 20
+  for live streaming, and lowers task priority before AI photo capture. NoiseBot
+  keeps that principle but applies it to the existing modes: invisible
+  perception through `vision_service` forces `safe`/QQVGA 160x120, while
+  dashboard diagnostics can still request `better`/QVGA 320x240 through the
+  camera mode endpoint.
 - NoiseBot now retains a strong presence candidate (`score>=80`) for up to 2.5s
   and still requires 2 samples before publishing `PRESENCE_DETECTED`. The
   firmware also exposes `/api/vision/presence/reset` for clean validation runs.

@@ -168,6 +168,12 @@ esp_err_t vision_service_observe(nb_vision_observation_t *out)
     if (!camera_service_is_supported()) {
         return ESP_ERR_NOT_SUPPORTED;
     }
+    if (camera_service_get_mode() != NB_CAMERA_MODE_SAFE_QQVGA) {
+        esp_err_t mode_err = camera_service_set_mode(NB_CAMERA_MODE_SAFE_QQVGA);
+        if (mode_err != ESP_OK) {
+            return mode_err;
+        }
+    }
 
     nb_camera_snapshot_t snap;
     int64_t start_us = esp_timer_get_time();
