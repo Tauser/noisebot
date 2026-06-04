@@ -126,6 +126,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     vision_soak.add_argument("--duration-s", type=float, default=1800.0)
     vision_soak.add_argument("--interval-s", type=float, default=5.0)
     vision_soak.add_argument("--timeout-s", type=float, default=8.0)
+    vision_soak.add_argument("--expect-absence", action="store_true")
+    vision_soak.add_argument("--min-fps", type=float, default=None)
     vision_soak.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     vision_soak.add_argument("--json", action="store_true", help="Emitir JSON")
 
@@ -675,6 +677,8 @@ def run_debug_command(args: argparse.Namespace) -> None:
             duration_s=args.duration_s,
             interval_s=args.interval_s,
             timeout_s=args.timeout_s,
+            expect_absence=args.expect_absence,
+            min_fps_required=args.min_fps,
         )
         text = (
             format_vision_soak_json(result)

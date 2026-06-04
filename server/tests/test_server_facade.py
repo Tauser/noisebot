@@ -7787,6 +7787,10 @@ def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
                     "jpeg_bytes": 70000,
                     "capture_ms": 900,
                 },
+                "presence": {
+                    "state": "absent",
+                    "score": 40,
+                },
             }
         if path == "api/diag":
             return {
@@ -7815,6 +7819,8 @@ def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
         firmware_url="http://192.168.1.30",
         duration_s=1.0,
         interval_s=1.0,
+        expect_absence=True,
+        min_fps_required=25.0,
         now_fn=lambda: next(ticks),
         sleep_fn=lambda _: None,
     )
@@ -7823,6 +7829,8 @@ def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
     assert result.samples == 2
     assert result.valid_observations == 2
     assert result.reboots == 0
+    assert result.presence_false_positive_count == 0
+    assert result.max_presence_score == 40
     assert result.final_camera_active is False
     assert calls.count("api/vision/observe") == 2
 
@@ -7839,11 +7847,15 @@ def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
         duration_s: float,
         interval_s: float,
         timeout_s: float,
+        expect_absence: bool,
+        min_fps_required: float | None,
     ):
         calls["firmware_url"] = firmware_url
         calls["duration_s"] = duration_s
         calls["interval_s"] = interval_s
         calls["timeout_s"] = timeout_s
+        calls["expect_absence"] = expect_absence
+        calls["min_fps_required"] = min_fps_required
         return soak.VisionSoakResult(
             ok=True,
             duration_s=duration_s,
@@ -7859,6 +7871,13 @@ def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
             min_dma_free=18_000,
             max_capture_ms=900,
             max_jpeg_bytes=70_000,
+            presence_present_samples=0,
+            presence_candidate_samples=0,
+            presence_false_positive_count=0,
+            max_presence_score=40,
+            final_presence_state="absent",
+            min_fps_required=min_fps_required,
+            expect_absence=expect_absence,
             final_camera_ready=False,
             final_camera_active=False,
             final_close_ok=True,
@@ -7878,6 +7897,9 @@ def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
         "1",
         "--timeout-s",
         "2",
+        "--expect-absence",
+        "--min-fps",
+        "25",
         "--json",
     ])
 
@@ -7886,6 +7908,8 @@ def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
         "duration_s": 3.0,
         "interval_s": 1.0,
         "timeout_s": 2.0,
+        "expect_absence": True,
+        "min_fps_required": 25.0,
     }
 
 

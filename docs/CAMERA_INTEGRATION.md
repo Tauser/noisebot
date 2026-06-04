@@ -138,6 +138,10 @@ copying board-specific implementations from other products.
   `NB_EVT_PRESENCE_DETECTED`/`NB_EVT_PRESENCE_LOST` are emitted only on debounced
   transitions. Continuous capture and behavior/attention integration remain
   gated on false-positive measurements.
+- `noisebot_server debug vision-soak --expect-absence --min-fps 25` validates
+  that shadow-mode presence stays absent while preserving render FPS. A 31.5s
+  hardware smoke on 2026-06-04 produced 6/6 valid observations, zero presence
+  false positives, `min_fps=25.2`, max presence score 54 and final camera closed.
 - The bridge v2 can answer local vision questions from that endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection

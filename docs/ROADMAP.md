@@ -3375,6 +3375,11 @@ e confiável antes de acionar comportamento autônomo.
 - A detecção ainda roda sob demanda junto com observações explícitas. O loop
   contínuo e a integração com `attention_service`/comportamento permanecem
   pendentes até medir falsos positivos de sombra/iluminação.
+- `noisebot_server debug vision-soak` mede presença em shadow mode com
+  `--expect-absence` e `--min-fps`, falhando se houver estado `present` quando
+  a cena deveria estar vazia ou se o FPS cair abaixo do alvo. Smoke em hardware
+  em 2026-06-04 por 31,5s: 6/6 observações válidas, zero falsos positivos,
+  `min_fps=25.2`, score máximo 54, câmera fechada no final.
 
 **Integração:**
 

@@ -31,6 +31,13 @@ class VisionSoakResult:
     min_dma_free: int | None
     max_capture_ms: int | None
     max_jpeg_bytes: int | None
+    presence_present_samples: int
+    presence_candidate_samples: int
+    presence_false_positive_count: int
+    max_presence_score: int | None
+    final_presence_state: str | None
+    min_fps_required: float | None
+    expect_absence: bool
     final_camera_ready: bool | None
     final_camera_active: bool | None
     final_close_ok: bool | None
@@ -52,6 +59,13 @@ class VisionSoakResult:
             "min_dma_free": self.min_dma_free,
             "max_capture_ms": self.max_capture_ms,
             "max_jpeg_bytes": self.max_jpeg_bytes,
+            "presence_present_samples": self.presence_present_samples,
+            "presence_candidate_samples": self.presence_candidate_samples,
+            "presence_false_positive_count": self.presence_false_positive_count,
+            "max_presence_score": self.max_presence_score,
+            "final_presence_state": self.final_presence_state,
+            "min_fps_required": self.min_fps_required,
+            "expect_absence": self.expect_absence,
             "final_camera_ready": self.final_camera_ready,
             "final_camera_active": self.final_camera_active,
             "final_close_ok": self.final_close_ok,
@@ -65,6 +79,8 @@ def run_vision_soak(
     interval_s: float,
     timeout_s: float = 8.0,
     *,
+    expect_absence: bool = False,
+    min_fps_required: float | None = None,
     now_fn: Callable[[], float] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
 ) -> VisionSoakResult:
@@ -91,6 +107,11 @@ def run_vision_soak(
     min_dma_free: int | None = None
     max_capture_ms: int | None = None
     max_jpeg_bytes: int | None = None
+    presence_present_samples = 0
+    presence_candidate_samples = 0
+    presence_false_positive_count = 0
+    max_presence_score: int | None = None
+    final_presence_state: str | None = None
     errors: list[str] = []
 
     while True:
@@ -110,6 +131,22 @@ def run_vision_soak(
             else:
                 valid_observations += 1
 
+            presence = observation_payload.get("presence", {})
+            if isinstance(presence, dict):
+                state = str(presence.get("state", "unknown"))
+                score = _int(presence.get("score"))
+                final_presence_state = state
+                max_presence_score = (
+                    score if max_presence_score is None else max(max_presence_score, score)
+                )
+                if state == "present":
+                    presence_present_samples += 1
+                    if expect_absence:
+                        presence_false_positive_count += 1
+                        errors.append(f"presence_false_positive:score={score}")
+                elif state == "candidate":
+                    presence_candidate_samples += 1
+
             uptime = _int(diag.get("uptime_s"))
             if first_uptime is None:
                 first_uptime = uptime
@@ -121,6 +158,8 @@ def run_vision_soak(
             fps = _float(diag.get("fps"))
             if fps > 0.0:
                 min_fps = fps if min_fps is None else min(min_fps, fps)
+                if min_fps_required is not None and fps < min_fps_required:
+                    errors.append(f"fps_below_min:{fps:.1f}<{min_fps_required:.1f}")
 
             memory = diag.get("memory", {})
             if isinstance(memory, dict):
@@ -167,6 +206,8 @@ def run_vision_soak(
         and failures == 0
         and reboots == 0
         and valid_observations == samples
+        and presence_false_positive_count == 0
+        and (min_fps_required is None or (min_fps is not None and min_fps >= min_fps_required))
         and close_ok is True
         and final_ready is False
         and final_active is False
@@ -186,6 +227,13 @@ def run_vision_soak(
         min_dma_free=min_dma_free,
         max_capture_ms=max_capture_ms,
         max_jpeg_bytes=max_jpeg_bytes,
+        presence_present_samples=presence_present_samples,
+        presence_candidate_samples=presence_candidate_samples,
+        presence_false_positive_count=presence_false_positive_count,
+        max_presence_score=max_presence_score,
+        final_presence_state=final_presence_state,
+        min_fps_required=min_fps_required,
+        expect_absence=expect_absence,
         final_camera_ready=final_ready,
         final_camera_active=final_active,
         final_close_ok=close_ok,
@@ -207,6 +255,12 @@ def format_vision_soak_markdown(result: VisionSoakResult) -> str:
         f"- DMA mínima: {result.min_dma_free}",
         f"- Captura máxima: {result.max_capture_ms} ms",
         f"- JPEG máximo: {result.max_jpeg_bytes} bytes",
+        f"- Presença final: {result.final_presence_state}",
+        f"- Presença present/candidate: {result.presence_present_samples}/{result.presence_candidate_samples}",
+        f"- Falsos positivos de presença: {result.presence_false_positive_count}",
+        f"- Score máximo de presença: {result.max_presence_score}",
+        f"- FPS mínimo exigido: {result.min_fps_required}",
+        f"- Ausência esperada: {result.expect_absence}",
         f"- Câmera final: ready={result.final_camera_ready}, active={result.final_camera_active}",
         f"- Close final: {result.final_close_ok}",
         f"- Erros: {result.errors}",
