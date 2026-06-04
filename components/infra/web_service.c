@@ -633,7 +633,8 @@ static void vision_presence_json(const nb_vision_presence_status_t *presence,
              "{\"state\":\"%s\",\"score\":%u,\"candidate_since_ms\":%lu,"
              "\"absent_since_ms\":%lu,\"last_transition_ms\":%lu,"
              "\"stable_samples\":%lu,\"absent_samples\":%lu,"
-             "\"transition_count\":%lu}",
+             "\"transition_count\":%lu,\"detected_event_count\":%lu,"
+             "\"lost_event_count\":%lu,\"last_event_ms\":%lu}",
              vision_service_presence_state_name(presence->state),
              (unsigned)presence->score,
              (unsigned long)presence->candidate_since_ms,
@@ -641,7 +642,10 @@ static void vision_presence_json(const nb_vision_presence_status_t *presence,
              (unsigned long)presence->last_transition_ms,
              (unsigned long)presence->stable_samples,
              (unsigned long)presence->absent_samples,
-             (unsigned long)presence->transition_count);
+             (unsigned long)presence->transition_count,
+             (unsigned long)presence->detected_event_count,
+             (unsigned long)presence->lost_event_count,
+             (unsigned long)presence->last_event_ms);
 }
 
 static esp_err_t handle_api_vision_observe(httpd_req_t *req)
@@ -666,7 +670,7 @@ static esp_err_t handle_api_vision_observe(httpd_req_t *req)
     char obs_buf[384];
     nb_vision_presence_status_t presence;
     vision_service_get_presence(&presence);
-    char presence_buf[256];
+    char presence_buf[384];
     vision_observation_json(&obs, obs_buf, sizeof(obs_buf));
     vision_presence_json(&presence, presence_buf, sizeof(presence_buf));
     httpd_resp_set_type(req, "application/json");
@@ -685,7 +689,7 @@ static esp_err_t handle_api_vision_status(httpd_req_t *req)
     char obs_buf[384];
     nb_vision_presence_status_t presence;
     vision_service_get_presence(&presence);
-    char presence_buf[256];
+    char presence_buf[384];
     vision_observation_json(&obs, obs_buf, sizeof(obs_buf));
     vision_presence_json(&presence, presence_buf, sizeof(presence_buf));
     httpd_resp_set_type(req, "application/json");
@@ -4347,7 +4351,7 @@ static esp_err_t handle_api_diag_snapshot(httpd_req_t *req)
     char vision_buf[384];
     nb_vision_presence_status_t vision_presence;
     vision_service_get_presence(&vision_presence);
-    char vision_presence_buf[256];
+    char vision_presence_buf[384];
     vision_observation_json(&vision_obs, vision_buf, sizeof(vision_buf));
     vision_presence_json(&vision_presence, vision_presence_buf, sizeof(vision_presence_buf));
 

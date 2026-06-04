@@ -39,6 +39,12 @@ class VisionPresenceTrialResult:
     initial_transition_count: int | None
     final_transition_count: int | None
     transition_delta: int | None
+    initial_detected_event_count: int | None
+    final_detected_event_count: int | None
+    detected_event_delta: int | None
+    initial_lost_event_count: int | None
+    final_lost_event_count: int | None
+    lost_event_delta: int | None
     baseline_fps: float | None
     min_fps: float | None
     fps_sample_delay_s: float
@@ -72,6 +78,12 @@ class VisionPresenceTrialResult:
             "initial_transition_count": self.initial_transition_count,
             "final_transition_count": self.final_transition_count,
             "transition_delta": self.transition_delta,
+            "initial_detected_event_count": self.initial_detected_event_count,
+            "final_detected_event_count": self.final_detected_event_count,
+            "detected_event_delta": self.detected_event_delta,
+            "initial_lost_event_count": self.initial_lost_event_count,
+            "final_lost_event_count": self.final_lost_event_count,
+            "lost_event_delta": self.lost_event_delta,
             "baseline_fps": self.baseline_fps,
             "min_fps": self.min_fps,
             "fps_sample_delay_s": round(self.fps_sample_delay_s, 3),
@@ -134,6 +146,10 @@ def run_vision_presence_trial(
     initial_presence_state: str | None = None
     initial_transition_count: int | None = None
     final_transition_count: int | None = None
+    initial_detected_event_count: int | None = None
+    final_detected_event_count: int | None = None
+    initial_lost_event_count: int | None = None
+    final_lost_event_count: int | None = None
     baseline_fps: float | None = None
     min_fps: float | None = None
     errors: list[str] = []
@@ -174,10 +190,16 @@ def run_vision_presence_trial(
                 state = str(presence.get("state", "unknown"))
                 score = _int(presence.get("score"))
                 transition_count = _optional_int(presence.get("transition_count"))
+                detected_event_count = _optional_int(presence.get("detected_event_count"))
+                lost_event_count = _optional_int(presence.get("lost_event_count"))
                 if initial_presence_state is None:
                     initial_presence_state = state
                     initial_transition_count = transition_count
+                    initial_detected_event_count = detected_event_count
+                    initial_lost_event_count = lost_event_count
                 final_transition_count = transition_count
+                final_detected_event_count = detected_event_count
+                final_lost_event_count = lost_event_count
                 final_presence_state = state
                 max_presence_score = (
                     score if max_presence_score is None else max(max_presence_score, score)
@@ -225,16 +247,29 @@ def run_vision_presence_trial(
         errors.append(f"close:{exc}")
 
     latency_ok = True
+    detected_event_delta = _transition_delta(
+        initial_detected_event_count,
+        final_detected_event_count,
+    )
+    lost_event_delta = _transition_delta(initial_lost_event_count, final_lost_event_count)
     if mode == "presence":
-        latency_ok = first_present_elapsed_ms is not None
+        latency_ok = first_present_elapsed_ms is not None and _positive_delta(detected_event_delta)
         if max_latency_ms is not None:
             latency_ok = latency_ok and first_present_elapsed_ms <= max_latency_ms
+        if not _positive_delta(detected_event_delta):
+            errors.append("presence_detected_event_not_observed")
     elif mode == "lost":
-        latency_ok = first_absent_elapsed_ms is not None and lost_transition_count > 0
+        latency_ok = (
+            first_absent_elapsed_ms is not None
+            and lost_transition_count > 0
+            and _positive_delta(lost_event_delta)
+        )
         if max_latency_ms is not None:
             latency_ok = latency_ok and first_absent_elapsed_ms <= max_latency_ms
         if lost_transition_count == 0:
             errors.append("presence_lost_transition_not_observed")
+        if not _positive_delta(lost_event_delta):
+            errors.append("presence_lost_event_not_observed")
 
     initial_state_ok = (
         require_initial_state is None or initial_presence_state == require_initial_state
@@ -279,6 +314,12 @@ def run_vision_presence_trial(
         initial_transition_count=initial_transition_count,
         final_transition_count=final_transition_count,
         transition_delta=_transition_delta(initial_transition_count, final_transition_count),
+        initial_detected_event_count=initial_detected_event_count,
+        final_detected_event_count=final_detected_event_count,
+        detected_event_delta=detected_event_delta,
+        initial_lost_event_count=initial_lost_event_count,
+        final_lost_event_count=final_lost_event_count,
+        lost_event_delta=lost_event_delta,
         baseline_fps=baseline_fps,
         min_fps=min_fps,
         fps_sample_delay_s=fps_sample_delay_s,
@@ -308,6 +349,8 @@ def format_vision_presence_trial_markdown(result: VisionPresenceTrialResult) -> 
         f"- Score máximo: {result.max_presence_score}",
         f"- Estado final: {result.final_presence_state}",
         f"- Transition count inicial/final/delta: {result.initial_transition_count}/{result.final_transition_count}/{result.transition_delta}",
+        f"- Eventos detected inicial/final/delta: {result.initial_detected_event_count}/{result.final_detected_event_count}/{result.detected_event_delta}",
+        f"- Eventos lost inicial/final/delta: {result.initial_lost_event_count}/{result.final_lost_event_count}/{result.lost_event_delta}",
         f"- FPS baseline: {result.baseline_fps}",
         f"- FPS mínimo: {result.min_fps}",
         f"- Delay de amostragem FPS: {result.fps_sample_delay_s} s",
@@ -393,6 +436,10 @@ def _transition_delta(initial: int | None, final: int | None) -> int | None:
     if initial is None or final is None:
         return None
     return final - initial
+
+
+def _positive_delta(value: int | None) -> bool:
+    return value is not None and value > 0
 
 
 __all__ = [

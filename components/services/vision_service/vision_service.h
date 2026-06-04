@@ -57,6 +57,9 @@ typedef struct {
     uint32_t stable_samples;
     uint32_t absent_samples;
     uint32_t transition_count;
+    uint32_t detected_event_count;
+    uint32_t lost_event_count;
+    uint32_t last_event_ms;
 } nb_vision_presence_status_t;
 
 esp_err_t vision_service_init(void);

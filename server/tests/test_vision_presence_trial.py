@@ -8,6 +8,8 @@ def test_vision_presence_trial_detects_presence_latency(monkeypatch) -> None:
 
     states = iter(["candidate", "present", "present"])
     scores = iter([58, 72, 76])
+    transitions = iter([0, 1, 1])
+    detected_events = iter([0, 1, 1])
     calls: list[str] = []
 
     def fake_get_json(base_url: str, path: str, timeout_s: float) -> dict:
@@ -19,7 +21,9 @@ def test_vision_presence_trial_detects_presence_latency(monkeypatch) -> None:
                 "presence": {
                     "state": next(states),
                     "score": next(scores),
-                    "transition_count": 0 if len(calls) <= 2 else 1,
+                    "transition_count": next(transitions),
+                    "detected_event_count": next(detected_events),
+                    "lost_event_count": 0,
                 },
             }
         if path == "api/render/status":
@@ -59,6 +63,8 @@ def test_vision_presence_trial_detects_presence_latency(monkeypatch) -> None:
     assert result.present_transition_count == 1
     assert result.lost_transition_count == 0
     assert result.transition_delta == 1
+    assert result.detected_event_delta == 1
+    assert result.lost_event_delta == 0
     assert calls.count("api/vision/observe") == 3
 
 
@@ -67,6 +73,7 @@ def test_vision_presence_trial_requires_lost_transition(monkeypatch) -> None:
 
     states = iter(["present", "present", "absent"])
     transitions = iter([3, 3, 4])
+    lost_events = iter([0, 0, 1])
 
     def fake_get_json(base_url: str, path: str, timeout_s: float) -> dict:
         if path == "api/vision/observe":
@@ -77,6 +84,8 @@ def test_vision_presence_trial_requires_lost_transition(monkeypatch) -> None:
                     "state": next(states),
                     "score": 20,
                     "transition_count": next(transitions),
+                    "detected_event_count": 2,
+                    "lost_event_count": next(lost_events),
                 },
             }
         if path == "api/render/status":
@@ -110,6 +119,8 @@ def test_vision_presence_trial_requires_lost_transition(monkeypatch) -> None:
     assert result.initial_transition_count == 3
     assert result.final_transition_count == 4
     assert result.transition_delta == 1
+    assert result.detected_event_delta == 0
+    assert result.lost_event_delta == 1
 
 
 def test_vision_presence_trial_rejects_lost_when_already_absent(monkeypatch) -> None:
@@ -120,7 +131,13 @@ def test_vision_presence_trial_rejects_lost_when_already_absent(monkeypatch) -> 
             return {
                 "ok": True,
                 "observation": {"valid": True},
-                "presence": {"state": "absent", "score": 0, "transition_count": 9},
+                "presence": {
+                    "state": "absent",
+                    "score": 0,
+                    "transition_count": 9,
+                    "detected_event_count": 1,
+                    "lost_event_count": 1,
+                },
             }
         if path == "api/render/status":
             return {"fps": 26.0}
@@ -145,7 +162,10 @@ def test_vision_presence_trial_rejects_lost_when_already_absent(monkeypatch) -> 
 
     assert result.ok is False
     assert result.lost_transition_count == 0
-    assert result.errors == ["presence_lost_transition_not_observed"]
+    assert result.errors == [
+        "presence_lost_transition_not_observed",
+        "presence_lost_event_not_observed",
+    ]
 
 
 def test_vision_presence_trial_flags_absence_false_positive(monkeypatch) -> None:
@@ -156,7 +176,13 @@ def test_vision_presence_trial_flags_absence_false_positive(monkeypatch) -> None
             return {
                 "ok": True,
                 "observation": {"valid": True},
-                "presence": {"state": "present", "score": 80},
+                "presence": {
+                    "state": "present",
+                    "score": 80,
+                    "transition_count": 1,
+                    "detected_event_count": 1,
+                    "lost_event_count": 0,
+                },
             }
         if path == "api/render/status":
             return {"fps": 25.0}

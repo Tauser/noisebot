@@ -166,6 +166,16 @@ copying board-specific implementations from other products.
   `--require-initial-state`/`--require-final-state`. `mode=lost` requires an
   observed `present -> absent` transition instead of accepting a run that was
   already absent at the start.
+- The firmware presence JSON also includes `detected_event_count`,
+  `lost_event_count` and `last_event_ms`. Presence/lost trials now use those
+  deltas to prove that `PRESENCE_DETECTED`/`PRESENCE_LOST` were published, not
+  just that the internal shadow state changed.
+- The event-counter firmware was built and flashed on 2026-06-04. Post-flash
+  sanity returned a valid 640x480 `/api/vision/observe` payload with
+  `detected_event_count=0`, `lost_event_count=0`, `last_event_ms=0`, while
+  `/api/render/status` stayed at `fps=27.0`. An absence smoke with the new
+  fields passed before the final buffer-size adjustment: 3/3 valid observations,
+  zero false positives, `baseline_fps=25.4` and `min_fps=26.6`.
 - The bridge v2 can answer local vision questions from the vision endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection

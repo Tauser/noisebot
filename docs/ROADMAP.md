@@ -3424,6 +3424,16 @@ e confiável antes de acionar comportamento autônomo.
   `--require-initial-state`/`--require-final-state`. O modo `lost` só aprova se
   observar a transição real `present -> absent`, evitando falso verde quando o
   teste já começa ausente.
+- O `vision_service` também expõe `detected_event_count`, `lost_event_count` e
+  `last_event_ms` no bloco `presence`. O trial usa esses deltas para exigir que
+  `mode=presence` observe publicação de `PRESENCE_DETECTED` e que `mode=lost`
+  observe publicação de `PRESENCE_LOST`, não apenas mudança interna de estado.
+- Firmware com contadores de evento foi buildado e flashado em 2026-06-04.
+  Sanity pós-flash: `/api/vision/observe` retornou observação válida 640x480 e
+  `presence` com `detected_event_count=0`, `lost_event_count=0`,
+  `last_event_ms=0`; `/api/render/status` manteve `fps=27.0`. Smoke `absence`
+  com os novos campos antes do ajuste final de buffer passou: 3/3 observações
+  válidas, zero falsos positivos, `min_fps=26.6`, `baseline_fps=25.4`.
 
 **Integração:**
 

@@ -96,7 +96,7 @@ static uint8_t presence_score(const nb_vision_observation_t *obs)
     return clamp_u8(score);
 }
 
-static void publish_presence_event(nb_event_type_t type, uint8_t score, uint32_t ts_ms)
+static esp_err_t publish_presence_event(nb_event_type_t type, uint8_t score, uint32_t ts_ms)
 {
     nb_event_t evt = {
         .type = type,
@@ -106,6 +106,20 @@ static void publish_presence_event(nb_event_type_t type, uint8_t score, uint32_t
     esp_err_t err = nb_event_publish_async(&evt);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "falha ao publicar evento de presença: %s", esp_err_to_name(err));
+    }
+    return err;
+}
+
+static void record_presence_event_publish(nb_event_type_t type, uint32_t ts_ms)
+{
+    if (s_mutex && xSemaphoreTake(s_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        if (type == NB_EVT_PRESENCE_DETECTED) {
+            s_presence.detected_event_count++;
+        } else if (type == NB_EVT_PRESENCE_LOST) {
+            s_presence.lost_event_count++;
+        }
+        s_presence.last_event_ms = ts_ms;
+        xSemaphoreGive(s_mutex);
     }
 }
 
@@ -264,13 +278,17 @@ esp_err_t vision_service_evaluate_presence(const nb_vision_observation_t *obs,
     }
 
     if (publish_detected) {
-        publish_presence_event(NB_EVT_PRESENCE_DETECTED, score, now_ms);
+        if (publish_presence_event(NB_EVT_PRESENCE_DETECTED, score, now_ms) == ESP_OK) {
+            record_presence_event_publish(NB_EVT_PRESENCE_DETECTED, now_ms);
+        }
     } else if (publish_lost) {
-        publish_presence_event(NB_EVT_PRESENCE_LOST, score, now_ms);
+        if (publish_presence_event(NB_EVT_PRESENCE_LOST, score, now_ms) == ESP_OK) {
+            record_presence_event_publish(NB_EVT_PRESENCE_LOST, now_ms);
+        }
     }
 
     if (out) {
-        *out = status;
+        vision_service_get_presence(out);
     }
     return ESP_OK;
 }
