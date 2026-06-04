@@ -2188,6 +2188,14 @@ high-watermark 14/32. O primeiro gate viu 1 pacote Opus egress residual; apos
 Codec v2 `status=ok`, `opus_egress_queue_count=0`, Capture v2 sem drops e
 Audio IO v2 sem recoveries.
 
+Fechamento firmware de reducao estrutural: o caminho RX restante do
+`audio_task` foi concentrado em `audio_service_process_rx_chunk()`. O helper
+mantem a ordem original de leitura do mic, condicionamento, conversao para
+WakeNet/sound analysis, dispatch RX v2, timeouts de sessao e gravacao
+diagnostica. Nao muda wake, VAD, Capture v2, Activity v2, Codec v2, Playback
+v2, bridge, HAL ou ownership fisico; o ganho e fechar o bloco pos-N6 deixando o
+loop principal como orquestrador curto TX -> RX.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
@@ -2197,10 +2205,11 @@ Audio IO v2 sem recoveries.
 4. Fase K: capture session v2 assume upstream por flag.
 5. Fase L: policy conversacional avancada, so depois de no-echo e captura
    estarem estaveis.
-6. Estado atual: Fase N0-N6 consolidada e Activity v2 promovido para default
-   controlado com rollback. O proximo incremento deve usar
-   `/api/audio/voice-v2` como preflight antes de nova reducao do
-   `audio_service.c`.
+6. Estado atual: Fase N0-N6 consolidada, Activity v2 promovido para default
+   controlado com rollback e reducao estrutural pos-N6 do `audio_task`
+   fechada por helpers internos. O proximo incremento deve ser uma fase nova,
+   com preflight em `/api/audio/voice-v2`, e nao mais uma extensao infinita de
+   N6.
 
 Essa ordem segue a regra central da arquitetura v2: separar I/O, playback,
 processor, codec e policy. No NoiseBot, a prioridade imediata e diminuir o

@@ -382,6 +382,12 @@ Invariantes:
   LLM/TTS/SAY_END em Opus v2, Playback v2 recebeu/tocou `653/653` chunks SAY,
   ficou com fila final zero, zero drops e zero falhas de speaker. Um pacote
   Opus egress residual foi drenado; o release-check final voltou `ok=true`.
+- A reducao pos-N6 final concentra o caminho RX restante em
+  `audio_service_process_rx_chunk()`: leitura do mic, condicionamento,
+  conversoes WakeNet/Sound Analysis, dispatch RX v2, timeouts de sessao e
+  gravacao diagnostica saem do corpo principal do `audio_task`. O loop passa a
+  atuar como orquestrador curto TX -> RX, sem mudar HAL, wake, VAD, captura,
+  codec, bridge ou ownership fisico.
 
 ### Voice Activity v2
 

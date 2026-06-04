@@ -155,6 +155,10 @@ chunks TTS no server e o Playback v2 acumulado fechou `653/653` chunks SAY
 recebidos/tocados, fila zero, zero drops e zero falhas de write/commit. A fila
 Opus egress teve 1 pacote residual drenado; o release-check final voltou
 `ok=true`.
+Fechamento pos-N6 do `audio_task`: o caminho RX restante foi isolado em
+`audio_service_process_rx_chunk()`, preservando leitura do mic, condicionamento,
+dispatch RX v2, timeouts e gravacao diagnostica. Isso nao altera protocolo nem
+audio real; reduz o loop principal para orquestrar TX e RX.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

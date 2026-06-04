@@ -298,6 +298,11 @@ Incremento atual da Fase N3:
   Playback v2 fechou `653/653` chunks SAY acumulados, fila zero, zero
   drops/falhas; 1 pacote egress residual foi drenado e o release-check final
   voltou `ok=true`.
+- Fechamento pos-N6: `audio_service_process_rx_chunk()` concentra o RX restante
+  do `audio_task` (mic read, condicionamento, dispatch RX v2, timeouts e
+  gravacao diagnostica), sem mudar wake/VAD/captura/codec/playback/bridge/HAL.
+  Inferencia da IA: a frente N6 deve ser considerada encerrada apos validacao
+  em hardware desse firmware; novos passos entram como fase nova.
 
 ### Wake Word
 
