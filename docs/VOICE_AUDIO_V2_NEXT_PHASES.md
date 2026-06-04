@@ -2323,3 +2323,65 @@ drops e zero falhas de write/commit. Capture v2 ficou `DONE`,
 `opus_codec_error=0`; Audio IO v2 manteve cerca de 19 KB livres interno/DMA,
 maior bloco 17 KB e zero recoveries. O `voice-release-check` final retornou
 `ok=true` sem necessidade de dreno manual. Fase O fechada.
+
+## Fase P - Audio Service Como Ponte/Compatibilidade
+
+Objetivo: depois do fechamento operacional da Fase O, reduzir o
+`audio_service.c` sem trocar novamente o caminho real de audio no mesmo passo.
+A meta de P nao e "mais teste": e explicitar ownership residual e transformar o
+`audio_service` em ponte/compatibilidade, mantendo HAL fisico e rollback v1
+seguros ate cada owner v2 estar maduro.
+
+### P0 - Baseline Pos-O
+
+Baseline congelado:
+
+- `voice-release-check ok=true` apos restart real do server.
+- Opus v2 segue como default local do server, PCM16 segue rollback.
+- Capture v2 e Activity v2 estao como owners controlados/defaults com rollback
+  por config, mas ainda preservam compatibilidade v1.
+- Playback v2 e dono de fila/lifecycle/preparo/commit/write orchestration por
+  callback; o HAL fisico ainda nao foi movido para Playback v2.
+- Audio IO v2 observa/distribui RX/TX e reporta recoveries/heap; HAL/I2S fisico
+  ainda esta no `audio_service`.
+- Heap interno/DMA pos-O ficou em torno de 19 KB livres, maior bloco 17 KB,
+  sem warning de release.
+
+### P1 - Mapa de Ownership Restante
+
+Responsabilidades que ainda devem ficar no `audio_service.c` por enquanto:
+
+- Escrita/leitura fisica no HAL/I2S (`audio_hal_*`) e recovery de I2S.
+- Callback de eventos legados `NB_AUDIO_EVT_PLAYBACK_START/END` e integracao
+  indireta com event bus via boot manager.
+- `wake_service_rearm()` associado ao lifecycle legado de playback.
+- Compatibilidade de playback local `PLAY_ACTIVE`, `PLAY_STOP`, synth/probe e
+  silencio de fallback.
+- VAD/turn-taking legado como rollback e fallback diagnostico.
+- Ponte com `bridge_service` enquanto Capture v2/Codec v2 ainda precisam de
+  rollback e handoff controlado.
+
+Responsabilidades que ja pertencem majoritariamente aos v2:
+
+- Fila e lifecycle de SAY: `audio_playback_service_v2`.
+- Preparacao/commit/orquestracao do frame de SAY: `audio_playback_service_v2`
+  por callback seguro do `audio_service`.
+- Distribuicao/telemetria RX/TX, recoveries e heap: `audio_io_service_v2`.
+- Decisao de fim de fala dentro de sessao aberta: `voice_activity_service_v2`.
+- Estado de captura, ownership TX e envio quando armado: `voice_capture_session_v2`.
+- Worker Opus, filas de codec, egress e rollback PCM16: `audio_codec_service_v2`.
+
+Proximo incremento recomendado:
+
+- P2 deve ser um corte de contrato/observabilidade, nao um novo handoff fisico:
+  expor um mapa resumido de ownership em `/api/audio/voice-v2` ou endpoint
+  dedicado antes de mover qualquer chamada HAL. O aceite deve provar que o
+  firmware consegue dizer, em uma tela, quem e dono de RX, TX, VAD, captura,
+  codec, playback e ponte legacy.
+
+Nao fazer em P2:
+
+- Nao mover `audio_hal_spk_write()` para Playback v2 ainda.
+- Nao remover VAD legado.
+- Nao trocar bridge TX sem rollback.
+- Nao mexer em wake/follow-up/AEC.

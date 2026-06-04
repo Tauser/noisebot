@@ -424,6 +424,12 @@ Invariantes:
   `voice-release-check ok=true` sem dreno manual. O Voice Audio v2 fica
   operacionalmente fechado para essa fase; proximos passos devem ser nova fase,
   nao extensao de O.
+- Fase P aberta como reducao final de ownership residual: `audio_service.c`
+  deve virar ponte/compatibilidade gradualmente. O HAL/I2S fisico, eventos
+  legados, wake rearm, playback local, VAD rollback e ponte com bridge ainda
+  ficam nele ate cada owner v2 ter gate proprio. Antes de novo handoff fisico,
+  P2 deve expor um mapa de ownership em status para evitar mudar HAL, wake,
+  VAD e bridge no escuro.
 
 ### Voice Activity v2
 

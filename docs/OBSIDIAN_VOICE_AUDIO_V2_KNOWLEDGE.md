@@ -339,6 +339,14 @@ Incremento atual da Fase N3:
   Codec v2 egress zero/sem erro, Audio IO v2 ~19 KB livres interno/DMA e
   `voice-release-check ok=true` sem dreno manual. Proximos incrementos devem
   abrir fase nova.
+- Fase P aberta: objetivo e reduzir `audio_service.c` para ponte/compat. P0/P1
+  congelam baseline pos-O e mapeiam ownership residual. Ainda ficam no
+  `audio_service`: HAL/I2S fisico, recovery, eventos legados, wake rearm,
+  playback local, VAD rollback e ponte bridge legacy. Ja estao majoritariamente
+  nos v2: fila/lifecycle/preparo/commit SAY, telemetria RX/TX, Activity v2 como
+  decisor dentro de sessao, Capture v2 TX owner controlado e Codec v2 Opus.
+  Proximo passo seguro: expor mapa de ownership em status antes de novo
+  handoff fisico.
 
 ### Wake Word
 
