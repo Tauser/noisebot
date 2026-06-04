@@ -2178,6 +2178,16 @@ audio saiu do corpo principal do `audio_task` e foi concentrado em
 `audio_note_spk_result()`. Nao muda Voice v2, wake, VAD, captura, codec, fila
 SAY ou ownership fisico do speaker; apenas reduz o acoplamento do loop TX/RX.
 
+Validacao pos-flash do fallback TX isolado: baseline inicial ficou verde e o
+turno real 23 (`Me fale uma frase curta.`) completou em Opus v2 com
+`tts_completed=true`, `SAY_END`, transcript_quality `good` e resposta curta.
+Playback v2 fechou `say_begin_count=2`, `say_end_count=2`, `653/653` chunks SAY
+recebidos/tocados, fila final zero, zero drops, zero falhas de write/commit e
+high-watermark 14/32. O primeiro gate viu 1 pacote Opus egress residual; apos
+`codec-v2 egress-drain`, o `voice-release-check` final voltou `ok=true` com
+Codec v2 `status=ok`, `opus_egress_queue_count=0`, Capture v2 sem drops e
+Audio IO v2 sem recoveries.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

@@ -293,6 +293,11 @@ Incremento atual da Fase N3:
 - Nova reducao firmware: fallback TX probe/synth/silencio isolado em
   `audio_service_fill_idle_output()`, mantendo ordem, HAL no `audio_service` e
   sem alterar Voice v2/wake/VAD/captura/codec/fila SAY.
+- Validacao pos-flash dessa reducao: baseline e turno real curto ficaram verdes;
+  turno 23 transcreveu `Me fale uma frase curta.`, completou LLM/TTS/SAY_END,
+  Playback v2 fechou `653/653` chunks SAY acumulados, fila zero, zero
+  drops/falhas; 1 pacote egress residual foi drenado e o release-check final
+  voltou `ok=true`.
 
 ### Wake Word
 

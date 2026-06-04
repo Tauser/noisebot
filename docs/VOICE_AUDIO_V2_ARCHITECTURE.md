@@ -377,6 +377,11 @@ Invariantes:
   `audio_service_fill_idle_output()`, mantendo a ordem probe v2 -> synth ->
   silencio e a escrita fisica via `audio_service`. Isso deixa o loop principal
   mais legivel sem transferir HAL para v2.
+- Validacao em hardware desse fallback isolado: baseline e turno real curto
+  passaram apos flash. O turno 23 (`Me fale uma frase curta.`) completou
+  LLM/TTS/SAY_END em Opus v2, Playback v2 recebeu/tocou `653/653` chunks SAY,
+  ficou com fila final zero, zero drops e zero falhas de speaker. Um pacote
+  Opus egress residual foi drenado; o release-check final voltou `ok=true`.
 
 ### Voice Activity v2
 

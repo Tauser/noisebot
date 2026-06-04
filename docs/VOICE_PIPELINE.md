@@ -149,6 +149,12 @@ v2; o ganho e deixar o loop principal menos acoplado.
 O fallback TX de probe/synth/silencio tambem foi isolado em
 `audio_service_fill_idle_output()`, preservando a mesma ordem e mantendo o HAL
 fisico sob `audio_service`.
+Validacao pos-flash do fallback TX isolado: turno 23 ouviu
+`Me fale uma frase curta.`, completou LLM/TTS/SAY_END em Opus v2, enviou 178
+chunks TTS no server e o Playback v2 acumulado fechou `653/653` chunks SAY
+recebidos/tocados, fila zero, zero drops e zero falhas de write/commit. A fila
+Opus egress teve 1 pacote residual drenado; o release-check final voltou
+`ok=true`.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,
