@@ -62,6 +62,7 @@
 #include "audio_processor_service.h"
 #include "time_service.h"
 #include "agenda_service.h"
+#include "camera_service.h"
 #include "vision_service.h"
 #include "esp_ota_ops.h"
 #include "nb_hw_config.h"
@@ -422,6 +423,20 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
         default: return;
     }
     nb_event_publish_async(&bus_evt);
+}
+
+static void on_camera_event(nb_camera_event_t evt)
+{
+    switch (evt) {
+        case NB_CAMERA_EVT_SESSION_ACTIVE:
+            ui_overlay_camera_set(true);
+            break;
+        case NB_CAMERA_EVT_SESSION_INACTIVE:
+            ui_overlay_camera_set(false);
+            break;
+        default:
+            break;
+    }
 }
 
 /* ── Relay de eventos de touch → event bus + state machine + emotion ─────── */
@@ -1246,6 +1261,7 @@ static esp_err_t phase_services(void)
      * câmera antes da voz e consome SRAM interna que o AEC precisa. Os
      * endpoints /api/vision/observe e /api/camera/snapshot inicializam sob
      * demanda. */
+    camera_service_set_event_cb(on_camera_event);
 
     nb_event_subscribe(NB_EVT_BRIDGE_SESSION, on_bridge_alert_command, NULL, NULL);
 

@@ -31,6 +31,7 @@ void ui_overlay_clear_text(void);
 void ui_overlay_show_toast(const char *text, nb_ui_overlay_tone_t tone, uint32_t duration_ms);
 void ui_overlay_clear(void);
 void ui_overlay_listening_set(bool enabled);
+void ui_overlay_camera_set(bool enabled);
 void ui_overlay_timer_badge_set(bool enabled, uint32_t remaining_ms);
 
 /**

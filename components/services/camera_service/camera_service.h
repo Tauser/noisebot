@@ -72,7 +72,15 @@ typedef struct {
     bool memory_ok;
 } nb_camera_diag_status_t;
 
+typedef enum {
+    NB_CAMERA_EVT_SESSION_ACTIVE = 0,
+    NB_CAMERA_EVT_SESSION_INACTIVE,
+} nb_camera_event_t;
+
+typedef void (*nb_camera_event_cb_t)(nb_camera_event_t evt);
+
 esp_err_t camera_service_init(void);
+void camera_service_set_event_cb(nb_camera_event_cb_t cb);
 bool camera_service_is_supported(void);
 bool camera_service_is_available(void);
 bool camera_service_is_ready(void);

@@ -50,6 +50,20 @@ static size_t s_last_psram_after_release = 0;
 static nb_camera_scene_metrics_t s_scene_metrics = {0};
 static uint8_t s_motion_prev[CAMERA_SVC_MOTION_CELLS];
 static bool s_motion_prev_valid = false;
+static bool s_session_active = false;
+static nb_camera_event_cb_t s_event_cb = NULL;
+
+static void camera_service_set_session_active(bool active)
+{
+    if (s_session_active == active) {
+        return;
+    }
+    s_session_active = active;
+    nb_camera_event_cb_t cb = s_event_cb;
+    if (cb) {
+        cb(active ? NB_CAMERA_EVT_SESSION_ACTIVE : NB_CAMERA_EVT_SESSION_INACTIVE);
+    }
+}
 
 static void camera_service_record_after_release(void)
 {
@@ -88,6 +102,7 @@ static void camera_service_hold_timer_cb(void *arg)
 
     if (!s_snapshot_borrowed && camera_hal_is_ready()) {
         camera_hal_deinit();
+        camera_service_set_session_active(false);
         camera_service_record_after_release();
         ESP_LOGI(TAG, "sessao de camera encerrada por timeout");
     }
@@ -302,6 +317,11 @@ bool camera_service_is_ready(void)
     return s_initialized && camera_hal_is_ready();
 }
 
+void camera_service_set_event_cb(nb_camera_event_cb_t cb)
+{
+    s_event_cb = cb;
+}
+
 bool camera_service_is_supported(void)
 {
     return camera_hal_is_supported();
@@ -333,6 +353,7 @@ esp_err_t camera_service_set_mode(nb_camera_mode_t mode)
     camera_service_hold_cancel();
     if (camera_hal_is_ready()) {
         camera_hal_deinit();
+        camera_service_set_session_active(false);
         camera_service_record_after_release();
     }
 
@@ -436,12 +457,14 @@ esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out)
             xSemaphoreGive(s_mutex);
             return camera_service_fail(init_err, "hal_init");
         }
+        camera_service_set_session_active(true);
     }
 
     int64_t capture_start_us = esp_timer_get_time();
     esp_err_t err = camera_hal_capture();
     if (err != ESP_OK) {
         camera_hal_deinit();
+        camera_service_set_session_active(false);
         camera_service_record_after_release();
         xSemaphoreGive(s_mutex);
         return camera_service_fail(err, "capture");
@@ -451,6 +474,7 @@ esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out)
     if (!frame || !frame->buf || frame->len == 0U) {
         camera_hal_release_frame();
         camera_hal_deinit();
+        camera_service_set_session_active(false);
         camera_service_record_after_release();
         xSemaphoreGive(s_mutex);
         return camera_service_fail(ESP_FAIL, "frame");
@@ -473,6 +497,7 @@ esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out)
         camera_hal_release_frame();
         if (err != ESP_OK) {
             camera_hal_deinit();
+            camera_service_set_session_active(false);
             camera_service_record_after_release();
             xSemaphoreGive(s_mutex);
             return camera_service_fail(err, "jpeg_encode");
@@ -480,6 +505,7 @@ esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out)
     } else {
         camera_hal_release_frame();
         camera_hal_deinit();
+        camera_service_set_session_active(false);
         camera_service_record_after_release();
         xSemaphoreGive(s_mutex);
         return camera_service_fail(ESP_ERR_NOT_SUPPORTED, "format");
@@ -551,6 +577,7 @@ esp_err_t camera_service_close_session(void)
     }
     if (camera_hal_is_ready()) {
         camera_hal_deinit();
+        camera_service_set_session_active(false);
         camera_service_record_after_release();
         ESP_LOGI(TAG, "sessao de camera encerrada por requisicao");
     }

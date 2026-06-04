@@ -40,12 +40,17 @@ static constexpr int     SLEEP_MSG_MARGIN       = 6;
 static constexpr int     LISTENING_ICON_W       = 24;
 static constexpr int     LISTENING_ICON_H       = 24;
 static constexpr int     LISTENING_ICON_MARGIN  = 8;
+static constexpr int     CAMERA_ICON_W          = 24;
+static constexpr int     CAMERA_ICON_H          = 24;
+static constexpr int     CAMERA_ICON_MARGIN     = 8;
+static constexpr int     STATUS_ICON_GAP        = 6;
 static constexpr int     TIMER_BADGE_W          = 94;
 static constexpr int     TIMER_BADGE_H          = 20;
 static constexpr int     TIMER_BADGE_MARGIN     = 8;
 
 static volatile bool  s_sleep_bubble_active   = false;
 static volatile bool  s_listening_indicator_active = false;
+static volatile bool  s_camera_indicator_active = false;
 static volatile bool  s_timer_badge_active = false;
 static volatile uint32_t s_timer_badge_remaining_ms = 0;
 static int64_t        s_sleep_bubble_start_us = 0;
@@ -62,6 +67,11 @@ static int            s_listening_prev_x = 0;
 static int            s_listening_prev_y = 0;
 static int            s_listening_prev_w = 0;
 static int            s_listening_prev_h = 0;
+static bool           s_camera_was_active = false;
+static int            s_camera_prev_x = 0;
+static int            s_camera_prev_y = 0;
+static int            s_camera_prev_w = 0;
+static int            s_camera_prev_h = 0;
 static bool           s_timer_badge_was_active = false;
 static int            s_timer_badge_prev_x = 0;
 static int            s_timer_badge_prev_y = 0;
@@ -261,6 +271,20 @@ static void listening_icon_rect(int *x, int *y, int *w, int *h)
     *y = LISTENING_ICON_MARGIN;
 }
 
+static void camera_icon_rect(int *x, int *y, int *w, int *h)
+{
+    int dw = display_hal_width();
+    if (dw <= 0) dw = 320;
+
+    *w = CAMERA_ICON_W;
+    *h = CAMERA_ICON_H;
+    *x = dw - CAMERA_ICON_W - CAMERA_ICON_MARGIN;
+    if (s_listening_indicator_active) {
+        *x -= LISTENING_ICON_W + STATUS_ICON_GAP;
+    }
+    *y = CAMERA_ICON_MARGIN;
+}
+
 static void draw_listening_icon(LGFX_Sprite *spr, int x, int y, int w, int h, int64_t now_us)
 {
     const float phase = (float)((now_us / 1000LL) % 1400LL) / 1400.0f;
@@ -274,6 +298,25 @@ static void draw_listening_icon(LGFX_Sprite *spr, int x, int y, int w, int h, in
     spr->drawArc(mx, my + 8, 10, 9, 28, 152, fg);
     spr->drawLine(mx, my + 18, mx, my + 22, fg);
     spr->drawLine(mx - 6, my + 22, mx + 6, my + 22, fg);
+}
+
+static void draw_camera_icon(LGFX_Sprite *spr, int x, int y, int w, int h, int64_t now_us)
+{
+    const float phase = (float)((now_us / 1000LL) % 1600LL) / 1600.0f;
+    const float pulse = 0.5f + (0.5f * sinf(phase * 2.0f * BUBBLE_NB_PI_F));
+    const uint8_t glow = (uint8_t)(168.0f + (pulse * 62.0f));
+    const uint16_t fg = spr->color565(glow, 230, 248);
+    const uint16_t dim = spr->color565(22, 60, 76);
+    const int bx = x + 3;
+    const int by = y + 6;
+    (void)w;
+    (void)h;
+
+    spr->fillRoundRect(bx + 1, by + 1, 15, 11, 3, dim);
+    spr->drawRoundRect(bx, by, 15, 11, 3, fg);
+    spr->fillTriangle(bx + 15, by + 3, bx + 21, by + 1, bx + 21, by + 13, fg);
+    spr->fillCircle(bx + 7, by + 6, 3, fg);
+    spr->fillCircle(bx + 7, by + 6, 1, dim);
 }
 
 static void timer_badge_rect(int *x, int *y, int *w, int *h)
@@ -752,6 +795,26 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
     }
     s_listening_was_active = listening;
 
+    bool camera = s_camera_indicator_active;
+    if (camera) {
+        int dirty_x = 0, dirty_y = 0, dirty_w = 0, dirty_h = 0;
+        camera_icon_rect(&dirty_x, &dirty_y, &dirty_w, &dirty_h);
+        if (s_camera_was_active) {
+            render_service_mark_dirty(s_camera_prev_x, s_camera_prev_y,
+                                      s_camera_prev_w, s_camera_prev_h);
+        }
+        draw_camera_icon(spr, dirty_x, dirty_y, dirty_w, dirty_h, now_us);
+        render_service_mark_dirty(dirty_x, dirty_y, dirty_w, dirty_h);
+        s_camera_prev_x = dirty_x;
+        s_camera_prev_y = dirty_y;
+        s_camera_prev_w = dirty_w;
+        s_camera_prev_h = dirty_h;
+    } else if (s_camera_was_active) {
+        render_service_mark_dirty(s_camera_prev_x, s_camera_prev_y,
+                                  s_camera_prev_w, s_camera_prev_h);
+    }
+    s_camera_was_active = camera;
+
     bool timer_badge = s_timer_badge_active;
     if (timer_badge) {
         int dirty_x = 0, dirty_y = 0, dirty_w = 0, dirty_h = 0;
@@ -952,6 +1015,12 @@ extern "C" void ui_overlay_clear(void)
 extern "C" void ui_overlay_listening_set(bool enabled)
 {
     s_listening_indicator_active = enabled;
+    render_service_force_full_refresh();
+}
+
+extern "C" void ui_overlay_camera_set(bool enabled)
+{
+    s_camera_indicator_active = enabled;
     render_service_force_full_refresh();
 }
 

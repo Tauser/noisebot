@@ -191,6 +191,11 @@ copying board-specific implementations from other products.
   equivalent embedded presence detector, but it does point NoiseBot toward a
   warm continuous vision loop instead of isolated snapshots for sub-500ms
   presence latency.
+- StackChan/Xiaozhi UI reference on 2026-06-04: the app/server protocol uses
+  explicit `OnCamera`/`OffCamera` messages based on camera subscribers, and the
+  firmware UI keeps small status indicators as icons. NoiseBot mirrors that
+  product behavior with a camera badge in `ui_overlay_service`: the badge is on
+  while the camera hot session is active and is cleared when the session closes.
 - NoiseBot now retains a strong presence candidate (`score>=80`) for up to 2.5s
   and still requires 2 samples before publishing `PRESENCE_DETECTED`. The
   firmware also exposes `/api/vision/presence/reset` for clean validation runs.

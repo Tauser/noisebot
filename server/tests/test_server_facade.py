@@ -7805,6 +7805,49 @@ def test_firmware_render_metrics_contract_is_exposed() -> None:
     assert '"/api/render/status"' in web_c
 
 
+def test_firmware_camera_active_overlay_contract_is_exposed() -> None:
+    root = Path(__file__).resolve().parents[2]
+    camera_h = (
+        root
+        / "components"
+        / "services"
+        / "camera_service"
+        / "camera_service.h"
+    ).read_text(encoding="utf-8")
+    camera_c = (
+        root
+        / "components"
+        / "services"
+        / "camera_service"
+        / "camera_service.c"
+    ).read_text(encoding="utf-8")
+    overlay_h = (
+        root
+        / "components"
+        / "services"
+        / "ui_overlay_service"
+        / "ui_overlay_service.h"
+    ).read_text(encoding="utf-8")
+    overlay_c = (
+        root
+        / "components"
+        / "services"
+        / "ui_overlay_service"
+        / "ui_overlay_service.cpp"
+    ).read_text(encoding="utf-8")
+    boot_c = (root / "components" / "infra" / "boot_manager.c").read_text(encoding="utf-8")
+
+    assert "NB_CAMERA_EVT_SESSION_ACTIVE" in camera_h
+    assert "camera_service_set_event_cb" in camera_h
+    assert "camera_service_set_session_active(true)" in camera_c
+    assert "camera_service_set_session_active(false)" in camera_c
+    assert "ui_overlay_camera_set" in overlay_h
+    assert "draw_camera_icon" in overlay_c
+    assert "camera_service_set_event_cb(on_camera_event)" in boot_c
+    assert "ui_overlay_camera_set(true)" in boot_c
+    assert "ui_overlay_camera_set(false)" in boot_c
+
+
 def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
     soak = importlib.import_module("noisebot_server.internal.ops.vision_soak")
 
