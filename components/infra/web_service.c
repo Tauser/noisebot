@@ -2034,7 +2034,7 @@ static esp_err_t handle_api_audio_voice_v2_status(httpd_req_t *req)
              "\"bridge_tx\":\"%s\","
              "\"codec\":\"audio_codec_service_v2\","
              "\"playback_queue\":\"audio_playback_service_v2\","
-             "\"playback_hal\":\"audio_service\","
+             "\"playback_hal\":\"audio_playback_service_v2_say_audio_service_compat\","
              "\"legacy_bridge\":\"audio_service\"},"
              "\"capture_enabled\":%s,"
              "\"capture_tx_enabled\":%s,"

@@ -3,6 +3,7 @@
  */
 
 #include "audio_playback_service_v2.h"
+#include "audio_hal.h"
 #include "audio_io_service_v2.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -533,8 +534,6 @@ static void playback_v2_speaker_commit_frame(uint16_t sample_count,
 
 bool audio_playback_service_v2_speaker_write_next_frame(
     uint8_t volume_percent,
-    nb_audio_playback_v2_speaker_write_cb_t write_cb,
-    void *ctx,
     uint16_t *sample_count,
     esp_err_t *result)
 {
@@ -546,21 +545,12 @@ bool audio_playback_service_v2_speaker_write_next_frame(
     if (result != NULL) {
         *result = ESP_OK;
     }
-    if (write_cb == NULL) {
-        taskENTER_CRITICAL(&s_mux);
-        s_status.last_error = ESP_ERR_INVALID_ARG;
-        taskEXIT_CRITICAL(&s_mux);
-        if (result != NULL) {
-            *result = ESP_ERR_INVALID_ARG;
-        }
-        return false;
-    }
 
     if (!playback_v2_speaker_next_frame(&frame, volume_percent)) {
         return false;
     }
 
-    esp_err_t wr = write_cb(frame.samples, frame.count, ctx);
+    esp_err_t wr = audio_hal_spk_write(frame.samples, frame.count, pdMS_TO_TICKS(100));
     playback_v2_speaker_commit_frame(frame.count, wr);
 
     taskENTER_CRITICAL(&s_mux);

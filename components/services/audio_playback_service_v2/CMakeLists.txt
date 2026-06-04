@@ -4,6 +4,7 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES
         audio_io_service_v2
+        nb_hal
         esp_common
         freertos
 )

@@ -280,7 +280,7 @@ def _voice_gate(payload: dict[str, Any]) -> ReleaseGate:
             "capture": "voice_capture_session_v2",
             "codec": "audio_codec_service_v2",
             "playback_queue": "audio_playback_service_v2",
-            "playback_hal": "audio_service",
+            "playback_hal": "audio_playback_service_v2_say_audio_service_compat",
             "legacy_bridge": "audio_service",
         }
         for key, expected in expected_ownership.items():

@@ -341,14 +341,6 @@ static void audio_note_spk_result(esp_err_t err, const char *where,
     }
 }
 
-static esp_err_t audio_service_playback_v2_write_speaker(const int16_t *samples,
-                                                         uint16_t sample_count,
-                                                         void *ctx)
-{
-    (void)ctx;
-    return audio_hal_spk_write(samples, sample_count, pdMS_TO_TICKS(100));
-}
-
 static void audio_note_mic_result(esp_err_t err)
 {
     if (err == ESP_OK) {
@@ -601,8 +593,6 @@ static bool audio_service_play_bridge_say_chunk(void)
 
     if (audio_playback_service_v2_speaker_write_next_frame(
             s.volume,
-            audio_service_playback_v2_write_speaker,
-            NULL,
             &n,
             &wr)) {
         audio_note_spk_result(wr, "bridge_say", n, false);

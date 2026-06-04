@@ -55,7 +55,7 @@ def test_voice_audio_v2_consolidated_gate_is_observable():
     assert '\\"bridge_tx\\":\\"%s\\"' in web
     assert '\\"codec\\":\\"audio_codec_service_v2\\"' in web
     assert '\\"playback_queue\\":\\"audio_playback_service_v2\\"' in web
-    assert '\\"playback_hal\\":\\"audio_service\\"' in web
+    assert '\\"playback_hal\\":\\"audio_playback_service_v2_say_audio_service_compat\\"' in web
     assert '\\"legacy_bridge\\":\\"audio_service\\"' in web
     assert 'const char *bridge_tx_owner = capture_st.bridge_tx_owner' in web
     assert '? "voice_capture_session_v2"' in web
@@ -546,7 +546,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "say_chunks_dropped_queue_full" in playback_h
     assert "say_chunks_queue_full" in playback_h
     assert "say_chunks_queue_wait_recovered" in playback_h
-    assert "nb_audio_playback_v2_speaker_write_cb_t" in playback_h
+    assert "nb_audio_playback_v2_speaker_write_cb_t" not in playback_h
     assert "audio_playback_service_v2_speaker_write_next_frame(" in playback_h
     assert "nb_audio_playback_v2_say_chunk_t" not in playback_h
     assert "NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS" not in playback_h
@@ -609,7 +609,9 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "audio_playback_service_v2_say_begin();" in audio_service
     assert "audio_playback_service_v2_say_end_idle();" in audio_service
     assert "audio_playback_service_v2_speaker_write_next_frame(" in audio_service
-    assert "audio_service_playback_v2_write_speaker" in audio_service
+    assert "audio_service_playback_v2_write_speaker" not in audio_service
+    assert '#include "audio_hal.h"' in playback_c
+    assert "audio_hal_spk_write(frame.samples, frame.count" in playback_c
     assert "audio_playback_service_v2_speaker_commit_frame(n, wr);" not in audio_service
     assert "audio_playback_service_v2_speaker_should_end_idle()" in audio_service
     assert "audio_playback_service_v2_say_cancel_active(" in audio_service
@@ -698,7 +700,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "playback_v2_say_dequeue(out)" in playback_c
     assert "static bool playback_v2_speaker_next_frame(" in playback_c
     assert "volume_percent" in playback_c
-    assert "write_cb(frame.samples, frame.count, ctx)" in playback_c
+    assert "audio_hal_spk_write(frame.samples, frame.count, pdMS_TO_TICKS(100))" in playback_c
     assert "playback_v2_speaker_commit_frame(frame.count, wr)" in playback_c
     assert "static void playback_v2_finish_real_owner_window_locked(void)" in playback_c
     assert "playback_v2_finish_real_owner_window_locked();" in playback_c
@@ -728,7 +730,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "speaker_owner_block_reason = (uint32_t)io->speaker_handoff_block_reason;" in playback_c
     assert "speaker_owner_failures = io->speaker_handoff_failures;" in playback_c
     assert "speaker_owner_recoveries = io->speaker_handoff_recoveries;" in playback_c
-    assert "audio_hal_" not in playback_c
+    assert playback_c.count("audio_hal_spk_write(") == 1
 
 
 def test_voice_capture_v2_replay_is_explicit_and_bridge_tx_is_owner_gated():
