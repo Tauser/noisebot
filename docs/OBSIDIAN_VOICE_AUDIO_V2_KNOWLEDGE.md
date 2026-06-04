@@ -371,6 +371,10 @@ Incremento atual da Fase N3:
   drops; contrato firmware focado, testes server focados e `idf.py build`
   passaram. Inferencia da IA: `-1` permanece valido apenas como sentinela
   interno de teste/timeout, nao como erro publico de status limpo.
+- P2 server-only robustez: `voice-release-check` captura falha HTTP do firmware
+  e retorna gate `Firmware HTTP` com `Status: FALHOU`, evitando traceback em
+  timeout/IP errado/boot pos-flash. Evidencia: teste focado passou com 15 casos
+  de `voice_release_check`.
 
 ### Wake Word
 

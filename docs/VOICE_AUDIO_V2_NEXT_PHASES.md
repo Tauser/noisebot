@@ -2423,6 +2423,14 @@ mesmo com worker rodando, filas zeradas e sem drops. O status limpo agora usa
 retorna falha. Validacao local: contrato firmware Voice Audio v2 focado,
 testes focados de Codec/Release Check no server e `idf.py build` limpos.
 
+Incremento server-only de robustez operacional: `voice-release-check` agora
+transforma falhas HTTP do firmware em um gate `Firmware HTTP` com
+`Status: FALHOU`, em vez de encerrar com traceback Python. Isso cobre timeout,
+IP errado, WiFi/boot pos-flash e firmware momentaneamente indisponivel. A
+mudanca nao altera firmware nem runtime. Validacao local:
+`server/tests/test_server_facade.py -k voice_release_check` com 15 testes
+verdes.
+
 Nao fazer em P2:
 
 - Nao mover `audio_hal_spk_write()` para Playback v2 ainda.

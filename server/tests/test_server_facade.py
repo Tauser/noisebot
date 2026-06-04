@@ -3926,6 +3926,35 @@ def test_server_voice_release_check_accepts_clean_preflight(monkeypatch) -> None
     assert "Status: OK" in release_check.format_release_check_markdown(check)
 
 
+def test_server_voice_release_check_reports_firmware_http_failure(monkeypatch) -> None:
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+
+    class FakeFirmware:
+        def __init__(self, base_url: str, timeout_s: float = 1.5) -> None:
+            self.base_url = base_url
+            self.timeout_s = timeout_s
+
+        def audio_voice_v2_status(self) -> dict:
+            raise firmware_diag.FirmwareDiagError("api/audio/voice-v2: timeout")
+
+    monkeypatch.setattr(release_check, "FirmwareDiagClient", FakeFirmware)
+
+    check = release_check.run_release_check(
+        firmware_url="http://192.168.1.30",
+        server_url="http://127.0.0.1:8765",
+    )
+
+    assert check.ok is False
+    assert check.gates[0].name == "Firmware HTTP"
+    assert check.gates[0].ok is False
+    assert "api/audio/voice-v2: timeout" in check.gates[0].detail
+    assert check.gates[0].warnings == (
+        "verifique firmware ligado, IP, WiFi ou boot pos-flash",
+    )
+    assert "Status: FALHOU" in release_check.format_release_check_markdown(check)
+
+
 def test_server_voice_release_check_auto_drains_single_idle_egress_packet(monkeypatch) -> None:
     release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
 

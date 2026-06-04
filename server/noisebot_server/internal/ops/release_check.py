@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from .firmware_diag import FirmwareDiagClient
+from .firmware_diag import FirmwareDiagClient, FirmwareDiagError
 from .voice_ab import get_json
 
 _AUTO_EGRESS_DRAIN_MAX_PACKETS = 1
@@ -57,17 +57,21 @@ def run_release_check(
     timeout_s: float = 1.5,
 ) -> ReleaseCheck:
     firmware = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=timeout_s)
-    voice_v2 = firmware.audio_voice_v2_status()
-    codec_v2 = firmware.audio_codec_v2_health()
-    capture_v2 = firmware.audio_capture_v2_status()
-    playback_v2 = firmware.audio_playback_v2_status()
-    voice_v2, codec_v2 = maybe_auto_drain_codec_egress(
-        firmware=firmware,
-        voice_v2=voice_v2,
-        codec_v2=codec_v2,
-        capture_v2=capture_v2,
-        playback_v2=playback_v2,
-    )
+    try:
+        voice_v2 = firmware.audio_voice_v2_status()
+        codec_v2 = firmware.audio_codec_v2_health()
+        capture_v2 = firmware.audio_capture_v2_status()
+        playback_v2 = firmware.audio_playback_v2_status()
+        voice_v2, codec_v2 = maybe_auto_drain_codec_egress(
+            firmware=firmware,
+            voice_v2=voice_v2,
+            codec_v2=codec_v2,
+            capture_v2=capture_v2,
+            playback_v2=playback_v2,
+        )
+    except FirmwareDiagError as exc:
+        return _firmware_diag_failed_release_check(firmware_url, exc)
+
     metrics = get_json(f"{server_url.rstrip('/')}/ai/metrics")
 
     return build_release_check(
@@ -76,6 +80,28 @@ def run_release_check(
         capture_v2=capture_v2,
         playback_v2=playback_v2,
         metrics=metrics,
+    )
+
+
+def _firmware_diag_failed_release_check(
+    firmware_url: str,
+    exc: FirmwareDiagError,
+) -> ReleaseCheck:
+    message = str(exc)
+    gate = ReleaseGate(
+        name="Firmware HTTP",
+        ok=False,
+        detail=f"{firmware_url.rstrip('/')}: {message}",
+        warnings=("verifique firmware ligado, IP, WiFi ou boot pos-flash",),
+    )
+    return ReleaseCheck(
+        ok=False,
+        gates=(gate,),
+        voice_v2={"ok": False, "error": message},
+        codec_v2={},
+        capture_v2={},
+        playback_v2={},
+        metrics={},
     )
 
 
