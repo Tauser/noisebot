@@ -279,6 +279,10 @@ Incremento atual da Fase N3:
   foi isolado em `audio_service_handle_play_stop()`, preservando fechamento de
   WAV, cancelamento SAY, silencio curto, evento de fim e retorno a `PLAY_IDLE`
   sem mexer em wake/VAD/captura/codec/HAL.
+- Validacao pos-flash dessa reducao: baseline e turno real curto ficaram verdes;
+  turno 19 transcreveu `Uma frase curta.`, completou LLM/TTS/SAY_END,
+  Playback v2 fechou `say_begin_count=1`/`say_end_count=1`, `259/259` chunks
+  recebidos/tocados, fila zero, zero drops/falhas e `voice-release-check ok=true`.
 
 ### Wake Word
 

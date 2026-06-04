@@ -2141,6 +2141,16 @@ emite `NB_AUDIO_EVT_PLAYBACK_END` e devolve `play_state` para `PLAY_IDLE`.
 Nao muda wake, VAD, captura, codec, Opus/PCM16, fila SAY ou ownership fisico
 do speaker; apenas reduz mais um bloco de transicao legada no loop.
 
+Validacao pos-flash do incremento `PLAY_STOP`: baseline `voice-release-check`
+ficou `ok=true` apos reboot, com Voice v2 pronto, Capture v2 em
+`IDLE_SESSION`, Playback v2 zerado e sem drops. Turno real curto posterior
+(`ww -> uma frase curta`) transcreveu `Uma frase curta.`, completou LLM/TTS,
+enviou `SAY_END`, manteve texto visual em `2/2` paginas e fechou Playback v2
+com `say_begin_count=1`, `say_end_count=1`, `259/259` chunks SAY
+recebidos/tocados, fila zero, zero drops e zero falhas de write/commit. O
+`voice-release-check` pos-turno permaneceu `ok=true`; unico aviso foi o DONE
+retido conhecido do Capture v2.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
