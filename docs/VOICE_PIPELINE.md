@@ -167,6 +167,11 @@ Fase O0 server-only: `voice-release-check` passou a avisar quando
 `audio_io_heap_internal_free_kb` ou `audio_io_heap_dma_free_kb` ficam entre 1 e
 15 KB no gate consolidado, mantendo o status OK quando os demais criterios
 estao verdes. Isso nao muda firmware, protocolo ou audio real.
+Hardening O0 seguinte: `/api/audio/io-v2` e `/api/audio/voice-v2` passaram a
+expor bytes livres e maior bloco livre de heap interno/DMA. O release-check
+prefere esses campos quando presentes e mantem fallback por KB, para separar
+risco real de memoria de arredondamento ou fragmentacao antes de novas mudancas
+em HAL/I2S.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

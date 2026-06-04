@@ -114,6 +114,10 @@ typedef struct {
     uint32_t peak_last;
     uint32_t rms_max;
     uint32_t peak_max;
+    uint32_t heap_internal_free_bytes;
+    uint32_t heap_dma_free_bytes;
+    uint32_t heap_internal_largest_free_block;
+    uint32_t heap_dma_largest_free_block;
     uint32_t heap_internal_free_kb;
     uint32_t heap_dma_free_kb;
     esp_err_t last_error;

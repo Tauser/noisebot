@@ -396,6 +396,11 @@ Invariantes:
   consolidado reporta heap interno/DMA de Audio IO v2 baixo (1..15 KB). Isso
   nao altera firmware nem audio; apenas torna visivel o risco operacional antes
   de novas fases que encostem em HAL/I2S.
+- Hardening O0 seguinte: Audio IO v2 tambem expoe bytes livres e maior bloco
+  livre de heap interno/DMA em `/api/audio/io-v2` e `/api/audio/voice-v2`. O
+  release-check prefere esses campos e mantem fallback por KB para firmware
+  antigo, permitindo distinguir heap realmente baixo de arredondamento ou
+  fragmentacao antes de novos passos no HAL/I2S.
 
 ### Voice Activity v2
 

@@ -1761,6 +1761,10 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              "\"tx_silence_frames\":%lu,\"i2s_recoveries\":%lu,"
              "\"dropped_frames\":%lu,\"rms_last\":%lu,\"peak_last\":%lu,"
              "\"rms_max\":%lu,\"peak_max\":%lu,"
+             "\"heap_internal_free_bytes\":%lu,"
+             "\"heap_dma_free_bytes\":%lu,"
+             "\"heap_internal_largest_free_block\":%lu,"
+             "\"heap_dma_largest_free_block\":%lu,"
              "\"heap_internal_free_kb\":%lu,\"heap_dma_free_kb\":%lu,"
              "\"last_error\":\"%s\",\"error\":\"%s\"}",
              (err == ESP_OK) ? "true" : "false",
@@ -1832,6 +1836,10 @@ static esp_err_t send_audio_io_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.peak_last,
              (unsigned long)st.rms_max,
              (unsigned long)st.peak_max,
+             (unsigned long)st.heap_internal_free_bytes,
+             (unsigned long)st.heap_dma_free_bytes,
+             (unsigned long)st.heap_internal_largest_free_block,
+             (unsigned long)st.heap_dma_largest_free_block,
              (unsigned long)st.heap_internal_free_kb,
              (unsigned long)st.heap_dma_free_kb,
              esp_err_to_name(st.last_error),
@@ -2011,6 +2019,10 @@ static esp_err_t handle_api_audio_voice_v2_status(httpd_req_t *req)
              "\"codec_egress_drops\":%lu,"
              "\"audio_io_dropped_frames\":%lu,"
              "\"audio_io_i2s_recoveries\":%lu,"
+             "\"audio_io_heap_internal_free_bytes\":%lu,"
+             "\"audio_io_heap_dma_free_bytes\":%lu,"
+             "\"audio_io_heap_internal_largest_free_block\":%lu,"
+             "\"audio_io_heap_dma_largest_free_block\":%lu,"
              "\"audio_io_heap_internal_free_kb\":%lu,"
              "\"audio_io_heap_dma_free_kb\":%lu}",
              ready ? "true" : "false",
@@ -2044,6 +2056,10 @@ static esp_err_t handle_api_audio_voice_v2_status(httpd_req_t *req)
              (unsigned long)codec_st.opus_egress_packet_drops,
              (unsigned long)io_st.dropped_frames,
              (unsigned long)io_st.i2s_recoveries,
+             (unsigned long)io_st.heap_internal_free_bytes,
+             (unsigned long)io_st.heap_dma_free_bytes,
+             (unsigned long)io_st.heap_internal_largest_free_block,
+             (unsigned long)io_st.heap_dma_largest_free_block,
              (unsigned long)io_st.heap_internal_free_kb,
              (unsigned long)io_st.heap_dma_free_kb);
     httpd_resp_set_type(req, "application/json");

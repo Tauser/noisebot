@@ -137,12 +137,28 @@ def _voice_gate(payload: dict[str, Any]) -> ReleaseGate:
         warnings.append(f"voice-v2 block_reason={payload.get('block_reason')}")
     if payload.get("runtime_idle") is False:
         warnings.append("runtime_idle=false")
-    heap_internal_kb = _int(payload.get("audio_io_heap_internal_free_kb"))
-    heap_dma_kb = _int(payload.get("audio_io_heap_dma_free_kb"))
-    if 0 < heap_internal_kb < 16:
-        warnings.append(f"audio_io_heap_internal_free_kb baixo: {heap_internal_kb}")
-    if 0 < heap_dma_kb < 16:
-        warnings.append(f"audio_io_heap_dma_free_kb baixo: {heap_dma_kb}")
+    heap_internal_bytes = _int(payload.get("audio_io_heap_internal_free_bytes"))
+    heap_dma_bytes = _int(payload.get("audio_io_heap_dma_free_bytes"))
+    heap_internal_largest = _int(payload.get("audio_io_heap_internal_largest_free_block"))
+    heap_dma_largest = _int(payload.get("audio_io_heap_dma_largest_free_block"))
+    if 0 < heap_internal_bytes < 16 * 1024:
+        warnings.append(
+            "audio_io_heap_internal_free_bytes baixo: "
+            f"{heap_internal_bytes} (largest={heap_internal_largest})"
+        )
+    elif heap_internal_bytes == 0:
+        heap_internal_kb = _int(payload.get("audio_io_heap_internal_free_kb"))
+        if 0 < heap_internal_kb < 16:
+            warnings.append(f"audio_io_heap_internal_free_kb baixo: {heap_internal_kb}")
+    if 0 < heap_dma_bytes < 16 * 1024:
+        warnings.append(
+            "audio_io_heap_dma_free_bytes baixo: "
+            f"{heap_dma_bytes} (largest={heap_dma_largest})"
+        )
+    elif heap_dma_bytes == 0:
+        heap_dma_kb = _int(payload.get("audio_io_heap_dma_free_kb"))
+        if 0 < heap_dma_kb < 16:
+            warnings.append(f"audio_io_heap_dma_free_kb baixo: {heap_dma_kb}")
     return ReleaseGate("Voice v2 consolidado", ok, detail, tuple(warnings))
 
 

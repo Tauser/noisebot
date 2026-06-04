@@ -346,6 +346,10 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert '\\"session_rx_mirror_frames\\":%lu' in web
     assert '\\"session_rx_legacy_frames\\":%lu' in web
     assert '\\"session_rx_compare_sample_delta\\":%lu' in web
+    assert '\\"heap_internal_free_bytes\\":%lu' in web
+    assert '\\"heap_dma_free_bytes\\":%lu' in web
+    assert '\\"heap_internal_largest_free_block\\":%lu' in web
+    assert '\\"heap_dma_largest_free_block\\":%lu' in web
     assert "esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms);" in io_h
     assert "void audio_io_service_v2_rx_owner_accept_frame(" in io_h
     assert "void audio_io_service_v2_rx_dispatch_frame(" in io_h
@@ -398,6 +402,10 @@ def test_audio_io_v2_probe_is_explicit_and_passive():
     assert "uint32_t session_rx_mirror_frames;" in io_h
     assert "uint32_t session_rx_legacy_samples;" in io_h
     assert "uint32_t session_rx_compare_elapsed_delta_ms;" in io_h
+    assert "uint32_t heap_internal_free_bytes;" in io_h
+    assert "uint32_t heap_dma_free_bytes;" in io_h
+    assert "uint32_t heap_internal_largest_free_block;" in io_h
+    assert "uint32_t heap_dma_largest_free_block;" in io_h
     assert "audio_hal_" not in io_c
     assert "bridge_" not in io_c
     assert "speaker_handoff_active = false;" in io_c

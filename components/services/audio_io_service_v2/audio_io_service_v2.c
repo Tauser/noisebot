@@ -15,6 +15,13 @@
 static nb_audio_io_v2_status_t s_status;
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 
+typedef struct {
+    uint32_t internal_free_bytes;
+    uint32_t dma_free_bytes;
+    uint32_t internal_largest_free_block;
+    uint32_t dma_largest_free_block;
+} nb_audio_io_v2_heap_snapshot_t;
+
 static uint32_t isqrt_u64(uint64_t value)
 {
     uint64_t bit = 1ULL << 62;
@@ -37,14 +44,31 @@ static uint32_t isqrt_u64(uint64_t value)
     return (uint32_t)result;
 }
 
-static void read_heap_kb(uint32_t *internal_kb, uint32_t *dma_kb)
+static nb_audio_io_v2_heap_snapshot_t read_heap_snapshot(void)
 {
-    if (internal_kb != NULL) {
-        *internal_kb = (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024U);
+    nb_audio_io_v2_heap_snapshot_t heap = {
+        .internal_free_bytes = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+        .dma_free_bytes = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_DMA),
+        .internal_largest_free_block =
+            (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+        .dma_largest_free_block =
+            (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_DMA),
+    };
+    return heap;
+}
+
+static void apply_heap_snapshot_locked(const nb_audio_io_v2_heap_snapshot_t *heap)
+{
+    if (heap == NULL) {
+        return;
     }
-    if (dma_kb != NULL) {
-        *dma_kb = (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_DMA) / 1024U);
-    }
+
+    s_status.heap_internal_free_bytes = heap->internal_free_bytes;
+    s_status.heap_dma_free_bytes = heap->dma_free_bytes;
+    s_status.heap_internal_largest_free_block = heap->internal_largest_free_block;
+    s_status.heap_dma_largest_free_block = heap->dma_largest_free_block;
+    s_status.heap_internal_free_kb = heap->internal_free_bytes / 1024U;
+    s_status.heap_dma_free_kb = heap->dma_free_bytes / 1024U;
 }
 
 static void compute_frame_levels(const int16_t *samples,
@@ -149,9 +173,7 @@ static void update_speaker_handoff_ready_locked(void)
 
 esp_err_t audio_io_service_v2_init(void)
 {
-    uint32_t internal_kb = 0;
-    uint32_t dma_kb = 0;
-    read_heap_kb(&internal_kb, &dma_kb);
+    nb_audio_io_v2_heap_snapshot_t heap = read_heap_snapshot();
 
     taskENTER_CRITICAL(&s_mux);
     if (s_status.initialized) {
@@ -160,8 +182,7 @@ esp_err_t audio_io_service_v2_init(void)
     }
 
     initialize_status_locked();
-    s_status.heap_internal_free_kb = internal_kb;
-    s_status.heap_dma_free_kb = dma_kb;
+    apply_heap_snapshot_locked(&heap);
     taskEXIT_CRITICAL(&s_mux);
     return ESP_OK;
 }
@@ -204,9 +225,7 @@ esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms)
         return ESP_ERR_INVALID_ARG;
     }
 
-    uint32_t internal_kb = 0;
-    uint32_t dma_kb = 0;
-    read_heap_kb(&internal_kb, &dma_kb);
+    nb_audio_io_v2_heap_snapshot_t heap = read_heap_snapshot();
 
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.initialized) {
@@ -238,17 +257,14 @@ esp_err_t audio_io_service_v2_probe_start(uint32_t duration_ms)
     s_status.rms_max = 0;
     s_status.peak_max = 0;
     s_status.last_error = ESP_OK;
-    s_status.heap_internal_free_kb = internal_kb;
-    s_status.heap_dma_free_kb = dma_kb;
+    apply_heap_snapshot_locked(&heap);
     taskEXIT_CRITICAL(&s_mux);
     return ESP_OK;
 }
 
 esp_err_t audio_io_service_v2_probe_stop(void)
 {
-    uint32_t internal_kb = 0;
-    uint32_t dma_kb = 0;
-    read_heap_kb(&internal_kb, &dma_kb);
+    nb_audio_io_v2_heap_snapshot_t heap = read_heap_snapshot();
 
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.probe_running) {
@@ -257,8 +273,7 @@ esp_err_t audio_io_service_v2_probe_stop(void)
     }
 
     s_status.probe_running = false;
-    s_status.heap_internal_free_kb = internal_kb;
-    s_status.heap_dma_free_kb = dma_kb;
+    apply_heap_snapshot_locked(&heap);
     taskEXIT_CRITICAL(&s_mux);
     return ESP_OK;
 }
@@ -438,9 +453,7 @@ void audio_io_service_v2_probe_feed_rx_frame(const int16_t *samples, uint16_t sa
 
 esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source)
 {
-    uint32_t internal_kb = 0;
-    uint32_t dma_kb = 0;
-    read_heap_kb(&internal_kb, &dma_kb);
+    nb_audio_io_v2_heap_snapshot_t heap = read_heap_snapshot();
 
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.initialized) {
@@ -474,8 +487,7 @@ esp_err_t audio_io_service_v2_session_rx_mirror_begin(uint32_t source)
     s_status.session_rx_compare_sample_delta = 0;
     s_status.session_rx_compare_elapsed_delta_ms = 0;
     s_status.last_error = ESP_OK;
-    s_status.heap_internal_free_kb = internal_kb;
-    s_status.heap_dma_free_kb = dma_kb;
+    apply_heap_snapshot_locked(&heap);
     taskEXIT_CRITICAL(&s_mux);
     return ESP_OK;
 }
@@ -524,9 +536,7 @@ void audio_io_service_v2_session_rx_mirror_finish(uint32_t end_reason,
                                                   uint32_t legacy_samples,
                                                   uint32_t legacy_elapsed_ms)
 {
-    uint32_t internal_kb = 0;
-    uint32_t dma_kb = 0;
-    read_heap_kb(&internal_kb, &dma_kb);
+    nb_audio_io_v2_heap_snapshot_t heap = read_heap_snapshot();
 
     taskENTER_CRITICAL(&s_mux);
     if (!s_status.initialized || !s_status.session_rx_mirror_active) {
@@ -553,8 +563,7 @@ void audio_io_service_v2_session_rx_mirror_finish(uint32_t end_reason,
         s_status.session_rx_mirror_observed &&
         s_status.session_rx_mirror_frames >= legacy_frames &&
         s_status.session_rx_mirror_samples >= legacy_samples;
-    s_status.heap_internal_free_kb = internal_kb;
-    s_status.heap_dma_free_kb = dma_kb;
+    apply_heap_snapshot_locked(&heap);
     taskEXIT_CRITICAL(&s_mux);
 }
 

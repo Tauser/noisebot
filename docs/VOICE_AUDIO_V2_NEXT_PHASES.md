@@ -2235,7 +2235,7 @@ codec no mesmo passo.
 
 ### O0 - Hardening de Gates
 
-Incremento server-only: `voice-release-check` passou a avisar quando
+Incremento server-only inicial: `voice-release-check` passou a avisar quando
 `/api/audio/voice-v2` reporta `audio_io_heap_internal_free_kb` ou
 `audio_io_heap_dma_free_kb` entre 1 e 15 KB. O gate continua `ok=true` se todos
 os demais criterios estiverem verdes, mas o risco de heap baixo fica explicito
@@ -2243,3 +2243,15 @@ no JSON/Markdown antes de qualquer novo toque em HAL/I2S. Valor `0` e tratado
 como nao informado, porque alguns snapshots de boot ainda retornam zero nesses
 campos. Validacao local: `server/tests/test_server_facade.py -k
 voice_release_check` com 9 testes verdes.
+
+Incremento firmware/server seguinte: Audio IO v2 passou a expor tambem
+`heap_internal_free_bytes`, `heap_dma_free_bytes`,
+`heap_internal_largest_free_block` e `heap_dma_largest_free_block` em
+`/api/audio/io-v2`, e os mesmos dados com prefixo `audio_io_` em
+`/api/audio/voice-v2`. O `voice-release-check` agora prefere bytes/maior bloco
+quando esses campos existem e preserva fallback por KB para firmware antigo.
+Isso nao altera wake, captura, playback, codec, bridge nem HAL; apenas separa
+heap baixo real de arredondamento/fragmentacao antes de qualquer proxima troca
+estrutural. Validacao local: contratos firmware focados com 15 testes verdes,
+`server/tests/test_server_facade.py -k voice_release_check` com 9 testes
+verdes, e `idf.py build` limpo.

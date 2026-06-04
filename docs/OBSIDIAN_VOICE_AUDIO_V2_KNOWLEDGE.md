@@ -311,6 +311,12 @@ Incremento atual da Fase N3:
   `audio_io_heap_internal_free_kb` ou `audio_io_heap_dma_free_kb` ficam entre
   1 e 15 KB no `/api/audio/voice-v2`. Isso preserva o status OK quando o resto
   esta verde, mas evidencia risco operacional antes de novas fases HAL/I2S.
+- Hardening O0 seguinte: Audio IO v2 passou a expor bytes livres e maior bloco
+  livre de heap interno/DMA em `/api/audio/io-v2` e `/api/audio/voice-v2`; o
+  release-check usa esses campos quando presentes e preserva fallback por KB.
+  Evidencia: `audio_io_service_v2` usa `heap_caps_get_free_size()` e
+  `heap_caps_get_largest_free_block()` para o snapshot, e `web_service.c`
+  publica esses campos no JSON.
 
 ### Wake Word
 

@@ -3898,8 +3898,12 @@ def test_server_voice_release_check_warns_on_low_audio_io_heap() -> None:
             "codec_packet_drops": 0,
             "codec_egress_drops": 0,
             "runtime_idle": True,
+            "audio_io_heap_internal_free_bytes": 5500,
+            "audio_io_heap_dma_free_bytes": 7100,
+            "audio_io_heap_internal_largest_free_block": 4096,
+            "audio_io_heap_dma_largest_free_block": 3072,
             "audio_io_heap_internal_free_kb": 5,
-            "audio_io_heap_dma_free_kb": 7,
+            "audio_io_heap_dma_free_kb": 6,
         },
         codec_v2={
             "ok": True,
@@ -3950,8 +3954,8 @@ def test_server_voice_release_check_warns_on_low_audio_io_heap() -> None:
     voice_gate = check.gates[0]
     assert voice_gate.ok is True
     assert voice_gate.warnings == (
-        "audio_io_heap_internal_free_kb baixo: 5",
-        "audio_io_heap_dma_free_kb baixo: 7",
+        "audio_io_heap_internal_free_bytes baixo: 5500 (largest=4096)",
+        "audio_io_heap_dma_free_bytes baixo: 7100 (largest=3072)",
     )
 
 
