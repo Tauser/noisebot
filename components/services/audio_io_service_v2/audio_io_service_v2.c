@@ -214,7 +214,12 @@ void audio_io_service_v2_get_status(nb_audio_io_v2_status_t *out)
         return;
     }
 
+    nb_audio_io_v2_heap_snapshot_t heap = read_heap_snapshot();
+
     taskENTER_CRITICAL(&s_mux);
+    if (s_status.initialized) {
+        apply_heap_snapshot_locked(&heap);
+    }
     *out = s_status;
     taskEXIT_CRITICAL(&s_mux);
 }
