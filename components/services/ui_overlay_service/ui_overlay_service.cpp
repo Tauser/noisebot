@@ -304,19 +304,21 @@ static void draw_camera_icon(LGFX_Sprite *spr, int x, int y, int w, int h, int64
 {
     const float phase = (float)((now_us / 1000LL) % 1600LL) / 1600.0f;
     const float pulse = 0.5f + (0.5f * sinf(phase * 2.0f * BUBBLE_NB_PI_F));
-    const uint8_t glow = (uint8_t)(168.0f + (pulse * 62.0f));
-    const uint16_t fg = spr->color565(glow, 230, 248);
-    const uint16_t dim = spr->color565(22, 60, 76);
-    const int bx = x + 3;
-    const int by = y + 6;
-    (void)w;
-    (void)h;
+    const uint8_t glow = (uint8_t)(178.0f + (pulse * 46.0f));
+    const uint16_t fg = spr->color565(118, glow, 250);
+    const uint16_t shell = spr->color565(16, 44, 60);
+    const uint16_t glass = spr->color565(30, 78, 96);
+    const int cx = x + (w / 2);
+    const int cy = y + (h / 2);
 
-    spr->fillRoundRect(bx + 1, by + 1, 15, 11, 3, dim);
-    spr->drawRoundRect(bx, by, 15, 11, 3, fg);
-    spr->fillTriangle(bx + 15, by + 3, bx + 21, by + 1, bx + 21, by + 13, fg);
-    spr->fillCircle(bx + 7, by + 6, 3, fg);
-    spr->fillCircle(bx + 7, by + 6, 1, dim);
+    spr->fillRoundRect(cx - 9, cy - 5, 18, 13, 4, shell);
+    spr->drawRoundRect(cx - 9, cy - 5, 18, 13, 4, fg);
+    spr->fillRoundRect(cx - 5, cy - 8, 7, 4, 2, fg);
+    spr->drawFastHLine(cx + 4, cy - 7, 4, fg);
+    spr->fillCircle(cx, cy + 1, 5, glass);
+    spr->drawCircle(cx, cy + 1, 5, fg);
+    spr->fillCircle(cx - 2, cy - 1, 1, fg);
+    spr->drawFastHLine(cx - 6, cy + 7, 12, fg);
 }
 
 static void timer_badge_rect(int *x, int *y, int *w, int *h)
