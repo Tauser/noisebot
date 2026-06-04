@@ -813,6 +813,7 @@ Critérios adicionais de integração do Bloco 0:
 - O caminho `safe` usa JPEG qualidade 20, alinhado ao streaming de câmera do StackChan, reduzindo payload invisível sem alterar o modo `better` de qualidade 82.
 - Hardware COM12 / `http://192.168.1.30`: `/api/vision/observe` validou sessão quente com `640×480` por fallback, `jpeg_bytes` ~16 KB e captura ~783–886 ms; soak curto de 4 s teve 3/3 observações válidas, zero falhas/reboots e fechamento final da câmera OK.
 - A visão invisível deixou de usar snapshot JPEG: `vision_service` chama `camera_service_observe_scene()`, analisa o frame e solta o buffer. Validação em hardware após flash: `/api/vision/observe` retornou `jpeg_bytes=0`, captura ~650 ms; soak curto de 4 s teve 4/4 observações válidas, `max_capture_ms=672`, zero falhas/reboots e fechamento final OK.
+- A resolução base do OV2640 foi reduzida de `CONFIG_CAMERA_OV2640_DVP_YUV422_640X480_6FPS` para `CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS`, mantendo o fluxo `esp_video`/V4L2 do StackChan/Xiaozhi e evitando processar VGA em capturas invisíveis. Validação em hardware após flash: `/api/vision/observe` retornou `240×240`, `jpeg_bytes=0`, captura 172 ms; soak curto de 4 s teve 4/4 observações válidas, `max_capture_ms=165`, zero falhas/reboots, zero falso positivo de presença e fechamento final OK.
 
 **Critérios de aceitação:**
 

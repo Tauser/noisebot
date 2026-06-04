@@ -147,7 +147,9 @@ CONFIG_HTTPD_MAX_URI_LEN=2048
 CONFIG_NB_CAMERA_DIAG_ENABLED=y
 CONFIG_ESP_VIDEO_ENABLE_DVP_VIDEO_DEVICE=y
 CONFIG_CAMERA_OV2640=y
-CONFIG_CAMERA_OV2640_DVP_YUV422_640X480_6FPS=y
+# Mantem o caminho StackChan/Xiaozhi (esp_video/V4L2 + geometria do driver),
+# mas evita VGA para observacoes invisiveis: 240x240 YUV reduz carga de frame.
+CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y
 
 # ── OTA com rollback automático (Etapa 15.2) ──────────────────────────────────
 # Rollback ativo: firmware OTA deve chamar esp_ota_mark_app_valid_cancel_rollback()

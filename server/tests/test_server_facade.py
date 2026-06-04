@@ -7811,6 +7811,14 @@ def test_firmware_camera_hal_prefers_selected_mode_with_driver_fallback() -> Non
     assert "fallback_height = current_fmt.fmt.pix.height" in camera_c
 
 
+def test_firmware_camera_sensor_default_is_low_res_yuv422() -> None:
+    root = Path(__file__).resolve().parents[2]
+    defaults = (root / "sdkconfig.defaults").read_text(encoding="utf-8")
+
+    assert "CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y" in defaults
+    assert "CONFIG_CAMERA_OV2640_DVP_YUV422_640X480_6FPS=y" not in defaults
+
+
 def test_firmware_camera_service_uses_stackchan_safe_jpeg_quality() -> None:
     root = Path(__file__).resolve().parents[2]
     camera_c = (
