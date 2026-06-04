@@ -3037,7 +3037,7 @@ no protocolo.
 - [x] Voice Audio v2 fechado funcionalmente em hardware apos Fase O:
       Opus v2 default local com rollback PCM16, Capture v2 TX owner controlado,
       Activity v2 decisor dentro de sessao, Audio IO v2 com RX/TX observados,
-      Playback v2 dono de fila/lifecycle/write por callback, heap interno/DMA
+      Playback v2 dono de fila/lifecycle/write, heap interno/DMA
       estabilizado em ~19 KB, release-check final `ok=true` sem dreno manual,
       turno real curto validado com TTS/SAY_END, zero drops de Playback/Capture
       e Codec v2 egress zero. Reducoes adicionais de `audio_service.c` passam a
@@ -3104,6 +3104,17 @@ no protocolo.
       ao promover Activity v2 de comparador para decisor controlado dentro de
       sessao ja aberta, com rollback para o VAD legado. Antes de nova troca de
       HAL owner em backlog, monitorar heap interno/DMA nos gates.
+- [x] Backlog tecnico Voice/Audio fechado pragmaticamente apos P2:
+      `017c9ab`, `fac1501` e `8e34edd` reduziram o ownership residual de
+      Playback v2 sem reabrir runtime: write SAY no HAL passou para
+      `audio_playback_service_v2`, o estado ativo de SAY saiu de
+      `audio_service.c` e o probe Playback v2 tambem passou a escrever pelo
+      proprio Playback v2. O mapa `/api/audio/voice-v2` reporta
+      `playback_hal=audio_playback_service_v2_say_probe_audio_service_compat`.
+      Validacao local: contrato firmware Voice Audio v2 focado `9 passed`,
+      release-check focado `15 passed` e `idf.py build` limpo. O que resta no
+      `audio_service.c` e compatibilidade intencional: loop I2S fisico, WAV
+      local, synth, silencio, recovery HAL, eventos legados e rollback v1.
 
 ---
 
@@ -3386,6 +3397,12 @@ e confiável antes de acionar comportamento autônomo.
   `absence`: 5/5 observações válidas, zero falsos positivos, score máximo 42,
   câmera fechada no final; o mesmo cenário com `--min-fps 25` reprovou com
   `min_fps=22.9`, então o critério de FPS ainda permanece aberto.
+- O trial agora registra `baseline_fps` antes da primeira captura para separar
+  queda causada por visão de FPS já baixo no firmware. Em 2026-06-04, o cenário
+  `absence` com `--close-each-sample --fps-sample-delay-s 2 --min-fps 25`
+  mostrou `baseline_fps=22.9` e `min_fps=22.9`: ausência continuou sem falso
+  positivo, mas o gate de FPS está bloqueado pelo baseline atual antes de
+  concluir a presença contínua.
 
 **Integração:**
 

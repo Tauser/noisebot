@@ -198,20 +198,20 @@ Incremento atual da Fase N3:
   `audio_playback_service_v2_speaker_note_empty()` decide quando a janela de
   jitter/idle venceu; `audio_service` ainda faz a transicao final para IDLE.
 - Fase N4.7 move a orquestracao do write SAY para Playback v2 por
-  `audio_playback_service_v2_speaker_write_next_frame()`: Playback v2 chama um
-  callback fornecido pelo `audio_service`, registra commit e expoe
-  `speaker_write_*`.
+  `audio_playback_service_v2_speaker_write_next_frame()`: no fechamento tecnico
+  final, Playback v2 chama `audio_hal_spk_write()` para SAY, registra commit e
+  expoe `speaker_write_*`.
 - Fase N5 reduziu o contrato publico e as duplicacoes no `audio_service.c`:
   helpers de dequeue/commit e tipo de chunk ficaram privados, constantes internas
   sairam do header, o clamp do chunk SAY ficou em
   `audio_playback_service_v2_say_accept()`, drops durante listening ficaram no
   dono da fila, e o start de `PLAY_BRIDGE_SAY`/`NB_AUDIO_EVT_PLAYBACK_START`
   passou a acontecer somente apos o primeiro chunk ser aceito por Playback v2.
-- O HAL/speaker continua fisicamente em `audio_service`; Playback v2 ainda nao
-  chama `audio_hal_*` diretamente. O limite atual e intencional: estado legado,
-  callbacks de evento e `wake_service_rearm()` ficam no `audio_service`;
-  Playback v2 fica dono da fila SAY, contadores, preparo/commit e orquestracao
-  do write por callback.
+- O HAL/speaker de SAY e probe Playback v2 agora chama `audio_hal_spk_write()`
+  pelo proprio `audio_playback_service_v2`. O limite atual e intencional:
+  callbacks de evento, `wake_service_rearm()`, WAV local, synth, silencio,
+  recovery HAL e rollback v1 ficam no `audio_service`; Playback v2 fica dono da
+  fila SAY, estado ativo de SAY, contadores, preparo/commit e write SAY/probe.
 - Fase N6.7 adicionou `speaker-owner/real-arm`/`real-disarm` como segundo nivel
   de armamento. O endpoint nao muda o HAL: ele so arma
   `speaker_owner_real_armed` quando o preflight do dry-run ja viu SAY real nao
@@ -381,6 +381,16 @@ Incremento atual da Fase N3:
 - P2 teste operacional: CLI `debug voice-release-check` tem cobertura para
   imprimir `Status: FALHOU` e sair codigo 1 sem traceback quando o check falha.
   Evidencia: `test_voice_release_check_hardening.py` passou com 2 testes.
+- Backlog tecnico final de Voice/Audio fechado pragmaticamente apos P2:
+  `017c9ab` moveu o write SAY para `audio_playback_service_v2`, `fac1501`
+  moveu o estado ativo de SAY para Playback v2 e removeu `PLAY_BRIDGE_SAY` do
+  `audio_service.c`, e `8e34edd` moveu o write do probe Playback v2 para o
+  proprio Playback v2. Evidencia do projeto: contrato firmware Voice Audio v2
+  focado `9 passed`, `server/tests/test_server_facade.py -k voice_release_check`
+  `15 passed` e `idf.py build` limpo com 28% livre. Inferencia da IA: o
+  `audio_service.c` ainda permanece como loop fisico/compatibilidade para WAV
+  local, synth, silencio, recovery HAL, eventos legados e rollback v1; isso e
+  intencional e nao bloqueia o Voice Audio v2.
 
 ### Wake Word
 

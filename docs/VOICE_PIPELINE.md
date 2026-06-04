@@ -109,16 +109,16 @@ Na Fase N4.6, a janela de fila SAY vazia tambem passa para Playback v2:
 `audio_playback_service_v2_speaker_note_empty()` acumula polls/ms vazios e
 decide quando o idle venceu. O `audio_service` ainda aplica a transicao final
 para `PLAY_IDLE` e o evento de fim.
-Na Fase N4.7, Playback v2 passa a orquestrar o write de frame SAY por
+Na Fase N4.7/N5, Playback v2 passou a orquestrar o frame SAY por
 `audio_playback_service_v2_speaker_write_next_frame()`: ele puxa/prepara o
-frame, chama um callback de escrita fornecido pelo `audio_service`, registra o
-commit e expoe `speaker_write_*`. O callback ainda e o unico ponto que chama o
-HAL fisico, mantendo rollback e camada HAL fora do Playback v2.
-A Fase N5 reduziu o acoplamento sem trocar o dono fisico do HAL: Playback v2
-mantem a fila SAY de 32 chunks, normaliza o chunk aceito, contabiliza drops e
-cancelamentos, prepara/commita frames e orquestra o write por callback; o
-`audio_service` mantem apenas o estado legado `PLAY_BRIDGE_SAY`, os eventos
-`NB_AUDIO_EVT_PLAYBACK_START/END`, `wake_service_rearm()` e a escrita fisica.
+frame, registra commit e expoe `speaker_write_*`. No fechamento tecnico final,
+esse caminho deixou de usar callback publico de `audio_service` e passou a
+escrever o SAY diretamente via Playback v2. Em seguida, o estado ativo de SAY
+tambem saiu de `PLAY_BRIDGE_SAY` e passou a ser consultado por
+`audio_playback_service_v2_say_is_active()`.
+O probe Playback v2 tambem passou a escrever pelo proprio Playback v2. O
+`audio_service` preserva compatibilidade para WAV local, synth, silencio,
+recovery HAL, eventos legados e rollback v1.
 O start de SAY agora so ocorre apos `audio_playback_service_v2_say_accept()`
 aceitar o primeiro chunk, evitando evento de playback sem audio enfileirado.
 O lifecycle da fala SAY tambem passou a ser observado por Playback v2:
@@ -128,7 +128,9 @@ O lifecycle da fala SAY tambem passou a ser observado por Playback v2:
 `/api/audio/playback-v2` e no gate consolidado `/api/audio/voice-v2`. Esse
 sinal fecha no idle normal, cancelamento ou descarte por nova escuta, e impede
 que o preflight marque runtime idle enquanto uma resposta SAY ainda esta
-ativa. O HAL fisico continua no callback de `audio_service`.
+ativa. No fechamento tecnico final, SAY e probe Playback v2 passaram a escrever
+pelo proprio Playback v2; o loop fisico/compatibilidade permanece no
+`audio_service`.
 Validacao real apos flash confirmou o ciclo: em uma resposta curta, Playback v2
 fechou `say_begin_count=1` e `say_end_count=1`, recebeu/tocou 345 chunks SAY,
 ficou com fila final zero e zero drops; `voice-release-check` continuou

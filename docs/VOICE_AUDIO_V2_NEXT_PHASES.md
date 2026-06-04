@@ -2326,10 +2326,10 @@ maior bloco 17 KB e zero recoveries. O `voice-release-check` final retornou
 
 ## Backlog Tecnico P - Audio Service Como Ponte/Compatibilidade
 
-Status: backlog opcional. Voice Audio v2 esta concluido funcionalmente com a
-Fase O fechada em hardware. Os itens abaixo nao bloqueiam a entrega: servem para
-limpeza arquitetural futura do `audio_service.c` quando houver apetite para
-refatorar sem pressa.
+Status: fechado pragmaticamente apos os cortes `017c9ab`, `fac1501` e
+`8e34edd`. Voice Audio v2 ja estava concluido funcionalmente com a Fase O
+fechada em hardware; o backlog tecnico agora tambem tem um corte final seguro
+para Playback v2 sem reabrir wake, captura, codec, bridge ou VAD.
 
 Objetivo: reduzir o `audio_service.c` sem trocar novamente o caminho real de
 audio no mesmo passo. A meta nao e "mais teste": e explicitar ownership
@@ -2344,8 +2344,9 @@ Baseline congelado e concluido:
 - Opus v2 segue como default local do server, PCM16 segue rollback.
 - Capture v2 e Activity v2 estao como owners controlados/defaults com rollback
   por config, mas ainda preservam compatibilidade v1.
-- Playback v2 e dono de fila/lifecycle/preparo/commit/write orchestration por
-  callback; o HAL fisico ainda nao foi movido para Playback v2.
+- Playback v2 e dono de fila/lifecycle/preparo/commit/write de SAY, estado
+  ativo de SAY e probe HAL proprio. O `audio_service` permanece como loop
+  fisico/compatibilidade para WAV local, synth, silencio, recovery e RX.
 - Audio IO v2 observa/distribui RX/TX e reporta recoveries/heap; HAL/I2S fisico
   ainda esta no `audio_service`.
 - Heap interno/DMA pos-O ficou em torno de 19 KB livres, maior bloco 17 KB,
@@ -2360,7 +2361,7 @@ bloquear o Voice Audio v2:
 - Callback de eventos legados `NB_AUDIO_EVT_PLAYBACK_START/END` e integracao
   indireta com event bus via boot manager.
 - `wake_service_rearm()` associado ao lifecycle legado de playback.
-- Compatibilidade de playback local `PLAY_ACTIVE`, `PLAY_STOP`, synth/probe e
+- Compatibilidade de playback local `PLAY_ACTIVE`, `PLAY_STOP`, synth e
   silencio de fallback.
 - VAD/turn-taking legado como rollback e fallback diagnostico.
 - Ponte com `bridge_service` enquanto Capture v2/Codec v2 ainda precisam de
@@ -2369,8 +2370,8 @@ bloquear o Voice Audio v2:
 Responsabilidades que ja pertencem majoritariamente aos v2:
 
 - Fila e lifecycle de SAY: `audio_playback_service_v2`.
-- Preparacao/commit/orquestracao do frame de SAY: `audio_playback_service_v2`
-  por callback seguro do `audio_service`.
+- Preparacao/commit/write do frame de SAY e write do probe:
+  `audio_playback_service_v2`.
 - Distribuicao/telemetria RX/TX, recoveries e heap: `audio_io_service_v2`.
 - Decisao de fim de fala dentro de sessao aberta: `voice_activity_service_v2`.
 - Estado de captura, ownership TX e envio quando armado: `voice_capture_session_v2`.
@@ -2447,7 +2448,23 @@ verdes.
 
 Nao fazer em P2:
 
-- Nao mover `audio_hal_spk_write()` para Playback v2 ainda.
 - Nao remover VAD legado.
 - Nao trocar bridge TX sem rollback.
 - Nao mexer em wake/follow-up/AEC.
+
+Fechamento P3/P4 pragmatico:
+
+- `017c9ab` moveu o write real de SAY para `audio_playback_service_v2`,
+  removendo o callback publico de speaker que o `audio_service` emprestava.
+- `fac1501` moveu o estado ativo de SAY para Playback v2 via
+  `audio_playback_service_v2_say_is_active()`, removendo `PLAY_BRIDGE_SAY` do
+  `audio_service.c`.
+- `8e34edd` moveu tambem o write do probe Playback v2 para o proprio Playback
+  v2. O ownership publico passou a reportar
+  `audio_playback_service_v2_say_probe_audio_service_compat`.
+- Validacao local dos tres cortes: contrato firmware Voice Audio v2 focado
+  `9 passed`, `server/tests/test_server_facade.py -k voice_release_check`
+  `15 passed` e `idf.py build` limpo com 28% livre na menor particao.
+- O que permanece no `audio_service.c` e compatibilidade intencional:
+  loop RX/TX fisico, WAV local, synth, silencio de fallback, recovery HAL,
+  eventos legados e ponte de rollback v1. Isso nao bloqueia Voice Audio v2.

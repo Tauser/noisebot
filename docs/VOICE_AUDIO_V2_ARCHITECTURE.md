@@ -1,7 +1,8 @@
 # Voice Audio v2 Architecture
 
 Data: 2026-05-30
-Status: concluido funcionalmente; refactors residuais ficam em backlog tecnico.
+Status: concluido funcionalmente; backlog tecnico de Playback v2 fechado
+pragmaticamente.
 Branch de trabalho: `voice-reference-architecture`.
 
 Este documento fixa o mapa tecnico para refazer o subsistema de voz do NoiseBot
@@ -19,8 +20,10 @@ Checklist/health de release da Fase M parcial:
 Voice Audio v2 esta fechado como entrega funcional: Opus v2, Capture v2,
 Activity v2, Playback v2, Audio IO v2, gates de release, rollback PCM16,
 barge-in por wake, no-echo e diagnosticos operacionais foram validados em
-hardware. O objetivo restante nao e requisito de entrega; e backlog tecnico para
-reduzir o `audio_service.c` gradualmente sem quebrar o robo que ja conversa.
+hardware. O backlog tecnico posterior reduziu o `audio_service.c` sem quebrar
+o robo que ja conversa: Playback v2 agora escreve SAY e probe no HAL, mantem
+estado ativo de SAY e o `audio_service` fica como loop fisico/compatibilidade
+para WAV local, synth, silencio, recovery e rollback v1.
 
 ## Regras de Protecao
 
@@ -303,21 +306,23 @@ Invariantes:
   `audio_playback_service_v2_speaker_note_empty()`. O `audio_service` ainda
   executa a transicao final de estado e evento, mas a decisao de quando o
   jitter/idle venceu passa a ser do Playback v2.
-- Na Fase N4.7, Playback v2 passa a orquestrar o write SAY por
+- Na Fase N4.7 e no fechamento tecnico posterior, Playback v2 passa a
+  orquestrar e escrever o SAY por
   `audio_playback_service_v2_speaker_write_next_frame()`: ele prepara o frame,
-  chama um callback de escrita fornecido pelo `audio_service`, registra commit
-  e expoe `speaker_write_*`. O callback ainda e o unico ponto com
-  `audio_hal_spk_write()`, preservando a camada HAL fora do Playback v2.
+  chama `audio_hal_spk_write()`, registra commit e expoe `speaker_write_*`.
+  O probe Playback v2 tambem escreve pelo proprio Playback v2.
 - Na Fase N5, o contrato publico de Playback v2 foi reduzido e o
   `audio_service.c` perdeu duplicacoes de fila/contadores/normalizacao SAY. Os
   detalhes de chunk, constantes internas e helpers de dequeue/commit ficam
   privados em `audio_playback_service_v2.c`; `audio_service_bridge_say_chunk()`
-  so inicia `PLAY_BRIDGE_SAY` depois de `audio_playback_service_v2_say_accept()`
-  aceitar o primeiro chunk. O limite preservado e intencional: `audio_service`
-  ainda mantem estado legado, callbacks `NB_AUDIO_EVT_PLAYBACK_START/END`,
-  `wake_service_rearm()` e a escrita fisica no HAL, enquanto Playback v2 e dono
-  da fila SAY, dos contadores, do preparo/commit e da orquestracao do write via
-  callback.
+  so inicia o lifecycle depois de `audio_playback_service_v2_say_accept()`
+  aceitar o primeiro chunk. O fechamento tecnico removeu `PLAY_BRIDGE_SAY` do
+  `audio_service.c`; o estado ativo vem de
+  `audio_playback_service_v2_say_is_active()`. O limite preservado e
+  intencional: `audio_service` ainda mantem callbacks
+  `NB_AUDIO_EVT_PLAYBACK_START/END`, `wake_service_rearm()`, WAV local, synth,
+  silencio, recovery HAL e rollback v1, enquanto Playback v2 e dono da fila
+  SAY, dos contadores, do preparo/commit e do write SAY/probe.
 - Na Fase N6.7, Playback v2 adiciona `speaker-owner/real-arm` como segundo
   nivel de armamento. Esse endpoint nao move o HAL; ele so marca
   `speaker_owner_real_requested/armed` quando o preflight ja observou dry-run
@@ -356,16 +361,17 @@ Invariantes:
   HAL, wake, VAD, captura, playback nem protocolo; serve para congelar um
   snapshot antes de nova reducao estrutural do `audio_service.c`.
 - O lifecycle do SAY real tambem fica explicito em Playback v2: quando
-  `audio_service` entra em `PLAY_BRIDGE_SAY`, ele sinaliza
+  `audio_service` aceita o primeiro chunk SAY, ele sinaliza
   `audio_playback_service_v2_say_begin()`; Playback v2 expoe
   `bridge_say_active`, `say_begin_count` e `say_end_count`, fechando o ciclo no
   idle normal, cancelamento ou descarte por nova escuta. O gate consolidado
   trata `bridge_say_active=true` como playback ocupado. Isso melhora a
-  semantica de preflight sem mover o HAL fisico para Playback v2.
-- A reducao seguinte do `audio_service.c` manteve as transicoes legadas de
-  inicio/fim do SAY em helpers internos dedicados. O servico legado ainda emite
-  eventos, rearma wake e preserva `PLAY_BRIDGE_SAY`/`PLAY_IDLE`, mas o caminho
-  fica mais isolado para novas reducoes sem misturar fila, lifecycle e HAL.
+  semantica de preflight; no fechamento tecnico posterior, o write SAY/probe
+  tambem passou para Playback v2.
+- A reducao seguinte do `audio_service.c` manteve inicio/fim do SAY em helpers
+  internos dedicados, e o fechamento tecnico posterior removeu
+  `PLAY_BRIDGE_SAY` do `audio_service.c`. O servico legado ainda emite eventos
+  e rearma wake, mas o estado ativo de SAY fica no Playback v2.
 - O tratamento de `PLAY_STOP` tambem foi extraido do corpo principal do
   `audio_task` para `audio_service_handle_play_stop()`. Ele preserva o
   fechamento de WAV, cancelamento SAY, silencio curto, evento de fim e retorno
