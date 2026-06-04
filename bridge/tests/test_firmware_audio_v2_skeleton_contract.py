@@ -46,6 +46,20 @@ def test_voice_audio_v2_consolidated_gate_is_observable():
     assert '\\"ready\\":%s' in web
     assert '\\"block_reason\\":\\"%s\\"' in web
     assert '\\"rollback_available\\":true' in web
+    assert '\\"ownership\\":{' in web
+    assert '\\"hal_i2s\\":\\"audio_service\\"' in web
+    assert '\\"rx\\":\\"audio_io_service_v2_distributor_audio_service_hal\\"' in web
+    assert '\\"tx\\":\\"audio_io_service_v2_observer_audio_service_hal\\"' in web
+    assert '\\"vad\\":\\"voice_activity_service_v2_decider_legacy_rollback\\"' in web
+    assert '\\"capture\\":\\"voice_capture_session_v2\\"' in web
+    assert '\\"bridge_tx\\":\\"%s\\"' in web
+    assert '\\"codec\\":\\"audio_codec_service_v2\\"' in web
+    assert '\\"playback_queue\\":\\"audio_playback_service_v2\\"' in web
+    assert '\\"playback_hal\\":\\"audio_service\\"' in web
+    assert '\\"legacy_bridge\\":\\"audio_service\\"' in web
+    assert 'const char *bridge_tx_owner = capture_st.bridge_tx_owner' in web
+    assert '? "voice_capture_session_v2"' in web
+    assert ': "audio_service_legacy";' in web
     assert '\\"capture_enabled\\":%s' in web
     assert '\\"capture_tx_enabled\\":%s' in web
     assert '\\"activity_decider_enabled\\":%s' in web

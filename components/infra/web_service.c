@@ -1987,11 +1987,25 @@ static esp_err_t handle_api_audio_voice_v2_status(httpd_req_t *req)
         &capture_st,
         &codec_st);
     const bool ready = strcmp(block_reason, "none") == 0;
+    const char *bridge_tx_owner = capture_st.bridge_tx_owner
+        ? "voice_capture_session_v2"
+        : "audio_service_legacy";
 
-    char buf[2200];
+    char buf[2800];
     snprintf(buf, sizeof(buf),
              "{\"ok\":true,\"ready\":%s,\"block_reason\":\"%s\","
              "\"rollback_available\":true,"
+             "\"ownership\":{"
+             "\"hal_i2s\":\"audio_service\","
+             "\"rx\":\"audio_io_service_v2_distributor_audio_service_hal\","
+             "\"tx\":\"audio_io_service_v2_observer_audio_service_hal\","
+             "\"vad\":\"voice_activity_service_v2_decider_legacy_rollback\","
+             "\"capture\":\"voice_capture_session_v2\","
+             "\"bridge_tx\":\"%s\","
+             "\"codec\":\"audio_codec_service_v2\","
+             "\"playback_queue\":\"audio_playback_service_v2\","
+             "\"playback_hal\":\"audio_service\","
+             "\"legacy_bridge\":\"audio_service\"},"
              "\"capture_enabled\":%s,"
              "\"capture_tx_enabled\":%s,"
              "\"activity_decider_enabled\":%s,"
@@ -2027,6 +2041,7 @@ static esp_err_t handle_api_audio_voice_v2_status(httpd_req_t *req)
              "\"audio_io_heap_dma_free_kb\":%lu}",
              ready ? "true" : "false",
              block_reason,
+             bridge_tx_owner,
              capture_enabled ? "true" : "false",
              capture_tx_enabled ? "true" : "false",
              activity_decider_enabled ? "true" : "false",

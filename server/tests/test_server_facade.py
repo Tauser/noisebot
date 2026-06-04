@@ -1022,6 +1022,18 @@ def test_server_cli_runs_voice_v2_debug_command(monkeypatch, capsys) -> None:
             "activity_session_active": False,
             "codec_worker_state": "running",
             "codec_worker_active": True,
+            "ownership": {
+                "hal_i2s": "audio_service",
+                "rx": "audio_io_service_v2_distributor_audio_service_hal",
+                "tx": "audio_io_service_v2_observer_audio_service_hal",
+                "vad": "voice_activity_service_v2_decider_legacy_rollback",
+                "capture": "voice_capture_session_v2",
+                "bridge_tx": "voice_capture_session_v2",
+                "codec": "audio_codec_service_v2",
+                "playback_queue": "audio_playback_service_v2",
+                "playback_hal": "audio_service",
+                "legacy_bridge": "audio_service",
+            },
             "playback_queue_owner": True,
             "runtime_idle": True,
             "playback_say_queue_count": 0,
@@ -1049,6 +1061,11 @@ def test_server_cli_runs_voice_v2_debug_command(monkeypatch, capsys) -> None:
     assert "Ready: True" in captured.out
     assert "Block reason: none" in captured.out
     assert "Codec worker: running" in captured.out
+    assert "## Ownership" in captured.out
+    assert "HAL/I2S: audio_service" in captured.out
+    assert "Bridge TX: voice_capture_session_v2" in captured.out
+    assert "Playback queue: audio_playback_service_v2" in captured.out
+    assert "Playback HAL: audio_service" in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
 
 

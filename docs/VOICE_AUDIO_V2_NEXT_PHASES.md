@@ -2384,6 +2384,18 @@ Proximo incremento recomendado se retomarmos backlog tecnico:
   firmware consegue dizer, em uma tela, quem e dono de RX, TX, VAD, captura,
   codec, playback e ponte legacy.
 
+Incremento P2 implementado: `/api/audio/voice-v2` agora expoe o objeto
+`ownership` com os donos atuais de HAL/I2S, RX, TX, VAD, captura, bridge TX,
+codec, fila de playback, HAL de playback e ponte legacy. O campo `bridge_tx`
+reflete dinamicamente se o dono atual e `voice_capture_session_v2` ou
+`audio_service_legacy`. O CLI `debug voice-v2 status` imprime o bloco
+`Ownership` quando o firmware novo fornece esse mapa. A mudanca nao altera
+runtime, HAL, wake, VAD, captura, codec, Playback v2, Opus/PCM16 nem bridge; e
+apenas observabilidade/contrato para encerrar a confusao de ownership antes de
+qualquer refactor futuro. Validacao local: contrato firmware Voice Audio v2
+focado, `server/tests/test_server_facade.py -k voice_v2` e `idf.py build`
+limpos.
+
 Nao fazer em P2:
 
 - Nao mover `audio_hal_spk_write()` para Playback v2 ainda.

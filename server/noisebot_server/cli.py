@@ -836,6 +836,24 @@ def run_debug_command(args: argparse.Namespace) -> None:
 
 
 def _format_voice_v2_status(payload: dict[str, object]) -> str:
+    ownership = payload.get("ownership")
+    ownership_lines: list[str] = []
+    if isinstance(ownership, dict):
+        ownership_lines = [
+            "",
+            "## Ownership",
+            "",
+            f"- HAL/I2S: {ownership.get('hal_i2s', '')}",
+            f"- RX: {ownership.get('rx', '')}",
+            f"- TX: {ownership.get('tx', '')}",
+            f"- VAD: {ownership.get('vad', '')}",
+            f"- Capture: {ownership.get('capture', '')}",
+            f"- Bridge TX: {ownership.get('bridge_tx', '')}",
+            f"- Codec: {ownership.get('codec', '')}",
+            f"- Playback queue: {ownership.get('playback_queue', '')}",
+            f"- Playback HAL: {ownership.get('playback_hal', '')}",
+            f"- Bridge legado: {ownership.get('legacy_bridge', '')}",
+        ]
     return "\n".join(
         [
             "# Voice Audio v2",
@@ -861,7 +879,7 @@ def _format_voice_v2_status(payload: dict[str, object]) -> str:
             f"egress={payload.get('codec_egress_drops', '')}, "
             f"io={payload.get('audio_io_dropped_frames', '')}",
             f"- I2S recoveries: {payload.get('audio_io_i2s_recoveries', '')}",
-        ]
+        ] + ownership_lines
     )
 
 

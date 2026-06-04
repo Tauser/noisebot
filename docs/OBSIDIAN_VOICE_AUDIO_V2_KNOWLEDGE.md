@@ -347,6 +347,14 @@ Incremento atual da Fase N3:
   dentro de sessao, Capture v2 TX owner controlado e Codec v2 Opus. Se retomado,
   o proximo passo seguro e expor mapa de ownership em status antes de novo
   handoff fisico.
+- P2 implementado como observabilidade: `/api/audio/voice-v2` expoe
+  `ownership` com HAL/I2S, RX, TX, VAD, captura, bridge TX, codec, fila de
+  playback, HAL de playback e ponte legacy. `bridge_tx` e dinamico entre
+  `voice_capture_session_v2` e `audio_service_legacy`. O CLI
+  `debug voice-v2 status` imprime esse mapa quando presente. Evidencia do
+  projeto: contrato firmware focado, `server/tests/test_server_facade.py -k
+  voice_v2` e `idf.py build` passaram. Inferencia da IA: esse corte fecha a
+  pergunta operacional "quem manda em que" sem mexer em HAL/runtime.
 
 ### Wake Word
 

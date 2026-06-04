@@ -3042,6 +3042,12 @@ no protocolo.
       turno real curto validado com TTS/SAY_END, zero drops de Playback/Capture
       e Codec v2 egress zero. Reducoes adicionais de `audio_service.c` passam a
       backlog tecnico, nao bloqueio de entrega.
+- [x] Backlog P2 iniciado como observabilidade, sem handoff fisico:
+      `/api/audio/voice-v2` expoe `ownership` para HAL/I2S, RX, TX, VAD,
+      captura, bridge TX, codec, fila playback, HAL playback e ponte legacy; o
+      CLI `debug voice-v2 status` imprime o mapa. O campo `bridge_tx` distingue
+      `voice_capture_session_v2` de `audio_service_legacy`. Validado com testes
+      focados e `idf.py build`; nao altera audio runtime.
 - [x] Fase N planejada como migracao estrutural do firmware Voice v2:
       N0 congela baseline/gates; N1 torna Capture v2 default controlado; N2
       promove Activity v2 a decisor dentro da sessao; N3 migra RX/TX para
