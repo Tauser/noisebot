@@ -266,8 +266,11 @@ esp_err_t vision_service_evaluate_presence(const nb_vision_observation_t *obs,
             }
             status.absent_since_ms = 0U;
             status.absent_samples = 0U;
-            status.stable_samples++;
+            if (raw_candidate) {
+                status.stable_samples++;
+            }
             if (status.state != NB_VISION_PRESENCE_PRESENT &&
+                raw_candidate &&
                 status.stable_samples >= NB_VISION_PRESENCE_MIN_SAMPLES &&
                 (now_ms - status.candidate_since_ms) >= NB_VISION_PRESENCE_DETECTED_MS) {
                 status.state = NB_VISION_PRESENCE_PRESENT;

@@ -210,9 +210,11 @@ copying board-specific implementations from other products.
   `40/44.25/66/66`, no `PRESENCE_DETECTED`, `baseline_fps=26.4` and
   `min_fps=24.5`; a controlled person-entry run is still required.
 - `vision-presence-trial --start-delay-s N` arms a controlled entry run and
-  starts latency measurement after the delay. Use it to start the command first,
-  enter the camera field during the delay, and measure `PRESENCE_DETECTED`
-  without counting operator preparation time.
+  starts latency measurement after the delay. With `--require-initial-state` the
+  harness now takes a pre-delay observation, and `--arm-timeout-s N` can wait
+  until that initial state is actually observed before starting the entry delay.
+  The report also includes capture-time and `spatial_score` min/average/p95/max
+  to separate capture latency from score/debounce limits.
 - StackChan comparison on 2026-06-04: its local camera path uses
   V4L2/`esp_video` with streaming buffers kept active; `Capture()` discards early
   buffers and `StreamCaptures()` reads the current frame. It does not provide an
@@ -233,19 +235,23 @@ copying board-specific implementations from other products.
   dashboard diagnostics can still request `better`/QVGA 320x240 through the
   camera mode endpoint.
 - NoiseBot now retains a strong presence candidate (`score>=60`) for up to 2.5s
-  and still requires 2 samples before publishing `PRESENCE_DETECTED`. The
-  firmware also exposes `/api/vision/presence/reset` for clean validation runs
-  and `spatial_score` in `/api/vision/observe` as diagnostic telemetry. A direct
-  spatial-score bonus was tested and rejected because it produced false
-  positives in an empty scene; the metric remains visible for future baseline
-  calibration but does not drive the presence decision. Hardware validation on
-  2026-06-04 after the safer threshold: `absence --reset-presence --min-fps 25`
-  passed with 24/24 valid observations, zero false positives, `max_score=56`,
-  `min_fps=33.0` and final `absent`; `presence --reset-presence --min-fps 25`
-  passed with 55/55 valid observations, `PRESENCE_DETECTED` observed at
-  1474ms, `max_score=66`, `min_fps=33.1` and final `present`. Correctness is
-  validated for on-demand trials, while the 500ms latency criterion remains
-  blocked by snapshot capture latency rather than debounce alone.
+  and still requires 2 raw candidate samples before publishing
+  `PRESENCE_DETECTED`; retained samples keep `candidate` alive but cannot promote
+  to `present` by themselves. The firmware also exposes
+  `/api/vision/presence/reset` for clean validation runs and `spatial_score` in
+  `/api/vision/observe` as diagnostic telemetry. A direct spatial-score bonus
+  was tested and rejected because it produced false positives in an empty scene;
+  the metric remains visible for future baseline calibration but does not drive
+  the presence decision. Hardware validation on 2026-06-04 after the safer
+  retention rule: `absence --reset-presence --min-fps 25` passed with 18/18
+  valid observations, zero false positives, one candidate, `max_score=56`,
+  `avg_capture_ms=153.0`, `min_fps=35.2` and final `absent`; controlled
+  `presence --reset-presence --arm-timeout-s 10 --start-delay-s 6 --min-fps 25`
+  passed with 56/56 valid observations, initial `absent`, final `present`,
+  `PRESENCE_DETECTED` observed at 11826ms, `max_score=62`, `avg_capture_ms=151.8`
+  and `min_fps=33.6`. Correctness is validated for on-demand trials, while the
+  500ms latency criterion remains blocked by weak/static score evidence rather
+  than capture time alone.
 - The bridge v2 can answer local vision questions from the vision endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection

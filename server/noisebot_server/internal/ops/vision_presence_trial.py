@@ -35,11 +35,20 @@ class VisionPresenceTrialResult:
     first_candidate_elapsed_ms: float | None
     first_present_elapsed_ms: float | None
     first_absent_elapsed_ms: float | None
+    min_capture_ms: int | None
+    avg_capture_ms: float | None
+    p95_capture_ms: int | None
+    max_capture_ms: int | None
     min_presence_score: int | None
     avg_presence_score: float | None
     p95_presence_score: int | None
     max_presence_score: int | None
+    min_spatial_score: int | None
+    avg_spatial_score: float | None
+    p95_spatial_score: int | None
+    max_spatial_score: int | None
     final_presence_state: str | None
+    initial_presence_state: str | None
     initial_transition_count: int | None
     final_transition_count: int | None
     transition_delta: int | None
@@ -55,6 +64,7 @@ class VisionPresenceTrialResult:
     fps_sample_delay_s: float
     close_each_sample: bool
     reset_presence: bool
+    arm_timeout_s: float
     min_fps_required: float | None
     max_latency_ms: float | None
     require_initial_state: str | None
@@ -80,11 +90,20 @@ class VisionPresenceTrialResult:
             "first_candidate_elapsed_ms": _round_optional(self.first_candidate_elapsed_ms),
             "first_present_elapsed_ms": _round_optional(self.first_present_elapsed_ms),
             "first_absent_elapsed_ms": _round_optional(self.first_absent_elapsed_ms),
+            "min_capture_ms": self.min_capture_ms,
+            "avg_capture_ms": _round_optional(self.avg_capture_ms),
+            "p95_capture_ms": self.p95_capture_ms,
+            "max_capture_ms": self.max_capture_ms,
             "min_presence_score": self.min_presence_score,
             "avg_presence_score": _round_optional(self.avg_presence_score),
             "p95_presence_score": self.p95_presence_score,
             "max_presence_score": self.max_presence_score,
+            "min_spatial_score": self.min_spatial_score,
+            "avg_spatial_score": _round_optional(self.avg_spatial_score),
+            "p95_spatial_score": self.p95_spatial_score,
+            "max_spatial_score": self.max_spatial_score,
             "final_presence_state": self.final_presence_state,
+            "initial_presence_state": self.initial_presence_state,
             "initial_transition_count": self.initial_transition_count,
             "final_transition_count": self.final_transition_count,
             "transition_delta": self.transition_delta,
@@ -100,6 +119,7 @@ class VisionPresenceTrialResult:
             "fps_sample_delay_s": round(self.fps_sample_delay_s, 3),
             "close_each_sample": self.close_each_sample,
             "reset_presence": self.reset_presence,
+            "arm_timeout_s": round(self.arm_timeout_s, 3),
             "min_fps_required": self.min_fps_required,
             "max_latency_ms": self.max_latency_ms,
             "require_initial_state": self.require_initial_state,
@@ -121,6 +141,7 @@ def run_vision_presence_trial(
     fps_sample_delay_s: float = 0.0,
     close_each_sample: bool = False,
     reset_presence: bool = False,
+    arm_timeout_s: float = 0.0,
     min_fps_required: float | None = None,
     require_initial_state: str | None = None,
     require_final_state: str | None = None,
@@ -138,6 +159,8 @@ def run_vision_presence_trial(
         raise ValueError("start_delay_s must not be negative")
     if fps_sample_delay_s < 0.0:
         raise ValueError("fps_sample_delay_s must not be negative")
+    if arm_timeout_s < 0.0:
+        raise ValueError("arm_timeout_s must not be negative")
 
     base_url = firmware_url.rstrip("/") + "/"
     now = now_fn or time.monotonic
@@ -156,7 +179,9 @@ def run_vision_presence_trial(
     first_candidate_elapsed_ms: float | None = None
     first_present_elapsed_ms: float | None = None
     first_absent_elapsed_ms: float | None = None
+    capture_samples: list[int] = []
     score_samples: list[int] = []
+    spatial_samples: list[int] = []
     max_presence_score: int | None = None
     final_presence_state: str | None = None
     previous_presence_state: str | None = None
@@ -189,6 +214,37 @@ def run_vision_presence_trial(
         failures += 1
         errors.append(f"baseline:{exc}")
 
+    if start_delay_s > 0.0 and require_initial_state is not None:
+        arm_deadline = now() + arm_timeout_s if arm_timeout_s > 0.0 else None
+        try:
+            while True:
+                payload = _get_json(base_url, "api/vision/observe", timeout_s)
+                if not payload.get("ok", False):
+                    failures += 1
+                    errors.append(str(payload.get("error", "preflight_vision_not_ok")))
+                observation = payload.get("observation", {})
+                presence = payload.get("presence", {})
+                if isinstance(observation, dict) and observation.get("valid", False):
+                    capture_ms = _optional_int(observation.get("capture_ms"))
+                    if capture_ms is not None:
+                        capture_samples.append(capture_ms)
+                    spatial_score = _optional_int(observation.get("spatial_score"))
+                    if spatial_score is not None:
+                        spatial_samples.append(spatial_score)
+                if isinstance(presence, dict):
+                    initial_presence_state = str(presence.get("state", "unknown"))
+                    initial_transition_count = _optional_int(presence.get("transition_count"))
+                    initial_detected_event_count = _optional_int(presence.get("detected_event_count"))
+                    initial_lost_event_count = _optional_int(presence.get("lost_event_count"))
+                if initial_presence_state == require_initial_state or arm_deadline is None:
+                    break
+                remaining_s = arm_deadline - now()
+                if remaining_s <= 0.0:
+                    break
+                sleep(min(0.2, remaining_s))
+        except Exception as exc:
+            failures += 1
+            errors.append(f"preflight:{exc}")
     if start_delay_s > 0.0:
         sleep(start_delay_s)
 
@@ -218,6 +274,12 @@ def run_vision_presence_trial(
                 errors.append("observation_invalid")
             else:
                 valid_observations += 1
+                capture_ms = _optional_int(observation.get("capture_ms"))
+                if capture_ms is not None:
+                    capture_samples.append(capture_ms)
+                spatial_score = _optional_int(observation.get("spatial_score"))
+                if spatial_score is not None:
+                    spatial_samples.append(spatial_score)
 
             if isinstance(presence, dict):
                 state = str(presence.get("state", "unknown"))
@@ -354,11 +416,20 @@ def run_vision_presence_trial(
         first_candidate_elapsed_ms=first_candidate_elapsed_ms,
         first_present_elapsed_ms=first_present_elapsed_ms,
         first_absent_elapsed_ms=first_absent_elapsed_ms,
+        min_capture_ms=min(capture_samples) if capture_samples else None,
+        avg_capture_ms=_avg(capture_samples),
+        p95_capture_ms=_percentile_nearest(capture_samples, 0.95),
+        max_capture_ms=max(capture_samples) if capture_samples else None,
         min_presence_score=min(score_samples) if score_samples else None,
         avg_presence_score=_avg(score_samples),
         p95_presence_score=_percentile_nearest(score_samples, 0.95),
         max_presence_score=max_presence_score,
+        min_spatial_score=min(spatial_samples) if spatial_samples else None,
+        avg_spatial_score=_avg(spatial_samples),
+        p95_spatial_score=_percentile_nearest(spatial_samples, 0.95),
+        max_spatial_score=max(spatial_samples) if spatial_samples else None,
         final_presence_state=final_presence_state,
+        initial_presence_state=initial_presence_state,
         initial_transition_count=initial_transition_count,
         final_transition_count=final_transition_count,
         transition_delta=_transition_delta(initial_transition_count, final_transition_count),
@@ -374,6 +445,7 @@ def run_vision_presence_trial(
         fps_sample_delay_s=fps_sample_delay_s,
         close_each_sample=close_each_sample,
         reset_presence=reset_presence,
+        arm_timeout_s=arm_timeout_s,
         min_fps_required=min_fps_required,
         max_latency_ms=max_latency_ms,
         require_initial_state=require_initial_state,
@@ -397,8 +469,11 @@ def format_vision_presence_trial_markdown(result: VisionPresenceTrialResult) -> 
         f"- Primeiro candidate: {result.first_candidate_elapsed_ms} ms",
         f"- Primeiro present: {result.first_present_elapsed_ms} ms",
         f"- Primeiro absent: {result.first_absent_elapsed_ms} ms",
+        f"- Captura ms min/avg/p95/max: {result.min_capture_ms}/{result.avg_capture_ms}/{result.p95_capture_ms}/{result.max_capture_ms}",
         f"- Score min/avg/p95/max: {result.min_presence_score}/{result.avg_presence_score}/{result.p95_presence_score}/{result.max_presence_score}",
+        f"- Spatial score min/avg/p95/max: {result.min_spatial_score}/{result.avg_spatial_score}/{result.p95_spatial_score}/{result.max_spatial_score}",
         f"- Estado final: {result.final_presence_state}",
+        f"- Estado inicial: {result.initial_presence_state}",
         f"- Transition count inicial/final/delta: {result.initial_transition_count}/{result.final_transition_count}/{result.transition_delta}",
         f"- Eventos detected inicial/final/delta: {result.initial_detected_event_count}/{result.final_detected_event_count}/{result.detected_event_delta}",
         f"- Eventos lost inicial/final/delta: {result.initial_lost_event_count}/{result.final_lost_event_count}/{result.lost_event_delta}",
@@ -408,6 +483,7 @@ def format_vision_presence_trial_markdown(result: VisionPresenceTrialResult) -> 
         f"- Delay de amostragem FPS: {result.fps_sample_delay_s} s",
         f"- Fecha câmera a cada amostra: {result.close_each_sample}",
         f"- Reseta presença antes do trial: {result.reset_presence}",
+        f"- Timeout de armar estado inicial: {result.arm_timeout_s} s",
         f"- FPS mínimo exigido: {result.min_fps_required}",
         f"- Latência máxima exigida: {result.max_latency_ms} ms",
         f"- Estado inicial exigido: {result.require_initial_state}",

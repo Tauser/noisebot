@@ -7776,6 +7776,8 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert "NB_VISION_PRESENCE_SCORE_STRONG 60U" in vision_c
     assert "NB_VISION_PRESENCE_RETAIN_MS 2500U" in vision_c
     assert "NB_VISION_PRESENCE_MIN_SAMPLES 2U" in vision_c
+    assert "if (raw_candidate) {\n                status.stable_samples++;" in vision_c
+    assert "raw_candidate &&\n                status.stable_samples" in vision_c
     assert "vision_service_reset_presence" in vision_c
     assert "camera_service_get_mode() != NB_CAMERA_MODE_SAFE_QQVGA" in vision_c
     assert "camera_service_set_mode(NB_CAMERA_MODE_SAFE_QQVGA)" in vision_c
@@ -8196,6 +8198,105 @@ def test_server_vision_soak_can_probe_audio_io_during_observation(monkeypatch) -
     assert result.final_audio_probe_running is False
     assert ("api/audio/io-v2/probe", {"duration_ms": 5000}) in calls
     assert ("api/audio/io-v2/probe/stop", None) in calls
+
+
+def test_server_vision_presence_trial_prefights_initial_state(monkeypatch) -> None:
+    trial = importlib.import_module("noisebot_server.internal.ops.vision_presence_trial")
+
+    calls: list[str] = []
+    observations = iter([
+        {
+            "state": "absent",
+            "score": 40,
+            "transition_count": 0,
+            "detected_event_count": 0,
+            "capture_ms": 170,
+            "spatial_score": 12,
+        },
+        {
+            "state": "candidate",
+            "score": 62,
+            "transition_count": 0,
+            "detected_event_count": 0,
+            "capture_ms": 150,
+            "spatial_score": 90,
+        },
+        {
+            "state": "present",
+            "score": 42,
+            "transition_count": 1,
+            "detected_event_count": 1,
+            "capture_ms": 148,
+            "spatial_score": 88,
+        },
+    ])
+
+    def fake_get_json(base_url: str, path: str, timeout_s: float) -> dict:
+        calls.append(path)
+        if path == "api/vision/observe":
+            item = next(observations)
+            return {
+                "ok": True,
+                "observation": {
+                    "valid": True,
+                    "capture_ms": item["capture_ms"],
+                    "spatial_score": item["spatial_score"],
+                },
+                "presence": {
+                    "state": item["state"],
+                    "score": item["score"],
+                    "transition_count": item["transition_count"],
+                    "detected_event_count": item["detected_event_count"],
+                    "lost_event_count": 0,
+                },
+            }
+        if path == "api/render/status":
+            return {"fps": 34.0}
+        raise AssertionError(path)
+
+    def fake_post_json(base_url: str, path: str, timeout_s: float) -> dict:
+        calls.append(path)
+        if path == "api/vision/presence/reset":
+            return {"ok": True}
+        if path == "api/camera/session/close":
+            return {"ok": True}
+        raise AssertionError(path)
+
+    ticks = iter([0.0, 1.0, 1.1, 1.2, 1.5, 1.8])
+    sleeps: list[float] = []
+    monkeypatch.setattr(trial, "_get_json", fake_get_json)
+    monkeypatch.setattr(trial, "_post_json", fake_post_json)
+
+    result = trial.run_vision_presence_trial(
+        firmware_url="http://192.168.1.30",
+        mode="presence",
+        duration_s=0.4,
+        interval_s=0.3,
+        reset_presence=True,
+        start_delay_s=1.0,
+        require_initial_state="absent",
+        require_final_state="present",
+        min_fps_required=25.0,
+        max_latency_ms=1000.0,
+        now_fn=lambda: next(ticks),
+        sleep_fn=lambda value: sleeps.append(value),
+    )
+
+    assert result.ok is True
+    assert result.initial_presence_state == "absent"
+    assert result.final_presence_state == "present"
+    assert result.detected_event_delta == 1
+    assert result.min_capture_ms == 148
+    assert result.max_capture_ms == 170
+    assert result.p95_capture_ms == 170
+    assert result.max_spatial_score == 90
+    assert sleeps[0] == 1.0
+    assert calls[:3] == [
+        "api/vision/presence/reset",
+        "api/render/status",
+        "api/vision/observe",
+    ]
+    assert "api/camera/session/close" in calls
 
 
 def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:

@@ -3455,9 +3455,11 @@ e confiável antes de acionar comportamento autônomo.
   observações válidas, 1 `candidate`, 0 `present`, score `40/44.25/66/66`,
   nenhum `PRESENCE_DETECTED`, `baseline_fps=26.4` e `min_fps=24.5`.
 - `vision-presence-trial` aceita `--start-delay-s` para armar o teste e iniciar
-  a janela de latência só depois do atraso. Com isso, o operador pode disparar o
-  comando, entrar no campo da câmera durante o delay e medir `PRESENCE_DETECTED`
-  a partir do fim da contagem, evitando misturar tempo de preparo com latência.
+  a janela de latência só depois do atraso. Quando há `--require-initial-state`,
+  o harness faz observação pré-delay para registrar o estado inicial; com
+  `--arm-timeout-s`, ele pode aguardar até observar esse estado antes de abrir a
+  janela de entrada. O relatório agora inclui estatísticas de `capture_ms` e
+  `spatial_score` para separar latência de captura, score e debounce.
 - Comparação com StackChan em 2026-06-04: a implementação local de câmera dele
   usa dispositivo V4L2/`esp_video`, mantém streaming/buffers ativos e consome
   frames continuamente (`Capture()` descarta buffers iniciais; `StreamCaptures()`
@@ -3472,19 +3474,22 @@ e confiável antes de acionar comportamento autônomo.
   diagnóstico humano pode solicitar `better`/QVGA 320x240.
 - `vision_service` ganhou retenção curta de candidato inspirada nesse modelo de
   estado sustentado: picos moderados (`score>=60`) mantêm `candidate` por até
-  2,5s e ainda exigem 2 amostras antes de publicar `PRESENCE_DETECTED`. Também
-  foi adicionado `/api/vision/presence/reset` para limpar estado entre trials.
+  2,5s, mas amostras apenas retidas não promovem para `present`; a publicação de
+  `PRESENCE_DETECTED` exige 2 amostras candidatas reais. Também foi adicionado
+  `/api/vision/presence/reset` para limpar estado entre trials.
 - A observação de visão expõe `spatial_score` como telemetria diagnóstica. Um
   bônus direto desse score foi testado e revertido porque gerou falso positivo
   em cena vazia; por enquanto ele serve apenas para calibrar uma futura linha de
   base estática.
 - Hardware após essa mudança: trial `absence` com `--reset-presence --min-fps 25`
-  passou (24/24 válidas, zero falsos positivos, `max_score=56`, `min_fps=33.0`,
-  final `absent`). Trial `presence` com pessoa no quadro passou (55/55 válidas,
-  `PRESENCE_DETECTED` observado em 1474ms, `max_score=66`, `min_fps=33.1`,
-  final `present`). Conclusão: presença/ausência sob demanda está coerente, mas
-  o critério <500ms depende de modo contínuo/stream-like semelhante ao StackChan,
-  não de captura sob demanda.
+  passou (18/18 válidas, zero falsos positivos, 1 `candidate`, `max_score=56`,
+  `avg_capture_ms=153.0`, `min_fps=35.2`, final `absent`). Trial `presence`
+  controlado com `--arm-timeout-s 10 --start-delay-s 6 --min-fps 25` passou
+  (56/56 válidas, inicial `absent`, final `present`, `PRESENCE_DETECTED`
+  observado em 11826ms, `max_score=62`, `avg_capture_ms=151.8`, `min_fps=33.6`).
+  Conclusão: presença/ausência sob demanda está coerente, mas o critério <500ms
+  depende de evidência visual mais forte ou modo contínuo/stream-like semelhante
+  ao StackChan; a captura já está na faixa de ~150ms.
 
 **Integração:**
 
