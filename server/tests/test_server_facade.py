@@ -7764,6 +7764,10 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert "nb_vision_presence_status_t" in vision_h
     assert "vision_service_evaluate_presence" in vision_h
     assert "vision_service_reset_presence" in vision_h
+    assert "nb_vision_poll_status_t" in vision_h
+    assert "vision_service_poll_start" in vision_h
+    assert "vision_service_poll_stop" in vision_h
+    assert "vision_service_get_poll_status" in vision_h
     assert "detected_event_count" in vision_h
     assert "lost_event_count" in vision_h
     assert "spatial_score" in vision_h
@@ -7778,6 +7782,9 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert "NB_VISION_PRESENCE_MIN_SAMPLES 2U" in vision_c
     assert "if (raw_candidate) {\n                status.stable_samples++;" in vision_c
     assert "raw_candidate &&\n                status.stable_samples" in vision_c
+    assert "vision_poll_task" in vision_c
+    assert "NB_VISION_POLL_MIN_INTERVAL_MS 250U" in vision_c
+    assert "xTaskCreate(vision_poll_task" in vision_c
     assert "vision_service_reset_presence" in vision_c
     assert "camera_service_get_mode() != NB_CAMERA_MODE_SAFE_QQVGA" in vision_c
     assert "camera_service_set_mode(NB_CAMERA_MODE_SAFE_QQVGA)" in vision_c
@@ -7790,6 +7797,10 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert "detected_event_count" in web_c
     assert "lost_event_count" in web_c
     assert '\\"spatial_score\\":%u' in web_c
+    assert "vision_poll_json" in web_c
+    assert '"/api/vision/poll/status"' in web_c
+    assert '"/api/vision/poll/start"' in web_c
+    assert '"/api/vision/poll/stop"' in web_c
 
 
 def test_firmware_camera_hal_prefers_selected_mode_with_driver_fallback() -> None:

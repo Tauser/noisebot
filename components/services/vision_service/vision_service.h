@@ -63,11 +63,28 @@ typedef struct {
     uint32_t last_event_ms;
 } nb_vision_presence_status_t;
 
+typedef struct {
+    bool running;
+    bool stop_requested;
+    uint32_t interval_ms;
+    uint32_t started_ms;
+    uint32_t last_sample_ms;
+    uint32_t sample_count;
+    uint32_t fail_count;
+    uint32_t last_capture_ms;
+    uint32_t avg_capture_ms;
+    uint32_t max_capture_ms;
+    esp_err_t last_error;
+} nb_vision_poll_status_t;
+
 esp_err_t vision_service_init(void);
 bool vision_service_is_available(void);
 esp_err_t vision_service_observe(nb_vision_observation_t *out);
 esp_err_t vision_service_evaluate_presence(const nb_vision_observation_t *obs,
                                            nb_vision_presence_status_t *out);
+esp_err_t vision_service_poll_start(uint32_t interval_ms);
+esp_err_t vision_service_poll_stop(void);
+void vision_service_get_poll_status(nb_vision_poll_status_t *out);
 void vision_service_get_last(nb_vision_observation_t *out);
 void vision_service_get_presence(nb_vision_presence_status_t *out);
 void vision_service_reset_presence(void);

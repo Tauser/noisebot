@@ -10,6 +10,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include <string.h>
 
 #define TAG "nb_vision"
@@ -27,6 +28,15 @@ static nb_vision_presence_status_t s_presence = {
 #define NB_VISION_PRESENCE_SCORE_STRONG 60U
 #define NB_VISION_PRESENCE_RETAIN_MS 2500U
 #define NB_VISION_PRESENCE_MIN_SAMPLES 2U
+#define NB_VISION_POLL_DEFAULT_INTERVAL_MS 300U
+#define NB_VISION_POLL_MIN_INTERVAL_MS 250U
+#define NB_VISION_POLL_MAX_INTERVAL_MS 10000U
+#define NB_VISION_POLL_TASK_STACK 4096U
+#define NB_VISION_POLL_TASK_PRIORITY 4U
+
+static TaskHandle_t s_poll_task = NULL;
+static nb_vision_poll_status_t s_poll = {0};
+static uint64_t s_poll_capture_sum_ms = 0U;
 
 static nb_vision_scene_t classify_scene(const nb_camera_scene_metrics_t *m)
 {
@@ -318,6 +328,149 @@ esp_err_t vision_service_evaluate_presence(const nb_vision_observation_t *obs,
         vision_service_get_presence(out);
     }
     return ESP_OK;
+}
+
+static uint32_t clamp_poll_interval_ms(uint32_t interval_ms)
+{
+    if (interval_ms == 0U) {
+        return NB_VISION_POLL_DEFAULT_INTERVAL_MS;
+    }
+    if (interval_ms < NB_VISION_POLL_MIN_INTERVAL_MS) {
+        return NB_VISION_POLL_MIN_INTERVAL_MS;
+    }
+    if (interval_ms > NB_VISION_POLL_MAX_INTERVAL_MS) {
+        return NB_VISION_POLL_MAX_INTERVAL_MS;
+    }
+    return interval_ms;
+}
+
+static void vision_poll_task(void *arg)
+{
+    (void)arg;
+
+    while (true) {
+        uint32_t interval_ms = NB_VISION_POLL_DEFAULT_INTERVAL_MS;
+        bool stop_requested = false;
+        if (s_mutex && xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            interval_ms = s_poll.interval_ms;
+            stop_requested = s_poll.stop_requested;
+            xSemaphoreGive(s_mutex);
+        }
+        if (stop_requested) {
+            break;
+        }
+
+        nb_vision_observation_t obs;
+        esp_err_t err = vision_service_observe(&obs);
+        if (s_mutex && xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            if (err == ESP_OK) {
+                s_poll.sample_count++;
+                s_poll.last_sample_ms = obs.timestamp_ms;
+                s_poll.last_capture_ms = obs.capture_ms;
+                if (obs.capture_ms > s_poll.max_capture_ms) {
+                    s_poll.max_capture_ms = obs.capture_ms;
+                }
+                s_poll_capture_sum_ms += obs.capture_ms;
+                if (s_poll.sample_count > 0U) {
+                    s_poll.avg_capture_ms =
+                        (uint32_t)(s_poll_capture_sum_ms / s_poll.sample_count);
+                }
+                s_poll.last_error = ESP_OK;
+            } else {
+                s_poll.fail_count++;
+                s_poll.last_error = err;
+            }
+            xSemaphoreGive(s_mutex);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(interval_ms));
+    }
+
+    if (s_mutex && xSemaphoreTake(s_mutex, portMAX_DELAY) == pdTRUE) {
+        s_poll.running = false;
+        s_poll.stop_requested = false;
+        s_poll_task = NULL;
+        xSemaphoreGive(s_mutex);
+    }
+    vTaskDelete(NULL);
+}
+
+esp_err_t vision_service_poll_start(uint32_t interval_ms)
+{
+    if (!s_initialized) {
+        esp_err_t init_err = vision_service_init();
+        if (init_err != ESP_OK && init_err != ESP_ERR_INVALID_STATE) {
+            return init_err;
+        }
+    }
+    if (!s_mutex) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    interval_ms = clamp_poll_interval_ms(interval_ms);
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+    if (s_poll.running) {
+        xSemaphoreGive(s_mutex);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    memset(&s_poll, 0, sizeof(s_poll));
+    s_poll.running = true;
+    s_poll.interval_ms = interval_ms;
+    s_poll.started_ms = (uint32_t)(esp_timer_get_time() / 1000LL);
+    s_poll.last_error = ESP_OK;
+    s_poll_capture_sum_ms = 0U;
+    xSemaphoreGive(s_mutex);
+
+    BaseType_t rc = xTaskCreate(vision_poll_task,
+                                "nb_vision_poll",
+                                NB_VISION_POLL_TASK_STACK,
+                                NULL,
+                                NB_VISION_POLL_TASK_PRIORITY,
+                                &s_poll_task);
+    if (rc != pdPASS) {
+        if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            memset(&s_poll, 0, sizeof(s_poll));
+            s_poll.last_error = ESP_ERR_NO_MEM;
+            xSemaphoreGive(s_mutex);
+        }
+        s_poll_task = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
+    ESP_LOGI(TAG, "poll visual iniciado interval_ms=%lu", (unsigned long)interval_ms);
+    return ESP_OK;
+}
+
+esp_err_t vision_service_poll_stop(void)
+{
+    if (!s_mutex) {
+        return ESP_OK;
+    }
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+    if (s_poll.running) {
+        s_poll.stop_requested = true;
+    }
+    xSemaphoreGive(s_mutex);
+    return ESP_OK;
+}
+
+void vision_service_get_poll_status(nb_vision_poll_status_t *out)
+{
+    if (!out) {
+        return;
+    }
+    if (s_mutex && xSemaphoreTake(s_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        *out = s_poll;
+        xSemaphoreGive(s_mutex);
+    } else {
+        memset(out, 0, sizeof(*out));
+        out->last_error = ESP_OK;
+    }
 }
 
 void vision_service_get_last(nb_vision_observation_t *out)

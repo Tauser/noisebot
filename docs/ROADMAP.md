@@ -3490,6 +3490,14 @@ e confiável antes de acionar comportamento autônomo.
   Conclusão: presença/ausência sob demanda está coerente, mas o critério <500ms
   depende de evidência visual mais forte ou modo contínuo/stream-like semelhante
   ao StackChan; a captura já está na faixa de ~150ms.
+- `vision_service` agora possui modo diagnóstico de polling, desligado por
+  padrão, com `/api/vision/poll/start`, `/api/vision/poll/status` e
+  `/api/vision/poll/stop`. Ele usa o mesmo caminho seguro QQVGA de observação,
+  limita o intervalo (`250ms` mínimo, `300ms` padrão), reporta amostras, falhas
+  e latência de captura, e não aciona comportamento automaticamente. Validação em
+  hardware após flash em 2026-06-04: run padrão gerou 7 amostras em ~4s, zero
+  falhas, `avg_capture_ms=165`, `max_capture_ms=169` e stop limpo com
+  `running=false`.
 
 **Integração:**
 

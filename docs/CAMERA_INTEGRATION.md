@@ -252,6 +252,14 @@ copying board-specific implementations from other products.
   and `min_fps=33.6`. Correctness is validated for on-demand trials, while the
   500ms latency criterion remains blocked by weak/static score evidence rather
   than capture time alone.
+- `vision_service` now also has an explicit diagnostic polling mode, off by
+  default, with `/api/vision/poll/start`, `/api/vision/poll/status` and
+  `/api/vision/poll/stop`. It runs the same safe QQVGA observation path at a
+  clamped interval (`250ms` minimum, `300ms` default), reports sample/failure
+  counts and capture latency, and does not drive behavior automatically.
+  Hardware validation on 2026-06-04 after flash: a default polling run produced
+  7 samples in about 4s, zero failures, `avg_capture_ms=165`,
+  `max_capture_ms=169`, and stopped cleanly with final `running=false`.
 - The bridge v2 can answer local vision questions from the vision endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection

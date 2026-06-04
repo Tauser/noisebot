@@ -661,6 +661,33 @@ static void vision_presence_json(const nb_vision_presence_status_t *presence,
              (unsigned long)presence->last_event_ms);
 }
 
+static void vision_poll_json(const nb_vision_poll_status_t *poll,
+                             char *buf,
+                             size_t buf_len)
+{
+    if (!poll || !buf || buf_len == 0U) {
+        return;
+    }
+
+    snprintf(buf, buf_len,
+             "{\"running\":%s,\"stop_requested\":%s,\"interval_ms\":%lu,"
+             "\"started_ms\":%lu,\"last_sample_ms\":%lu,"
+             "\"sample_count\":%lu,\"fail_count\":%lu,"
+             "\"last_capture_ms\":%lu,\"avg_capture_ms\":%lu,"
+             "\"max_capture_ms\":%lu,\"last_error\":\"%s\"}",
+             poll->running ? "true" : "false",
+             poll->stop_requested ? "true" : "false",
+             (unsigned long)poll->interval_ms,
+             (unsigned long)poll->started_ms,
+             (unsigned long)poll->last_sample_ms,
+             (unsigned long)poll->sample_count,
+             (unsigned long)poll->fail_count,
+             (unsigned long)poll->last_capture_ms,
+             (unsigned long)poll->avg_capture_ms,
+             (unsigned long)poll->max_capture_ms,
+             esp_err_to_name(poll->last_error));
+}
+
 static esp_err_t handle_api_vision_observe(httpd_req_t *req)
 {
     if (audio_service_is_busy()) {
@@ -761,6 +788,65 @@ static bool recv_body(httpd_req_t *req, char *buf, size_t size, int *out_len)
     buf[received] = '\0';
     if (out_len) *out_len = received;
     return true;
+}
+
+static esp_err_t handle_api_vision_poll_status(httpd_req_t *req)
+{
+    nb_vision_poll_status_t poll;
+    vision_service_get_poll_status(&poll);
+    char poll_buf[384];
+    vision_poll_json(&poll, poll_buf, sizeof(poll_buf));
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr_chunk(req, "{\"ok\":true,\"poll\":");
+    httpd_resp_sendstr_chunk(req, poll_buf);
+    httpd_resp_sendstr_chunk(req, "}");
+    return httpd_resp_sendstr_chunk(req, NULL);
+}
+
+static esp_err_t handle_api_vision_poll_start(httpd_req_t *req)
+{
+    uint32_t interval_ms = 0U;
+    char body[MAX_BODY_LEN];
+    if (req->content_len > 0U) {
+        if (!recv_body(req, body, sizeof(body), NULL)) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+            return ESP_OK;
+        }
+        cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+        if (!root) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
+            return ESP_OK;
+        }
+        interval_ms = get_json_u32(root, "interval_ms");
+        cJSON_Delete(root);
+    }
+
+    esp_err_t err = vision_service_poll_start(interval_ms);
+    if (err != ESP_OK) {
+        char err_buf[96];
+        snprintf(err_buf, sizeof(err_buf), "{\"ok\":false,\"error\":\"%s\"}",
+                 esp_err_to_name(err));
+        httpd_resp_set_status(req, err == ESP_ERR_INVALID_STATE
+                                   ? "409 Conflict"
+                                   : "503 Service Unavailable");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, err_buf);
+    }
+    return handle_api_vision_poll_status(req);
+}
+
+static esp_err_t handle_api_vision_poll_stop(httpd_req_t *req)
+{
+    esp_err_t err = vision_service_poll_stop();
+    if (err != ESP_OK) {
+        char err_buf[96];
+        snprintf(err_buf, sizeof(err_buf), "{\"ok\":false,\"error\":\"%s\"}",
+                 esp_err_to_name(err));
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, err_buf);
+    }
+    return handle_api_vision_poll_status(req);
 }
 
 static esp_err_t handle_api_config_post(httpd_req_t *req)
@@ -4548,6 +4634,9 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/vision/status", .method = HTTP_GET, .handler = handle_api_vision_status },
     { .uri = "/api/vision/observe", .method = HTTP_GET, .handler = handle_api_vision_observe },
     { .uri = "/api/vision/presence/reset", .method = HTTP_POST, .handler = handle_api_vision_presence_reset },
+    { .uri = "/api/vision/poll/status", .method = HTTP_GET, .handler = handle_api_vision_poll_status },
+    { .uri = "/api/vision/poll/start", .method = HTTP_POST, .handler = handle_api_vision_poll_start },
+    { .uri = "/api/vision/poll/stop", .method = HTTP_POST, .handler = handle_api_vision_poll_stop },
     { .uri = "/api/config",  .method = HTTP_GET,  .handler = handle_api_config_get },
     { .uri = "/api/config",  .method = HTTP_POST, .handler = handle_api_config_post },
     { .uri = "/api/command",        .method = HTTP_POST,   .handler = handle_api_command },
