@@ -1212,9 +1212,7 @@ static void rx_dispatch_bridge_tx_cb(const nb_audio_io_v2_pcm_frame_t *frame,
     }
 }
 
-static bool audio_service_process_rx_chunk(bool wrote_audio,
-                                           play_state_t play_state,
-                                           FILE **rec_file)
+static bool audio_service_process_rx_chunk(bool wrote_audio, FILE **rec_file)
 {
     size_t mic_n = 0;
     esp_err_t rc = audio_hal_mic_read(s_mic_buf, NB_AUDIO_CHUNK_FRAMES,
@@ -1254,7 +1252,6 @@ static bool audio_service_process_rx_chunk(bool wrote_audio,
     rx_dispatch.wake_samples = s_wake_buf;
     rx_dispatch.activity_playback_context =
         wrote_audio ||
-        play_state == PLAY_ACTIVE ||
         rx_dispatch.activity_bridge_say_context ||
         audio_playback_service_v2_is_playing();
 
@@ -1599,7 +1596,7 @@ static void audio_task(void *arg)
         }
 
         /* ── 2. Chunk RX ─────────────────────────────────────────────────── */
-        if (!audio_service_process_rx_chunk(wrote_audio, play_state, &rec_file)) {
+        if (!audio_service_process_rx_chunk(wrote_audio, &rec_file)) {
             continue;
         }
     }

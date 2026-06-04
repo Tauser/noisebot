@@ -397,6 +397,10 @@ Invariantes:
   gravacao diagnostica saem do corpo principal do `audio_task`. O loop passa a
   atuar como orquestrador curto TX -> RX, sem mudar HAL, wake, VAD, captura,
   codec, bridge ou ownership fisico.
+- Corte residual pos-fechamento: esse helper RX nao recebe mais `play_state_t`.
+  O contexto de playback para Activity v2/RX e derivado de `wrote_audio`, do
+  lifecycle SAY em Playback v2 e de `audio_playback_service_v2_is_playing()`,
+  reduzindo dependencia do enum legado sem alterar runtime.
 - Validacao em hardware da reducao RX: turno 24 (`Me fale uma frase curta.`)
   completou LLM/TTS/SAY_END, Playback v2 recebeu/tocou `213/213` chunks SAY,
   Capture v2 enviou 58 chunks sem drops, Codec v2 voltou `status=ok` apos

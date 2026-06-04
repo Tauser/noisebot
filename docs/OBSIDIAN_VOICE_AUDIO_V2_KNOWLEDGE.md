@@ -303,6 +303,11 @@ Incremento atual da Fase N3:
   gravacao diagnostica), sem mudar wake/VAD/captura/codec/playback/bridge/HAL.
   Inferencia da IA: a frente N6 deve ser considerada encerrada apos validacao
   em hardware desse firmware; novos passos entram como fase nova.
+- Corte residual pos-fechamento: `audio_service_process_rx_chunk()` nao recebe
+  mais `play_state_t`; contexto de playback para Activity/RX vem de
+  `wrote_audio`, lifecycle SAY em Playback v2 e
+  `audio_playback_service_v2_is_playing()`. Inferencia da IA: reduz acoplamento
+  ao enum legado sem alterar comportamento.
 - Validacao pos-flash desse fechamento: turno 24 (`Me fale uma frase curta.`)
   completou LLM/TTS/SAY_END, Playback v2 `213/213` chunks SAY e zero
   drops/falhas, Capture v2 58 chunks / 55680 samples sem drops; 1 pacote Opus

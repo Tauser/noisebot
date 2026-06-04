@@ -2474,3 +2474,9 @@ Fechamento P3/P4 pragmatico:
 - O que permanece no `audio_service.c` e compatibilidade intencional:
   loop RX/TX fisico, WAV local, synth, silencio de fallback, recovery HAL,
   eventos legados e ponte de rollback v1. Isso nao bloqueia Voice Audio v2.
+- Corte residual seguinte: `audio_service_process_rx_chunk()` deixou de receber
+  `play_state_t` legado. O contexto de playback usado por Activity v2/RX agora
+  vem de `wrote_audio`, `bridge_say_active` em Playback v2 e
+  `audio_playback_service_v2_is_playing()`. Isso nao muda HAL, wake, VAD,
+  Capture, Codec, Playback nem bridge; apenas remove acoplamento desnecessario
+  do RX ao enum legado de playback.

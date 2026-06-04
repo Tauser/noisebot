@@ -165,6 +165,10 @@ Fechamento pos-N6 do `audio_task`: o caminho RX restante foi isolado em
 `audio_service_process_rx_chunk()`, preservando leitura do mic, condicionamento,
 dispatch RX v2, timeouts e gravacao diagnostica. Isso nao altera protocolo nem
 audio real; reduz o loop principal para orquestrar TX e RX.
+No corte residual seguinte, esse helper RX deixou de receber `play_state_t`; o
+contexto de playback agora vem de `wrote_audio`, do lifecycle SAY em Playback
+v2 e de `audio_playback_service_v2_is_playing()`. Isso reduz dependencia do
+estado legado sem mudar o caminho real de audio.
 Validacao pos-flash da reducao RX: turno 24 transcreveu
 `Me fale uma frase curta.`, completou LLM/TTS/SAY_END em Opus v2, enviou 213
 chunks TTS/SAY sem drops/falhas, Capture v2 ficou sem drops e o release-check
