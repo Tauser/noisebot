@@ -159,6 +159,10 @@ Fechamento pos-N6 do `audio_task`: o caminho RX restante foi isolado em
 `audio_service_process_rx_chunk()`, preservando leitura do mic, condicionamento,
 dispatch RX v2, timeouts e gravacao diagnostica. Isso nao altera protocolo nem
 audio real; reduz o loop principal para orquestrar TX e RX.
+Validacao pos-flash da reducao RX: turno 24 transcreveu
+`Me fale uma frase curta.`, completou LLM/TTS/SAY_END em Opus v2, enviou 213
+chunks TTS/SAY sem drops/falhas, Capture v2 ficou sem drops e o release-check
+final voltou `ok=true` apos drenar 1 pacote Opus egress residual.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

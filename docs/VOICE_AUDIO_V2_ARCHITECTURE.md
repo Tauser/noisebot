@@ -388,6 +388,10 @@ Invariantes:
   gravacao diagnostica saem do corpo principal do `audio_task`. O loop passa a
   atuar como orquestrador curto TX -> RX, sem mudar HAL, wake, VAD, captura,
   codec, bridge ou ownership fisico.
+- Validacao em hardware da reducao RX: turno 24 (`Me fale uma frase curta.`)
+  completou LLM/TTS/SAY_END, Playback v2 recebeu/tocou `213/213` chunks SAY,
+  Capture v2 enviou 58 chunks sem drops, Codec v2 voltou `status=ok` apos
+  drenar 1 pacote egress residual, e o release-check final ficou `ok=true`.
 
 ### Voice Activity v2
 

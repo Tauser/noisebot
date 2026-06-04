@@ -2196,6 +2196,17 @@ diagnostica. Nao muda wake, VAD, Capture v2, Activity v2, Codec v2, Playback
 v2, bridge, HAL ou ownership fisico; o ganho e fechar o bloco pos-N6 deixando o
 loop principal como orquestrador curto TX -> RX.
 
+Validacao pos-flash da reducao RX: baseline pre-turno `voice-v2` e
+`voice-release-check` ficaram verdes. O turno real 24 (`Me fale uma frase
+curta.`) completou em Opus v2 com transcript_quality `good`,
+`tts_completed=true`, `SAY_END`, 2/2 paginas de texto visual e resposta curta.
+Playback v2 fechou `say_begin_count=1`, `say_end_count=1`, `213/213` chunks SAY
+recebidos/tocados, fila final zero, high-watermark 6/32, zero drops e zero
+falhas de write/commit. Capture v2 enviou 58 chunks / 55680 samples com zero
+drops. O primeiro gate viu 1 pacote Opus egress residual; apos
+`codec-v2 egress-drain`, o `voice-release-check` final voltou `ok=true` com
+Codec v2 `status=ok`, fila egress zero e Audio IO v2 sem recoveries.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

@@ -303,6 +303,10 @@ Incremento atual da Fase N3:
   gravacao diagnostica), sem mudar wake/VAD/captura/codec/playback/bridge/HAL.
   Inferencia da IA: a frente N6 deve ser considerada encerrada apos validacao
   em hardware desse firmware; novos passos entram como fase nova.
+- Validacao pos-flash desse fechamento: turno 24 (`Me fale uma frase curta.`)
+  completou LLM/TTS/SAY_END, Playback v2 `213/213` chunks SAY e zero
+  drops/falhas, Capture v2 58 chunks / 55680 samples sem drops; 1 pacote Opus
+  egress residual foi drenado e o release-check final voltou `ok=true`.
 
 ### Wake Word
 
