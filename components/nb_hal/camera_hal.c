@@ -337,11 +337,26 @@ esp_err_t camera_hal_init(void)
         vTaskDelay(pdMS_TO_TICKS(80));
     }
     if (!format_set) {
-        ESP_LOGE(TAG, "VIDIOC_S_FMT falhou definitivamente");
-        camera_hal_cleanup_video();
-        vSemaphoreDelete(s_mutex);
-        s_mutex = NULL;
-        return ESP_FAIL;
+        uint32_t fallback_width = current_fmt.fmt.pix.width;
+        uint32_t fallback_height = current_fmt.fmt.pix.height;
+        if (fallback_width > 0U && fallback_height > 0U) {
+            ESP_LOGW(TAG, "fallback V4L2 usando resolucao atual %lux%lu",
+                     (unsigned long)fallback_width,
+                     (unsigned long)fallback_height);
+            memset(&fmt, 0, sizeof(fmt));
+            fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            fmt.fmt.pix.width = fallback_width;
+            fmt.fmt.pix.height = fallback_height;
+            fmt.fmt.pix.pixelformat = pixfmt;
+            format_set = (ioctl(s_video_fd, VIDIOC_S_FMT, &fmt) == 0);
+        }
+        if (!format_set) {
+            ESP_LOGE(TAG, "VIDIOC_S_FMT falhou definitivamente");
+            camera_hal_cleanup_video();
+            vSemaphoreDelete(s_mutex);
+            s_mutex = NULL;
+            return ESP_FAIL;
+        }
     }
     s_v4l2_format = fmt.fmt.pix.pixelformat;
     s_frame_width = (size_t)fmt.fmt.pix.width;

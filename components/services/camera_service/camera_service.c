@@ -17,7 +17,8 @@
 #define TAG "nb_camera_svc"
 #define CAMERA_SVC_SESSION_HOLD_US (45ULL * 1000ULL * 1000ULL)
 #define CAMERA_SVC_RETRY_CLOSE_US  (1ULL * 1000ULL * 1000ULL)
-#define CAMERA_SVC_JPEG_QUALITY    82
+#define CAMERA_SVC_SAFE_JPEG_QUALITY   20
+#define CAMERA_SVC_BETTER_JPEG_QUALITY 82
 #define CAMERA_SVC_MOTION_GRID_W   16U
 #define CAMERA_SVC_MOTION_GRID_H   12U
 #define CAMERA_SVC_MOTION_CELLS    (CAMERA_SVC_MOTION_GRID_W * CAMERA_SVC_MOTION_GRID_H)
@@ -224,13 +225,16 @@ static esp_err_t camera_service_encode_yuv422_to_jpeg(const nb_camera_frame_t *f
     }
 
     camera_service_analyze_yuv422(frame);
+    int quality = (camera_hal_get_mode() == NB_CAMERA_MODE_SAFE_QQVGA)
+                ? CAMERA_SVC_SAFE_JPEG_QUALITY
+                : CAMERA_SVC_BETTER_JPEG_QUALITY;
 
     jpeg_enc_config_t enc_config = {
         .width = (int)frame->width,
         .height = (int)frame->height,
         .src_type = JPEG_PIXEL_FORMAT_YCbYCr,
         .subsampling = JPEG_SUBSAMPLE_422,
-        .quality = CAMERA_SVC_JPEG_QUALITY,
+        .quality = quality,
     };
 
     jpeg_enc_handle_t enc = NULL;

@@ -7782,7 +7782,7 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert "lost_event_count" in web_c
 
 
-def test_firmware_camera_hal_forces_selected_mode_resolution() -> None:
+def test_firmware_camera_hal_prefers_selected_mode_with_driver_fallback() -> None:
     root = Path(__file__).resolve().parents[2]
     camera_h = (
         root
@@ -7803,7 +7803,25 @@ def test_firmware_camera_hal_forces_selected_mode_resolution() -> None:
     assert "return (mode == NB_CAMERA_MODE_BETTER_QVGA) ? 240U : 120U;" in camera_c
     assert "fmt.fmt.pix.width = (uint32_t)camera_hal_mode_width(s_mode);" in camera_c
     assert "fmt.fmt.pix.height = (uint32_t)camera_hal_mode_height(s_mode);" in camera_c
-    assert "current_fmt.fmt.pix.width ? current_fmt.fmt.pix.width" not in camera_c
+    assert "fallback V4L2 usando resolucao atual" in camera_c
+    assert "fallback_width = current_fmt.fmt.pix.width" in camera_c
+    assert "fallback_height = current_fmt.fmt.pix.height" in camera_c
+
+
+def test_firmware_camera_service_uses_stackchan_safe_jpeg_quality() -> None:
+    root = Path(__file__).resolve().parents[2]
+    camera_c = (
+        root
+        / "components"
+        / "services"
+        / "camera_service"
+        / "camera_service.c"
+    ).read_text(encoding="utf-8")
+
+    assert "CAMERA_SVC_SAFE_JPEG_QUALITY   20" in camera_c
+    assert "CAMERA_SVC_BETTER_JPEG_QUALITY 82" in camera_c
+    assert "camera_hal_get_mode() == NB_CAMERA_MODE_SAFE_QQVGA" in camera_c
+    assert ".quality = quality" in camera_c
 
 
 def test_firmware_render_metrics_contract_is_exposed() -> None:

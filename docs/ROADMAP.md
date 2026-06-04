@@ -794,8 +794,9 @@ Critérios adicionais de integração do Bloco 0:
 - API: `camera_hal_capture()`, `camera_hal_get_frame()`, `camera_hal_release_frame()`.
 - Task de captura separada: Core 1, prio 4 (abaixo de safety e render).
 - Modos iniciais expostos pela Companion API:
-  - `safe`: captura conservadora para diagnóstico.
-  - `better`: captura 640×480 usada pela visão/observação.
+  - `safe`: alvo QQVGA 160×120 para diagnóstico/visão invisível.
+  - `better`: alvo QVGA 320×240 para snapshot humano.
+  - Se o driver `esp_video` rejeitar a resolução pedida, o HAL usa fallback para o tamanho atual informado por `VIDIOC_G_FMT`, seguindo o padrão StackChan/Xiaozhi de preservar a geometria aceita pelo driver.
 
 **Implementado / validado em hardware (2026-05-25):**
 
@@ -805,6 +806,12 @@ Critérios adicionais de integração do Bloco 0:
 - `/api/vision/observe` retorna observação estruturada com resolução, tamanho JPEG, tempo de captura, brilho, contraste e movimento.
 - Sessão de câmera abre sob demanda e fecha por timeout para evitar pressão permanente de DMA/internal heap.
 - Bridge conectado e TTS funcionando junto ao suporte de câmera.
+
+**Validação complementar (2026-06-04):**
+
+- Comparado com StackChan/Xiaozhi: ambos mantêm `width`/`height` vindos de `VIDIOC_G_FMT` e selecionam principalmente o formato V4L2; o NoiseBot agora tenta o modo selecionado e faz fallback para a geometria atual do driver.
+- O caminho `safe` usa JPEG qualidade 20, alinhado ao streaming de câmera do StackChan, reduzindo payload invisível sem alterar o modo `better` de qualidade 82.
+- Hardware COM12 / `http://192.168.1.30`: `/api/vision/observe` validou sessão quente com `640×480` por fallback, `jpeg_bytes` ~16 KB e captura ~783–886 ms; soak curto de 4 s teve 3/3 observações válidas, zero falhas/reboots e fechamento final da câmera OK.
 
 **Critérios de aceitação:**
 
