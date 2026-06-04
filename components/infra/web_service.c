@@ -599,11 +599,6 @@ static void vision_observation_json(const nb_vision_observation_t *obs,
 
 static esp_err_t handle_api_vision_observe(httpd_req_t *req)
 {
-    if (!vision_service_is_available()) {
-        httpd_resp_set_status(req, "503 Service Unavailable");
-        httpd_resp_set_type(req, "application/json");
-        return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"vision_unavailable\"}");
-    }
     if (audio_service_is_busy()) {
         httpd_resp_set_status(req, "409 Conflict");
         httpd_resp_set_type(req, "application/json");
