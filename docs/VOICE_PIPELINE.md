@@ -131,6 +131,10 @@ que o preflight marque runtime idle enquanto uma resposta SAY ainda esta
 ativa. No fechamento tecnico final, SAY e probe Playback v2 passaram a escrever
 pelo proprio Playback v2; o loop fisico/compatibilidade permanece no
 `audio_service`.
+Validacao final em hardware apos flash foi confirmada manualmente pelo usuario:
+o ciclo real de wake, resposta, cancelamento e audio saiu correto. Essa
+confirmacao fecha o bloco tecnico atual sem reabrir wake, captura, codec,
+bridge, VAD ou novo handoff fisico.
 Validacao real apos flash confirmou o ciclo: em uma resposta curta, Playback v2
 fechou `say_begin_count=1` e `say_end_count=1`, recebeu/tocou 345 chunks SAY,
 ficou com fila final zero e zero drops; `voice-release-check` continuou

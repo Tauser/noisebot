@@ -2465,6 +2465,10 @@ Fechamento P3/P4 pragmatico:
 - Validacao local dos tres cortes: contrato firmware Voice Audio v2 focado
   `9 passed`, `server/tests/test_server_facade.py -k voice_release_check`
   `15 passed` e `idf.py build` limpo com 28% livre na menor particao.
+- Validacao em hardware apos flash: o usuario confirmou que o teste real saiu
+  correto, com wake/resposta/cancelamento operacional e sem regressao percebida
+  de audio. Evidencia: confirmacao manual no fluxo de bancada; contadores
+  detalhados devem ser coletados de novo apenas se o bloco for reaberto.
 - O que permanece no `audio_service.c` e compatibilidade intencional:
   loop RX/TX fisico, WAV local, synth, silencio de fallback, recovery HAL,
   eventos legados e ponte de rollback v1. Isso nao bloqueia Voice Audio v2.

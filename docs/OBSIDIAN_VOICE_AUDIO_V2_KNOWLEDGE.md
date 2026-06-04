@@ -391,6 +391,10 @@ Incremento atual da Fase N3:
   `audio_service.c` ainda permanece como loop fisico/compatibilidade para WAV
   local, synth, silencio, recovery HAL, eventos legados e rollback v1; isso e
   intencional e nao bloqueia o Voice Audio v2.
+- Validacao em hardware apos flash do fechamento tecnico: usuario confirmou no
+  fluxo de bancada que wake, resposta, cancelamento e audio sairam corretos.
+  Evidencia: confirmacao manual; sem coleta nova de contadores detalhados nesta
+  rodada.
 
 ### Wake Word
 

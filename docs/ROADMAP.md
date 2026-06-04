@@ -3115,6 +3115,8 @@ no protocolo.
       release-check focado `15 passed` e `idf.py build` limpo. O que resta no
       `audio_service.c` e compatibilidade intencional: loop I2S fisico, WAV
       local, synth, silencio, recovery HAL, eventos legados e rollback v1.
+      Validacao em hardware apos flash tambem foi confirmada pelo usuario como
+      correta, sem regressao percebida no ciclo wake/resposta/cancelamento/audio.
 
 ---
 
