@@ -13,6 +13,7 @@ UI_OVERLAY_ASSETS = (
     / "ui_overlay_assets.h"
 )
 BOOT_MANAGER = ROOT / "components" / "infra" / "boot_manager.c"
+NB_CONFIG_KEYS = ROOT / "components" / "infra" / "nb_config_keys.h"
 STACKCHAN_TITLE_FONT = (
     ROOT
     / "components"
@@ -105,6 +106,13 @@ def test_touch_boot_uses_persisted_sensitivity():
     assert "touch_sens_pct * 0.2f" in src
     assert "touch_service_set_sensitivity(sens_factor);" in src
     assert "sens_factor = 0.5f" not in src
+
+
+def test_touch_default_is_conservative_for_copper_pad():
+    src = NB_CONFIG_KEYS.read_text(encoding="utf-8")
+
+    assert "#define NB_CFG_DEFAULT_TOUCH_SENS        10" in src
+    assert "passos de 0,2%" in src
 
 
 def test_touch_config_applies_runtime_sensitivity():

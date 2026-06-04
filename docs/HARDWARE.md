@@ -187,7 +187,7 @@ Alimentação TTLinker: 5V (mesmo barramento dos servos).
 | TOUCH\_IN | 2   | Touch T2 — fita de cobre          |
 
 Threshold calibrado em runtime (`baseline × (1 + touch_sens*0.2/100)`).
-`touch_sens` default: 1, equivalente a 0,2% acima do baseline para a fita de cobre atual.
+`touch_sens` default: 10, equivalente a 2% acima do baseline para a fita de cobre atual.
 
 GPIOs touch disponíveis para expansão futura: GPIO 1 (T1, em uso como WS), GPIO 3 (T3, spare).
 

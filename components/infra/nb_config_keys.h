@@ -64,7 +64,7 @@
 #define NB_CFG_KEY_BRIGHTNESS "brightness"       /* u8 — 0..255 */
 
 /* ── Chaves nb_cfg — Touch ───────────────────────────────────────────────── */
-#define NB_CFG_KEY_TOUCH_SENS "touch_sens"       /* u8 — 1..100 (fator de sensibilidade) */
+#define NB_CFG_KEY_TOUCH_SENS "touch_sens"       /* u8 — 1..100 (passos de 0,2%) */
 
 /* ── Chaves nb_cfg — Comportamento ──────────────────────────────────────────*/
 #define NB_CFG_KEY_IDLE_TMO   "idle_timeout"     /* u32 — segundos até entrar em SLEEPING */
@@ -85,7 +85,7 @@
 #define NB_CFG_DEFAULT_V2_ACT_DEC         1     /* on por padrao: Activity v2 decide com rollback */
 #define NB_CFG_DEFAULT_V2_ACT_MIG         0     /* off ate aplicar a migracao one-shot */
 #define NB_CFG_DEFAULT_BRIGHTNESS       180     /* ~70% — confortável em ambiente escuro */
-#define NB_CFG_DEFAULT_TOUCH_SENS         1     /* 1% acima do baseline (copper pad, ESP32-S3) */
+#define NB_CFG_DEFAULT_TOUCH_SENS        10     /* 2% acima do baseline (copper pad, ESP32-S3) */
 #define NB_CFG_DEFAULT_IDLE_TIMEOUT_S   3600    /* 60 minutos */
 
 #define NB_SVC_DEFAULT_EMOTION            0     /* NEUTRAL */
