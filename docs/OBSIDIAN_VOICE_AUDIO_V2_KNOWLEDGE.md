@@ -375,6 +375,9 @@ Incremento atual da Fase N3:
   e retorna gate `Firmware HTTP` com `Status: FALHOU`, evitando traceback em
   timeout/IP errado/boot pos-flash. Evidencia: teste focado passou com 15 casos
   de `voice_release_check`.
+- P2 server-only robustez seguinte: falha em `/ai/metrics` agora vira gate
+  `Métricas de voz` falho, mantendo os gates de firmware coletados. Evidencia:
+  teste focado passou com 16 casos de `voice_release_check`.
 
 ### Wake Word
 

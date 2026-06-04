@@ -2431,6 +2431,13 @@ mudanca nao altera firmware nem runtime. Validacao local:
 `server/tests/test_server_facade.py -k voice_release_check` com 15 testes
 verdes.
 
+Incremento server-only seguinte: o mesmo release-check passou a tratar falha em
+`/ai/metrics` como gate `Métricas de voz` falho, preservando os gates de
+firmware ja coletados. Assim o diagnostico continua legivel quando o server
+local caiu, reiniciou ou esta em outra porta. Validacao local:
+`server/tests/test_server_facade.py -k voice_release_check` com 16 testes
+verdes.
+
 Nao fazer em P2:
 
 - Nao mover `audio_hal_spk_write()` para Playback v2 ainda.

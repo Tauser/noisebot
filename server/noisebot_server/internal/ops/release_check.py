@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .firmware_diag import FirmwareDiagClient, FirmwareDiagError
-from .voice_ab import get_json
+from .voice_ab import VoiceAbError, get_json
 
 _AUTO_EGRESS_DRAIN_MAX_PACKETS = 1
 
@@ -72,7 +72,16 @@ def run_release_check(
     except FirmwareDiagError as exc:
         return _firmware_diag_failed_release_check(firmware_url, exc)
 
-    metrics = get_json(f"{server_url.rstrip('/')}/ai/metrics")
+    try:
+        metrics = get_json(f"{server_url.rstrip('/')}/ai/metrics")
+    except VoiceAbError as exc:
+        return build_release_check(
+            voice_v2=voice_v2,
+            codec_v2=codec_v2,
+            capture_v2=capture_v2,
+            playback_v2=playback_v2,
+            metrics=_server_metrics_failed_payload(server_url, exc),
+        )
 
     return build_release_check(
         voice_v2=voice_v2,
@@ -103,6 +112,15 @@ def _firmware_diag_failed_release_check(
         playback_v2={},
         metrics={},
     )
+
+
+def _server_metrics_failed_payload(server_url: str, exc: VoiceAbError) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": str(exc),
+        "server_url": server_url.rstrip("/"),
+        "last_voice_session": {},
+    }
 
 
 def maybe_auto_drain_codec_egress(
@@ -400,6 +418,14 @@ def _playback_gate(payload: dict[str, Any]) -> ReleaseGate:
 
 
 def _metrics_gate(payload: dict[str, Any]) -> ReleaseGate:
+    if payload.get("ok") is False and payload.get("error"):
+        return ReleaseGate(
+            "Métricas de voz",
+            False,
+            f"{payload.get('server_url', '')}/ai/metrics: {payload.get('error')}",
+            ("verifique se o server local esta rodando",),
+        )
+
     session = payload.get("last_voice_session")
     if not isinstance(session, dict) or not session:
         return ReleaseGate(

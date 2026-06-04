@@ -3064,6 +3064,9 @@ no protocolo.
 - [x] Robustez operacional do release-check: falha HTTP do firmware vira gate
       `Firmware HTTP` com `Status: FALHOU`, sem traceback Python em timeout,
       IP errado, WiFi ou boot pos-flash. Validado com 15 testes focados.
+- [x] Robustez operacional do release-check: falha em `/ai/metrics` vira gate
+      `Métricas de voz` falho, preservando gates de firmware ja coletados.
+      Validado com 16 testes focados.
 - [x] Fase N planejada como migracao estrutural do firmware Voice v2:
       N0 congela baseline/gates; N1 torna Capture v2 default controlado; N2
       promove Activity v2 a decisor dentro da sessao; N3 migra RX/TX para
