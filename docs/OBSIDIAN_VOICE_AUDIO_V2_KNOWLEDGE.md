@@ -257,6 +257,12 @@ Incremento atual da Fase N3:
   `playback_say_active` para bloquear falso idle enquanto uma resposta esta
   ativa. Inferencia da IA: isso prepara nova reducao de `audio_service.c` sem
   mover HAL, wake, VAD, captura, codec, bridge, Opus ou PCM16.
+- Validacao hardware do lifecycle: turno real curto fechou
+  `say_begin_count=1` e `say_end_count=1`, com 345 chunks SAY
+  recebidos/tocados, fila final zero, zero drops e zero falhas de write/commit.
+  `voice-release-check` pos-turno ficou `ok=true`, com `tts_completed=true`,
+  `tts_say_end_sent=true` e Opus v2 ativo. O release-check server-only passa a
+  falhar se `bridge_say_active=true` no preflight ou se begin/end divergir.
 
 ### Wake Word
 

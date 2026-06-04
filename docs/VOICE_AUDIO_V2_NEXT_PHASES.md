@@ -2092,6 +2092,23 @@ campos aparecem em `/api/audio/playback-v2`, e o gate consolidado
 falso idle entre jitter/fim de fila sem mudar wake, VAD, captura, codec,
 bridge, Opus/PCM16 ou ownership fisico do HAL, que continua no `audio_service`.
 
+Validacao hardware desse lifecycle: apos flash, baseline voltou
+`voice-release-check ok=true`, `/api/audio/voice-v2 ready=true` e
+`block_reason=none`. No turno real `ww -> uma frase curta`, Playback v2
+registrou `say_begin_count=1`, `say_end_count=1`, 345 chunks SAY
+recebidos/tocados, fila final zero, zero drops, zero falhas de write/commit e
+`speaker_idle_end_count=1`. O server confirmou `tts_completed=true`,
+`tts_say_end_sent=true`, 3/3 paginas visuais enviadas e Opus v2 ativo. O
+release-check pos-turno permaneceu `ok=true`; o unico aviso foi o estado DONE
+retido do Capture v2 controlado, com sessao inativa e zero drops.
+
+Incremento server-only seguinte: `voice-release-check` passou a validar o
+lifecycle SAY do Playback v2. O gate `Playback v2 SAY` agora considera falha
+se `bridge_say_active=true` no preflight ou se `say_begin_count` e
+`say_end_count` estiverem desencontrados. Isso transforma a validacao do turno
+real em regressao automatica antes de novos cortes em `audio_service.c`, sem
+alterar firmware, HAL, wake, VAD, captura, codec, Opus ou PCM16.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

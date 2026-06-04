@@ -129,6 +129,11 @@ O lifecycle da fala SAY tambem passou a ser observado por Playback v2:
 sinal fecha no idle normal, cancelamento ou descarte por nova escuta, e impede
 que o preflight marque runtime idle enquanto uma resposta SAY ainda esta
 ativa. O HAL fisico continua no callback de `audio_service`.
+Validacao real apos flash confirmou o ciclo: em uma resposta curta, Playback v2
+fechou `say_begin_count=1` e `say_end_count=1`, recebeu/tocou 345 chunks SAY,
+ficou com fila final zero e zero drops; `voice-release-check` continuou
+`ok=true`. O release-check tambem passou a falhar se esse lifecycle ficar ativo
+ou desbalanceado no preflight.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

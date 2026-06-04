@@ -3774,7 +3774,10 @@ def test_server_voice_release_check_accepts_clean_preflight(monkeypatch) -> None
                 "ok": True,
                 "bridge_say_observer": True,
                 "bridge_say_queue_owner": True,
+                "bridge_say_active": False,
                 "say_queue_count": 0,
+                "say_begin_count": 1,
+                "say_end_count": 1,
                 "say_chunks_received": 40,
                 "say_chunks_played": 40,
                 "say_chunks_dropped": 0,
@@ -3858,7 +3861,10 @@ def test_server_voice_release_check_fails_when_voice_v2_gate_blocks() -> None:
             "ok": True,
             "bridge_say_observer": True,
             "bridge_say_queue_owner": True,
+            "bridge_say_active": False,
             "say_queue_count": 0,
+            "say_begin_count": 1,
+            "say_end_count": 1,
             "say_chunks_received": 10,
             "say_chunks_played": 10,
             "say_chunks_dropped": 0,
@@ -3915,7 +3921,10 @@ def test_server_voice_release_check_accepts_retained_capture_done_state() -> Non
             "ok": True,
             "bridge_say_observer": True,
             "bridge_say_queue_owner": True,
+            "bridge_say_active": False,
             "say_queue_count": 0,
+            "say_begin_count": 1,
+            "say_end_count": 1,
             "say_chunks_received": 10,
             "say_chunks_played": 10,
             "say_chunks_dropped": 0,
@@ -3979,7 +3988,10 @@ def test_server_voice_release_check_accepts_controlled_capture_handoff() -> None
             "ok": True,
             "bridge_say_observer": True,
             "bridge_say_queue_owner": True,
+            "bridge_say_active": False,
             "say_queue_count": 0,
+            "say_begin_count": 1,
+            "say_end_count": 1,
             "say_chunks_received": 10,
             "say_chunks_played": 10,
             "say_chunks_dropped": 0,
@@ -3995,6 +4007,72 @@ def test_server_voice_release_check_accepts_controlled_capture_handoff() -> None
     assert capture_gate.ok is True
     assert capture_gate.warnings == (
         "capture-v2 controlado reteve o ownership da ultima sessao DONE",
+    )
+
+
+def test_server_voice_release_check_fails_when_playback_say_lifecycle_is_open() -> None:
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+
+    check = release_check.build_release_check(
+        voice_v2={
+            "ok": True,
+            "ready": True,
+            "block_reason": "none",
+            "capture_enabled": True,
+            "capture_tx_enabled": True,
+            "activity_decider_enabled": True,
+            "codec_worker_state": "running",
+            "playback_say_queue_count": 0,
+            "playback_say_drops": 0,
+            "codec_packet_drops": 0,
+            "codec_egress_drops": 0,
+            "runtime_idle": True,
+        },
+        codec_v2={
+            "ok": True,
+            "healthy": True,
+            "status": "ok",
+            "format": "opus",
+            "worker_state": "running",
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "issues": [],
+            "warnings": [],
+        },
+        capture_v2={
+            "ok": True,
+            "real_capture_enabled": True,
+            "bridge_tx_handoff_enabled": True,
+            "session_active": False,
+            "state": "IDLE_SESSION",
+            "dropped_frames": 0,
+            "shadow_audio_dropped_chunks": 0,
+            "last_error": "ESP_OK",
+        },
+        playback_v2={
+            "ok": True,
+            "bridge_say_observer": True,
+            "bridge_say_queue_owner": True,
+            "bridge_say_active": True,
+            "say_queue_count": 0,
+            "say_begin_count": 2,
+            "say_end_count": 1,
+            "say_chunks_received": 345,
+            "say_chunks_played": 345,
+            "say_chunks_dropped": 0,
+            "say_chunks_dropped_listening": 0,
+            "last_error": "ESP_OK",
+        },
+        metrics={"last_voice_session": {}},
+    )
+
+    assert check.ok is False
+    playback_gate = check.gates[3]
+    assert playback_gate.name == "Playback v2 SAY"
+    assert playback_gate.ok is False
+    assert playback_gate.warnings == (
+        "bridge_say_active=true",
+        "lifecycle SAY aberto begin/end=2/1",
     )
 
 
@@ -4081,7 +4159,10 @@ async def test_server_ops_http_returns_voice_release_check() -> None:
                 "ok": True,
                 "bridge_say_observer": True,
                 "bridge_say_queue_owner": True,
+                "bridge_say_active": False,
                 "say_queue_count": 0,
+                "say_begin_count": 1,
+                "say_end_count": 1,
                 "say_chunks_received": 12,
                 "say_chunks_played": 12,
                 "last_error": "ESP_OK",

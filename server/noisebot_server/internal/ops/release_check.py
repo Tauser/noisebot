@@ -199,17 +199,27 @@ def _capture_gate(payload: dict[str, Any]) -> ReleaseGate:
 
 def _playback_gate(payload: dict[str, Any]) -> ReleaseGate:
     queue_count = _int(payload.get("say_queue_count"))
+    say_begin_count = _int(payload.get("say_begin_count"))
+    say_end_count = _int(payload.get("say_end_count"))
     dropped = _int(payload.get("say_chunks_dropped"))
     dropped_listening = _int(payload.get("say_chunks_dropped_listening"))
     error = str(payload.get("last_error") or payload.get("error") or "ESP_OK")
+    lifecycle_active = payload.get("bridge_say_active") is True
+    lifecycle_balanced = say_begin_count == say_end_count
     ok = (
         bool(payload.get("ok"))
         and payload.get("bridge_say_observer") is True
         and payload.get("bridge_say_queue_owner") is True
+        and not lifecycle_active
+        and lifecycle_balanced
         and queue_count == 0
         and error == "ESP_OK"
     )
     warnings: list[str] = []
+    if lifecycle_active:
+        warnings.append("bridge_say_active=true")
+    if not lifecycle_balanced:
+        warnings.append(f"lifecycle SAY aberto begin/end={say_begin_count}/{say_end_count}")
     if dropped:
         warnings.append(f"contador cumulativo say_chunks_dropped={dropped}")
     if dropped_listening:
@@ -217,6 +227,7 @@ def _playback_gate(payload: dict[str, Any]) -> ReleaseGate:
     detail = (
         f"observer={payload.get('bridge_say_observer')}, "
         f"owner={payload.get('bridge_say_queue_owner')}, queue={queue_count}, "
+        f"active={payload.get('bridge_say_active')}, begin/end={say_begin_count}/{say_end_count}, "
         f"received/played={payload.get('say_chunks_received')}/"
         f"{payload.get('say_chunks_played')}, error={error}"
     )
