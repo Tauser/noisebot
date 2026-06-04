@@ -1,7 +1,7 @@
 # Voice Audio v2 Architecture
 
 Data: 2026-05-30
-Status: arquitetura vigente do refactor paralelo, sem substituir o rollback PCM16.
+Status: concluido funcionalmente; refactors residuais ficam em backlog tecnico.
 Branch de trabalho: `voice-reference-architecture`.
 
 Este documento fixa o mapa tecnico para refazer o subsistema de voz do NoiseBot
@@ -16,10 +16,11 @@ Roadmap operacional das fases restantes apos o fechamento do Opus:
 Checklist/health de release da Fase M parcial:
 `docs/VOICE_AUDIO_V2_RELEASE_CHECKLIST.md`.
 
-O objetivo nao e "reescrever tudo". O objetivo e retirar do `audio_service.c`
-as responsabilidades que foram acumuladas ao longo da migracao e criar um
-pipeline v2 paralelo, testavel, atras de flag, com rollback imediato para o
-pipeline PCM16 atual.
+Voice Audio v2 esta fechado como entrega funcional: Opus v2, Capture v2,
+Activity v2, Playback v2, Audio IO v2, gates de release, rollback PCM16,
+barge-in por wake, no-echo e diagnosticos operacionais foram validados em
+hardware. O objetivo restante nao e requisito de entrega; e backlog tecnico para
+reduzir o `audio_service.c` gradualmente sem quebrar o robo que ja conversa.
 
 ## Regras de Protecao
 
@@ -30,7 +31,8 @@ pipeline PCM16 atual.
   atual nao devem ser reescritos junto com audio v2.
 - AEC so entra quando houver referencia real de playback ou decisao explicita de
   AEC server-side. Nao promover AEC device-side sem canal de referencia.
-- Cada fase deve gerar commit proprio, build limpo e criterio de rollback.
+- Mudancas futuras de backlog devem gerar commit proprio, build limpo e criterio
+  de rollback.
 
 ## Premissas Tecnicas
 

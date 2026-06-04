@@ -2324,17 +2324,21 @@ drops e zero falhas de write/commit. Capture v2 ficou `DONE`,
 maior bloco 17 KB e zero recoveries. O `voice-release-check` final retornou
 `ok=true` sem necessidade de dreno manual. Fase O fechada.
 
-## Fase P - Audio Service Como Ponte/Compatibilidade
+## Backlog Tecnico P - Audio Service Como Ponte/Compatibilidade
 
-Objetivo: depois do fechamento operacional da Fase O, reduzir o
-`audio_service.c` sem trocar novamente o caminho real de audio no mesmo passo.
-A meta de P nao e "mais teste": e explicitar ownership residual e transformar o
-`audio_service` em ponte/compatibilidade, mantendo HAL fisico e rollback v1
-seguros ate cada owner v2 estar maduro.
+Status: backlog opcional. Voice Audio v2 esta concluido funcionalmente com a
+Fase O fechada em hardware. Os itens abaixo nao bloqueiam a entrega: servem para
+limpeza arquitetural futura do `audio_service.c` quando houver apetite para
+refatorar sem pressa.
+
+Objetivo: reduzir o `audio_service.c` sem trocar novamente o caminho real de
+audio no mesmo passo. A meta nao e "mais teste": e explicitar ownership
+residual e transformar o `audio_service` em ponte/compatibilidade, mantendo HAL
+fisico e rollback v1 seguros ate cada owner v2 estar maduro.
 
 ### P0 - Baseline Pos-O
 
-Baseline congelado:
+Baseline congelado e concluido:
 
 - `voice-release-check ok=true` apos restart real do server.
 - Opus v2 segue como default local do server, PCM16 segue rollback.
@@ -2349,7 +2353,8 @@ Baseline congelado:
 
 ### P1 - Mapa de Ownership Restante
 
-Responsabilidades que ainda devem ficar no `audio_service.c` por enquanto:
+Responsabilidades que ainda podem ficar no `audio_service.c` por enquanto sem
+bloquear o Voice Audio v2:
 
 - Escrita/leitura fisica no HAL/I2S (`audio_hal_*`) e recovery de I2S.
 - Callback de eventos legados `NB_AUDIO_EVT_PLAYBACK_START/END` e integracao
@@ -2371,7 +2376,7 @@ Responsabilidades que ja pertencem majoritariamente aos v2:
 - Estado de captura, ownership TX e envio quando armado: `voice_capture_session_v2`.
 - Worker Opus, filas de codec, egress e rollback PCM16: `audio_codec_service_v2`.
 
-Proximo incremento recomendado:
+Proximo incremento recomendado se retomarmos backlog tecnico:
 
 - P2 deve ser um corte de contrato/observabilidade, nao um novo handoff fisico:
   expor um mapa resumido de ownership em `/api/audio/voice-v2` ou endpoint

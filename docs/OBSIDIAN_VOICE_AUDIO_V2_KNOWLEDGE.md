@@ -337,15 +337,15 @@ Incremento atual da Fase N3:
   `ww -> fale uma frase curta` passou com transcript bom, LLM/TTS/SAY_END,
   Playback v2 `158/158` chunks SAY sem drops, Capture v2 29 chunks sem drops,
   Codec v2 egress zero/sem erro, Audio IO v2 ~19 KB livres interno/DMA e
-  `voice-release-check ok=true` sem dreno manual. Proximos incrementos devem
-  abrir fase nova.
-- Fase P aberta: objetivo e reduzir `audio_service.c` para ponte/compat. P0/P1
-  congelam baseline pos-O e mapeiam ownership residual. Ainda ficam no
-  `audio_service`: HAL/I2S fisico, recovery, eventos legados, wake rearm,
-  playback local, VAD rollback e ponte bridge legacy. Ja estao majoritariamente
-  nos v2: fila/lifecycle/preparo/commit SAY, telemetria RX/TX, Activity v2 como
-  decisor dentro de sessao, Capture v2 TX owner controlado e Codec v2 Opus.
-  Proximo passo seguro: expor mapa de ownership em status antes de novo
+  `voice-release-check ok=true` sem dreno manual. Voice Audio v2 esta
+  concluido funcionalmente.
+- Backlog tecnico P: reduzir `audio_service.c` para ponte/compat continua util,
+  mas nao bloqueia a entrega funcional. Ainda ficam no `audio_service`:
+  HAL/I2S fisico, recovery, eventos legados, wake rearm, playback local, VAD
+  rollback e ponte bridge legacy. Ja estao majoritariamente nos v2:
+  fila/lifecycle/preparo/commit SAY, telemetria RX/TX, Activity v2 como decisor
+  dentro de sessao, Capture v2 TX owner controlado e Codec v2 Opus. Se retomado,
+  o proximo passo seguro e expor mapa de ownership em status antes de novo
   handoff fisico.
 
 ### Wake Word

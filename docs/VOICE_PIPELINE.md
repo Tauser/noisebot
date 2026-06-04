@@ -196,12 +196,13 @@ visual e deixou Playback v2 em `158/158` chunks SAY, fila zero e zero drops.
 Capture v2 registrou 29 chunks sem drops; Codec v2 ficou `status=ok`, egress
 zero e sem erro; Audio IO v2 manteve ~19 KB internos/DMA livres. O
 `voice-release-check` final ficou `ok=true` sem dreno manual.
-Fase P inicia a reducao final do `audio_service.c` como ponte/compatibilidade.
-O baseline pos-O fica congelado antes de novo handoff: HAL/I2S fisico, eventos
-legados, wake rearm, playback local, VAD rollback e ponte legacy seguem no
-`audio_service`; fila/lifecycle SAY, telemetria RX/TX, Activity v2, Capture v2
-e Codec v2 ja pertencem majoritariamente aos servicos v2. Proximo corte seguro:
-mapa de ownership em status antes de mover qualquer HAL.
+Voice Audio v2 fica concluido funcionalmente neste ponto. A reducao final do
+`audio_service.c` como ponte/compatibilidade passa para backlog tecnico: HAL/I2S
+fisico, eventos legados, wake rearm, playback local, VAD rollback e ponte
+legacy podem seguir no `audio_service` sem bloquear a entrega; fila/lifecycle
+SAY, telemetria RX/TX, Activity v2, Capture v2 e Codec v2 ja pertencem
+majoritariamente aos servicos v2. Se esse backlog for retomado, o primeiro corte
+seguro e um mapa de ownership em status antes de mover qualquer HAL.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

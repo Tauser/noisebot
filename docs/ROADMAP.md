@@ -3034,12 +3034,20 @@ no protocolo.
       final `ok=true`, turno curto, resposta longa, barge-in/pare, no-echo por
       `/ai/metrics` sem turno fantasma, rollback PCM16 e retorno a Opus v2 com
       health verde.
-- [ ] Fase N planejada como migracao estrutural do firmware Voice v2:
+- [x] Voice Audio v2 fechado funcionalmente em hardware apos Fase O:
+      Opus v2 default local com rollback PCM16, Capture v2 TX owner controlado,
+      Activity v2 decisor dentro de sessao, Audio IO v2 com RX/TX observados,
+      Playback v2 dono de fila/lifecycle/write por callback, heap interno/DMA
+      estabilizado em ~19 KB, release-check final `ok=true` sem dreno manual,
+      turno real curto validado com TTS/SAY_END, zero drops de Playback/Capture
+      e Codec v2 egress zero. Reducoes adicionais de `audio_service.c` passam a
+      backlog tecnico, nao bloqueio de entrega.
+- [x] Fase N planejada como migracao estrutural do firmware Voice v2:
       N0 congela baseline/gates; N1 torna Capture v2 default controlado; N2
       promove Activity v2 a decisor dentro da sessao; N3 migra RX/TX para
       Audio IO v2; N4 promove Playback v2 ao caminho HAL/speaker; N5 reduz
-      `audio_service.c` para ponte/compatibilidade. STT/LLM/TTS continuam fora
-      do firmware.
+      `audio_service.c` para ponte/compatibilidade quando seguro. STT/LLM/TTS
+      continuam fora do firmware.
 - [x] Fase N0 fechada em hardware no hash `0d97291`: release check final
       `ok=true`, Codec v2 health `status=ok`, Playback v2 delta em repouso
       com deltas zero, Capture v2 default-off, barge-in `turn_id=94 -> 95`
@@ -3064,11 +3072,10 @@ no protocolo.
       N3 esta fechada para RX distribuido, TX observado e gates de speaker;
       N4/N5/N6 estao fechadas no caminho Playback v2/SAY com write por
       callback, reducao segura do `audio_service.c`, janela real controlada e
-      baseline falado sem drops. A pendencia funcional remanescente da Fase N e
-      promover Activity v2 de comparador para decisor controlado dentro de
+      baseline falado sem drops. A pendencia funcional remanescente foi fechada
+      ao promover Activity v2 de comparador para decisor controlado dentro de
       sessao ja aberta, com rollback para o VAD legado. Antes de nova troca de
-      HAL owner, monitorar `heap_internal_free_kb`/`heap_dma_free_kb` baixos nos
-      gates.
+      HAL owner em backlog, monitorar heap interno/DMA nos gates.
 
 ---
 
