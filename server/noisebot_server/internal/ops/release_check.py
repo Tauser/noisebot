@@ -144,6 +144,7 @@ def build_release_check(
     playback_v2: dict[str, Any],
     metrics: dict[str, Any],
 ) -> ReleaseCheck:
+    codec_v2 = _annotate_codec_transport(codec_v2, metrics)
     gates = (
         _voice_gate(voice_v2),
         _codec_gate(codec_v2),
@@ -160,6 +161,24 @@ def build_release_check(
         playback_v2=playback_v2,
         metrics=metrics,
     )
+
+
+def _annotate_codec_transport(
+    codec_v2: dict[str, Any],
+    metrics: dict[str, Any],
+) -> dict[str, Any]:
+    last_session = metrics.get("last_voice_session")
+    if not isinstance(last_session, dict):
+        return codec_v2
+
+    transport_format = str(last_session.get("audio_codec") or "")
+    if not transport_format:
+        return codec_v2
+
+    annotated = dict(codec_v2)
+    annotated.setdefault("firmware_format", annotated.get("format"))
+    annotated["transport_format"] = transport_format
+    return annotated
 
 
 def format_release_check_markdown(check: ReleaseCheck) -> str:
@@ -255,8 +274,10 @@ def _codec_gate(payload: dict[str, Any]) -> ReleaseGate:
     issues = _list_str(payload.get("issues"))
     warnings = _list_str(payload.get("warnings"))
     ok = bool(payload.get("ok")) and bool(payload.get("healthy")) and payload.get("status") == "ok"
+    transport_format = str(payload.get("transport_format") or "")
     detail = (
         f"status={payload.get('status')}, format={payload.get('format')}, "
+        f"transport={transport_format or 'unknown'}, "
         f"worker={payload.get('worker_state')}, drops={payload.get('packet_drops')}/"
         f"{payload.get('opus_egress_packet_drops')}"
     )

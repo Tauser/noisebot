@@ -359,6 +359,12 @@ Incremento atual da Fase N3:
   firmware novo fornece o bloco e emite warnings se algum owner esperado mudar.
   Firmware antigo sem o bloco segue compativel. Evidencia: `server/tests/
   test_server_facade.py -k voice_release_check` passou com 13 testes.
+- P2 diagnostico server-only: `voice-release-check` agora separa
+  `firmware_format` de `transport_format` quando as metricas do server trazem
+  `last_voice_session.audio_codec`. Evidencia: apos teste real, o firmware
+  reportava `format=pcm16`, mas a sessao registrava `audio_codec=opus-v2`; o
+  gate passa a mostrar os dois sem alterar runtime. Teste focado passou com 14
+  casos.
 
 ### Wake Word
 

@@ -3052,6 +3052,11 @@ no protocolo.
       `voice-release-check` emite warnings se algum owner sair do contrato
       esperado, mantendo compatibilidade com firmware antigo sem o bloco.
       Validado com `server/tests/test_server_facade.py -k voice_release_check`.
+- [x] Diagnostico P2 do Codec v2 ajustado no release-check: o gate separa
+      `firmware_format` de `transport_format` usando
+      `last_voice_session.audio_codec`, evitando confundir status bruto
+      `pcm16` do firmware com turno real `opus-v2`. Validado com 14 testes
+      focados de `voice_release_check`.
 - [x] Fase N planejada como migracao estrutural do firmware Voice v2:
       N0 congela baseline/gates; N1 torna Capture v2 default controlado; N2
       promove Activity v2 a decisor dentro da sessao; N3 migra RX/TX para

@@ -2405,6 +2405,16 @@ observabilidade apenas, mas deixa regressao arquitetural visivel. Validacao
 local: `server/tests/test_server_facade.py -k voice_release_check` com 13
 testes verdes.
 
+Incremento P2 server-only de diagnostico: `voice-release-check` passou a
+anotar `firmware_format` e `transport_format` no payload do Codec v2 quando as
+metricas do server informam `last_voice_session.audio_codec`. Isso resolve a
+ambiguidade vista em hardware em que `/api/audio/codec-v2` reportava
+`format=pcm16` enquanto o turno real usava `audio_codec=opus-v2`. O gate agora
+mostra `format=<firmware>, transport=<turno>`, sem alterar firmware, bridge,
+codec, Playback, Capture ou runtime. Validacao local:
+`server/tests/test_server_facade.py -k voice_release_check` com 14 testes
+verdes.
+
 Nao fazer em P2:
 
 - Nao mover `audio_hal_spk_write()` para Playback v2 ainda.
