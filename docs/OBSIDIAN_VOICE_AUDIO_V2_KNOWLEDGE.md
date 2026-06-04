@@ -263,6 +263,10 @@ Incremento atual da Fase N3:
   `voice-release-check` pos-turno ficou `ok=true`, com `tts_completed=true`,
   `tts_say_end_sent=true` e Opus v2 ativo. O release-check server-only passa a
   falhar se `bridge_say_active=true` no preflight ou se begin/end divergir.
+- Reducao firmware seguinte: `audio_service.c` isolou as transicoes legadas de
+  inicio/fim do SAY em helpers internos dedicados. Playback v2 segue dono da
+  fila e lifecycle; `audio_service` permanece dono dos eventos, wake rearm,
+  estado legado e callback fisico do HAL.
 
 ### Wake Word
 

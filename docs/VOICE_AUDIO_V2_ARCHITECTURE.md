@@ -360,6 +360,10 @@ Invariantes:
   idle normal, cancelamento ou descarte por nova escuta. O gate consolidado
   trata `bridge_say_active=true` como playback ocupado. Isso melhora a
   semantica de preflight sem mover o HAL fisico para Playback v2.
+- A reducao seguinte do `audio_service.c` manteve as transicoes legadas de
+  inicio/fim do SAY em helpers internos dedicados. O servico legado ainda emite
+  eventos, rearma wake e preserva `PLAY_BRIDGE_SAY`/`PLAY_IDLE`, mas o caminho
+  fica mais isolado para novas reducoes sem misturar fila, lifecycle e HAL.
 
 ### Voice Activity v2
 

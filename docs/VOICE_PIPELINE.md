@@ -134,6 +134,10 @@ fechou `say_begin_count=1` e `say_end_count=1`, recebeu/tocou 345 chunks SAY,
 ficou com fila final zero e zero drops; `voice-release-check` continuou
 `ok=true`. O release-check tambem passou a falhar se esse lifecycle ficar ativo
 ou desbalanceado no preflight.
+Na reducao seguinte, `audio_service.c` concentrou o inicio/fim legado de SAY em
+helpers internos. Isso nao muda runtime: Playback v2 segue dono da fila e do
+lifecycle, enquanto `audio_service` preserva os eventos, wake rearm, estado
+legado e callback de HAL fisico.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

@@ -579,8 +579,11 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "uint32_t speaker_empty_ms;" in playback_h
     assert "uint32_t speaker_idle_end_count;" in playback_h
     assert "say_chunks_received" in playback_h
+    assert "static void audio_service_begin_bridge_say_playback(void)" in audio_service
+    assert "static void audio_service_finish_bridge_say_playback(void)" in audio_service
     assert "audio_playback_service_v2_say_accept(" in audio_service
     assert "audio_playback_service_v2_say_begin();" in audio_service
+    assert "audio_playback_service_v2_say_end_idle();" in audio_service
     assert "audio_playback_service_v2_speaker_write_next_frame(" in audio_service
     assert "audio_service_playback_v2_write_speaker" in audio_service
     assert "audio_playback_service_v2_speaker_commit_frame(n, wr);" not in audio_service
@@ -595,7 +598,24 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "if (accept_err != ESP_OK)" in bridge_say_chunk
     assert bridge_say_chunk.index(
         "audio_playback_service_v2_say_accept(samples, count)"
-    ) < bridge_say_chunk.index("s.play_state = PLAY_BRIDGE_SAY;")
+    ) < bridge_say_chunk.index("audio_service_begin_bridge_say_playback();")
+    bridge_say_begin_start = audio_service.index(
+        "static void audio_service_begin_bridge_say_playback(void)"
+    )
+    bridge_say_finish_start = audio_service.index(
+        "static void audio_service_finish_bridge_say_playback(void)"
+    )
+    bridge_say_begin = audio_service[bridge_say_begin_start:bridge_say_finish_start]
+    bridge_say_finish = audio_service[
+        bridge_say_finish_start:audio_service.index("static bool audio_service_play_bridge_say_chunk")
+    ]
+    assert "s.play_state = PLAY_BRIDGE_SAY;" in bridge_say_begin
+    assert "audio_playback_service_v2_say_begin();" in bridge_say_begin
+    assert "NB_AUDIO_EVT_PLAYBACK_START" in bridge_say_begin
+    assert "wake_service_rearm();" in bridge_say_begin
+    assert "s.play_state = PLAY_IDLE;" in bridge_say_finish
+    assert "audio_playback_service_v2_say_end_idle();" in bridge_say_finish
+    assert "NB_AUDIO_EVT_PLAYBACK_END" in bridge_say_finish
     assert "audio_io_service_v2_speaker_handoff_note_playback_frame(false, wr);" not in audio_service
     assert "bridge_say_observer" in web
     assert "bridge_say_queue_owner" in web

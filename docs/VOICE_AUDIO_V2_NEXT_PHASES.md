@@ -2109,6 +2109,18 @@ se `bridge_say_active=true` no preflight ou se `say_begin_count` e
 real em regressao automatica antes de novos cortes em `audio_service.c`, sem
 alterar firmware, HAL, wake, VAD, captura, codec, Opus ou PCM16.
 
+Incremento firmware seguinte: o `audio_service.c` passou a concentrar as
+transicoes legadas de inicio/fim de SAY nos helpers internos
+`audio_service_begin_bridge_say_playback()` e
+`audio_service_finish_bridge_say_playback()`. O fluxo continua identico: o
+inicio de `PLAY_BRIDGE_SAY` so acontece depois de
+`audio_playback_service_v2_say_accept()` aceitar o primeiro chunk; Playback v2
+continua dono do lifecycle/fila/contadores; `audio_service` ainda mantem
+`NB_AUDIO_EVT_PLAYBACK_START/END`, `wake_service_rearm()`, a transicao
+`PLAY_BRIDGE_SAY -> PLAY_IDLE` e o callback fisico para HAL. A mudanca reduz a
+superficie do loop legado sem alterar wake, VAD, captura, codec, Opus/PCM16,
+bridge ou ownership fisico do speaker.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

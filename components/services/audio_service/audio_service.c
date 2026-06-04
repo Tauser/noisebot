@@ -469,6 +469,30 @@ static void mic_condition_signal(const int32_t *in, int32_t *out, size_t n)
 /* Duração aproximada de um chunk em ms (256 samples @ 16kHz = 16ms). */
 #define CHUNK_DURATION_MS  16U
 
+static void audio_service_begin_bridge_say_playback(void)
+{
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s.play_state = PLAY_BRIDGE_SAY;
+    xSemaphoreGive(s.mutex);
+    audio_playback_service_v2_say_begin();
+    if (s.event_cb) {
+        s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, 0);
+    }
+    wake_service_rearm();
+    ESP_LOGI(TAG, "Bridge SAY iniciado");
+}
+
+static void audio_service_finish_bridge_say_playback(void)
+{
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    s.play_state = PLAY_IDLE;
+    xSemaphoreGive(s.mutex);
+    audio_playback_service_v2_say_end_idle();
+    if (s.event_cb) {
+        s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
+    }
+}
+
 static bool audio_service_play_bridge_say_chunk(void)
 {
     uint16_t n = 0;
@@ -487,13 +511,7 @@ static bool audio_service_play_bridge_say_chunk(void)
     /* Fila vazia pode ser jitter de TCP/TTS. Segura o modo SAY por
      * uma janela curta antes de encerrar para não cortar frases. */
     if (audio_playback_service_v2_speaker_should_end_idle()) {
-        xSemaphoreTake(s.mutex, portMAX_DELAY);
-        s.play_state = PLAY_IDLE;
-        xSemaphoreGive(s.mutex);
-        audio_playback_service_v2_say_end_idle();
-        if (s.event_cb) {
-            s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
-        }
+        audio_service_finish_bridge_say_playback();
     }
     return false;
 }
@@ -1888,12 +1906,6 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
     }
 
     if (should_start) {
-        xSemaphoreTake(s.mutex, portMAX_DELAY);
-        s.play_state = PLAY_BRIDGE_SAY;
-        xSemaphoreGive(s.mutex);
-        audio_playback_service_v2_say_begin();
-        if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, 0);
-        wake_service_rearm();
-        ESP_LOGI(TAG, "Bridge SAY iniciado");
+        audio_service_begin_bridge_say_playback();
     }
 }
