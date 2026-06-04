@@ -4459,6 +4459,112 @@ async def test_server_ops_http_returns_voice_release_check() -> None:
     ]
 
 
+async def test_server_ops_http_voice_release_check_auto_drains_single_egress_packet() -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+
+    class FakeFirmware:
+        def __init__(self) -> None:
+            self.egress_queue = 1
+            self.drain_calls = 0
+
+        def audio_voice_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "ready": True,
+                "block_reason": "none",
+                "capture_enabled": True,
+                "capture_tx_enabled": True,
+                "activity_decider_enabled": True,
+                "codec_worker_state": "running",
+                "playback_say_queue_count": 0,
+                "playback_say_drops": 0,
+                "codec_packet_drops": 0,
+                "codec_egress_drops": 0,
+                "runtime_idle": True,
+            }
+
+        def audio_codec_v2_health(self) -> dict:
+            warnings = [f"opus_egress_queue_count={self.egress_queue}"] if self.egress_queue else []
+            return {
+                "ok": True,
+                "healthy": True,
+                "status": "warn" if warnings else "ok",
+                "format": "opus",
+                "worker_state": "running",
+                "packet_drops": 0,
+                "opus_egress_packet_drops": 0,
+                "opus_egress_queue_count": self.egress_queue,
+                "opus_codec_error": 0,
+                "issues": [],
+                "warnings": warnings,
+            }
+
+        def audio_codec_v2_egress_drain(self) -> dict:
+            self.drain_calls += 1
+            self.egress_queue = 0
+            return {
+                "ok": True,
+                "drained_packets": 1,
+                "opus_egress_queue_count": 0,
+            }
+
+        def audio_capture_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "real_capture_enabled": True,
+                "bridge_tx_handoff_enabled": True,
+                "session_active": False,
+                "state": "DONE",
+                "bridge_tx_owner": True,
+                "dropped_frames": 0,
+                "shadow_audio_dropped_chunks": 0,
+                "last_error": "ESP_OK",
+            }
+
+        def audio_playback_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "bridge_say_observer": True,
+                "bridge_say_queue_owner": True,
+                "bridge_say_active": False,
+                "say_queue_count": 0,
+                "say_begin_count": 1,
+                "say_end_count": 1,
+                "say_chunks_received": 12,
+                "say_chunks_played": 12,
+                "last_error": "ESP_OK",
+            }
+
+    class FakeMetrics:
+        def get_metrics(self) -> dict:
+            return {
+                "last_voice_session": {
+                    "turn_id": 5,
+                    "outcome": "llm",
+                    "tts_completed": True,
+                    "tts_say_end_sent": True,
+                    "text_scroll_pages": 1,
+                    "text_scroll_pages_sent": 1,
+                }
+            }
+
+    firmware = FakeFirmware()
+    server = http.OpsHttpServer.__new__(http.OpsHttpServer)
+    server._firmware_diag_client = firmware
+    server._metrics_api = FakeMetrics()
+
+    response = await server._get_release_voice_check(None)
+    payload = json.loads(response.text)
+
+    assert response.status == 200
+    assert firmware.drain_calls == 1
+    assert payload["ok"] is True
+    assert payload["codec_v2"]["opus_egress_queue_count"] == 0
+    assert payload["codec_v2"]["auto_egress_drain"] is True
+    assert payload["codec_v2"]["auto_egress_drained_packets"] == 1
+    assert payload["gates"][1]["warnings"] == ["auto_egress_drain=1 (1->0)"]
+
+
 def test_server_no_echo_live_pcm16_tracks_response_turn(monkeypatch) -> None:
     no_echo = importlib.import_module("noisebot_server.internal.ops.no_echo_live")
     codec_v2_live = importlib.import_module("noisebot_server.internal.ops.codec_v2_live")
