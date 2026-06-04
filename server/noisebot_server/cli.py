@@ -131,6 +131,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     vision_soak.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     vision_soak.add_argument("--json", action="store_true", help="Emitir JSON")
 
+    vision_presence = debug_sub.add_parser("vision-presence-trial")
+    vision_presence.add_argument("--firmware-url", default="")
+    vision_presence.add_argument("--mode", choices=["absence", "presence", "lost"], default="presence")
+    vision_presence.add_argument("--duration-s", type=float, default=8.0)
+    vision_presence.add_argument("--interval-s", type=float, default=0.2)
+    vision_presence.add_argument("--timeout-s", type=float, default=8.0)
+    vision_presence.add_argument("--max-latency-ms", type=float, default=None)
+    vision_presence.add_argument("--min-fps", type=float, default=None)
+    vision_presence.add_argument("--output", help="Arquivo Markdown/JSON de saida")
+    vision_presence.add_argument("--json", action="store_true", help="Emitir JSON")
+
     voice_v2 = debug_sub.add_parser("voice-v2")
     voice_v2.add_argument("action", choices=["status"], nargs="?", default="status")
     voice_v2.add_argument("--firmware-url", default="")
@@ -684,6 +695,38 @@ def run_debug_command(args: argparse.Namespace) -> None:
             format_vision_soak_json(result)
             if args.json
             else format_vision_soak_markdown(result)
+        )
+        if args.output:
+            with open(args.output, "w", encoding="utf-8", newline="\n") as file:
+                file.write(text)
+        else:
+            print(text)
+        if not result.ok:
+            raise SystemExit(1)
+        return
+    if args.debug_command == "vision-presence-trial":
+        from .internal.ops.vision_presence_trial import (
+            format_vision_presence_trial_json,
+            format_vision_presence_trial_markdown,
+            run_vision_presence_trial,
+        )
+
+        firmware_url = _resolve_firmware_url(args)
+        if not firmware_url:
+            raise SystemExit("--firmware-url ou --host/NOISEBOT_HOST e obrigatorio")
+        result = run_vision_presence_trial(
+            firmware_url=firmware_url,
+            mode=args.mode,
+            duration_s=args.duration_s,
+            interval_s=args.interval_s,
+            timeout_s=args.timeout_s,
+            max_latency_ms=args.max_latency_ms,
+            min_fps_required=args.min_fps,
+        )
+        text = (
+            format_vision_presence_trial_json(result)
+            if args.json
+            else format_vision_presence_trial_markdown(result)
         )
         if args.output:
             with open(args.output, "w", encoding="utf-8", newline="\n") as file:

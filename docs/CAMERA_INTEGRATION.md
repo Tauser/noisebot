@@ -142,6 +142,12 @@ copying board-specific implementations from other products.
   that shadow-mode presence stays absent while preserving render FPS. A 31.5s
   hardware smoke on 2026-06-04 produced 6/6 valid observations, zero presence
   false positives, `min_fps=25.2`, max presence score 54 and final camera closed.
+- `noisebot_server debug vision-presence-trial` is the focused Roadmap 13.1
+  harness for `absence`, `presence` and `lost` trials. A 2026-06-04 absence
+  smoke produced 5/5 valid observations, zero false positives, max presence
+  score 42 and final camera closed; the same mode with `--min-fps 25` failed at
+  `min_fps=22.9`, so continuous/polling vision still needs FPS tuning before
+  the acceptance criterion can close.
 - The bridge v2 can answer local vision questions from that endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection
