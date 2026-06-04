@@ -32,6 +32,10 @@ static bool s_snapshot_owned_jpeg = false;
 static esp_err_t s_last_error = ESP_OK;
 static const char *s_last_error_phase = "";
 static bool s_has_last_error = false;
+static size_t s_last_frame_bytes = 0;
+static size_t s_last_frame_width = 0;
+static size_t s_last_frame_height = 0;
+static int s_last_frame_format = 0;
 static size_t s_last_jpeg_bytes = 0;
 static uint32_t s_last_capture_ms = 0;
 static uint32_t s_capture_count = 0;
@@ -116,6 +120,10 @@ static void camera_service_reset_stats(void)
     s_last_error = ESP_OK;
     s_last_error_phase = "";
     s_has_last_error = false;
+    s_last_frame_bytes = 0;
+    s_last_frame_width = 0;
+    s_last_frame_height = 0;
+    s_last_frame_format = 0;
     s_last_jpeg_bytes = 0;
     s_last_capture_ms = 0;
     s_capture_count = 0;
@@ -387,6 +395,16 @@ nb_camera_mode_t camera_service_get_mode(void)
     return camera_hal_get_mode();
 }
 
+const char *camera_service_format_name(int format)
+{
+    switch (format) {
+    case V4L2_PIX_FMT_YUV422P: return "yuv422";
+    case V4L2_PIX_FMT_JPEG: return "jpeg";
+    case 0: return "pending";
+    default: return "unknown";
+    }
+}
+
 void camera_service_get_diag_status(nb_camera_diag_status_t *out)
 {
     if (!out) {
@@ -401,6 +419,10 @@ void camera_service_get_diag_status(nb_camera_diag_status_t *out)
     out->mode_name = camera_hal_mode_name(out->mode);
     out->mode_width = camera_hal_mode_width(out->mode);
     out->mode_height = camera_hal_mode_height(out->mode);
+    out->last_frame_bytes = s_last_frame_bytes;
+    out->last_frame_width = s_last_frame_width;
+    out->last_frame_height = s_last_frame_height;
+    out->last_frame_format = s_last_frame_format;
     out->min_dma_before = camera_hal_mode_min_dma_before(out->mode);
     out->min_dma_largest = camera_hal_mode_min_dma_largest(out->mode);
     out->min_internal_before = camera_hal_mode_min_internal_before(out->mode);
@@ -508,6 +530,10 @@ esp_err_t camera_service_observe_scene(nb_camera_observation_t *out)
     out->frame_bytes = frame->len;
     out->format = frame->format;
     out->scene = s_scene_metrics;
+    s_last_frame_bytes = frame->len;
+    s_last_frame_width = frame->width;
+    s_last_frame_height = frame->height;
+    s_last_frame_format = frame->format;
     camera_hal_release_frame();
 
     s_last_dma_after_capture = heap_caps_get_free_size(MALLOC_CAP_DMA);
@@ -611,7 +637,15 @@ esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out)
         out->width = frame->width;
         out->height = frame->height;
         out->format = (int)frame->format;
+        s_last_frame_bytes = frame->len;
+        s_last_frame_width = frame->width;
+        s_last_frame_height = frame->height;
+        s_last_frame_format = frame->format;
     } else if (frame->format == (int)V4L2_PIX_FMT_YUV422P) {
+        s_last_frame_bytes = frame->len;
+        s_last_frame_width = frame->width;
+        s_last_frame_height = frame->height;
+        s_last_frame_format = frame->format;
         err = camera_service_encode_yuv422_to_jpeg(frame, out);
         camera_hal_release_frame();
         if (err != ESP_OK) {

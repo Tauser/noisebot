@@ -493,6 +493,10 @@ static esp_err_t handle_api_camera_status(httpd_req_t *req)
     const char *last_error = diag.has_last_error ? esp_err_to_name(diag.last_error) : "";
     bool camera_ready = camera_service_is_ready();
     bool blocked_by_memory = false;
+    bool has_last_frame = diag.last_frame_width > 0U && diag.last_frame_height > 0U;
+    size_t status_width = has_last_frame ? diag.last_frame_width : diag.mode_width;
+    size_t status_height = has_last_frame ? diag.last_frame_height : diag.mode_height;
+    const char *status_format = camera_service_format_name(diag.last_frame_format);
     char chunk[256];
 
     httpd_resp_set_type(req, "application/json");
@@ -527,9 +531,15 @@ static esp_err_t handle_api_camera_status(httpd_req_t *req)
 
     snprintf(chunk, sizeof(chunk),
              "\"last_jpeg_bytes\":%lu,\"last_capture_ms\":%lu,"
+             "\"last_frame_bytes\":%lu,\"last_frame_width\":%lu,"
+             "\"last_frame_height\":%lu,\"last_frame_format\":\"%s\","
              "\"capture_count\":%lu,\"fail_count\":%lu,",
              (unsigned long)diag.last_jpeg_bytes,
              (unsigned long)diag.last_capture_ms,
+             (unsigned long)diag.last_frame_bytes,
+             (unsigned long)diag.last_frame_width,
+             (unsigned long)diag.last_frame_height,
+             camera_service_format_name(diag.last_frame_format),
              (unsigned long)diag.capture_count,
              (unsigned long)diag.fail_count);
     httpd_resp_sendstr_chunk(req, chunk);
@@ -570,10 +580,11 @@ static esp_err_t handle_api_camera_status(httpd_req_t *req)
     httpd_resp_sendstr_chunk(req, chunk);
 
     snprintf(chunk, sizeof(chunk),
-             "\"format\":\"jpeg\",\"width\":%lu,\"height\":%lu,"
+             "\"format\":\"%s\",\"width\":%lu,\"height\":%lu,"
              "\"heap_dma_free\":%lu,\"heap_dma_largest\":%lu,",
-             (unsigned long)diag.mode_width,
-             (unsigned long)diag.mode_height,
+             status_format,
+             (unsigned long)status_width,
+             (unsigned long)status_height,
              (unsigned long)diag.dma_free,
              (unsigned long)diag.dma_largest);
     httpd_resp_sendstr_chunk(req, chunk);

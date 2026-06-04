@@ -7861,6 +7861,39 @@ def test_firmware_camera_service_exposes_no_jpeg_scene_observation() -> None:
     assert "camera_service_hold_arm(CAMERA_SVC_SESSION_HOLD_US)" in camera_c
 
 
+def test_firmware_camera_status_reports_last_real_frame() -> None:
+    root = Path(__file__).resolve().parents[2]
+    camera_h = (
+        root
+        / "components"
+        / "services"
+        / "camera_service"
+        / "camera_service.h"
+    ).read_text(encoding="utf-8")
+    camera_c = (
+        root
+        / "components"
+        / "services"
+        / "camera_service"
+        / "camera_service.c"
+    ).read_text(encoding="utf-8")
+    web_c = (root / "components" / "infra" / "web_service.c").read_text(
+        encoding="utf-8"
+    )
+
+    assert "last_frame_bytes" in camera_h
+    assert "last_frame_width" in camera_h
+    assert "last_frame_height" in camera_h
+    assert "last_frame_format" in camera_h
+    assert "camera_service_format_name" in camera_h
+    assert 'case V4L2_PIX_FMT_YUV422P: return "yuv422";' in camera_c
+    assert "s_last_frame_width = frame->width" in camera_c
+    assert "has_last_frame ? diag.last_frame_width : diag.mode_width" in web_c
+    assert '\\"last_frame_format\\":\\"%s\\",' in web_c
+    assert '\\"format\\":\\"%s\\",\\"width\\":%lu,\\"height\\":%lu' in web_c
+    assert '"format":"jpeg","width":%lu,"height":%lu' not in web_c
+
+
 def test_firmware_render_metrics_contract_is_exposed() -> None:
     root = Path(__file__).resolve().parents[2]
     render_h = (

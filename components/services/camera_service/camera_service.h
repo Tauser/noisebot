@@ -58,6 +58,10 @@ typedef struct {
     const char *mode_name;
     size_t mode_width;
     size_t mode_height;
+    size_t last_frame_bytes;
+    size_t last_frame_width;
+    size_t last_frame_height;
+    int last_frame_format;
     size_t last_jpeg_bytes;
     uint32_t last_capture_ms;
     uint32_t capture_count;
@@ -94,6 +98,7 @@ bool camera_service_is_available(void);
 bool camera_service_is_ready(void);
 esp_err_t camera_service_set_mode(nb_camera_mode_t mode);
 nb_camera_mode_t camera_service_get_mode(void);
+const char *camera_service_format_name(int format);
 void camera_service_get_diag_status(nb_camera_diag_status_t *out);
 void camera_service_get_scene_metrics(nb_camera_scene_metrics_t *out);
 
