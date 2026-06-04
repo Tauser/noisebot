@@ -150,7 +150,11 @@ copying board-specific implementations from other products.
   captures. Hardware validation after flash passed a 120s
   `vision-soak --duration-s 120 --interval-s 10 --min-fps 30` with 13/13 valid
   observations, zero failures/reboots, `min_fps=34.1`, `max_capture_ms=169`,
-  `min_dma_free=16247` and final camera closed.
+  `min_dma_free=16247` and final camera closed. The follow-up 30-minute soak,
+  `vision-soak --duration-s 1800 --interval-s 30 --min-fps 30`, passed with
+  60/60 valid observations, zero failures/reboots, `min_fps=33.8`,
+  `max_capture_ms=175`, `max_jpeg_bytes=0`, `min_psram_free=6964572`,
+  `min_dma_free=15571`, zero presence false positives and final camera closed.
 - Presence detection for Roadmap 13.1 is now present as on-demand shadow state
   in `vision_service`: `/api/vision/observe`, `/api/vision/status` and
   `/api/diag/snapshot` include a `presence` block, while
