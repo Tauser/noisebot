@@ -320,7 +320,13 @@ Incremento atual da Fase N3:
 - O0.1: primeiro incremento de headroom atua em configuracao de rede, nao em
   audio. `sdkconfig.defaults` habilita `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y`
   e reduz `CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM` para 8. Evidencia: build
-  ESP-IDF limpo; precisa de flash para medir ganho real em heap interno/DMA.
+  ESP-IDF limpo. Validacao hardware apos flash: heap interno/DMA subiu de
+  cerca de 5 KB para cerca de 18,9 KB, maior bloco livre 17 KB,
+  `voice-release-check ok=true` sem warning de heap e turno real curto em Opus
+  v2 completou LLM/TTS/SAY_END com Playback v2 `305/305` chunks SAY sem drops.
+  Um pacote Opus egress residual foi drenado manualmente; o proximo saneamento
+  O1 deve remover essa necessidade sem tocar audio real, HAL/I2S, wake, VAD,
+  captura, playback, bridge ou PCM16.
 
 ### Wake Word
 

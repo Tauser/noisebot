@@ -175,6 +175,14 @@ em HAL/I2S.
 O0.1 inicia reducao de pressao em DRAM/DMA pelo perfil de rede: WiFi/LwIP tenta
 usar PSRAM para buffers elegiveis e o TX estatico WiFi cai para 8 buffers. Isso
 nao altera contrato PCM16/Opus, filas SAY, wake ou HAL.
+Validacao O0.1 pos-flash: o gate consolidado passou a reportar cerca de
+18,9 KB livres de heap interno/DMA e maior bloco livre de 17 KB, contra cerca
+de 5 KB antes do ajuste. O `voice-release-check` voltou `ok=true` sem warning
+de heap. Um turno real curto em Opus v2 completou LLM/TTS/SAY_END, enviou
+3/3 paginas visuais e Playback v2 fechou `305/305` chunks SAY sem drops. O
+unico ruido operacional foi 1 pacote Opus egress residual no primeiro gate
+pos-turno; apos `codec-v2 egress-drain`, o gate final continuou verde. Proximo
+passo: O1 deve sanear essa fila residual sem mexer no caminho real de audio.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

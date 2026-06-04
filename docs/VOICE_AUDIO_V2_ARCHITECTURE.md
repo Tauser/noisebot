@@ -405,6 +405,14 @@ Invariantes:
   podem tentar PSRAM para buffers elegiveis e o TX estatico WiFi cai de 16 para
   8 buffers. Isso preserva o pipeline de voz e da um rollback pequeno caso
   bridge/dashboard fiquem instaveis.
+- O0.1 foi validado em hardware: o heap interno/DMA reportado pelo gate
+  consolidado subiu de cerca de 5 KB para cerca de 18,9 KB, maior bloco livre
+  17 KB, `voice-release-check ok=true` sem warning de heap, turno real curto
+  completo em Opus v2 e Playback v2 `305/305` chunks SAY sem drops. Um pacote
+  Opus egress residual foi drenado manualmente e o gate final permaneceu verde.
+  Proximo saneamento operacional: O1 deve eliminar essa drenagem manual em
+  ponto idle seguro ou criterio explicito de gate, sem tocar HAL/I2S, wake,
+  VAD, captura, playback real, bridge ou PCM16.
 
 ### Voice Activity v2
 

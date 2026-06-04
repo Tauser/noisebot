@@ -2264,3 +2264,35 @@ buffers WiFi/LwIP elegiveis para PSRAM e reduzir DRAM interna reservada para
 TX WiFi, preservando o bridge TCP local e o dashboard. Rollback: reverter o
 commit de config se WiFi/bridge ficar instavel apos flash. Validacao local:
 contratos firmware focados com 15 testes verdes e `idf.py build` limpo.
+
+Validacao O0.1 em hardware apos flash: `/api/audio/voice-v2` passou de cerca de
+5 KB livres de heap interno/DMA para cerca de 18,9 KB, com maior bloco livre em
+17 KB. O `voice-release-check` final retornou `ok=true`, sem warnings de heap:
+Voice v2 `ready=true`, `block_reason=none`, runtime idle, Codec v2 worker
+`running`, Playback v2 com fila SAY zero, zero drops/falhas, Capture v2 inativo
+e Audio IO v2 sem recoveries. Em turno real curto, o server registrou
+`transcript_quality=good`, `outcome=llm`, `tts_completed=true`,
+`tts_say_end_sent=true`, texto visual `3/3` paginas e Playback v2
+`305/305` chunks SAY recebidos/tocados, sem drops. Um pacote Opus egress
+residual apareceu no primeiro gate pos-turno, foi drenado por
+`codec-v2 egress-drain`, e o gate final permaneceu verde. O0.1 fica fechado.
+
+### O1 - Saneamento de Egress Residual
+
+Objetivo: remover a necessidade operacional de drenar manualmente um pacote
+Opus egress residual depois de alguns turnos reais, sem alterar captura,
+playback, wake, VAD, bridge, HAL/I2S, Opus upstream ou rollback PCM16.
+
+Diretriz: tratar o egress residual como saneamento de fila diagnostica/worker,
+nao como falha de fala. O incremento deve preferir limpeza em ponto idle seguro
+ou criterio explicito no gate, com telemetria de quantos pacotes foram limpos,
+mantendo falha real para drops, erro de codec, worker parado ou egress crescente.
+
+Aceite:
+
+- `voice-release-check` permanece `ok=true` apos turno real sem passo manual de
+  `egress-drain`.
+- `codec-v2 health` continua falhando para drops ou `opus_codec_error`.
+- Playback v2 continua `SAY_BEGIN/SAY_END` balanceado, fila SAY zero e zero
+  drops/falhas.
+- PCM16 rollback continua intacto.
