@@ -36,6 +36,7 @@ typedef struct {
     uint8_t luma_max;
     uint8_t contrast;
     uint8_t motion_score;
+    uint8_t spatial_score;
 } nb_camera_scene_metrics_t;
 
 typedef struct {

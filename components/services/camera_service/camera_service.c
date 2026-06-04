@@ -207,6 +207,19 @@ static void camera_service_analyze_yuv422(const nb_camera_frame_t *frame)
             motion_sum += (uint32_t)(diff < 0 ? -diff : diff);
         }
     }
+    uint32_t center_sum = (uint32_t)grid[5] + grid[6] + grid[9] + grid[10];
+    uint32_t edge_sum = 0U;
+    for (uint32_t i = 0; i < CAMERA_SVC_MOTION_CELLS; i++) {
+        if (i != 5U && i != 6U && i != 9U && i != 10U) {
+            edge_sum += grid[i];
+        }
+    }
+    int center_avg = (int)(center_sum / 4U);
+    int edge_avg = (int)(edge_sum / 12U);
+    int spatial_delta = center_avg - edge_avg;
+    if (spatial_delta < 0) {
+        spatial_delta = -spatial_delta;
+    }
     memcpy(s_motion_prev, grid, sizeof(s_motion_prev));
     s_motion_prev_valid = true;
 
@@ -221,6 +234,7 @@ static void camera_service_analyze_yuv422(const nb_camera_frame_t *frame)
     s_scene_metrics.motion_score = s_motion_prev_valid
                                  ? (uint8_t)(motion_sum / CAMERA_SVC_MOTION_CELLS)
                                  : 0U;
+    s_scene_metrics.spatial_score = (spatial_delta > 100) ? 100U : (uint8_t)spatial_delta;
 }
 
 static void camera_service_mark_scene_unknown(const nb_camera_frame_t *frame)
@@ -234,6 +248,7 @@ static void camera_service_mark_scene_unknown(const nb_camera_frame_t *frame)
     s_scene_metrics.luma_max = 0U;
     s_scene_metrics.contrast = 0U;
     s_scene_metrics.motion_score = 0U;
+    s_scene_metrics.spatial_score = 0U;
 }
 
 static esp_err_t camera_service_encode_yuv422_to_jpeg(const nb_camera_frame_t *frame,

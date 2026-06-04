@@ -232,14 +232,20 @@ copying board-specific implementations from other products.
   perception through `vision_service` forces `safe`/QQVGA 160x120, while
   dashboard diagnostics can still request `better`/QVGA 320x240 through the
   camera mode endpoint.
-- NoiseBot now retains a strong presence candidate (`score>=80`) for up to 2.5s
+- NoiseBot now retains a strong presence candidate (`score>=60`) for up to 2.5s
   and still requires 2 samples before publishing `PRESENCE_DETECTED`. The
-  firmware also exposes `/api/vision/presence/reset` for clean validation runs.
-  Hardware validation after the change: absence with `--reset-presence` passed
-  with 3/3 valid observations, zero false positives, `max_score=48` and
-  `min_fps=25.2`; a controlled presence run published `PRESENCE_DETECTED` at
-  1371ms when score peaked at 86, so correctness improved but the 500ms latency
-  criterion remains blocked by snapshot capture latency.
+  firmware also exposes `/api/vision/presence/reset` for clean validation runs
+  and `spatial_score` in `/api/vision/observe` as diagnostic telemetry. A direct
+  spatial-score bonus was tested and rejected because it produced false
+  positives in an empty scene; the metric remains visible for future baseline
+  calibration but does not drive the presence decision. Hardware validation on
+  2026-06-04 after the safer threshold: `absence --reset-presence --min-fps 25`
+  passed with 24/24 valid observations, zero false positives, `max_score=56`,
+  `min_fps=33.0` and final `absent`; `presence --reset-presence --min-fps 25`
+  passed with 55/55 valid observations, `PRESENCE_DETECTED` observed at
+  1474ms, `max_score=66`, `min_fps=33.1` and final `present`. Correctness is
+  validated for on-demand trials, while the 500ms latency criterion remains
+  blocked by snapshot capture latency rather than debounce alone.
 - The bridge v2 can answer local vision questions from the vision endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection

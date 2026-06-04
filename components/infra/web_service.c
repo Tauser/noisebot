@@ -617,7 +617,8 @@ static void vision_observation_json(const nb_vision_observation_t *obs,
              "{\"valid\":%s,\"scene\":\"%s\",\"timestamp_ms\":%lu,"
              "\"width\":%lu,\"height\":%lu,\"jpeg_bytes\":%lu,"
              "\"capture_ms\":%lu,\"luma_avg\":%u,\"luma_min\":%u,"
-             "\"luma_max\":%u,\"contrast\":%u,\"motion_score\":%u}",
+             "\"luma_max\":%u,\"contrast\":%u,\"motion_score\":%u,"
+             "\"spatial_score\":%u}",
              obs->valid ? "true" : "false",
              vision_service_scene_name(obs->scene),
              (unsigned long)obs->timestamp_ms,
@@ -629,7 +630,8 @@ static void vision_observation_json(const nb_vision_observation_t *obs,
              (unsigned)obs->luma_min,
              (unsigned)obs->luma_max,
              (unsigned)obs->contrast,
-             (unsigned)obs->motion_score);
+             (unsigned)obs->motion_score,
+             (unsigned)obs->spatial_score);
 }
 
 static void vision_presence_json(const nb_vision_presence_status_t *presence,

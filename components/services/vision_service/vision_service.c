@@ -24,7 +24,7 @@ static nb_vision_presence_status_t s_presence = {
 #define NB_VISION_PRESENCE_DETECTED_MS 300U
 #define NB_VISION_PRESENCE_LOST_MS 120000U
 #define NB_VISION_PRESENCE_SCORE_DETECTED 55U
-#define NB_VISION_PRESENCE_SCORE_STRONG 80U
+#define NB_VISION_PRESENCE_SCORE_STRONG 60U
 #define NB_VISION_PRESENCE_RETAIN_MS 2500U
 #define NB_VISION_PRESENCE_MIN_SAMPLES 2U
 
@@ -198,6 +198,7 @@ esp_err_t vision_service_observe(nb_vision_observation_t *out)
         .luma_max = metrics.luma_max,
         .contrast = metrics.contrast,
         .motion_score = metrics.motion_score,
+        .spatial_score = metrics.spatial_score,
         .scene = classify_scene(&metrics),
     };
     if (obs.capture_ms == 0U) {
@@ -215,11 +216,12 @@ esp_err_t vision_service_observe(nb_vision_observation_t *out)
     *out = obs;
 
     ESP_LOGI(TAG,
-             "observacao scene=%s luma=%u contrast=%u motion=%u jpeg=%uB ms=%lu",
+             "observacao scene=%s luma=%u contrast=%u motion=%u spatial=%u jpeg=%uB ms=%lu",
              vision_service_scene_name(obs.scene),
              (unsigned)obs.luma_avg,
              (unsigned)obs.contrast,
              (unsigned)obs.motion_score,
+             (unsigned)obs.spatial_score,
              (unsigned)obs.jpeg_bytes,
              (unsigned long)obs.capture_ms);
     return ESP_OK;

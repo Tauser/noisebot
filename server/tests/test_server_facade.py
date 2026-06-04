@@ -7766,10 +7766,14 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert "vision_service_reset_presence" in vision_h
     assert "detected_event_count" in vision_h
     assert "lost_event_count" in vision_h
+    assert "spatial_score" in vision_h
+    assert "spatial_score" in (root / "components" / "services" / "camera_service" / "camera_service.h").read_text(encoding="utf-8")
     assert "NB_VISION_PRESENCE_LOST_MS 120000U" in vision_c
+    assert "obs->spatial_score >=" not in vision_c
+    assert "spatial_bonus" not in vision_c
     assert "nb_event_publish_async(&evt)" in vision_c
     assert "record_presence_event_publish" in vision_c
-    assert "NB_VISION_PRESENCE_SCORE_STRONG 80U" in vision_c
+    assert "NB_VISION_PRESENCE_SCORE_STRONG 60U" in vision_c
     assert "NB_VISION_PRESENCE_RETAIN_MS 2500U" in vision_c
     assert "NB_VISION_PRESENCE_MIN_SAMPLES 2U" in vision_c
     assert "vision_service_reset_presence" in vision_c
@@ -7783,6 +7787,7 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert '"/api/vision/presence/reset"' in web_c
     assert "detected_event_count" in web_c
     assert "lost_event_count" in web_c
+    assert '\\"spatial_score\\":%u' in web_c
 
 
 def test_firmware_camera_hal_prefers_selected_mode_with_driver_fallback() -> None:

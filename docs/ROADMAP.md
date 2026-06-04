@@ -3471,16 +3471,20 @@ e confiável antes de acionar comportamento autônomo.
   percepção invisível via `vision_service` força `safe`/QQVGA 160x120, enquanto
   diagnóstico humano pode solicitar `better`/QVGA 320x240.
 - `vision_service` ganhou retenção curta de candidato inspirada nesse modelo de
-  estado sustentado: picos fortes (`score>=80`) mantêm `candidate` por até 2,5s
-  e ainda exigem 2 amostras antes de publicar `PRESENCE_DETECTED`. Também foi
-  adicionado `/api/vision/presence/reset` para limpar estado entre trials.
-- Hardware após essa mudança: trial `absence` com `--reset-presence` passou
-  (3/3 válidas, zero falsos positivos, `max_score=48`, `min_fps=25.2`). Trial
-  `presence` com entrada controlada publicou `PRESENCE_DETECTED` em 1371ms
-  quando houve pico `score=86`, mas ainda falhou o critério de 500ms; outro
-  trial sem pico forte ficou ausente (`max_score=48`). Conclusão: a heurística
-  melhora sustentação, mas o critério <500ms depende de modo contínuo/stream-like
-  semelhante ao StackChan, não de captura sob demanda.
+  estado sustentado: picos moderados (`score>=60`) mantêm `candidate` por até
+  2,5s e ainda exigem 2 amostras antes de publicar `PRESENCE_DETECTED`. Também
+  foi adicionado `/api/vision/presence/reset` para limpar estado entre trials.
+- A observação de visão expõe `spatial_score` como telemetria diagnóstica. Um
+  bônus direto desse score foi testado e revertido porque gerou falso positivo
+  em cena vazia; por enquanto ele serve apenas para calibrar uma futura linha de
+  base estática.
+- Hardware após essa mudança: trial `absence` com `--reset-presence --min-fps 25`
+  passou (24/24 válidas, zero falsos positivos, `max_score=56`, `min_fps=33.0`,
+  final `absent`). Trial `presence` com pessoa no quadro passou (55/55 válidas,
+  `PRESENCE_DETECTED` observado em 1474ms, `max_score=66`, `min_fps=33.1`,
+  final `present`). Conclusão: presença/ausência sob demanda está coerente, mas
+  o critério <500ms depende de modo contínuo/stream-like semelhante ao StackChan,
+  não de captura sob demanda.
 
 **Integração:**
 
