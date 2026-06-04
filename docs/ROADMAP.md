@@ -3440,6 +3440,10 @@ e confiável antes de acionar comportamento autônomo.
   `presence` de 10s sem entrada física controlada falhou como esperado: 8/8
   observações válidas, 1 `candidate`, 0 `present`, score `40/44.25/66/66`,
   nenhum `PRESENCE_DETECTED`, `baseline_fps=26.4` e `min_fps=24.5`.
+- `vision-presence-trial` aceita `--start-delay-s` para armar o teste e iniciar
+  a janela de latência só depois do atraso. Com isso, o operador pode disparar o
+  comando, entrar no campo da câmera durante o delay e medir `PRESENCE_DETECTED`
+  a partir do fim da contagem, evitando misturar tempo de preparo com latência.
 
 **Integração:**
 

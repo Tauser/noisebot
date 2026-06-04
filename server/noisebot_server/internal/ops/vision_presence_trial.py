@@ -51,6 +51,7 @@ class VisionPresenceTrialResult:
     lost_event_delta: int | None
     baseline_fps: float | None
     min_fps: float | None
+    start_delay_s: float
     fps_sample_delay_s: float
     close_each_sample: bool
     min_fps_required: float | None
@@ -94,6 +95,7 @@ class VisionPresenceTrialResult:
             "lost_event_delta": self.lost_event_delta,
             "baseline_fps": self.baseline_fps,
             "min_fps": self.min_fps,
+            "start_delay_s": round(self.start_delay_s, 3),
             "fps_sample_delay_s": round(self.fps_sample_delay_s, 3),
             "close_each_sample": self.close_each_sample,
             "min_fps_required": self.min_fps_required,
@@ -113,6 +115,7 @@ def run_vision_presence_trial(
     timeout_s: float = 8.0,
     *,
     max_latency_ms: float | None = None,
+    start_delay_s: float = 0.0,
     fps_sample_delay_s: float = 0.0,
     close_each_sample: bool = False,
     min_fps_required: float | None = None,
@@ -128,14 +131,15 @@ def run_vision_presence_trial(
         raise ValueError("duration_s must be positive")
     if interval_s <= 0.0:
         raise ValueError("interval_s must be positive")
+    if start_delay_s < 0.0:
+        raise ValueError("start_delay_s must not be negative")
     if fps_sample_delay_s < 0.0:
         raise ValueError("fps_sample_delay_s must not be negative")
 
     base_url = firmware_url.rstrip("/") + "/"
     now = now_fn or time.monotonic
     sleep = sleep_fn or time.sleep
-    started = now()
-    deadline = started + duration_s
+    command_started = now()
 
     samples = 0
     valid_observations = 0
@@ -171,6 +175,12 @@ def run_vision_presence_trial(
     except Exception as exc:
         failures += 1
         errors.append(f"baseline:{exc}")
+
+    if start_delay_s > 0.0:
+        sleep(start_delay_s)
+
+    started = now()
+    deadline = started + duration_s
 
     while True:
         loop_started = now()
@@ -309,7 +319,7 @@ def run_vision_presence_trial(
     return VisionPresenceTrialResult(
         ok=ok,
         mode=mode,
-        duration_s=now() - started,
+        duration_s=now() - command_started,
         interval_s=interval_s,
         samples=samples,
         valid_observations=valid_observations,
@@ -339,6 +349,7 @@ def run_vision_presence_trial(
         lost_event_delta=lost_event_delta,
         baseline_fps=baseline_fps,
         min_fps=min_fps,
+        start_delay_s=start_delay_s,
         fps_sample_delay_s=fps_sample_delay_s,
         close_each_sample=close_each_sample,
         min_fps_required=min_fps_required,
@@ -371,6 +382,7 @@ def format_vision_presence_trial_markdown(result: VisionPresenceTrialResult) -> 
         f"- Eventos lost inicial/final/delta: {result.initial_lost_event_count}/{result.final_lost_event_count}/{result.lost_event_delta}",
         f"- FPS baseline: {result.baseline_fps}",
         f"- FPS mínimo: {result.min_fps}",
+        f"- Delay antes da medição: {result.start_delay_s} s",
         f"- Delay de amostragem FPS: {result.fps_sample_delay_s} s",
         f"- Fecha câmera a cada amostra: {result.close_each_sample}",
         f"- FPS mínimo exigido: {result.min_fps_required}",

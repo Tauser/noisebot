@@ -138,6 +138,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     vision_presence.add_argument("--interval-s", type=float, default=0.2)
     vision_presence.add_argument("--timeout-s", type=float, default=8.0)
     vision_presence.add_argument("--max-latency-ms", type=float, default=None)
+    vision_presence.add_argument("--start-delay-s", type=float, default=0.0)
     vision_presence.add_argument("--fps-sample-delay-s", type=float, default=0.0)
     vision_presence.add_argument("--close-each-sample", action="store_true")
     vision_presence.add_argument("--min-fps", type=float, default=None)
@@ -733,6 +734,7 @@ def run_debug_command(args: argparse.Namespace) -> None:
             interval_s=args.interval_s,
             timeout_s=args.timeout_s,
             max_latency_ms=args.max_latency_ms,
+            start_delay_s=args.start_delay_s,
             fps_sample_delay_s=args.fps_sample_delay_s,
             close_each_sample=args.close_each_sample,
             min_fps_required=args.min_fps,

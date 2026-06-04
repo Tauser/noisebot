@@ -181,6 +181,10 @@ copying board-specific implementations from other products.
   8/8 valid observations, one `candidate`, no `present`, score
   `40/44.25/66/66`, no `PRESENCE_DETECTED`, `baseline_fps=26.4` and
   `min_fps=24.5`; a controlled person-entry run is still required.
+- `vision-presence-trial --start-delay-s N` arms a controlled entry run and
+  starts latency measurement after the delay. Use it to start the command first,
+  enter the camera field during the delay, and measure `PRESENCE_DETECTED`
+  without counting operator preparation time.
 - The bridge v2 can answer local vision questions from the vision endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection
