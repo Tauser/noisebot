@@ -132,6 +132,12 @@ copying board-specific implementations from other products.
   records failures, reboots, FPS, heap and capture latency. Hardware validation
   on 2026-06-04 ran for 1801.5s with 59/59 valid observations, zero failures,
   zero reboots, final camera closed and Voice Audio v2 release-check still green.
+- After lowering the invisible camera path to the OV2640 `240x240` YUV422 base
+  mode, a second 2026-06-04 hardware soak ran for 1800.8s with 61/61 valid
+  observations, zero failures, zero reboots, `max_capture_ms=174`,
+  `max_jpeg_bytes=0`, `min_psram_free=7132240`, `min_dma_free=16643` and final
+  camera closed. It also measured `min_fps=24.0`, so long-run capture stability
+  is validated while the render FPS acceptance gate remains open.
 - Presence detection for Roadmap 13.1 is now present as on-demand shadow state
   in `vision_service`: `/api/vision/observe`, `/api/vision/status` and
   `/api/diag/snapshot` include a `presence` block, while

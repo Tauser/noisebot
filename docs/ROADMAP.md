@@ -815,6 +815,7 @@ Critérios adicionais de integração do Bloco 0:
 - A visão invisível deixou de usar snapshot JPEG: `vision_service` chama `camera_service_observe_scene()`, analisa o frame e solta o buffer. Validação em hardware após flash: `/api/vision/observe` retornou `jpeg_bytes=0`, captura ~650 ms; soak curto de 4 s teve 4/4 observações válidas, `max_capture_ms=672`, zero falhas/reboots e fechamento final OK.
 - A resolução base do OV2640 foi reduzida de `CONFIG_CAMERA_OV2640_DVP_YUV422_640X480_6FPS` para `CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS`, mantendo o fluxo `esp_video`/V4L2 do StackChan/Xiaozhi e evitando processar VGA em capturas invisíveis. Validação em hardware após flash: `/api/vision/observe` retornou `240×240`, `jpeg_bytes=0`, captura 172 ms; soak curto de 4 s teve 4/4 observações válidas, `max_capture_ms=165`, zero falhas/reboots, zero falso positivo de presença e fechamento final OK.
 - `/api/camera/status` agora diferencia alvo de modo (`mode_width`/`mode_height`) do último frame real (`last_frame_*`). Validação em hardware: após `/api/vision/observe`, status retornou `format=yuv422`, `width=240`, `height=240`, `last_frame_bytes=115200`, `last_jpeg_bytes=0`, `last_capture_ms=135`; soak curto de 4 s teve 4/4 observações válidas, `max_capture_ms=167`, zero falhas/reboots e fechamento final OK.
+- Soak longo de câmera/visão invisível validado com `noisebot_server debug vision-soak --duration-s 1800 --interval-s 30`: 61/61 observações válidas, zero falhas, zero reboots, `max_capture_ms=174`, `max_jpeg_bytes=0`, `min_psram_free=7132240`, `min_dma_free=16643`, fechamento final da câmera OK (`final_camera_active=false`). O mesmo ensaio mediu `min_fps=24.0`, então o gate de FPS permanece aberto.
 
 **Critérios de aceitação:**
 
@@ -823,7 +824,7 @@ Critérios adicionais de integração do Bloco 0:
 - [x] Bridge e TTS permanecem funcionais com câmera compilada e testada
 - [ ] FPS de render mantido ≥ 30fps com câmera ativa por teste longo
 - [ ] Zero interferência com áudio (I2S0) e display (SPI2) em teste de 30 minutos
-- [ ] Captura sob demanda repetida por 30 minutos sem OOM, watchdog ou queda de bridge
+- [x] Captura sob demanda repetida por 30 minutos sem OOM, watchdog ou queda de bridge
 
 ---
 
