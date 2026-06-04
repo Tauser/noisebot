@@ -316,7 +316,12 @@ static void draw_listening_icon(LGFX_Sprite *spr, int x, int y, int w, int h, in
     const uint8_t glow = (uint8_t)(190.0f + (pulse * 52.0f));
     const uint16_t fg = spr->color565(122, glow, 246);
 
-    draw_icon_mask(spr, &NB_UI_OVERLAY_ICON_MICROFONE, x, y, w, h, fg);
+    const int mx = x + (w / 2);
+    const int my = y + 1;
+    spr->fillRoundRect(mx - 5, my, 10, 14, 5, fg);
+    spr->drawArc(mx, my + 8, 10, 9, 28, 152, fg);
+    spr->drawLine(mx, my + 18, mx, my + 22, fg);
+    spr->drawLine(mx - 6, my + 22, mx + 6, my + 22, fg);
 }
 
 static void draw_camera_icon(LGFX_Sprite *spr, int x, int y, int w, int h, int64_t now_us)

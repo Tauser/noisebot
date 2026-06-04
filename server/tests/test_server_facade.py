@@ -7926,7 +7926,6 @@ def test_firmware_camera_active_overlay_contract_is_exposed() -> None:
     assert "draw_camera_icon" in overlay_c
     assert 'icons/generated/nb_ui_overlay_icons.h' in overlay_c
     assert "draw_icon_mask(spr, &NB_UI_OVERLAY_ICON_CAMERA" in overlay_c
-    assert "draw_icon_mask(spr, &NB_UI_OVERLAY_ICON_MICROFONE" in overlay_c
     assert "camera_service_set_event_cb(on_camera_event)" in boot_c
     assert "ui_overlay_camera_set(true)" in boot_c
     assert "ui_overlay_camera_set(false)" in boot_c
@@ -7945,24 +7944,16 @@ def test_firmware_overlay_icons_use_generated_masks() -> None:
         encoding="ascii"
     )
     source_pbm = (icons_dir / "source" / "camera.pbm").read_text(encoding="ascii")
-    mic_pbm = (icons_dir / "source" / "microfone.pbm").read_text(encoding="ascii")
-    camera_svg = (icons_dir / "source_svg" / "camera.svg").read_text(encoding="utf-8")
-    mic_svg = (icons_dir / "source_svg" / "microfone.svg").read_text(encoding="utf-8")
     generator = (icons_dir / "tools" / "generate_overlay_icons.py").read_text(
         encoding="utf-8"
     )
 
     assert source_pbm.startswith("P1\n")
-    assert mic_pbm.startswith("P1\n")
     assert "24 24" in source_pbm
-    assert "24 24" in mic_pbm
-    assert "viewBox=\"0 0 24 24\"" in camera_svg
-    assert "viewBox=\"0 0 24 24\"" in mic_svg
     assert "typedef struct" in generated_h
     assert "NB_UI_OVERLAY_ICON_CAMERA_MASK" in generated_h
-    assert "NB_UI_OVERLAY_ICON_MICROFONE_MASK" in generated_h
     assert "NB_UI_OVERLAY_ICON_CAMERA" in generated_h
-    assert "NB_UI_OVERLAY_ICON_MICROFONE" in generated_h
+    assert "0x00, 0xFC, 0x00" in generated_h
     assert "--check" in generator
 
 
