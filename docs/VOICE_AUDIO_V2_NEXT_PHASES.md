@@ -2070,6 +2070,15 @@ retornou `ready=true`, `block_reason=none`, filas/drops zerados e Codec v2
 worker `running`. O proxy HTTP do server requer restart do processo para a nova
 rota ficar visivel na instancia ja aberta.
 
+Incremento server-only seguinte: `voice-release-check` passou a incluir o gate
+`Voice v2 consolidado` como primeiro criterio. O release check agora carrega
+`voice_v2` no JSON e falha quando `ready=false` ou `block_reason` difere de
+`none`, antes dos gates especificos de Codec, Capture, Playback e metricas.
+Validacao local passou em `server/tests/test_server_facade.py` (`200 passed`) e
+validacao real contra hardware/server local retornou `ok=true` com
+`Voice v2 consolidado: ready=True, block=none`, Codec v2 healthy, Capture v2
+controlado idle, Playback v2 SAY com fila zero e metricas sem falha.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

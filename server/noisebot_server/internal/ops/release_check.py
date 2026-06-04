@@ -30,6 +30,7 @@ class ReleaseGate:
 class ReleaseCheck:
     ok: bool
     gates: tuple[ReleaseGate, ...]
+    voice_v2: dict[str, Any]
     codec_v2: dict[str, Any]
     capture_v2: dict[str, Any]
     playback_v2: dict[str, Any]
@@ -39,6 +40,7 @@ class ReleaseCheck:
         return {
             "ok": self.ok,
             "gates": [gate.to_dict() for gate in self.gates],
+            "voice_v2": self.voice_v2,
             "codec_v2": self.codec_v2,
             "capture_v2": self.capture_v2,
             "playback_v2": self.playback_v2,
@@ -53,12 +55,14 @@ def run_release_check(
     timeout_s: float = 1.5,
 ) -> ReleaseCheck:
     firmware = FirmwareDiagClient(firmware_url.rstrip("/") + "/", timeout_s=timeout_s)
+    voice_v2 = firmware.audio_voice_v2_status()
     codec_v2 = firmware.audio_codec_v2_health()
     capture_v2 = firmware.audio_capture_v2_status()
     playback_v2 = firmware.audio_playback_v2_status()
     metrics = get_json(f"{server_url.rstrip('/')}/ai/metrics")
 
     return build_release_check(
+        voice_v2=voice_v2,
         codec_v2=codec_v2,
         capture_v2=capture_v2,
         playback_v2=playback_v2,
@@ -68,12 +72,14 @@ def run_release_check(
 
 def build_release_check(
     *,
+    voice_v2: dict[str, Any],
     codec_v2: dict[str, Any],
     capture_v2: dict[str, Any],
     playback_v2: dict[str, Any],
     metrics: dict[str, Any],
 ) -> ReleaseCheck:
     gates = (
+        _voice_gate(voice_v2),
         _codec_gate(codec_v2),
         _capture_gate(capture_v2),
         _playback_gate(playback_v2),
@@ -82,6 +88,7 @@ def build_release_check(
     return ReleaseCheck(
         ok=all(gate.ok for gate in gates),
         gates=gates,
+        voice_v2=voice_v2,
         codec_v2=codec_v2,
         capture_v2=capture_v2,
         playback_v2=playback_v2,
@@ -107,6 +114,30 @@ def format_release_check_markdown(check: ReleaseCheck) -> str:
 
 def format_release_check_json(check: ReleaseCheck) -> str:
     return json.dumps(check.to_dict(), ensure_ascii=False, indent=2)
+
+
+def _voice_gate(payload: dict[str, Any]) -> ReleaseGate:
+    ok = (
+        bool(payload.get("ok"))
+        and payload.get("ready") is True
+        and str(payload.get("block_reason") or "") == "none"
+    )
+    detail = (
+        f"ready={payload.get('ready')}, block={payload.get('block_reason')}, "
+        f"capture={payload.get('capture_enabled')}/tx={payload.get('capture_tx_enabled')}, "
+        f"activity={payload.get('activity_decider_enabled')}, "
+        f"codec_worker={payload.get('codec_worker_state')}, "
+        f"say_queue={payload.get('playback_say_queue_count')}, "
+        f"drops={payload.get('playback_say_drops')}/"
+        f"{payload.get('codec_packet_drops')}/"
+        f"{payload.get('codec_egress_drops')}"
+    )
+    warnings: list[str] = []
+    if not ok:
+        warnings.append(f"voice-v2 block_reason={payload.get('block_reason')}")
+    if payload.get("runtime_idle") is False:
+        warnings.append("runtime_idle=false")
+    return ReleaseGate("Voice v2 consolidado", ok, detail, tuple(warnings))
 
 
 def _codec_gate(payload: dict[str, Any]) -> ReleaseGate:

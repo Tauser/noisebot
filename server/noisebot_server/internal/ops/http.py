@@ -615,7 +615,8 @@ class OpsHttpServer:
         if self._firmware_diag_client is None:
             return _json(error_response("firmware HTTP nao configurado"), status=503)
         try:
-            codec_v2, capture_v2, playback_v2 = await asyncio.gather(
+            voice_v2, codec_v2, capture_v2, playback_v2 = await asyncio.gather(
+                asyncio.to_thread(self._firmware_diag_client.audio_voice_v2_status),
                 asyncio.to_thread(self._firmware_diag_client.audio_codec_v2_health),
                 asyncio.to_thread(self._firmware_diag_client.audio_capture_v2_status),
                 asyncio.to_thread(self._firmware_diag_client.audio_playback_v2_status),
@@ -623,6 +624,7 @@ class OpsHttpServer:
         except FirmwareDiagError as exc:
             return _json(error_response(str(exc)), status=503)
         check = build_release_check(
+            voice_v2=voice_v2,
             codec_v2=codec_v2,
             capture_v2=capture_v2,
             playback_v2=playback_v2,

@@ -3731,6 +3731,22 @@ def test_server_voice_release_check_accepts_clean_preflight(monkeypatch) -> None
             self.base_url = base_url
             self.timeout_s = timeout_s
 
+        def audio_voice_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "ready": True,
+                "block_reason": "none",
+                "capture_enabled": True,
+                "capture_tx_enabled": True,
+                "activity_decider_enabled": True,
+                "codec_worker_state": "running",
+                "playback_say_queue_count": 0,
+                "playback_say_drops": 0,
+                "codec_packet_drops": 0,
+                "codec_egress_drops": 0,
+                "runtime_idle": True,
+            }
+
         def audio_codec_v2_health(self) -> dict:
             return {
                 "ok": True,
@@ -3790,6 +3806,7 @@ def test_server_voice_release_check_accepts_clean_preflight(monkeypatch) -> None
 
     assert check.ok is True
     assert [gate.name for gate in check.gates] == [
+        "Voice v2 consolidado",
         "Codec v2 / Opus",
         "Capture v2 controlado",
         "Playback v2 SAY",
@@ -3798,10 +3815,84 @@ def test_server_voice_release_check_accepts_clean_preflight(monkeypatch) -> None
     assert "Status: OK" in release_check.format_release_check_markdown(check)
 
 
+def test_server_voice_release_check_fails_when_voice_v2_gate_blocks() -> None:
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+
+    check = release_check.build_release_check(
+        voice_v2={
+            "ok": True,
+            "ready": False,
+            "block_reason": "codec_worker_inactive",
+            "capture_enabled": True,
+            "capture_tx_enabled": True,
+            "activity_decider_enabled": True,
+            "codec_worker_state": "stopped",
+            "playback_say_queue_count": 0,
+            "playback_say_drops": 0,
+            "codec_packet_drops": 0,
+            "codec_egress_drops": 0,
+            "runtime_idle": True,
+        },
+        codec_v2={
+            "ok": True,
+            "healthy": True,
+            "status": "ok",
+            "format": "opus",
+            "worker_state": "running",
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "issues": [],
+            "warnings": [],
+        },
+        capture_v2={
+            "ok": True,
+            "real_capture_enabled": True,
+            "bridge_tx_handoff_enabled": True,
+            "session_active": False,
+            "state": "IDLE_SESSION",
+            "dropped_frames": 0,
+            "shadow_audio_dropped_chunks": 0,
+            "last_error": "ESP_OK",
+        },
+        playback_v2={
+            "ok": True,
+            "bridge_say_observer": True,
+            "bridge_say_queue_owner": True,
+            "say_queue_count": 0,
+            "say_chunks_received": 10,
+            "say_chunks_played": 10,
+            "say_chunks_dropped": 0,
+            "say_chunks_dropped_listening": 0,
+            "last_error": "ESP_OK",
+        },
+        metrics={"last_voice_session": {}},
+    )
+
+    assert check.ok is False
+    voice_gate = check.gates[0]
+    assert voice_gate.name == "Voice v2 consolidado"
+    assert voice_gate.ok is False
+    assert voice_gate.warnings == ("voice-v2 block_reason=codec_worker_inactive",)
+
+
 def test_server_voice_release_check_accepts_retained_capture_done_state() -> None:
     release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
 
     check = release_check.build_release_check(
+        voice_v2={
+            "ok": True,
+            "ready": True,
+            "block_reason": "none",
+            "capture_enabled": True,
+            "capture_tx_enabled": True,
+            "activity_decider_enabled": True,
+            "codec_worker_state": "running",
+            "playback_say_queue_count": 0,
+            "playback_say_drops": 0,
+            "codec_packet_drops": 0,
+            "codec_egress_drops": 0,
+            "runtime_idle": True,
+        },
         codec_v2={
             "ok": True,
             "healthy": True,
@@ -3835,7 +3926,7 @@ def test_server_voice_release_check_accepts_retained_capture_done_state() -> Non
     )
 
     assert check.ok is True
-    capture_gate = check.gates[1]
+    capture_gate = check.gates[2]
     assert capture_gate.name == "Capture v2 controlado"
     assert capture_gate.ok is True
     assert capture_gate.warnings == (
@@ -3847,6 +3938,20 @@ def test_server_voice_release_check_accepts_controlled_capture_handoff() -> None
     release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
 
     check = release_check.build_release_check(
+        voice_v2={
+            "ok": True,
+            "ready": True,
+            "block_reason": "none",
+            "capture_enabled": True,
+            "capture_tx_enabled": True,
+            "activity_decider_enabled": True,
+            "codec_worker_state": "running",
+            "playback_say_queue_count": 0,
+            "playback_say_drops": 0,
+            "codec_packet_drops": 0,
+            "codec_egress_drops": 0,
+            "runtime_idle": True,
+        },
         codec_v2={
             "ok": True,
             "healthy": True,
@@ -3885,7 +3990,7 @@ def test_server_voice_release_check_accepts_controlled_capture_handoff() -> None
     )
 
     assert check.ok is True
-    capture_gate = check.gates[1]
+    capture_gate = check.gates[2]
     assert capture_gate.name == "Capture v2 controlado"
     assert capture_gate.ok is True
     assert capture_gate.warnings == (
@@ -3903,8 +4008,10 @@ def test_server_cli_runs_voice_release_check_json(monkeypatch, capsys) -> None:
         return release_check.ReleaseCheck(
             ok=True,
             gates=(
+                release_check.ReleaseGate("Voice v2 consolidado", True, "ok"),
                 release_check.ReleaseGate("Codec v2 / Opus", True, "ok"),
             ),
+            voice_v2={"ready": True},
             codec_v2={"healthy": True},
             capture_v2={"real_capture_enabled": False},
             playback_v2={"bridge_say_queue_owner": True},
@@ -3923,6 +4030,7 @@ def test_server_cli_runs_voice_release_check_json(monkeypatch, capsys) -> None:
 
     captured = capsys.readouterr()
     assert '"ok": true' in captured.out
+    assert '"Voice v2 consolidado"' in captured.out
     assert '"Codec v2 / Opus"' in captured.out
 
 
@@ -3930,6 +4038,22 @@ async def test_server_ops_http_returns_voice_release_check() -> None:
     http = importlib.import_module("noisebot_server.internal.ops.http")
 
     class FakeFirmware:
+        def audio_voice_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "ready": True,
+                "block_reason": "none",
+                "capture_enabled": True,
+                "capture_tx_enabled": True,
+                "activity_decider_enabled": True,
+                "codec_worker_state": "running",
+                "playback_say_queue_count": 0,
+                "playback_say_drops": 0,
+                "codec_packet_drops": 0,
+                "codec_egress_drops": 0,
+                "runtime_idle": True,
+            }
+
         def audio_codec_v2_health(self) -> dict:
             return {
                 "ok": True,
@@ -3986,6 +4110,7 @@ async def test_server_ops_http_returns_voice_release_check() -> None:
     assert response.status == 200
     assert payload["ok"] is True
     assert [gate["name"] for gate in payload["gates"]] == [
+        "Voice v2 consolidado",
         "Codec v2 / Opus",
         "Capture v2 controlado",
         "Playback v2 SAY",
