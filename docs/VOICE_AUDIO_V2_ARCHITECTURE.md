@@ -373,6 +373,10 @@ Invariantes:
   inicio, volume, write e EOF ficam fora do loop principal. Isso nao muda Voice
   v2 nem o ownership fisico do HAL, apenas reduz o bloco legado de playback
   local dentro do `audio_task`.
+- O fallback TX de probe/synth/silencio foi isolado em
+  `audio_service_fill_idle_output()`, mantendo a ordem probe v2 -> synth ->
+  silencio e a escrita fisica via `audio_service`. Isso deixa o loop principal
+  mais legivel sem transferir HAL para v2.
 
 ### Voice Activity v2
 

@@ -146,6 +146,9 @@ O playback local `PLAY_ACTIVE` foi isolado em
 `audio_service_play_active_chunk()`, preservando WAV/PCM raw, volume, write e
 EOF. Esse caminho continua local/legado e nao assume fila SAY nem altera Voice
 v2; o ganho e deixar o loop principal menos acoplado.
+O fallback TX de probe/synth/silencio tambem foi isolado em
+`audio_service_fill_idle_output()`, preservando a mesma ordem e mantendo o HAL
+fisico sob `audio_service`.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

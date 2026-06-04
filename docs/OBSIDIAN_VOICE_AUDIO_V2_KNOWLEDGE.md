@@ -290,6 +290,9 @@ Incremento atual da Fase N3:
   e ruido de sala transcreveu torto (`Uma frara que curta.`), mas completou
   LLM/TTS/SAY_END, Playback v2 fechou `273/273` chunks SAY, zero drops/falhas;
   1 pacote egress residual foi drenado e o release-check final voltou `ok=true`.
+- Nova reducao firmware: fallback TX probe/synth/silencio isolado em
+  `audio_service_fill_idle_output()`, mantendo ordem, HAL no `audio_service` e
+  sem alterar Voice v2/wake/VAD/captura/codec/fila SAY.
 
 ### Wake Word
 

@@ -2170,6 +2170,14 @@ pos-turno viu 1 pacote Opus egress residual; `codec-v2 egress-drain` drenou 1
 pacote e o `voice-release-check` final voltou `ok=true`, com Codec v2
 `healthy=true/status=ok`.
 
+Incremento firmware seguinte: o fallback TX quando nenhum caminho ativo escreveu
+audio saiu do corpo principal do `audio_task` e foi concentrado em
+`audio_service_fill_idle_output()`. O helper preserva a ordem atual:
+`audio_playback_service_v2_fill_probe_chunk()`, `synth_fill_chunk()` e, por fim,
+`audio_hal_spk_write_silence()`, sempre registrando o resultado em
+`audio_note_spk_result()`. Nao muda Voice v2, wake, VAD, captura, codec, fila
+SAY ou ownership fisico do speaker; apenas reduz o acoplamento do loop TX/RX.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

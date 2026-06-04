@@ -617,6 +617,30 @@ static bool audio_service_play_bridge_say_chunk(void)
     return false;
 }
 
+static bool audio_service_fill_idle_output(void)
+{
+    if (audio_playback_service_v2_fill_probe_chunk(s_wav_chunk,
+                                                   NB_AUDIO_CHUNK_FRAMES)) {
+        esp_err_t wr = audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
+                                           pdMS_TO_TICKS(100));
+        audio_note_spk_result(wr, "playback_v2_probe",
+                              NB_AUDIO_CHUNK_FRAMES, false);
+        return true;
+    }
+
+    if (synth_fill_chunk(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES)) {
+        esp_err_t wr = audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
+                                           pdMS_TO_TICKS(100));
+        audio_note_spk_result(wr, "synth", NB_AUDIO_CHUNK_FRAMES, false);
+        return true;
+    }
+
+    esp_err_t wr = audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES,
+                                               pdMS_TO_TICKS(100));
+    audio_note_spk_result(wr, "silence", NB_AUDIO_CHUNK_FRAMES, true);
+    return false;
+}
+
 static const char *listen_phase_name(listen_phase_t phase)
 {
     switch (phase) {
@@ -1455,23 +1479,7 @@ static void audio_task(void *arg)
 
         /* Synth — só ativo quando não há WAV reproduzindo */
         if (!wrote_audio) {
-            if (audio_playback_service_v2_fill_probe_chunk(s_wav_chunk,
-                                                           NB_AUDIO_CHUNK_FRAMES)) {
-                esp_err_t wr = audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
-                                                   pdMS_TO_TICKS(100));
-                audio_note_spk_result(wr, "playback_v2_probe",
-                                      NB_AUDIO_CHUNK_FRAMES, false);
-                wrote_audio = true;
-            } else if (synth_fill_chunk(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES)) {
-                esp_err_t wr = audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
-                                                   pdMS_TO_TICKS(100));
-                audio_note_spk_result(wr, "synth", NB_AUDIO_CHUNK_FRAMES, false);
-                wrote_audio = true;
-            } else {
-                esp_err_t wr = audio_hal_spk_write_silence(NB_AUDIO_CHUNK_FRAMES,
-                                                           pdMS_TO_TICKS(100));
-                audio_note_spk_result(wr, "silence", NB_AUDIO_CHUNK_FRAMES, true);
-            }
+            wrote_audio = audio_service_fill_idle_output();
         }
 
         /* ── 2. Chunk RX ─────────────────────────────────────────────────── */
