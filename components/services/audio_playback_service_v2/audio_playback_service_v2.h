@@ -97,6 +97,7 @@ void audio_playback_service_v2_get_status(nb_audio_playback_v2_status_t *out);
 esp_err_t audio_playback_service_v2_probe_start(uint32_t duration_ms, uint16_t amplitude);
 esp_err_t audio_playback_service_v2_probe_stop(void);
 bool audio_playback_service_v2_is_playing(void);
+bool audio_playback_service_v2_say_is_active(void);
 bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_count);
 esp_err_t audio_playback_service_v2_speaker_owner_arm(void);
 esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);

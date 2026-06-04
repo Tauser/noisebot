@@ -159,7 +159,6 @@ typedef enum {
     PLAY_IDLE        = 0,
     PLAY_ACTIVE,
     PLAY_STOP,
-    PLAY_BRIDGE_SAY, /* reproduzindo chunks PCM vindos do bridge */
 } play_state_t;
 
 typedef enum {
@@ -548,9 +547,6 @@ static void mic_condition_signal(const int32_t *in, int32_t *out, size_t n)
 
 static void audio_service_begin_bridge_say_playback(void)
 {
-    xSemaphoreTake(s.mutex, portMAX_DELAY);
-    s.play_state = PLAY_BRIDGE_SAY;
-    xSemaphoreGive(s.mutex);
     audio_playback_service_v2_say_begin();
     if (s.event_cb) {
         s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, 0);
@@ -561,9 +557,6 @@ static void audio_service_begin_bridge_say_playback(void)
 
 static void audio_service_finish_bridge_say_playback(void)
 {
-    xSemaphoreTake(s.mutex, portMAX_DELAY);
-    s.play_state = PLAY_IDLE;
-    xSemaphoreGive(s.mutex);
     audio_playback_service_v2_say_end_idle();
     if (s.event_cb) {
         s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
@@ -1253,7 +1246,8 @@ static bool audio_service_process_rx_chunk(bool wrote_audio,
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     rx_dispatch.io_v2_session_context = s.listen_session_active;
     rx_dispatch.activity_session_context = s.listen_session_active;
-    rx_dispatch.activity_bridge_say_context = (s.play_state == PLAY_BRIDGE_SAY);
+    rx_dispatch.activity_bridge_say_context =
+        audio_playback_service_v2_say_is_active();
     xSemaphoreGive(s.mutex);
     rx_dispatch.local_output_active = wrote_audio;
     rx_dispatch.mic_samples = s_mic_proc;
@@ -1261,7 +1255,6 @@ static bool audio_service_process_rx_chunk(bool wrote_audio,
     rx_dispatch.activity_playback_context =
         wrote_audio ||
         play_state == PLAY_ACTIVE ||
-        play_state == PLAY_BRIDGE_SAY ||
         rx_dispatch.activity_bridge_say_context ||
         audio_playback_service_v2_is_playing();
 
@@ -1594,7 +1587,7 @@ static void audio_task(void *arg)
         }
 
         /* ── Bridge SAY playback ─────────────────────────────────────────── */
-        else if (play_state == PLAY_BRIDGE_SAY) {
+        else if (audio_playback_service_v2_say_is_active()) {
             if (audio_service_play_bridge_say_chunk()) {
                 wrote_audio = true;
             }
@@ -1746,7 +1739,7 @@ esp_err_t audio_play_stop(void)
     }
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     if (s.play_state == PLAY_ACTIVE ||
-        s.play_state == PLAY_BRIDGE_SAY) {
+        audio_playback_service_v2_say_is_active()) {
         s.play_state = PLAY_STOP;
         (void)audio_playback_service_v2_say_cancel_active();
     }
@@ -1758,7 +1751,7 @@ bool audio_is_playing(void)
 {
     return s.initialized &&
            (s.play_state == PLAY_ACTIVE ||
-            s.play_state == PLAY_BRIDGE_SAY ||
+            audio_playback_service_v2_say_is_active() ||
             audio_playback_service_v2_is_playing());
 }
 
@@ -1910,7 +1903,7 @@ bool audio_service_is_busy(void)
     return s.initialized &&
            (s.listen_session_active ||
             s.play_state == PLAY_ACTIVE ||
-            s.play_state == PLAY_BRIDGE_SAY ||
+            audio_playback_service_v2_say_is_active() ||
             audio_playback_service_v2_is_playing());
 }
 
@@ -1922,11 +1915,11 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
 
     xSemaphoreTake(s.mutex, portMAX_DELAY);
     bool listening = s.listen_session_active;
-    bool should_start = !listening && (s.play_state != PLAY_BRIDGE_SAY);
     if (listening) {
         s.play_state = PLAY_IDLE;
     }
     xSemaphoreGive(s.mutex);
+    bool should_start = !listening && !audio_playback_service_v2_say_is_active();
 
     if (listening) {
         audio_playback_service_v2_say_drop_listening();

@@ -556,6 +556,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "audio_playback_service_v2_speaker_commit_frame(" not in playback_h
     assert "audio_playback_service_v2_say_accept(" in playback_h
     assert "audio_playback_service_v2_say_begin(" in playback_h
+    assert "audio_playback_service_v2_say_is_active(" in playback_h
     assert "audio_playback_service_v2_say_cancel_active(" in playback_h
     assert "audio_playback_service_v2_say_drop_listening(" in playback_h
     assert "audio_playback_service_v2_say_end_idle(" in playback_h
@@ -633,13 +634,14 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     )
     bridge_say_begin = audio_service[bridge_say_begin_start:bridge_say_finish_start]
     bridge_say_finish = audio_service[
-        bridge_say_finish_start:audio_service.index("static bool audio_service_play_bridge_say_chunk")
+        bridge_say_finish_start:audio_service.index("static void audio_service_handle_play_stop")
     ]
-    assert "s.play_state = PLAY_BRIDGE_SAY;" in bridge_say_begin
+    assert "PLAY_BRIDGE_SAY" not in audio_service
+    assert "s.play_state = PLAY_BRIDGE_SAY;" not in bridge_say_begin
     assert "audio_playback_service_v2_say_begin();" in bridge_say_begin
     assert "NB_AUDIO_EVT_PLAYBACK_START" in bridge_say_begin
     assert "wake_service_rearm();" in bridge_say_begin
-    assert "s.play_state = PLAY_IDLE;" in bridge_say_finish
+    assert "s.play_state = PLAY_IDLE;" not in bridge_say_finish
     assert "audio_playback_service_v2_say_end_idle();" in bridge_say_finish
     assert "NB_AUDIO_EVT_PLAYBACK_END" in bridge_say_finish
     assert "audio_io_service_v2_speaker_handoff_note_playback_frame(false, wr);" not in audio_service
@@ -705,6 +707,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "static void playback_v2_finish_real_owner_window_locked(void)" in playback_c
     assert "playback_v2_finish_real_owner_window_locked();" in playback_c
     assert "void audio_playback_service_v2_say_begin(void)" in playback_c
+    assert "bool audio_playback_service_v2_say_is_active(void)" in playback_c
     assert "static void playback_v2_finish_say_locked(void)" in playback_c
     assert "s_status.bridge_say_active = true;" in playback_c
     assert "s_status.say_begin_count++" in playback_c

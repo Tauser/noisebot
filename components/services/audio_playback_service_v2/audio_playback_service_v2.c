@@ -260,6 +260,14 @@ bool audio_playback_service_v2_is_playing(void)
     return playing;
 }
 
+bool audio_playback_service_v2_say_is_active(void)
+{
+    taskENTER_CRITICAL(&s_mux);
+    bool active = s_status.bridge_say_active;
+    taskEXIT_CRITICAL(&s_mux);
+    return active;
+}
+
 bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_count)
 {
     if (out == NULL || sample_count == 0U) {
