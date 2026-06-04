@@ -6,6 +6,7 @@
 
 #include "ui_overlay_service.h"
 
+#include "icons/generated/nb_ui_overlay_icons.h"
 #include "ui_overlay_assets.h"
 #include "render_service.h"
 #include "display_hal.h"
@@ -260,6 +261,29 @@ static void draw_speaker_icon(LGFX_Sprite *spr, int x, int y, uint16_t color)
     spr->drawArc(x + 20, y + 17, 17, 15, 305, 55, color);
 }
 
+static void draw_icon_mask(LGFX_Sprite *spr,
+                           const nb_ui_overlay_icon_t *icon,
+                           int x,
+                           int y,
+                           int w,
+                           int h,
+                           uint16_t color)
+{
+    if (!spr || !icon || !icon->mask) return;
+    const int draw_x = x + ((w - (int)icon->width) / 2);
+    const int draw_y = y + ((h - (int)icon->height) / 2);
+
+    for (uint8_t py = 0U; py < icon->height; py++) {
+        const uint8_t *row = &icon->mask[(size_t)py * (size_t)icon->stride];
+        for (uint8_t px = 0U; px < icon->width; px++) {
+            const uint8_t bit = (uint8_t)(0x80U >> (px & 0x07U));
+            if ((row[px >> 3] & bit) != 0U) {
+                spr->drawPixel(draw_x + (int)px, draw_y + (int)py, color);
+            }
+        }
+    }
+}
+
 static void listening_icon_rect(int *x, int *y, int *w, int *h)
 {
     int dw = display_hal_width();
@@ -306,19 +330,8 @@ static void draw_camera_icon(LGFX_Sprite *spr, int x, int y, int w, int h, int64
     const float pulse = 0.5f + (0.5f * sinf(phase * 2.0f * BUBBLE_NB_PI_F));
     const uint8_t glow = (uint8_t)(178.0f + (pulse * 46.0f));
     const uint16_t fg = spr->color565(118, glow, 250);
-    const uint16_t shell = spr->color565(16, 44, 60);
-    const uint16_t glass = spr->color565(30, 78, 96);
-    const int cx = x + (w / 2);
-    const int cy = y + (h / 2);
 
-    spr->fillRoundRect(cx - 9, cy - 5, 18, 13, 4, shell);
-    spr->drawRoundRect(cx - 9, cy - 5, 18, 13, 4, fg);
-    spr->fillRoundRect(cx - 5, cy - 8, 7, 4, 2, fg);
-    spr->drawFastHLine(cx + 4, cy - 7, 4, fg);
-    spr->fillCircle(cx, cy + 1, 5, glass);
-    spr->drawCircle(cx, cy + 1, 5, fg);
-    spr->fillCircle(cx - 2, cy - 1, 1, fg);
-    spr->drawFastHLine(cx - 6, cy + 7, 12, fg);
+    draw_icon_mask(spr, &NB_UI_OVERLAY_ICON_CAMERA, x, y, w, h, fg);
 }
 
 static void timer_badge_rect(int *x, int *y, int *w, int *h)

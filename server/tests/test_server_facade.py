@@ -7924,9 +7924,37 @@ def test_firmware_camera_active_overlay_contract_is_exposed() -> None:
     assert "camera_service_set_session_active(false)" in camera_c
     assert "ui_overlay_camera_set" in overlay_h
     assert "draw_camera_icon" in overlay_c
+    assert 'icons/generated/nb_ui_overlay_icons.h' in overlay_c
+    assert "draw_icon_mask(spr, &NB_UI_OVERLAY_ICON_CAMERA" in overlay_c
     assert "camera_service_set_event_cb(on_camera_event)" in boot_c
     assert "ui_overlay_camera_set(true)" in boot_c
     assert "ui_overlay_camera_set(false)" in boot_c
+
+
+def test_firmware_overlay_icons_use_generated_masks() -> None:
+    root = Path(__file__).resolve().parents[2]
+    icons_dir = (
+        root
+        / "components"
+        / "services"
+        / "ui_overlay_service"
+        / "icons"
+    )
+    generated_h = (icons_dir / "generated" / "nb_ui_overlay_icons.h").read_text(
+        encoding="ascii"
+    )
+    source_pbm = (icons_dir / "source" / "camera.pbm").read_text(encoding="ascii")
+    generator = (icons_dir / "tools" / "generate_overlay_icons.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert source_pbm.startswith("P1\n")
+    assert "24 24" in source_pbm
+    assert "typedef struct" in generated_h
+    assert "NB_UI_OVERLAY_ICON_CAMERA_MASK" in generated_h
+    assert "NB_UI_OVERLAY_ICON_CAMERA" in generated_h
+    assert "0x00, 0xFC, 0x00" in generated_h
+    assert "--check" in generator
 
 
 def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
