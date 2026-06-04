@@ -288,17 +288,17 @@ Invariantes:
 - Playback nao deve alimentar VAD como fala do usuario.
 - Deve haver janela de mute/ignore para VAD pos-playback.
 - Na Fase N4.2, Playback v2 marca o active-shadow do speaker por meio do
-  `audio_service`/Audio IO v2 somente para frames SAY reais; ainda nao ha
-  chamada `audio_hal_*` dentro de `audio_playback_service_v2`.
+  `audio_service`/Audio IO v2 somente para frames SAY reais; naquele momento
+  ainda nao havia chamada `audio_hal_*` dentro de `audio_playback_service_v2`.
 - Na Fase N4.3, Playback v2 tambem fornece o proximo frame SAY por
   `audio_playback_service_v2_speaker_next_frame()`. O `audio_service` continua
   dono do volume e do write fisico no HAL, mas a selecao do frame de speaker
   deixa de acessar diretamente o dequeue da fila.
 - Na Fase N4.4, o preparo do frame SAY tambem migra para Playback v2: o servico
   limita o tamanho do chunk, aplica o volume percentual com clamp e expoe
-  `speaker_frames_prepared`/`speaker_samples_prepared`. O `audio_service`
-  permanece como unico escritor fisico do HAL, mas ja recebe PCM preparado para
-  o speaker.
+  `speaker_frames_prepared`/`speaker_samples_prepared`. Naquele incremento,
+  o `audio_service` permanecia como escritor fisico do HAL, mas ja recebia PCM
+  preparado para o speaker.
 - Na Fase N4.5, Playback v2 tambem recebe o resultado do write fisico por
   `audio_playback_service_v2_speaker_commit_frame()` e aciona o marcador de
   handoff no Audio IO v2. Isso remove a chamada direta do `audio_service` para
@@ -736,7 +736,8 @@ Entregas:
 
 Implementacao inicial:
 
-- O probe e passivo: `audio_service` continua dono unico do `audio_hal`.
+- O probe inicial e passivo: naquela etapa, `audio_service` continuava dono do
+  `audio_hal`.
 - O v2 recebe copia do PCM16 ja condicionado (`s_sa_buf`) somente enquanto o
   probe esta ativo.
 - O v2 contabiliza TX de silencio quando o loop v1 ja esta alimentando o
@@ -783,8 +784,8 @@ Implementacao inicial:
 
 - `audio_playback_service_v2` gera tom sintetico PCM16 de bancada.
 - O servico v2 nao cria task e nao possui o I2S.
-- O `audio_service` atual continua sendo o unico escritor do speaker e puxa o
-  chunk v2 somente quando o probe explicito esta ativo.
+- Na implementacao inicial, o `audio_service` continuava sendo o escritor do
+  speaker e puxava o chunk v2 somente quando o probe explicito estava ativo.
 - `audio_play_stop()` tambem cancela o probe v2 se ele estiver tocando.
 - O endpoint de probe recusa iniciar se `audio_service_is_busy()` indicar
   escuta, WAV, SAY ou outro playback ativo.
@@ -794,9 +795,8 @@ Implementacao inicial:
   nao troca a fila, nao toca HAL e nao altera o caminho de audio.
 - Estado apos fechamento tecnico: Playback v2 virou dono da fila/lifecycle SAY,
   do estado ativo, do write SAY e do write do probe. O `audio_service` deixou de
-  ser o unico escritor do speaker nesses caminhos, mas segue como ponte de
-  compatibilidade para WAV local, synth, silencio, recovery, eventos legados e
-  rollback v1.
+  escrever o speaker nesses caminhos; ele segue como ponte de compatibilidade
+  para WAV local, synth, silencio, recovery, eventos legados e rollback v1.
 
 Aceite:
 

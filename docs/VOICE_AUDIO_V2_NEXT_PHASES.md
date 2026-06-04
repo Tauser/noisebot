@@ -1852,7 +1852,7 @@ Incremento N6.9 iniciado:
 
 - O `speaker-owner-real-arm` agora abre uma janela real controlada de playback.
   Durante essa janela, os writes continuam passando pelo callback de
-  `audio_service`; Playback v2 ainda nao chama HAL diretamente.
+  `audio_service`; naquela etapa, Playback v2 ainda nao chamava HAL diretamente.
 - Quando o fim de SAY e confirmado por `audio_playback_service_v2_say_end_idle()`,
   Playback v2 auto-desarma `speaker_owner_real_requested/armed`, marca
   `speaker_owner_real_window_completed=true` e incrementa
