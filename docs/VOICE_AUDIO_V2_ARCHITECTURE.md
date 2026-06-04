@@ -418,6 +418,12 @@ Invariantes:
   gate consolidado e o health do Codec v2 logo depois. Isso remove o passo
   manual de bancada sem mascarar regressao: filas maiores, drops, erro de
   codec, worker ruim ou runtime ocupado continuam aparecendo como warning/falha.
+- Fechamento da Fase O: server reiniciado com O1 carregado, turno real curto
+  em Opus v2 completou TTS/SAY_END, Playback v2 `158/158` chunks SAY sem
+  drops, Capture v2 zero drops, Codec v2 egress zero/sem erro e
+  `voice-release-check ok=true` sem dreno manual. O Voice Audio v2 fica
+  operacionalmente fechado para essa fase; proximos passos devem ser nova fase,
+  nao extensao de O.
 
 ### Voice Activity v2
 

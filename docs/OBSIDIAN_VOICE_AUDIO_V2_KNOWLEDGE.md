@@ -333,6 +333,12 @@ Incremento atual da Fase N3:
   codec health e anota a limpeza no JSON; fila maior, drops ou erro continuam
   warning/falha. Evidencia: `server/tests/test_server_facade.py` passou com
   204 testes e validacao live sem residual seguiu `ok=true`.
+- Fechamento Fase O: server reiniciado com O1 carregado, teste real
+  `ww -> fale uma frase curta` passou com transcript bom, LLM/TTS/SAY_END,
+  Playback v2 `158/158` chunks SAY sem drops, Capture v2 29 chunks sem drops,
+  Codec v2 egress zero/sem erro, Audio IO v2 ~19 KB livres interno/DMA e
+  `voice-release-check ok=true` sem dreno manual. Proximos incrementos devem
+  abrir fase nova.
 
 ### Wake Word
 

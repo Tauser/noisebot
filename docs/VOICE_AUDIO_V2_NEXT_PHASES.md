@@ -2309,3 +2309,17 @@ auto-drain e permanecem como warning/falha normal. O endpoint HTTP operacional
 do server usa a mesma regra. Validacao local: `server/tests/test_server_facade.py`
 com 204 testes verdes. Validacao live sem residual pendente: release-check
 continuou `ok=true`, heap interno/DMA ~18,8 KB e Codec/Playback/Capture verdes.
+
+Fechamento final da Fase O em hardware: apos reiniciar o server com o codigo
+O1 carregado, o health local confirmou restart real (`uptime_s` baixo). O teste
+fisico `ww -> fale uma frase curta` completou como `turn_id=1`, transcript
+`Fale uma frase curta.`, `transcript_quality=good`, `outcome=llm`,
+`tts_completed=true`, `tts_say_end_sent=true`, texto visual `1/1` pagina e
+`voice_alert=null`. Playback v2 fechou `say_begin_count=1`,
+`say_end_count=1`, `158/158` chunks SAY recebidos/tocados, fila zero, zero
+drops e zero falhas de write/commit. Capture v2 ficou `DONE`,
+`SPEECH_COMPLETE`, 29 chunks / 27840 samples, zero drops. Codec v2 ficou
+`status=ok`, worker `running`, egress zero, zero drops e
+`opus_codec_error=0`; Audio IO v2 manteve cerca de 19 KB livres interno/DMA,
+maior bloco 17 KB e zero recoveries. O `voice-release-check` final retornou
+`ok=true` sem necessidade de dreno manual. Fase O fechada.

@@ -190,6 +190,12 @@ idle, Capture inativo e Playback sem SAY ativo/fila, o check chama
 o warning/falha permanece. Validacao local: `server/tests/test_server_facade.py`
 com 204 testes verdes; validacao live sem residual pendente continuou
 `ok=true`.
+Fechamento final O: apos restart real do server, `ww -> fale uma frase curta`
+transcreveu corretamente, completou LLM/TTS/SAY_END, enviou `1/1` pagina
+visual e deixou Playback v2 em `158/158` chunks SAY, fila zero e zero drops.
+Capture v2 registrou 29 chunks sem drops; Codec v2 ficou `status=ok`, egress
+zero e sem erro; Audio IO v2 manteve ~19 KB internos/DMA livres. O
+`voice-release-check` final ficou `ok=true` sem dreno manual.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,
