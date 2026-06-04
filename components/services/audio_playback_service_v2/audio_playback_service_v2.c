@@ -317,6 +317,37 @@ bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_co
     return true;
 }
 
+bool audio_playback_service_v2_probe_write_next_frame(uint16_t *sample_count,
+                                                      esp_err_t *result)
+{
+    int16_t frame[NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES];
+
+    if (sample_count != NULL) {
+        *sample_count = 0U;
+    }
+    if (result != NULL) {
+        *result = ESP_OK;
+    }
+
+    if (!audio_playback_service_v2_fill_probe_chunk(
+            frame,
+            NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES)) {
+        return false;
+    }
+
+    esp_err_t wr = audio_hal_spk_write(
+        frame,
+        NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES,
+        pdMS_TO_TICKS(100));
+    if (sample_count != NULL) {
+        *sample_count = NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES;
+    }
+    if (result != NULL) {
+        *result = wr;
+    }
+    return true;
+}
+
 esp_err_t audio_playback_service_v2_speaker_owner_arm(void)
 {
     esp_err_t err = audio_io_service_v2_set_speaker_handoff_owner_requested(true);

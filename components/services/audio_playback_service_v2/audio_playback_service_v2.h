@@ -99,6 +99,8 @@ esp_err_t audio_playback_service_v2_probe_stop(void);
 bool audio_playback_service_v2_is_playing(void);
 bool audio_playback_service_v2_say_is_active(void);
 bool audio_playback_service_v2_fill_probe_chunk(int16_t *out, uint16_t sample_count);
+bool audio_playback_service_v2_probe_write_next_frame(uint16_t *sample_count,
+                                                      esp_err_t *result);
 esp_err_t audio_playback_service_v2_speaker_owner_arm(void);
 esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);
 esp_err_t audio_playback_service_v2_speaker_owner_real_arm(void);

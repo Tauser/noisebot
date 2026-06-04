@@ -602,12 +602,12 @@ static bool audio_service_play_bridge_say_chunk(void)
 
 static bool audio_service_fill_idle_output(void)
 {
-    if (audio_playback_service_v2_fill_probe_chunk(s_wav_chunk,
-                                                   NB_AUDIO_CHUNK_FRAMES)) {
-        esp_err_t wr = audio_hal_spk_write(s_wav_chunk, NB_AUDIO_CHUNK_FRAMES,
-                                           pdMS_TO_TICKS(100));
-        audio_note_spk_result(wr, "playback_v2_probe",
-                              NB_AUDIO_CHUNK_FRAMES, false);
+    uint16_t probe_samples = 0;
+    esp_err_t probe_wr = ESP_OK;
+    if (audio_playback_service_v2_probe_write_next_frame(&probe_samples,
+                                                         &probe_wr)) {
+        audio_note_spk_result(probe_wr, "playback_v2_probe",
+                              probe_samples, false);
         return true;
     }
 
