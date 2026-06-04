@@ -738,7 +738,13 @@ static esp_err_t handle_api_config_post(httpd_req_t *req)
             led_set_brightness(brightness);
         }
     }
-    else if (strcmp(key, "touch_sens")   == 0) err = config_set_touch_sensitivity((uint8_t)val);
+    else if (strcmp(key, "touch_sens")   == 0) {
+        uint8_t touch_sens_pct = (uint8_t)val;
+        err = config_set_touch_sensitivity(touch_sens_pct);
+        if (err == ESP_OK) {
+            touch_service_set_sensitivity(((float)touch_sens_pct * 0.2f) / 100.0f);
+        }
+    }
     else if (strcmp(key, "idle_timeout") == 0) err = config_set_idle_timeout_s((uint32_t)val);
     else if (strcmp(key, "srv1_min")     == 0) err = config_set_servo_limit_min(1, (int16_t)val);
     else if (strcmp(key, "srv1_max")     == 0) err = config_set_servo_limit_max(1, (int16_t)val);

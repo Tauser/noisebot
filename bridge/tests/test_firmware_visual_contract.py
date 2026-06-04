@@ -102,9 +102,21 @@ def test_touch_boot_uses_persisted_sensitivity():
     src = BOOT_MANAGER.read_text(encoding="utf-8")
 
     assert "config_get_touch_sensitivity()" in src
-    assert "touch_sens_pct / 100.0f" in src
+    assert "touch_sens_pct * 0.2f" in src
     assert "touch_service_set_sensitivity(sens_factor);" in src
     assert "sens_factor = 0.5f" not in src
+
+
+def test_touch_config_applies_runtime_sensitivity():
+    src = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+
+    start = src.index('else if (strcmp(key, "touch_sens")')
+    end = src.index('else if (strcmp(key, "idle_timeout")', start)
+    block = src[start:end]
+
+    assert "config_set_touch_sensitivity(touch_sens_pct)" in block
+    assert "touch_service_set_sensitivity" in block
+    assert "touch_sens_pct * 0.2f" in block
 
 
 def test_ui_overlay_uses_stackchan_montserrat_font_family():

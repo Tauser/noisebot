@@ -993,7 +993,7 @@ static esp_err_t phase_hal(void)
     /* Touch (Etapa 2.2) */
     {
         uint8_t touch_sens_pct = config_get_touch_sensitivity();
-        float sens_factor = (float)touch_sens_pct / 100.0f;
+        float sens_factor = ((float)touch_sens_pct * 0.2f) / 100.0f;
 
         err = touch_service_init();
         if (err != ESP_OK) {
