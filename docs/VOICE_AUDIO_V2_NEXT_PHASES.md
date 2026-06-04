@@ -2438,6 +2438,13 @@ local caiu, reiniciou ou esta em outra porta. Validacao local:
 `server/tests/test_server_facade.py -k voice_release_check` com 16 testes
 verdes.
 
+Incremento server-only de teste operacional: o CLI `debug voice-release-check`
+agora tem cobertura explicita para imprimir `Status: FALHOU` e sair com codigo
+1 quando o release-check retorna falha, sem traceback no stdout. Validacao
+local: `server/tests/test_voice_release_check_hardening.py` com 2 testes verdes
+e `server/tests/test_server_facade.py -k voice_release_check` com 15 testes
+verdes.
+
 Nao fazer em P2:
 
 - Nao mover `audio_hal_spk_write()` para Playback v2 ainda.

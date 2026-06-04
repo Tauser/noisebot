@@ -3067,6 +3067,9 @@ no protocolo.
 - [x] Robustez operacional do release-check: falha em `/ai/metrics` vira gate
       `Métricas de voz` falho, preservando gates de firmware ja coletados.
       Validado com 16 testes focados.
+- [x] CLI do release-check protegido: `debug voice-release-check` imprime
+      `Status: FALHOU` e sai codigo 1 quando o check falha, sem traceback no
+      stdout. Validado em `test_voice_release_check_hardening.py`.
 - [x] Fase N planejada como migracao estrutural do firmware Voice v2:
       N0 congela baseline/gates; N1 torna Capture v2 default controlado; N2
       promove Activity v2 a decisor dentro da sessao; N3 migra RX/TX para

@@ -1,5 +1,7 @@
 import importlib
 
+import pytest
+
 
 def test_voice_release_check_reports_server_metrics_failure(monkeypatch) -> None:
     release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
@@ -86,3 +88,42 @@ def test_voice_release_check_reports_server_metrics_failure(monkeypatch) -> None
     assert "ai/metrics" in metrics_gate.detail
     assert metrics_gate.warnings == ("verifique se o server local esta rodando",)
     assert "Status: FALHOU" in release_check.format_release_check_markdown(check)
+
+
+def test_voice_release_check_cli_prints_failure_without_traceback(monkeypatch, capsys) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+
+    def fake_run_release_check(**_kwargs):
+        return release_check.ReleaseCheck(
+            ok=False,
+            gates=(
+                release_check.ReleaseGate(
+                    name="Métricas de voz",
+                    ok=False,
+                    detail="http://127.0.0.1:8765/ai/metrics: timeout",
+                    warnings=("verifique se o server local esta rodando",),
+                ),
+            ),
+            voice_v2={},
+            codec_v2={},
+            capture_v2={},
+            playback_v2={},
+            metrics={"ok": False},
+        )
+
+    monkeypatch.setattr(release_check, "run_release_check", fake_run_release_check)
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main([
+            "--host",
+            "192.168.1.30",
+            "debug",
+            "voice-release-check",
+        ])
+
+    captured = capsys.readouterr()
+    assert excinfo.value.code == 1
+    assert "Status: FALHOU" in captured.out
+    assert "Métricas de voz" in captured.out
+    assert "Traceback" not in captured.out

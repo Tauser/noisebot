@@ -378,6 +378,9 @@ Incremento atual da Fase N3:
 - P2 server-only robustez seguinte: falha em `/ai/metrics` agora vira gate
   `Métricas de voz` falho, mantendo os gates de firmware coletados. Evidencia:
   teste focado passou com 16 casos de `voice_release_check`.
+- P2 teste operacional: CLI `debug voice-release-check` tem cobertura para
+  imprimir `Status: FALHOU` e sair codigo 1 sem traceback quando o check falha.
+  Evidencia: `test_voice_release_check_hardening.py` passou com 2 testes.
 
 ### Wake Word
 
