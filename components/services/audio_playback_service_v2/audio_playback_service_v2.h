@@ -22,6 +22,7 @@ typedef struct {
     bool stop_requested;
     bool bridge_say_observer;
     bool bridge_say_queue_owner;
+    bool bridge_say_active;
     bool speaker_owner_dry_run_enabled;
     bool speaker_owner_requested;
     bool speaker_owner_ready;
@@ -74,6 +75,8 @@ typedef struct {
     uint32_t say_queue_count;
     uint32_t say_queue_high_watermark;
     uint32_t say_accept_wait_ms;
+    uint32_t say_begin_count;
+    uint32_t say_end_count;
     uint32_t say_chunks_received;
     uint32_t say_chunks_played;
     uint32_t say_chunks_dropped;
@@ -105,6 +108,7 @@ esp_err_t audio_playback_service_v2_speaker_owner_disarm(void);
 esp_err_t audio_playback_service_v2_speaker_owner_real_arm(void);
 esp_err_t audio_playback_service_v2_speaker_owner_real_disarm(void);
 esp_err_t audio_playback_service_v2_say_accept(const int16_t *samples, uint16_t count);
+void audio_playback_service_v2_say_begin(void);
 bool audio_playback_service_v2_speaker_write_next_frame(
     uint8_t volume_percent,
     nb_audio_playback_v2_speaker_write_cb_t write_cb,

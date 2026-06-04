@@ -1924,7 +1924,8 @@ static const char *voice_audio_v2_gate_block_reason(
     if (capture->session_active || activity->session_active) {
         return "session_active";
     }
-    if (playback->playing || playback->say_queue_count > 0U) {
+    if (playback->playing || playback->bridge_say_active ||
+        playback->say_queue_count > 0U) {
         return "playback_active";
     }
     if (codec->queue_count > 0U || codec->opus_egress_queue_count > 0U) {
@@ -1973,7 +1974,7 @@ static esp_err_t handle_api_audio_voice_v2_status(httpd_req_t *req)
         &codec_st);
     const bool ready = strcmp(block_reason, "none") == 0;
 
-    char buf[1800];
+    char buf[2200];
     snprintf(buf, sizeof(buf),
              "{\"ok\":true,\"ready\":%s,\"block_reason\":\"%s\","
              "\"rollback_available\":true,"
@@ -1988,9 +1989,12 @@ static esp_err_t handle_api_audio_voice_v2_status(httpd_req_t *req)
              "\"codec_worker_state\":\"%s\","
              "\"playback_queue_owner\":%s,"
              "\"playback_playing\":%s,"
+             "\"playback_say_active\":%s,"
              "\"runtime_idle\":%s,"
              "\"capture_session_active\":%s,"
              "\"activity_session_active\":%s,"
+             "\"playback_say_begin_count\":%lu,"
+             "\"playback_say_end_count\":%lu,"
              "\"playback_say_queue_count\":%lu,"
              "\"playback_say_drops\":%lu,"
              "\"playback_speaker_write_failures\":%lu,"
@@ -2016,10 +2020,14 @@ static esp_err_t handle_api_audio_voice_v2_status(httpd_req_t *req)
              audio_codec_service_v2_worker_state_name(codec_st.worker_state),
              playback_st.bridge_say_queue_owner ? "true" : "false",
              playback_st.playing ? "true" : "false",
+             playback_st.bridge_say_active ? "true" : "false",
              (!capture_st.session_active && !activity_st.session_active &&
-              !playback_st.playing && playback_st.say_queue_count == 0U) ? "true" : "false",
+              !playback_st.playing && !playback_st.bridge_say_active &&
+              playback_st.say_queue_count == 0U) ? "true" : "false",
              capture_st.session_active ? "true" : "false",
              activity_st.session_active ? "true" : "false",
+             (unsigned long)playback_st.say_begin_count,
+             (unsigned long)playback_st.say_end_count,
              (unsigned long)playback_st.say_queue_count,
              (unsigned long)playback_st.say_chunks_dropped,
              (unsigned long)playback_st.speaker_write_failures,
@@ -2877,6 +2885,7 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              "{\"ok\":%s,\"initialized\":%s,\"playing\":%s,"
              "\"stop_requested\":%s,\"bridge_say_observer\":%s,"
              "\"bridge_say_queue_owner\":%s,"
+             "\"bridge_say_active\":%s,"
              "\"speaker_owner_dry_run_enabled\":%s,"
              "\"speaker_owner_requested\":%s,"
              "\"speaker_owner_ready\":%s,"
@@ -2925,6 +2934,7 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              "\"say_queue_depth\":%lu,\"say_queue_count\":%lu,"
              "\"say_queue_high_watermark\":%lu,"
              "\"say_accept_wait_ms\":%lu,"
+             "\"say_begin_count\":%lu,\"say_end_count\":%lu,"
              "\"say_chunks_received\":%lu,\"say_chunks_played\":%lu,"
              "\"say_chunks_dropped\":%lu,"
              "\"say_chunks_dropped_queue_full\":%lu,"
@@ -2939,6 +2949,7 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              st.stop_requested ? "true" : "false",
              st.bridge_say_observer ? "true" : "false",
              st.bridge_say_queue_owner ? "true" : "false",
+             st.bridge_say_active ? "true" : "false",
              st.speaker_owner_dry_run_enabled ? "true" : "false",
              st.speaker_owner_requested ? "true" : "false",
              st.speaker_owner_ready ? "true" : "false",
@@ -2991,6 +3002,8 @@ static esp_err_t send_audio_playback_v2_status(httpd_req_t *req, esp_err_t err)
              (unsigned long)st.say_queue_count,
              (unsigned long)st.say_queue_high_watermark,
              (unsigned long)st.say_accept_wait_ms,
+             (unsigned long)st.say_begin_count,
+             (unsigned long)st.say_end_count,
              (unsigned long)st.say_chunks_received,
              (unsigned long)st.say_chunks_played,
              (unsigned long)st.say_chunks_dropped,

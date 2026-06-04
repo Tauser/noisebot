@@ -1891,6 +1891,7 @@ void audio_service_bridge_say_chunk(const int16_t *samples, uint16_t count)
         xSemaphoreTake(s.mutex, portMAX_DELAY);
         s.play_state = PLAY_BRIDGE_SAY;
         xSemaphoreGive(s.mutex);
+        audio_playback_service_v2_say_begin();
         if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, 0);
         wake_service_rearm();
         ESP_LOGI(TAG, "Bridge SAY iniciado");

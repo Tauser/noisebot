@@ -94,6 +94,14 @@ static void playback_v2_reset_speaker_empty_locked(void)
     s_status.speaker_empty_ms = 0;
 }
 
+static void playback_v2_finish_say_locked(void)
+{
+    if (s_status.bridge_say_active) {
+        s_status.bridge_say_active = false;
+        s_status.say_end_count++;
+    }
+}
+
 static void playback_v2_mirror_speaker_owner(nb_audio_playback_v2_status_t *status,
                                              const nb_audio_io_v2_status_t *io)
 {
@@ -443,6 +451,20 @@ esp_err_t audio_playback_service_v2_say_accept(const int16_t *samples, uint16_t 
     return ESP_ERR_NO_MEM;
 }
 
+void audio_playback_service_v2_say_begin(void)
+{
+    taskENTER_CRITICAL(&s_mux);
+    s_status.bridge_say_observer = true;
+    s_status.bridge_say_queue_owner = (s_say_q != NULL);
+    if (!s_status.bridge_say_active) {
+        s_status.bridge_say_active = true;
+        s_status.say_begin_count++;
+    }
+    playback_v2_reset_speaker_empty_locked();
+    s_status.last_error = ESP_OK;
+    taskEXIT_CRITICAL(&s_mux);
+}
+
 static bool playback_v2_say_dequeue(nb_audio_playback_v2_say_chunk_t *out)
 {
     if (out == NULL || s_say_q == NULL) {
@@ -626,6 +648,7 @@ uint32_t audio_playback_service_v2_say_cancel_active(void)
     if (pending > 0U) {
         s_status.say_cancel_count++;
     }
+    playback_v2_finish_say_locked();
     playback_v2_reset_speaker_empty_locked();
     playback_v2_note_queue_count(0U);
     s_status.last_error = ESP_OK;
@@ -651,6 +674,7 @@ void audio_playback_service_v2_say_drop_listening(void)
     if (pending > 0U) {
         s_status.say_cancel_count++;
     }
+    playback_v2_finish_say_locked();
     s_status.say_queue_count = 0;
     playback_v2_reset_speaker_empty_locked();
     s_status.last_error = ESP_OK;
@@ -663,6 +687,7 @@ void audio_playback_service_v2_say_end_idle(void)
     s_status.bridge_say_observer = true;
     s_status.bridge_say_queue_owner = (s_say_q != NULL);
     playback_v2_finish_real_owner_window_locked();
+    playback_v2_finish_say_locked();
     playback_v2_reset_speaker_empty_locked();
     s_status.say_queue_count = 0;
     s_status.last_error = ESP_OK;

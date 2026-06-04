@@ -52,6 +52,9 @@ def test_voice_audio_v2_consolidated_gate_is_observable():
     assert '\\"audio_io_initialized\\":%s' in web
     assert '\\"playback_queue_owner\\":%s' in web
     assert '\\"codec_worker_active\\":%s' in web
+    assert '\\"playback_say_active\\":%s' in web
+    assert '\\"playback_say_begin_count\\":%lu' in web
+    assert '\\"playback_say_end_count\\":%lu' in web
     assert '\\"runtime_idle\\":%s' in web
     assert '\\"playback_say_queue_count\\":%lu' in web
     assert '\\"codec_egress_queue_count\\":%lu' in web
@@ -513,6 +516,9 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "pdMS_TO_TICKS(NB_AUDIO_PLAYBACK_V2_SAY_ACCEPT_WAIT_MS)" in playback_c
     assert "say_queue_high_watermark" in playback_h
     assert "say_accept_wait_ms" in playback_h
+    assert "bool bridge_say_active;" in playback_h
+    assert "uint32_t say_begin_count;" in playback_h
+    assert "uint32_t say_end_count;" in playback_h
     assert "say_chunks_dropped_queue_full" in playback_h
     assert "say_chunks_queue_full" in playback_h
     assert "say_chunks_queue_wait_recovered" in playback_h
@@ -525,6 +531,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "audio_playback_service_v2_speaker_next_frame(" not in playback_h
     assert "audio_playback_service_v2_speaker_commit_frame(" not in playback_h
     assert "audio_playback_service_v2_say_accept(" in playback_h
+    assert "audio_playback_service_v2_say_begin(" in playback_h
     assert "audio_playback_service_v2_say_cancel_active(" in playback_h
     assert "audio_playback_service_v2_say_drop_listening(" in playback_h
     assert "audio_playback_service_v2_say_end_idle(" in playback_h
@@ -573,6 +580,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "uint32_t speaker_idle_end_count;" in playback_h
     assert "say_chunks_received" in playback_h
     assert "audio_playback_service_v2_say_accept(" in audio_service
+    assert "audio_playback_service_v2_say_begin();" in audio_service
     assert "audio_playback_service_v2_speaker_write_next_frame(" in audio_service
     assert "audio_service_playback_v2_write_speaker" in audio_service
     assert "audio_playback_service_v2_speaker_commit_frame(n, wr);" not in audio_service
@@ -591,6 +599,7 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "audio_io_service_v2_speaker_handoff_note_playback_frame(false, wr);" not in audio_service
     assert "bridge_say_observer" in web
     assert "bridge_say_queue_owner" in web
+    assert '\\"bridge_say_active\\":%s' in web
     assert '\\"speaker_owner_dry_run_enabled\\":%s' in web
     assert '\\"speaker_owner_requested\\":%s' in web
     assert '\\"speaker_owner_ready\\":%s' in web
@@ -633,6 +642,8 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert '\\"speaker_empty_polls\\":%lu' in web
     assert '\\"speaker_empty_ms\\":%lu' in web
     assert '\\"speaker_idle_end_count\\":%lu' in web
+    assert '\\"say_begin_count\\":%lu' in web
+    assert '\\"say_end_count\\":%lu' in web
     assert "say_chunks_received" in web
     assert "#define NB_AUDIO_PLAYBACK_V2_QUEUE_PACKETS   32U" in playback_c
     assert "#define NB_AUDIO_PLAYBACK_V2_CHUNK_SAMPLES   256U" in playback_c
@@ -647,6 +658,12 @@ def test_audio_playback_v2_probe_is_explicit_and_hal_owned_by_audio_service():
     assert "playback_v2_speaker_commit_frame(frame.count, wr)" in playback_c
     assert "static void playback_v2_finish_real_owner_window_locked(void)" in playback_c
     assert "playback_v2_finish_real_owner_window_locked();" in playback_c
+    assert "void audio_playback_service_v2_say_begin(void)" in playback_c
+    assert "static void playback_v2_finish_say_locked(void)" in playback_c
+    assert "s_status.bridge_say_active = true;" in playback_c
+    assert "s_status.say_begin_count++" in playback_c
+    assert "s_status.say_end_count++" in playback_c
+    assert "playback_v2_finish_say_locked();" in playback_c
     assert "s_status.speaker_owner_real_auto_disarm_count++" in playback_c
     assert "if (s_status.speaker_owner_real_armed)" in playback_c
     assert "s_status.speaker_owner_real_write_frames++" in playback_c

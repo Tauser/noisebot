@@ -121,6 +121,14 @@ cancelamentos, prepara/commita frames e orquestra o write por callback; o
 `NB_AUDIO_EVT_PLAYBACK_START/END`, `wake_service_rearm()` e a escrita fisica.
 O start de SAY agora so ocorre apos `audio_playback_service_v2_say_accept()`
 aceitar o primeiro chunk, evitando evento de playback sem audio enfileirado.
+O lifecycle da fala SAY tambem passou a ser observado por Playback v2:
+`audio_service` sinaliza o inicio real com
+`audio_playback_service_v2_say_begin()`, e Playback v2 expõe
+`bridge_say_active`, `say_begin_count` e `say_end_count` em
+`/api/audio/playback-v2` e no gate consolidado `/api/audio/voice-v2`. Esse
+sinal fecha no idle normal, cancelamento ou descarte por nova escuta, e impede
+que o preflight marque runtime idle enquanto uma resposta SAY ainda esta
+ativa. O HAL fisico continua no callback de `audio_service`.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

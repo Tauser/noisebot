@@ -2079,6 +2079,19 @@ validacao real contra hardware/server local retornou `ok=true` com
 `Voice v2 consolidado: ready=True, block=none`, Codec v2 healthy, Capture v2
 controlado idle, Playback v2 SAY com fila zero e metricas sem falha.
 
+Incremento firmware seguinte: Playback v2 ganhou lifecycle explicito do SAY
+real. `audio_service` chama `audio_playback_service_v2_say_begin()` quando a
+fala do bridge entra em `PLAY_BRIDGE_SAY`; Playback v2 marca
+`bridge_say_active=true`, incrementa `say_begin_count` e fecha o ciclo com
+`say_end_count` no idle normal, cancelamento ou descarte por nova escuta. Os
+campos aparecem em `/api/audio/playback-v2`, e o gate consolidado
+`/api/audio/voice-v2` tambem expoe `playback_say_active`,
+`playback_say_begin_count` e `playback_say_end_count`. Enquanto
+`bridge_say_active=true`, o preflight trata o runtime como ocupado
+(`playback_active`) mesmo se a fila estiver momentaneamente vazia. Isso reduz
+falso idle entre jitter/fim de fila sem mudar wake, VAD, captura, codec,
+bridge, Opus/PCM16 ou ownership fisico do HAL, que continua no `audio_service`.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.

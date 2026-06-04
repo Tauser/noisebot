@@ -353,6 +353,13 @@ Invariantes:
   da fila SAY, idle runtime, filas, drops/recoveries e rollback. Ele nao muda
   HAL, wake, VAD, captura, playback nem protocolo; serve para congelar um
   snapshot antes de nova reducao estrutural do `audio_service.c`.
+- O lifecycle do SAY real tambem fica explicito em Playback v2: quando
+  `audio_service` entra em `PLAY_BRIDGE_SAY`, ele sinaliza
+  `audio_playback_service_v2_say_begin()`; Playback v2 expoe
+  `bridge_say_active`, `say_begin_count` e `say_end_count`, fechando o ciclo no
+  idle normal, cancelamento ou descarte por nova escuta. O gate consolidado
+  trata `bridge_say_active=true` como playback ocupado. Isso melhora a
+  semantica de preflight sem mover o HAL fisico para Playback v2.
 
 ### Voice Activity v2
 

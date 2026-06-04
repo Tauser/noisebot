@@ -249,6 +249,14 @@ Incremento atual da Fase N3:
   de 4 chunks (`NOISEBOT_TTS_QUEUE_TARGET=4`) e cadencia nominal de 16 ms
   (`NOISEBOT_TTS_SEND_INTERVAL_MS=16`), preservando headroom na fila SAY v2 de
   32 chunks.
+- Incremento firmware pos-gate consolidado: Playback v2 agora observa o
+  lifecycle real do SAY. `audio_service` sinaliza
+  `audio_playback_service_v2_say_begin()` ao entrar em `PLAY_BRIDGE_SAY`;
+  Playback v2 expoe `bridge_say_active`, `say_begin_count` e `say_end_count`
+  em `/api/audio/playback-v2`, e o gate `/api/audio/voice-v2` usa
+  `playback_say_active` para bloquear falso idle enquanto uma resposta esta
+  ativa. Inferencia da IA: isso prepara nova reducao de `audio_service.c` sem
+  mover HAL, wake, VAD, captura, codec, bridge, Opus ou PCM16.
 
 ### Wake Word
 
