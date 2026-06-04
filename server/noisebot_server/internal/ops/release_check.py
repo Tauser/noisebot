@@ -183,6 +183,10 @@ def format_release_check_json(check: ReleaseCheck) -> str:
 
 
 def _voice_gate(payload: dict[str, Any]) -> ReleaseGate:
+    ownership = payload.get("ownership")
+    bridge_tx_owner = ""
+    if isinstance(ownership, dict):
+        bridge_tx_owner = str(ownership.get("bridge_tx") or "")
     ok = (
         bool(payload.get("ok"))
         and payload.get("ready") is True
@@ -194,6 +198,7 @@ def _voice_gate(payload: dict[str, Any]) -> ReleaseGate:
         f"activity={payload.get('activity_decider_enabled')}, "
         f"codec_worker={payload.get('codec_worker_state')}, "
         f"say_queue={payload.get('playback_say_queue_count')}, "
+        f"bridge_tx={bridge_tx_owner or 'unknown'}, "
         f"drops={payload.get('playback_say_drops')}/"
         f"{payload.get('codec_packet_drops')}/"
         f"{payload.get('codec_egress_drops')}"
@@ -203,6 +208,24 @@ def _voice_gate(payload: dict[str, Any]) -> ReleaseGate:
         warnings.append(f"voice-v2 block_reason={payload.get('block_reason')}")
     if payload.get("runtime_idle") is False:
         warnings.append("runtime_idle=false")
+    if isinstance(ownership, dict):
+        expected_ownership = {
+            "hal_i2s": "audio_service",
+            "rx": "audio_io_service_v2_distributor_audio_service_hal",
+            "tx": "audio_io_service_v2_observer_audio_service_hal",
+            "vad": "voice_activity_service_v2_decider_legacy_rollback",
+            "capture": "voice_capture_session_v2",
+            "codec": "audio_codec_service_v2",
+            "playback_queue": "audio_playback_service_v2",
+            "playback_hal": "audio_service",
+            "legacy_bridge": "audio_service",
+        }
+        for key, expected in expected_ownership.items():
+            actual = ownership.get(key)
+            if actual != expected:
+                warnings.append(f"ownership.{key}={actual} esperado={expected}")
+        if bridge_tx_owner not in ("voice_capture_session_v2", "audio_service_legacy"):
+            warnings.append(f"ownership.bridge_tx={bridge_tx_owner or None}")
     heap_internal_bytes = _int(payload.get("audio_io_heap_internal_free_bytes"))
     heap_dma_bytes = _int(payload.get("audio_io_heap_dma_free_bytes"))
     heap_internal_largest = _int(payload.get("audio_io_heap_internal_largest_free_block"))

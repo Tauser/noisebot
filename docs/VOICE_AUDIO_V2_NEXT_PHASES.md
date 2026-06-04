@@ -2396,6 +2396,15 @@ qualquer refactor futuro. Validacao local: contrato firmware Voice Audio v2
 focado, `server/tests/test_server_facade.py -k voice_v2` e `idf.py build`
 limpos.
 
+Incremento P2 server-only seguinte: `voice-release-check` passou a validar o
+mapa `ownership` quando ele esta presente. Firmware antigo sem o bloco continua
+compatível; firmware novo gera warnings se HAL/I2S, RX, TX, VAD, captura,
+codec, fila playback, HAL playback, ponte legacy ou `bridge_tx` vierem fora do
+contrato esperado. O gate continua sem alterar runtime e sem falhar por
+observabilidade apenas, mas deixa regressao arquitetural visivel. Validacao
+local: `server/tests/test_server_facade.py -k voice_release_check` com 13
+testes verdes.
+
 Nao fazer em P2:
 
 - Nao mover `audio_hal_spk_write()` para Playback v2 ainda.

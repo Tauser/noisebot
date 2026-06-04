@@ -4158,6 +4158,94 @@ def test_server_voice_release_check_warns_on_low_audio_io_heap() -> None:
     )
 
 
+def test_server_voice_release_check_warns_on_unexpected_voice_v2_ownership() -> None:
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+
+    check = release_check.build_release_check(
+        voice_v2={
+            "ok": True,
+            "ready": True,
+            "block_reason": "none",
+            "capture_enabled": True,
+            "capture_tx_enabled": True,
+            "activity_decider_enabled": True,
+            "codec_worker_state": "running",
+            "playback_say_queue_count": 0,
+            "playback_say_drops": 0,
+            "codec_packet_drops": 0,
+            "codec_egress_drops": 0,
+            "runtime_idle": True,
+            "ownership": {
+                "hal_i2s": "audio_service",
+                "rx": "audio_io_service_v2_distributor_audio_service_hal",
+                "tx": "audio_io_service_v2_observer_audio_service_hal",
+                "vad": "legacy_vad",
+                "capture": "voice_capture_session_v2",
+                "bridge_tx": "unknown",
+                "codec": "audio_codec_service_v2",
+                "playback_queue": "audio_service",
+                "playback_hal": "audio_service",
+                "legacy_bridge": "audio_service",
+            },
+        },
+        codec_v2={
+            "ok": True,
+            "healthy": True,
+            "status": "ok",
+            "format": "opus",
+            "worker_state": "running",
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "issues": [],
+            "warnings": [],
+        },
+        capture_v2={
+            "ok": True,
+            "real_capture_enabled": True,
+            "bridge_tx_handoff_enabled": True,
+            "session_active": False,
+            "state": "IDLE_SESSION",
+            "dropped_frames": 0,
+            "shadow_audio_dropped_chunks": 0,
+            "last_error": "ESP_OK",
+        },
+        playback_v2={
+            "ok": True,
+            "bridge_say_observer": True,
+            "bridge_say_queue_owner": True,
+            "bridge_say_active": False,
+            "say_queue_count": 0,
+            "say_begin_count": 1,
+            "say_end_count": 1,
+            "say_chunks_received": 40,
+            "say_chunks_played": 40,
+            "say_chunks_dropped": 0,
+            "say_chunks_dropped_listening": 0,
+            "last_error": "ESP_OK",
+        },
+        metrics={
+            "last_voice_session": {
+                "turn_id": 10,
+                "outcome": "llm",
+                "turn_taking_decision": "llm",
+                "tts_completed": True,
+                "tts_say_end_sent": True,
+                "text_scroll_pages": 2,
+                "text_scroll_pages_sent": 2,
+            }
+        },
+    )
+
+    assert check.ok is True
+    voice_gate = check.gates[0]
+    assert "bridge_tx=unknown" in voice_gate.detail
+    assert voice_gate.warnings == (
+        "ownership.vad=legacy_vad esperado=voice_activity_service_v2_decider_legacy_rollback",
+        "ownership.playback_queue=audio_service esperado=audio_playback_service_v2",
+        "ownership.bridge_tx=unknown",
+    )
+
+
 def test_server_voice_release_check_accepts_retained_capture_done_state() -> None:
     release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
 

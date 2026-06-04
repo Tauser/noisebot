@@ -3048,6 +3048,10 @@ no protocolo.
       CLI `debug voice-v2 status` imprime o mapa. O campo `bridge_tx` distingue
       `voice_capture_session_v2` de `audio_service_legacy`. Validado com testes
       focados e `idf.py build`; nao altera audio runtime.
+- [x] Backlog P2 protegido no release-check: quando `ownership` esta presente,
+      `voice-release-check` emite warnings se algum owner sair do contrato
+      esperado, mantendo compatibilidade com firmware antigo sem o bloco.
+      Validado com `server/tests/test_server_facade.py -k voice_release_check`.
 - [x] Fase N planejada como migracao estrutural do firmware Voice v2:
       N0 congela baseline/gates; N1 torna Capture v2 default controlado; N2
       promove Activity v2 a decisor dentro da sessao; N3 migra RX/TX para

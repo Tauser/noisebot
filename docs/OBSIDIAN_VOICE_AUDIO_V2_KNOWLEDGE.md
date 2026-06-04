@@ -355,6 +355,10 @@ Incremento atual da Fase N3:
   projeto: contrato firmware focado, `server/tests/test_server_facade.py -k
   voice_v2` e `idf.py build` passaram. Inferencia da IA: esse corte fecha a
   pergunta operacional "quem manda em que" sem mexer em HAL/runtime.
+- P2 server-only seguinte: `voice-release-check` valida `ownership` quando o
+  firmware novo fornece o bloco e emite warnings se algum owner esperado mudar.
+  Firmware antigo sem o bloco segue compativel. Evidencia: `server/tests/
+  test_server_facade.py -k voice_release_check` passou com 13 testes.
 
 ### Wake Word
 
