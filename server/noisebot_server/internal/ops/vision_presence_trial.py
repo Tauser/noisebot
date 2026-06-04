@@ -34,7 +34,10 @@ class VisionPresenceTrialResult:
     first_absent_elapsed_ms: float | None
     max_presence_score: int | None
     final_presence_state: str | None
+    baseline_fps: float | None
     min_fps: float | None
+    fps_sample_delay_s: float
+    close_each_sample: bool
     min_fps_required: float | None
     max_latency_ms: float | None
     final_close_ok: bool | None
@@ -57,7 +60,10 @@ class VisionPresenceTrialResult:
             "first_absent_elapsed_ms": _round_optional(self.first_absent_elapsed_ms),
             "max_presence_score": self.max_presence_score,
             "final_presence_state": self.final_presence_state,
+            "baseline_fps": self.baseline_fps,
             "min_fps": self.min_fps,
+            "fps_sample_delay_s": round(self.fps_sample_delay_s, 3),
+            "close_each_sample": self.close_each_sample,
             "min_fps_required": self.min_fps_required,
             "max_latency_ms": self.max_latency_ms,
             "final_close_ok": self.final_close_ok,
@@ -73,6 +79,8 @@ def run_vision_presence_trial(
     timeout_s: float = 8.0,
     *,
     max_latency_ms: float | None = None,
+    fps_sample_delay_s: float = 0.0,
+    close_each_sample: bool = False,
     min_fps_required: float | None = None,
     now_fn: Callable[[], float] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
@@ -84,6 +92,8 @@ def run_vision_presence_trial(
         raise ValueError("duration_s must be positive")
     if interval_s <= 0.0:
         raise ValueError("interval_s must be positive")
+    if fps_sample_delay_s < 0.0:
+        raise ValueError("fps_sample_delay_s must not be negative")
 
     base_url = firmware_url.rstrip("/") + "/"
     now = now_fn or time.monotonic
@@ -102,14 +112,31 @@ def run_vision_presence_trial(
     first_absent_elapsed_ms: float | None = None
     max_presence_score: int | None = None
     final_presence_state: str | None = None
+    baseline_fps: float | None = None
     min_fps: float | None = None
     errors: list[str] = []
+
+    try:
+        baseline_diag = _get_json(base_url, "api/diag", timeout_s)
+        baseline_value = _float(baseline_diag.get("fps"))
+        if baseline_value > 0.0:
+            baseline_fps = baseline_value
+    except Exception as exc:
+        failures += 1
+        errors.append(f"baseline:{exc}")
 
     while True:
         loop_started = now()
         elapsed_ms = (loop_started - started) * 1000.0
         try:
             payload = _get_json(base_url, "api/vision/observe", timeout_s)
+            if close_each_sample:
+                close_payload = _post_json(base_url, "api/camera/session/close", timeout_s)
+                if not close_payload.get("ok", False):
+                    failures += 1
+                    errors.append("close_each_sample_not_ok")
+            if fps_sample_delay_s > 0.0:
+                sleep(fps_sample_delay_s)
             diag = _get_json(base_url, "api/diag", timeout_s)
             observation = payload.get("observation", {})
             presence = payload.get("presence", {})
@@ -203,7 +230,10 @@ def run_vision_presence_trial(
         first_absent_elapsed_ms=first_absent_elapsed_ms,
         max_presence_score=max_presence_score,
         final_presence_state=final_presence_state,
+        baseline_fps=baseline_fps,
         min_fps=min_fps,
+        fps_sample_delay_s=fps_sample_delay_s,
+        close_each_sample=close_each_sample,
         min_fps_required=min_fps_required,
         max_latency_ms=max_latency_ms,
         final_close_ok=close_ok,
@@ -225,7 +255,10 @@ def format_vision_presence_trial_markdown(result: VisionPresenceTrialResult) -> 
         f"- Primeiro absent: {result.first_absent_elapsed_ms} ms",
         f"- Score máximo: {result.max_presence_score}",
         f"- Estado final: {result.final_presence_state}",
+        f"- FPS baseline: {result.baseline_fps}",
         f"- FPS mínimo: {result.min_fps}",
+        f"- Delay de amostragem FPS: {result.fps_sample_delay_s} s",
+        f"- Fecha câmera a cada amostra: {result.close_each_sample}",
         f"- FPS mínimo exigido: {result.min_fps_required}",
         f"- Latência máxima exigida: {result.max_latency_ms} ms",
         f"- Close final: {result.final_close_ok}",

@@ -148,6 +148,10 @@ copying board-specific implementations from other products.
   score 42 and final camera closed; the same mode with `--min-fps 25` failed at
   `min_fps=22.9`, so continuous/polling vision still needs FPS tuning before
   the acceptance criterion can close.
+- The presence trial reports `baseline_fps` before the first camera capture.
+  A 2026-06-04 run with `--close-each-sample --fps-sample-delay-s 2 --min-fps 25`
+  showed `baseline_fps=22.9` and `min_fps=22.9`, confirming the current FPS gate
+  is blocked before attributing additional loss to vision polling.
 - The bridge v2 can answer local vision questions from that endpoint without
   invoking the LLM.
 - Hardware validation on 2026-05-25 showed camera snapshots, bridge connection

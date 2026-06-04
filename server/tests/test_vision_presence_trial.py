@@ -37,6 +37,8 @@ def test_vision_presence_trial_detects_presence_latency(monkeypatch) -> None:
         duration_s=0.4,
         interval_s=0.2,
         max_latency_ms=500.0,
+        fps_sample_delay_s=0.0,
+        close_each_sample=False,
         min_fps_required=25.0,
         now_fn=lambda: next(ticks),
         sleep_fn=lambda _: None,
@@ -46,6 +48,9 @@ def test_vision_presence_trial_detects_presence_latency(monkeypatch) -> None:
     assert result.present_samples == 2
     assert result.candidate_samples == 1
     assert result.first_present_elapsed_ms == 200.0
+    assert result.baseline_fps == 25.4
+    assert result.fps_sample_delay_s == 0.0
+    assert result.close_each_sample is False
     assert result.max_presence_score == 76
     assert calls.count("api/vision/observe") == 3
 
