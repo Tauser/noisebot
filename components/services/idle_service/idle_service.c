@@ -181,6 +181,7 @@ typedef enum {
     IDLE_MOTIF_EXPR_CURIOUS_FLASH,/* flash curto de CURIOUS + micro gaze            */
     IDLE_MOTIF_POSE_TILT,         /* overlay assimétrico dopen 5–15s                */
     IDLE_MOTIF_EXPR_CURIOUS_HOLD, /* CURIOUS sustentado 3.5–5s                      */
+    IDLE_MOTIF_CAMERA_STEADY,     /* centro leve durante sessão de câmera ativa     */
 } idle_motif_t;
 
 static idle_motif_t s_motif              = IDLE_MOTIF_NONE;
@@ -271,12 +272,17 @@ static void begin_idle_motif(bool is_idle_now)
 
     float r = rand01();
     if (is_idle_now) {
+        if (s_camera_active) {
+            s_motif = IDLE_MOTIF_CAMERA_STEADY;
+            s_motif_step = 0;
+            s_motif_sign = rand_sign();
+            return;
+        }
         if      (r < 0.25f) s_motif = IDLE_MOTIF_GAZE_H;
         else if (r < 0.45f) s_motif = IDLE_MOTIF_GAZE_V;
         else if (r < 0.60f) s_motif = IDLE_MOTIF_GAZE_CORNERS;
         else if (r < 0.85f) s_motif = IDLE_MOTIF_EXPR_CURIOUS_HOLD;
-        else                s_motif = s_camera_active ? IDLE_MOTIF_GAZE_H
-                                                       : IDLE_MOTIF_POSE_TILT;
+        else                s_motif = IDLE_MOTIF_POSE_TILT;
     } else {
         /* ATTENTIVE */
         if      (r < 0.25f) s_motif = IDLE_MOTIF_GAZE_H;
@@ -485,6 +491,18 @@ static void do_glance(bool is_idle_now)
             }
             break;
 
+        case IDLE_MOTIF_CAMERA_STEADY:
+            switch (s_motif_step++) {
+                case 0:
+                    expression_service_set_idle_rotation(0.0f, 0.0f);
+                    do_center_pause();
+                    break;
+                default:
+                    finish_idle_motif();
+                    break;
+            }
+            break;
+
         case IDLE_MOTIF_NONE:
         default:
             finish_idle_motif();
@@ -543,8 +561,9 @@ void idle_service_set_yawn_multiplier(float factor)
 void idle_service_set_camera_active(bool active)
 {
     s_camera_active = active;
-    if (active && s_motif == IDLE_MOTIF_POSE_TILT) {
+    if (active) {
         expression_service_set_idle_rotation(0.0f, 0.0f);
+        gaze_service_set_target(0.0f, 0.0f);
         finish_idle_motif();
     }
 }

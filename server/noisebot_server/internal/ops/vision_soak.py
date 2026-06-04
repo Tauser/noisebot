@@ -41,6 +41,15 @@ class VisionSoakResult:
     final_camera_ready: bool | None
     final_camera_active: bool | None
     final_close_ok: bool | None
+    worst_fps_sample: dict[str, Any] | None
+    audio_probe_ms: int
+    audio_probe_samples: int
+    audio_probe_busy_skips: int
+    audio_probe_failures: int
+    max_audio_i2s_recoveries: int | None
+    max_audio_dropped_frames: int | None
+    final_audio_probe_running: bool | None
+    final_audio_last_error: str | None
     errors: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -69,6 +78,15 @@ class VisionSoakResult:
             "final_camera_ready": self.final_camera_ready,
             "final_camera_active": self.final_camera_active,
             "final_close_ok": self.final_close_ok,
+            "worst_fps_sample": self.worst_fps_sample,
+            "audio_probe_ms": self.audio_probe_ms,
+            "audio_probe_samples": self.audio_probe_samples,
+            "audio_probe_busy_skips": self.audio_probe_busy_skips,
+            "audio_probe_failures": self.audio_probe_failures,
+            "max_audio_i2s_recoveries": self.max_audio_i2s_recoveries,
+            "max_audio_dropped_frames": self.max_audio_dropped_frames,
+            "final_audio_probe_running": self.final_audio_probe_running,
+            "final_audio_last_error": self.final_audio_last_error,
             "errors": self.errors,
         }
 
@@ -81,6 +99,7 @@ def run_vision_soak(
     *,
     expect_absence: bool = False,
     min_fps_required: float | None = None,
+    audio_io_probe_ms: int = 0,
     now_fn: Callable[[], float] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
 ) -> VisionSoakResult:
@@ -89,6 +108,8 @@ def run_vision_soak(
         raise ValueError("duration_s must be positive")
     if interval_s <= 0.0:
         raise ValueError("interval_s must be positive")
+    if audio_io_probe_ms < 0:
+        raise ValueError("audio_io_probe_ms must be non-negative")
 
     base_url = firmware_url.rstrip("/") + "/"
     now = now_fn or time.monotonic
@@ -112,15 +133,63 @@ def run_vision_soak(
     presence_false_positive_count = 0
     max_presence_score: int | None = None
     final_presence_state: str | None = None
+    worst_fps_sample: dict[str, Any] | None = None
+    audio_probe_samples = 0
+    audio_probe_busy_skips = 0
+    audio_probe_failures = 0
+    max_audio_i2s_recoveries: int | None = None
+    max_audio_dropped_frames: int | None = None
+    final_audio_probe_running: bool | None = None
+    final_audio_last_error: str | None = None
     errors: list[str] = []
 
     while True:
         loop_started = now()
         try:
+            if audio_io_probe_ms > 0:
+                audio_probe_samples += 1
+                for attempt in range(3):
+                    try:
+                        audio_probe = _post_json(
+                            base_url,
+                            "api/audio/io-v2/probe",
+                            timeout_s,
+                            {"duration_ms": audio_io_probe_ms},
+                        )
+                        if audio_probe.get("ok", False):
+                            break
+                        if (
+                            str(audio_probe.get("error", "")) == "audio_busy"
+                            and attempt < 2
+                        ):
+                            sleep(0.25)
+                            continue
+                        if str(audio_probe.get("error", "")) == "audio_busy":
+                            audio_probe_busy_skips += 1
+                            break
+                        audio_probe_failures += 1
+                        errors.append(str(audio_probe.get("error", "audio_probe_not_ok")))
+                        break
+                    except Exception as exc:
+                        if "409" in str(exc) and attempt < 2:
+                            sleep(0.25)
+                            continue
+                        if "409" in str(exc):
+                            audio_probe_busy_skips += 1
+                            break
+                        audio_probe_failures += 1
+                        errors.append(f"audio_probe:{exc}")
+                        break
+
             observation_payload = _get_json(base_url, "api/vision/observe", timeout_s)
             diag = _get_json(base_url, "api/diag", timeout_s)
             camera = _get_json(base_url, "api/camera/status", timeout_s)
             render = _get_json(base_url, "api/render/status", timeout_s)
+            audio_io = (
+                _get_json(base_url, "api/audio/io-v2", timeout_s)
+                if audio_io_probe_ms > 0
+                else {}
+            )
 
             observation = observation_payload.get("observation", {})
             if not observation_payload.get("ok", False):
@@ -158,6 +227,21 @@ def run_vision_soak(
 
             fps = _float(render.get("fps")) or _float(diag.get("fps"))
             if fps > 0.0:
+                if min_fps is None or fps < min_fps:
+                    worst_fps_sample = {
+                        "sample": samples + 1,
+                        "fps": fps,
+                        "dirty_w": _int(render.get("dirty_w")),
+                        "dirty_h": _int(render.get("dirty_h")),
+                        "last_push_ms": _float(render.get("last_push_ms")),
+                        "avg_clear_ms": _float(render.get("avg_clear_ms")),
+                        "avg_layer_ms": _float(render.get("avg_layer_ms")),
+                        "full_push_count": _int(render.get("full_push_count")),
+                        "partial_push_count": _int(render.get("partial_push_count")),
+                        "presence_state": final_presence_state,
+                        "capture_ms": _int(observation.get("capture_ms")),
+                        "camera_active": bool(camera.get("active", False)),
+                    }
                 min_fps = fps if min_fps is None else min(min_fps, fps)
                 if min_fps_required is not None and fps < min_fps_required:
                     errors.append(f"fps_below_min:{fps:.1f}<{min_fps_required:.1f}")
@@ -180,6 +264,23 @@ def run_vision_soak(
             max_jpeg_bytes = (
                 jpeg_bytes if max_jpeg_bytes is None else max(max_jpeg_bytes, jpeg_bytes)
             )
+            if audio_io_probe_ms > 0:
+                i2s_recoveries = _int(audio_io.get("i2s_recoveries"))
+                dropped_frames = _int(audio_io.get("dropped_frames"))
+                max_audio_i2s_recoveries = (
+                    i2s_recoveries
+                    if max_audio_i2s_recoveries is None
+                    else max(max_audio_i2s_recoveries, i2s_recoveries)
+                )
+                max_audio_dropped_frames = (
+                    dropped_frames
+                    if max_audio_dropped_frames is None
+                    else max(max_audio_dropped_frames, dropped_frames)
+                )
+                if i2s_recoveries > 0:
+                    errors.append(f"audio_i2s_recoveries:{i2s_recoveries}")
+                if dropped_frames > 0:
+                    errors.append(f"audio_dropped_frames:{dropped_frames}")
         except Exception as exc:
             failures += 1
             errors.append(str(exc))
@@ -202,6 +303,19 @@ def run_vision_soak(
         failures += 1
         errors.append(f"close:{exc}")
 
+    if audio_io_probe_ms > 0:
+        try:
+            audio_io = _get_json(base_url, "api/audio/io-v2", timeout_s)
+            final_audio_probe_running = bool(audio_io.get("probe_running", False))
+            if final_audio_probe_running:
+                _post_json(base_url, "api/audio/io-v2/probe/stop", timeout_s)
+                audio_io = _get_json(base_url, "api/audio/io-v2", timeout_s)
+                final_audio_probe_running = bool(audio_io.get("probe_running", False))
+            final_audio_last_error = str(audio_io.get("last_error", ""))
+        except Exception as exc:
+            failures += 1
+            errors.append(f"audio_final:{exc}")
+
     ok = (
         samples > 0
         and failures == 0
@@ -212,6 +326,10 @@ def run_vision_soak(
         and close_ok is True
         and final_ready is False
         and final_active is False
+        and audio_probe_failures == 0
+        and (audio_io_probe_ms == 0 or max_audio_i2s_recoveries == 0)
+        and (audio_io_probe_ms == 0 or max_audio_dropped_frames == 0)
+        and (audio_io_probe_ms == 0 or final_audio_probe_running is False)
     )
     return VisionSoakResult(
         ok=ok,
@@ -238,6 +356,15 @@ def run_vision_soak(
         final_camera_ready=final_ready,
         final_camera_active=final_active,
         final_close_ok=close_ok,
+        worst_fps_sample=worst_fps_sample,
+        audio_probe_ms=audio_io_probe_ms,
+        audio_probe_samples=audio_probe_samples,
+        audio_probe_busy_skips=audio_probe_busy_skips,
+        audio_probe_failures=audio_probe_failures,
+        max_audio_i2s_recoveries=max_audio_i2s_recoveries,
+        max_audio_dropped_frames=max_audio_dropped_frames,
+        final_audio_probe_running=final_audio_probe_running,
+        final_audio_last_error=final_audio_last_error,
         errors=errors[:20],
     )
 
@@ -264,6 +391,10 @@ def format_vision_soak_markdown(result: VisionSoakResult) -> str:
         f"- Ausência esperada: {result.expect_absence}",
         f"- Câmera final: ready={result.final_camera_ready}, active={result.final_camera_active}",
         f"- Close final: {result.final_close_ok}",
+        f"- Pior amostra FPS: {result.worst_fps_sample}",
+        f"- Audio probe: {result.audio_probe_ms} ms, amostras={result.audio_probe_samples}, busy_skips={result.audio_probe_busy_skips}, falhas={result.audio_probe_failures}",
+        f"- Audio I2S recoveries/drop max: {result.max_audio_i2s_recoveries}/{result.max_audio_dropped_frames}",
+        f"- Audio final: probe_running={result.final_audio_probe_running}, last_error={result.final_audio_last_error}",
         f"- Erros: {result.errors}",
     ])
 
@@ -276,13 +407,29 @@ def _get_json(base_url: str, path: str, timeout_s: float) -> dict[str, Any]:
     return _request_json(base_url, path, timeout_s, method="GET")
 
 
-def _post_json(base_url: str, path: str, timeout_s: float) -> dict[str, Any]:
-    return _request_json(base_url, path, timeout_s, method="POST")
+def _post_json(
+    base_url: str,
+    path: str,
+    timeout_s: float,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return _request_json(base_url, path, timeout_s, method="POST", payload=payload)
 
 
-def _request_json(base_url: str, path: str, timeout_s: float, method: str) -> dict[str, Any]:
+def _request_json(
+    base_url: str,
+    path: str,
+    timeout_s: float,
+    method: str,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     url = urljoin(base_url, path.lstrip("/"))
-    request = Request(url, method=method, headers={"User-Agent": "NoiseBot-Server/0.1"})
+    data = None
+    headers = {"User-Agent": "NoiseBot-Server/0.1"}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = Request(url, data=data, method=method, headers=headers)
     try:
         with urlopen(request, timeout=timeout_s) as response:
             data = response.read().decode("utf-8")

@@ -128,6 +128,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     vision_soak.add_argument("--timeout-s", type=float, default=8.0)
     vision_soak.add_argument("--expect-absence", action="store_true")
     vision_soak.add_argument("--min-fps", type=float, default=None)
+    vision_soak.add_argument(
+        "--audio-io-probe-ms",
+        type=int,
+        default=0,
+        help="Inicia probe RX do audio_io_v2 antes de cada observacao",
+    )
     vision_soak.add_argument("--output", help="Arquivo Markdown/JSON de saida")
     vision_soak.add_argument("--json", action="store_true", help="Emitir JSON")
 
@@ -704,6 +710,7 @@ def run_debug_command(args: argparse.Namespace) -> None:
             timeout_s=args.timeout_s,
             expect_absence=args.expect_absence,
             min_fps_required=args.min_fps,
+            audio_io_probe_ms=args.audio_io_probe_ms,
         )
         text = (
             format_vision_soak_json(result)

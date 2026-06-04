@@ -86,9 +86,9 @@ void idle_service_set_yawn_multiplier(float factor);
 /**
  * @brief Informa se uma sessão de câmera está ativa.
  *
- * Enquanto a câmera estiver ativa, o idle evita motifs de postura caros
- * (`POSE_TILT`) que ampliam demais o dirty rect do display. Gaze, blink e
- * expressões leves continuam ativos.
+ * Enquanto a câmera estiver ativa, o idle evita motifs caros de postura/gaze
+ * ampla que ampliam demais o dirty rect do display. Blink e micro-drift seguem
+ * ativos.
  */
 void idle_service_set_camera_active(bool active);
 

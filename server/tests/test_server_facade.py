@@ -7936,8 +7936,10 @@ def test_firmware_idle_suppresses_pose_tilt_while_camera_active() -> None:
 
     assert "idle_service_set_camera_active" in idle_h
     assert "static volatile bool s_camera_active = false;" in idle_c
-    assert "s_camera_active ? IDLE_MOTIF_GAZE_H" in idle_c
-    assert "active && s_motif == IDLE_MOTIF_POSE_TILT" in idle_c
+    assert "IDLE_MOTIF_CAMERA_STEADY" in idle_c
+    assert "if (s_camera_active)" in idle_c
+    assert "s_motif = IDLE_MOTIF_CAMERA_STEADY;" in idle_c
+    assert "gaze_service_set_target(0.0f, 0.0f);" in idle_c
     assert "expression_service_set_idle_rotation(0.0f, 0.0f);" in idle_c
     assert "idle_service_set_camera_active(true);" in boot_c
     assert "idle_service_set_camera_active(false);" in boot_c
@@ -8078,7 +8080,12 @@ def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
             return {"fps": 30.5}
         raise AssertionError(path)
 
-    def fake_post_json(base_url: str, path: str, timeout_s: float) -> dict:
+    def fake_post_json(
+        base_url: str,
+        path: str,
+        timeout_s: float,
+        payload: dict | None = None,
+    ) -> dict:
         calls.append(path)
         assert path == "api/camera/session/close"
         return {"ok": True}
@@ -8109,6 +8116,83 @@ def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
     assert calls.count("api/render/status") == 2
 
 
+def test_server_vision_soak_can_probe_audio_io_during_observation(monkeypatch) -> None:
+    soak = importlib.import_module("noisebot_server.internal.ops.vision_soak")
+
+    calls: list[tuple[str, dict | None]] = []
+    probe_running = True
+
+    def fake_get_json(base_url: str, path: str, timeout_s: float) -> dict:
+        calls.append((path, None))
+        if path == "api/vision/observe":
+            return {
+                "ok": True,
+                "observation": {
+                    "valid": True,
+                    "jpeg_bytes": 0,
+                    "capture_ms": 170,
+                },
+                "presence": {"state": "absent", "score": 42},
+            }
+        if path == "api/diag":
+            return {"uptime_s": 10, "memory": {"psram_free": 7_000_000}}
+        if path == "api/camera/status":
+            return {"heap_dma_free": 16_000, "ready": False, "active": False}
+        if path == "api/render/status":
+            return {"fps": 34.0}
+        if path == "api/audio/io-v2":
+            return {
+                "probe_running": probe_running,
+                "i2s_recoveries": 0,
+                "dropped_frames": 0,
+                "last_error": "ESP_OK",
+            }
+        raise AssertionError(path)
+
+    def fake_post_json(
+        base_url: str,
+        path: str,
+        timeout_s: float,
+        payload: dict | None = None,
+    ) -> dict:
+        nonlocal probe_running
+        calls.append((path, payload))
+        if path == "api/audio/io-v2/probe":
+            assert payload == {"duration_ms": 5000}
+            return {"ok": True}
+        if path == "api/audio/io-v2/probe/stop":
+            probe_running = False
+            return {"ok": True}
+        if path == "api/camera/session/close":
+            return {"ok": True}
+        raise AssertionError(path)
+
+    ticks = iter([0.0, 0.0, 0.0, 0.1, 0.1])
+    monkeypatch.setattr(soak, "_get_json", fake_get_json)
+    monkeypatch.setattr(soak, "_post_json", fake_post_json)
+
+    result = soak.run_vision_soak(
+        firmware_url="http://192.168.1.30",
+        duration_s=0.1,
+        interval_s=1.0,
+        min_fps_required=30.0,
+        audio_io_probe_ms=5000,
+        now_fn=lambda: next(ticks),
+        sleep_fn=lambda _: None,
+    )
+
+    assert result.ok is True
+    assert result.audio_probe_ms == 5000
+    assert result.audio_probe_samples == 2
+    assert result.audio_probe_busy_skips == 0
+    assert result.audio_probe_failures == 0
+    assert result.max_audio_i2s_recoveries == 0
+    assert result.max_audio_dropped_frames == 0
+    assert result.final_audio_probe_running is False
+    assert ("api/audio/io-v2/probe", {"duration_ms": 5000}) in calls
+    assert ("api/audio/io-v2/probe/stop", None) in calls
+
+
 def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
     cli = importlib.import_module("noisebot_server.cli")
     soak = importlib.import_module("noisebot_server.internal.ops.vision_soak")
@@ -8123,6 +8207,7 @@ def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
         timeout_s: float,
         expect_absence: bool,
         min_fps_required: float | None,
+        audio_io_probe_ms: int,
     ):
         calls["firmware_url"] = firmware_url
         calls["duration_s"] = duration_s
@@ -8130,6 +8215,7 @@ def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
         calls["timeout_s"] = timeout_s
         calls["expect_absence"] = expect_absence
         calls["min_fps_required"] = min_fps_required
+        calls["audio_io_probe_ms"] = audio_io_probe_ms
         return soak.VisionSoakResult(
             ok=True,
             duration_s=duration_s,
@@ -8155,6 +8241,15 @@ def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
             final_camera_ready=False,
             final_camera_active=False,
             final_close_ok=True,
+            worst_fps_sample={"sample": 1, "fps": 25.0},
+            audio_probe_ms=audio_io_probe_ms,
+            audio_probe_samples=1,
+            audio_probe_busy_skips=0,
+            audio_probe_failures=0,
+            max_audio_i2s_recoveries=0,
+            max_audio_dropped_frames=0,
+            final_audio_probe_running=False,
+            final_audio_last_error="ESP_OK",
             errors=[],
         )
 
@@ -8174,6 +8269,8 @@ def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
         "--expect-absence",
         "--min-fps",
         "25",
+        "--audio-io-probe-ms",
+        "5000",
         "--json",
     ])
 
@@ -8184,6 +8281,7 @@ def test_server_cli_runs_debug_vision_soak(monkeypatch) -> None:
         "timeout_s": 2.0,
         "expect_absence": True,
         "min_fps_required": 25.0,
+        "audio_io_probe_ms": 5000,
     }
 
 

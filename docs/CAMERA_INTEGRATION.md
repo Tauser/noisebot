@@ -144,17 +144,22 @@ copying board-specific implementations from other products.
   measured steady-state render at `fps=52.4`, `dirty=220x112` and
   `push=18.8ms`; a 120s `vision-soak --min-fps 30` improved the valley but still
   failed at `min_fps=27.3`, so the long-run FPS gate remains open.
-- `idle_service` now suppresses `POSE_TILT` while the camera hot session is
-  active, keeping blink, gaze and light expressions available but avoiding the
-  near-full-screen dirty rectangle caused by rotated eyes during invisible
-  captures. Hardware validation after flash passed a 120s
-  `vision-soak --duration-s 120 --interval-s 10 --min-fps 30` with 13/13 valid
-  observations, zero failures/reboots, `min_fps=34.1`, `max_capture_ms=169`,
-  `min_dma_free=16247` and final camera closed. The follow-up 30-minute soak,
-  `vision-soak --duration-s 1800 --interval-s 30 --min-fps 30`, passed with
-  60/60 valid observations, zero failures/reboots, `min_fps=33.8`,
-  `max_capture_ms=175`, `max_jpeg_bytes=0`, `min_psram_free=6964572`,
-  `min_dma_free=15571`, zero presence false positives and final camera closed.
+- `idle_service` now enters `CAMERA_STEADY` while the camera hot session is
+  active, avoiding `POSE_TILT` and wide gaze motifs that produced
+  near-full-screen dirty rectangles during invisible captures. The
+  `vision-soak` harness can now start an `audio_io_v2` RX probe before each
+  observation via `--audio-io-probe-ms`, and reports probe failures, busy skips,
+  I2S recoveries/drops and the worst FPS sample. Hardware validation after flash
+  passed a 120s
+  `vision-soak --duration-s 120 --interval-s 10 --min-fps 30 --audio-io-probe-ms 5000`
+  with 13/13 valid observations, zero failures/reboots, `min_fps=34.9`,
+  `max_capture_ms=175`, `min_dma_free=15795`, zero I2S recoveries/drops and
+  final camera closed. The follow-up 30-minute soak,
+  `vision-soak --duration-s 1800 --interval-s 30 --min-fps 30 --audio-io-probe-ms 5000`,
+  passed with 60/60 valid observations, zero failures/reboots, `min_fps=30.5`,
+  worst dirty rect `253x186`, `max_capture_ms=175`, `max_jpeg_bytes=0`,
+  `min_psram_free=6965800`, `min_dma_free=15723`, zero audio probe failures,
+  zero I2S recoveries/drops and final camera closed.
 - Presence detection for Roadmap 13.1 is now present as on-demand shadow state
   in `vision_service`: `/api/vision/observe`, `/api/vision/status` and
   `/api/diag/snapshot` include a `presence` block, while
