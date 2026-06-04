@@ -142,6 +142,10 @@ O tratamento de stop legado tambem foi isolado em
 `audio_service_handle_play_stop()`: ele fecha WAV, cancela SAY ativo, escreve
 silencio curto, emite `PLAYBACK_END` e retorna a `PLAY_IDLE` sem mudar o
 caminho real de HAL/wake/VAD/captura/codec.
+O playback local `PLAY_ACTIVE` foi isolado em
+`audio_service_play_active_chunk()`, preservando WAV/PCM raw, volume, write e
+EOF. Esse caminho continua local/legado e nao assume fila SAY nem altera Voice
+v2; o ganho e deixar o loop principal menos acoplado.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

@@ -368,6 +368,11 @@ Invariantes:
   `audio_task` para `audio_service_handle_play_stop()`. Ele preserva o
   fechamento de WAV, cancelamento SAY, silencio curto, evento de fim e retorno
   a `PLAY_IDLE`, sem alterar HAL, wake, VAD, captura, codec ou fila SAY.
+- O playback local `PLAY_ACTIVE` tambem foi movido para
+  `audio_service_play_active_chunk()`: abertura de WAV/PCM raw, evento de
+  inicio, volume, write e EOF ficam fora do loop principal. Isso nao muda Voice
+  v2 nem o ownership fisico do HAL, apenas reduz o bloco legado de playback
+  local dentro do `audio_task`.
 
 ### Voice Activity v2
 

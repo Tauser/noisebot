@@ -433,6 +433,91 @@ static long wav_parse_header(FILE *f, uint32_t *duration_ms)
     return 0;
 }
 
+static bool audio_service_play_active_chunk(FILE **wav_file)
+{
+    if (wav_file == NULL) {
+        return false;
+    }
+
+    if (*wav_file == NULL) {
+        char path[128];
+        bool raw_pcm;
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        memcpy(path, s.play_path, sizeof(path));
+        raw_pcm = s.play_raw_pcm;
+        xSemaphoreGive(s.mutex);
+
+        *wav_file = fopen(path, "rb");
+        if (*wav_file == NULL) {
+            ESP_LOGW(TAG, "asset ausente: %s", path);
+            xSemaphoreTake(s.mutex, portMAX_DELAY);
+            s.play_state = PLAY_IDLE;
+            xSemaphoreGive(s.mutex);
+        } else if (raw_pcm) {
+            long file_size = 0;
+            fseek(*wav_file, 0, SEEK_END);
+            file_size = ftell(*wav_file);
+            fseek(*wav_file, 0, SEEK_SET);
+            uint32_t duration_ms = (uint32_t)((file_size / 2U * 1000U) / 16000U);
+            if (s.event_cb) {
+                s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, duration_ms);
+            }
+            ESP_LOGI(TAG, "reproduzindo PCM raw: %s (%ums)", path, (unsigned)duration_ms);
+        } else {
+            uint32_t duration_ms = 0;
+            long data_off = wav_parse_header(*wav_file, &duration_ms);
+            if (data_off <= 0) {
+                ESP_LOGE(TAG, "formato WAV invalido: %s", path);
+                fclose(*wav_file);
+                *wav_file = NULL;
+                xSemaphoreTake(s.mutex, portMAX_DELAY);
+                s.play_state = PLAY_IDLE;
+                xSemaphoreGive(s.mutex);
+            } else {
+                fseek(*wav_file, data_off, SEEK_SET);
+                if (s.event_cb) {
+                    s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, duration_ms);
+                }
+                ESP_LOGI(TAG, "reproduzindo: %s (%ums)", path, (unsigned)duration_ms);
+            }
+        }
+    }
+
+    if (*wav_file == NULL) {
+        return false;
+    }
+
+    size_t n = fread(s_wav_chunk, sizeof(int16_t), WAV_SAMPLES_PER_CHUNK, *wav_file);
+    if (n == 0) {
+        fclose(*wav_file);
+        *wav_file = NULL;
+        if (s.event_cb) {
+            s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
+        }
+        ESP_LOGI(TAG, "reproducao encerrada (EOF)");
+        xSemaphoreTake(s.mutex, portMAX_DELAY);
+        s.play_state = PLAY_IDLE;
+        xSemaphoreGive(s.mutex);
+        return false;
+    }
+
+    uint32_t mult = ((uint32_t)s.volume * 256U) / 100U;
+    for (size_t i = 0; i < n; i++) {
+        int32_t v = ((int32_t)s_wav_chunk[i] * (int32_t)mult) >> 8;
+        if (v >  32767) v =  32767;
+        if (v < -32768) v = -32768;
+        s_wav_chunk[i] = (int16_t)v;
+    }
+    if (n < WAV_SAMPLES_PER_CHUNK) {
+        memset(s_wav_chunk + n, 0,
+               (WAV_SAMPLES_PER_CHUNK - n) * sizeof(int16_t));
+    }
+    esp_err_t wr = audio_hal_spk_write(s_wav_chunk, WAV_SAMPLES_PER_CHUNK,
+                                       pdMS_TO_TICKS(100));
+    audio_note_spk_result(wr, "wav", WAV_SAMPLES_PER_CHUNK, false);
+    return true;
+}
+
 /*
  * Remove offset DC + rumble antes de VAD/FFT/bridge.
  *
@@ -1356,77 +1441,8 @@ static void audio_task(void *arg)
 
         /* ── Reprodução ativa ── */
         else if (play_state == PLAY_ACTIVE) {
-            /* Abrir arquivo na primeira vez */
-            if (!wav_file) {
-                char path[128];
-                bool raw_pcm;
-                xSemaphoreTake(s.mutex, portMAX_DELAY);
-                memcpy(path, s.play_path, sizeof(path));
-                raw_pcm = s.play_raw_pcm;
-                xSemaphoreGive(s.mutex);
-
-                wav_file = fopen(path, "rb");
-                if (!wav_file) {
-                    ESP_LOGW(TAG, "asset ausente: %s", path);
-                    xSemaphoreTake(s.mutex, portMAX_DELAY);
-                    s.play_state = PLAY_IDLE;
-                    xSemaphoreGive(s.mutex);
-                } else if (raw_pcm) {
-                    /* PCM raw: sem header, começa no byte 0 */
-                    long file_size = 0;
-                    fseek(wav_file, 0, SEEK_END);
-                    file_size = ftell(wav_file);
-                    fseek(wav_file, 0, SEEK_SET);
-                    uint32_t duration_ms = (uint32_t)((file_size / 2U * 1000U) / 16000U);
-                    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, duration_ms);
-                    ESP_LOGI(TAG, "reproduzindo PCM raw: %s (%ums)", path, (unsigned)duration_ms);
-                } else {
-                    uint32_t duration_ms = 0;
-                    long data_off = wav_parse_header(wav_file, &duration_ms);
-                    if (data_off <= 0) {
-                        ESP_LOGE(TAG, "formato WAV invalido: %s", path);
-                        fclose(wav_file);
-                        wav_file = NULL;
-                        xSemaphoreTake(s.mutex, portMAX_DELAY);
-                        s.play_state = PLAY_IDLE;
-                        xSemaphoreGive(s.mutex);
-                    } else {
-                        fseek(wav_file, data_off, SEEK_SET);
-                        if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_START, duration_ms);
-                        ESP_LOGI(TAG, "reproduzindo: %s (%ums)", path, (unsigned)duration_ms);
-                    }
-                }
-            }
-
-            if (wav_file) {
-                size_t n = fread(s_wav_chunk, sizeof(int16_t), WAV_SAMPLES_PER_CHUNK, wav_file);
-                if (n == 0) {
-                    /* EOF */
-                    fclose(wav_file);
-                    wav_file = NULL;
-                    if (s.event_cb) s.event_cb(NB_AUDIO_EVT_PLAYBACK_END, 0);
-                    ESP_LOGI(TAG, "reproducao encerrada (EOF)");
-                    xSemaphoreTake(s.mutex, portMAX_DELAY);
-                    s.play_state = PLAY_IDLE;
-                    xSemaphoreGive(s.mutex);
-                } else {
-                    /* Aplicar volume: mult = volume * 256 / 100 */
-                    uint32_t mult = ((uint32_t)s.volume * 256U) / 100U;
-                    for (size_t i = 0; i < n; i++) {
-                        int32_t v = ((int32_t)s_wav_chunk[i] * (int32_t)mult) >> 8;
-                        if (v >  32767) v =  32767;
-                        if (v < -32768) v = -32768;
-                        s_wav_chunk[i] = (int16_t)v;
-                    }
-                    if (n < WAV_SAMPLES_PER_CHUNK) {
-                        memset(s_wav_chunk + n, 0,
-                               (WAV_SAMPLES_PER_CHUNK - n) * sizeof(int16_t));
-                    }
-                    esp_err_t wr = audio_hal_spk_write(s_wav_chunk, WAV_SAMPLES_PER_CHUNK,
-                                                       pdMS_TO_TICKS(100));
-                    audio_note_spk_result(wr, "wav", WAV_SAMPLES_PER_CHUNK, false);
-                    wrote_audio = true;
-                }
+            if (audio_service_play_active_chunk(&wav_file)) {
+                wrote_audio = true;
             }
         }
 

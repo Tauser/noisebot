@@ -283,6 +283,9 @@ Incremento atual da Fase N3:
   turno 19 transcreveu `Uma frase curta.`, completou LLM/TTS/SAY_END,
   Playback v2 fechou `say_begin_count=1`/`say_end_count=1`, `259/259` chunks
   recebidos/tocados, fila zero, zero drops/falhas e `voice-release-check ok=true`.
+- Nova reducao firmware: `PLAY_ACTIVE` local (WAV/PCM raw) foi isolado em
+  `audio_service_play_active_chunk()`. Isso preserva asset local, volume,
+  write fisico e EOF, sem mudar Voice v2/wake/VAD/captura/codec/fila SAY.
 
 ### Wake Word
 

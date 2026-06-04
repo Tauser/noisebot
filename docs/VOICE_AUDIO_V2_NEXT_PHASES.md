@@ -2151,6 +2151,15 @@ recebidos/tocados, fila zero, zero drops e zero falhas de write/commit. O
 `voice-release-check` pos-turno permaneceu `ok=true`; unico aviso foi o DONE
 retido conhecido do Capture v2.
 
+Incremento firmware seguinte: o playback local `PLAY_ACTIVE` (WAV/PCM raw)
+tambem saiu do corpo principal do `audio_task` e foi concentrado em
+`audio_service_play_active_chunk()`. O helper preserva abertura de arquivo,
+parse de WAV, evento `NB_AUDIO_EVT_PLAYBACK_START`, aplicacao de volume,
+padding do ultimo chunk, write fisico via `audio_hal_spk_write()` e fechamento
+por EOF com `NB_AUDIO_EVT_PLAYBACK_END`. Nao altera Voice v2, wake, VAD,
+captura, codec, fila SAY ou ownership do speaker; apenas tira o caminho local
+de asset do loop que tambem hospeda o pipeline v2.
+
 ## Ordem Recomendada
 
 1. Fase I: playback v2 como dono gradual do downlink.
