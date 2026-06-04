@@ -327,6 +327,12 @@ Incremento atual da Fase N3:
   Um pacote Opus egress residual foi drenado manualmente; o proximo saneamento
   O1 deve remover essa necessidade sem tocar audio real, HAL/I2S, wake, VAD,
   captura, playback, bridge ou PCM16.
+- O1: `voice-release-check` faz auto-drain apenas para 1 pacote Opus egress
+  residual quando Voice v2 esta pronto/idle, Capture inativo, Playback sem SAY
+  ativo/fila e Codec v2 nao tem drops/erro/issues. Depois relê voice-v2 e
+  codec health e anota a limpeza no JSON; fila maior, drops ou erro continuam
+  warning/falha. Evidencia: `server/tests/test_server_facade.py` passou com
+  204 testes e validacao live sem residual seguiu `ok=true`.
 
 ### Wake Word
 

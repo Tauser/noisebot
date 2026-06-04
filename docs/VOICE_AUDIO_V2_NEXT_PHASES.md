@@ -2296,3 +2296,16 @@ Aceite:
 - Playback v2 continua `SAY_BEGIN/SAY_END` balanceado, fila SAY zero e zero
   drops/falhas.
 - PCM16 rollback continua intacto.
+
+Incremento O1 server-only implementado: `voice-release-check` agora aplica
+auto-drain conservador de egress Opus quando encontra exatamente 1 pacote
+residual, Codec v2 sem issues/drops/erro, Voice v2 `ready=true`, runtime idle,
+Capture v2 sem sessao ativa e Playback v2 sem SAY ativo/fila. Depois do drain,
+o check relê `/api/audio/voice-v2` e `codec-v2 health`, anota
+`auto_egress_drain`, `auto_egress_drained_packets` e a fila antes/depois no
+JSON, e mantém warning informativo no gate Codec. Fila maior que 1 pacote,
+drops, `opus_codec_error`, worker ruim ou runtime ocupado continuam sem
+auto-drain e permanecem como warning/falha normal. O endpoint HTTP operacional
+do server usa a mesma regra. Validacao local: `server/tests/test_server_facade.py`
+com 204 testes verdes. Validacao live sem residual pendente: release-check
+continuou `ok=true`, heap interno/DMA ~18,8 KB e Codec/Playback/Capture verdes.

@@ -413,6 +413,11 @@ Invariantes:
   Proximo saneamento operacional: O1 deve eliminar essa drenagem manual em
   ponto idle seguro ou criterio explicito de gate, sem tocar HAL/I2S, wake,
   VAD, captura, playback real, bridge ou PCM16.
+- O1 e server-only: o release-check drena automaticamente apenas 1 pacote Opus
+  egress residual quando todos os donos reais estao idle e saudaveis, relendo o
+  gate consolidado e o health do Codec v2 logo depois. Isso remove o passo
+  manual de bancada sem mascarar regressao: filas maiores, drops, erro de
+  codec, worker ruim ou runtime ocupado continuam aparecendo como warning/falha.
 
 ### Voice Activity v2
 

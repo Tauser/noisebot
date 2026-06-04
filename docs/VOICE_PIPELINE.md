@@ -183,6 +183,13 @@ de heap. Um turno real curto em Opus v2 completou LLM/TTS/SAY_END, enviou
 unico ruido operacional foi 1 pacote Opus egress residual no primeiro gate
 pos-turno; apos `codec-v2 egress-drain`, o gate final continuou verde. Proximo
 passo: O1 deve sanear essa fila residual sem mexer no caminho real de audio.
+O1 server-only adiciona esse saneamento no proprio `voice-release-check`: se ha
+exatamente 1 pacote Opus egress residual, Codec sem erro/drop, Voice v2 pronto e
+idle, Capture inativo e Playback sem SAY ativo/fila, o check chama
+`egress-drain`, relê o firmware e registra a limpeza no JSON. Caso contrario,
+o warning/falha permanece. Validacao local: `server/tests/test_server_facade.py`
+com 204 testes verdes; validacao live sem residual pendente continuou
+`ok=true`.
 Repeticoes fisicas posteriores separaram dois casos: uma rodada por wake teve
 +222 chunks sem drops novos, mas transcript diferente do comando esperado; a
 rodada seguinte ouviu `Me fala em historia curta.`, completou TTS e `SAY_END`,

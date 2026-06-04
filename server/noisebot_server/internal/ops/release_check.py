@@ -9,6 +9,8 @@ from typing import Any
 from .firmware_diag import FirmwareDiagClient
 from .voice_ab import get_json
 
+_AUTO_EGRESS_DRAIN_MAX_PACKETS = 1
+
 
 @dataclass(frozen=True)
 class ReleaseGate:
@@ -59,6 +61,13 @@ def run_release_check(
     codec_v2 = firmware.audio_codec_v2_health()
     capture_v2 = firmware.audio_capture_v2_status()
     playback_v2 = firmware.audio_playback_v2_status()
+    voice_v2, codec_v2 = maybe_auto_drain_codec_egress(
+        firmware=firmware,
+        voice_v2=voice_v2,
+        codec_v2=codec_v2,
+        capture_v2=capture_v2,
+        playback_v2=playback_v2,
+    )
     metrics = get_json(f"{server_url.rstrip('/')}/ai/metrics")
 
     return build_release_check(
@@ -67,6 +76,63 @@ def run_release_check(
         capture_v2=capture_v2,
         playback_v2=playback_v2,
         metrics=metrics,
+    )
+
+
+def maybe_auto_drain_codec_egress(
+    *,
+    firmware: FirmwareDiagClient,
+    voice_v2: dict[str, Any],
+    codec_v2: dict[str, Any],
+    capture_v2: dict[str, Any],
+    playback_v2: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    egress_queue = _int(codec_v2.get("opus_egress_queue_count"))
+    if not _should_auto_drain_codec_egress(
+        voice_v2=voice_v2,
+        codec_v2=codec_v2,
+        capture_v2=capture_v2,
+        playback_v2=playback_v2,
+        egress_queue=egress_queue,
+    ):
+        return voice_v2, codec_v2
+
+    drain_payload = firmware.audio_codec_v2_egress_drain()
+    refreshed_voice_v2 = firmware.audio_voice_v2_status()
+    refreshed_codec_v2 = firmware.audio_codec_v2_health()
+    refreshed_codec_v2 = dict(refreshed_codec_v2)
+    refreshed_codec_v2["auto_egress_drain"] = True
+    refreshed_codec_v2["auto_egress_queue_count_before"] = egress_queue
+    refreshed_codec_v2["auto_egress_drain_payload"] = drain_payload
+    refreshed_codec_v2["auto_egress_drained_packets"] = _int(drain_payload.get("drained_packets"))
+    refreshed_codec_v2["auto_egress_queue_count_after"] = _int(
+        refreshed_codec_v2.get("opus_egress_queue_count")
+    )
+    return refreshed_voice_v2, refreshed_codec_v2
+
+
+def _should_auto_drain_codec_egress(
+    *,
+    voice_v2: dict[str, Any],
+    codec_v2: dict[str, Any],
+    capture_v2: dict[str, Any],
+    playback_v2: dict[str, Any],
+    egress_queue: int,
+) -> bool:
+    return (
+        0 < egress_queue <= _AUTO_EGRESS_DRAIN_MAX_PACKETS
+        and bool(codec_v2.get("healthy"))
+        and not _list_str(codec_v2.get("issues"))
+        and _int(codec_v2.get("packet_drops")) == 0
+        and _int(codec_v2.get("opus_egress_packet_drops")) == 0
+        and _int(codec_v2.get("opus_codec_error")) == 0
+        and bool(voice_v2.get("ok"))
+        and voice_v2.get("ready") is True
+        and str(voice_v2.get("block_reason") or "") == "none"
+        and voice_v2.get("runtime_idle") is True
+        and capture_v2.get("session_active") is False
+        and playback_v2.get("bridge_say_active") is not True
+        and _int(playback_v2.get("say_queue_count")) == 0
     )
 
 
@@ -171,6 +237,13 @@ def _codec_gate(payload: dict[str, Any]) -> ReleaseGate:
         f"worker={payload.get('worker_state')}, drops={payload.get('packet_drops')}/"
         f"{payload.get('opus_egress_packet_drops')}"
     )
+    if payload.get("auto_egress_drain") is True:
+        warnings.append(
+            "auto_egress_drain="
+            f"{payload.get('auto_egress_drained_packets')}"
+            f" ({payload.get('auto_egress_queue_count_before')}->"
+            f"{payload.get('auto_egress_queue_count_after')})"
+        )
     return ReleaseGate(
         name="Codec v2 / Opus",
         ok=ok,
@@ -310,5 +383,6 @@ __all__ = [
     "build_release_check",
     "format_release_check_json",
     "format_release_check_markdown",
+    "maybe_auto_drain_codec_egress",
     "run_release_check",
 ]

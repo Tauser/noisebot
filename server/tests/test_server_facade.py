@@ -3818,6 +3818,188 @@ def test_server_voice_release_check_accepts_clean_preflight(monkeypatch) -> None
     assert "Status: OK" in release_check.format_release_check_markdown(check)
 
 
+def test_server_voice_release_check_auto_drains_single_idle_egress_packet(monkeypatch) -> None:
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+
+    class FakeFirmware:
+        def __init__(self, base_url: str, timeout_s: float = 1.5) -> None:
+            self.base_url = base_url
+            self.timeout_s = timeout_s
+            self.egress_queue = 1
+            self.drain_calls = 0
+
+        def audio_voice_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "ready": True,
+                "block_reason": "none",
+                "capture_enabled": True,
+                "capture_tx_enabled": True,
+                "activity_decider_enabled": True,
+                "codec_worker_state": "running",
+                "playback_say_queue_count": 0,
+                "playback_say_drops": 0,
+                "codec_packet_drops": 0,
+                "codec_egress_queue_count": self.egress_queue,
+                "codec_egress_drops": 0,
+                "runtime_idle": True,
+            }
+
+        def audio_codec_v2_health(self) -> dict:
+            warnings = [f"opus_egress_queue_count={self.egress_queue}"] if self.egress_queue else []
+            return {
+                "ok": True,
+                "healthy": True,
+                "status": "warn" if warnings else "ok",
+                "format": "opus",
+                "worker_state": "running",
+                "packet_drops": 0,
+                "opus_egress_packet_drops": 0,
+                "opus_egress_queue_count": self.egress_queue,
+                "opus_codec_error": 0,
+                "issues": [],
+                "warnings": warnings,
+            }
+
+        def audio_codec_v2_egress_drain(self) -> dict:
+            self.drain_calls += 1
+            self.egress_queue = 0
+            return {
+                "ok": True,
+                "drained_packets": 1,
+                "opus_egress_queue_count": 0,
+            }
+
+        def audio_capture_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "real_capture_enabled": True,
+                "bridge_tx_handoff_enabled": True,
+                "session_active": False,
+                "state": "DONE",
+                "bridge_tx_owner": True,
+                "dropped_frames": 0,
+                "shadow_audio_dropped_chunks": 0,
+                "last_error": "ESP_OK",
+            }
+
+        def audio_playback_v2_status(self) -> dict:
+            return {
+                "ok": True,
+                "bridge_say_observer": True,
+                "bridge_say_queue_owner": True,
+                "bridge_say_active": False,
+                "say_queue_count": 0,
+                "say_begin_count": 1,
+                "say_end_count": 1,
+                "say_chunks_received": 40,
+                "say_chunks_played": 40,
+                "say_chunks_dropped": 0,
+                "say_chunks_dropped_listening": 0,
+                "last_error": "ESP_OK",
+            }
+
+    created: list[FakeFirmware] = []
+
+    def fake_firmware(*args, **kwargs):
+        firmware = FakeFirmware(*args, **kwargs)
+        created.append(firmware)
+        return firmware
+
+    monkeypatch.setattr(release_check, "FirmwareDiagClient", fake_firmware)
+    monkeypatch.setattr(
+        release_check,
+        "get_json",
+        lambda _url: {
+            "last_voice_session": {
+                "turn_id": 10,
+                "outcome": "llm",
+                "turn_taking_decision": "llm",
+                "tts_completed": True,
+                "tts_say_end_sent": True,
+                "text_scroll_pages": 2,
+                "text_scroll_pages_sent": 2,
+            }
+        },
+    )
+
+    check = release_check.run_release_check(
+        firmware_url="http://192.168.1.30",
+        server_url="http://127.0.0.1:8765",
+    )
+
+    assert check.ok is True
+    assert created[0].drain_calls == 1
+    assert check.codec_v2["status"] == "ok"
+    assert check.codec_v2["opus_egress_queue_count"] == 0
+    assert check.codec_v2["auto_egress_drain"] is True
+    assert check.codec_v2["auto_egress_drained_packets"] == 1
+    codec_gate = check.gates[1]
+    assert codec_gate.ok is True
+    assert codec_gate.warnings == ("auto_egress_drain=1 (1->0)",)
+
+
+def test_server_voice_release_check_keeps_larger_egress_queue_as_warning() -> None:
+    release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
+
+    check = release_check.build_release_check(
+        voice_v2={
+            "ok": True,
+            "ready": True,
+            "block_reason": "none",
+            "capture_enabled": True,
+            "capture_tx_enabled": True,
+            "activity_decider_enabled": True,
+            "codec_worker_state": "running",
+            "playback_say_queue_count": 0,
+            "playback_say_drops": 0,
+            "codec_packet_drops": 0,
+            "codec_egress_drops": 0,
+            "runtime_idle": True,
+        },
+        codec_v2={
+            "ok": True,
+            "healthy": True,
+            "status": "warn",
+            "format": "opus",
+            "worker_state": "running",
+            "packet_drops": 0,
+            "opus_egress_packet_drops": 0,
+            "opus_egress_queue_count": 3,
+            "opus_codec_error": 0,
+            "issues": [],
+            "warnings": ["opus_egress_queue_count=3"],
+        },
+        capture_v2={
+            "ok": True,
+            "real_capture_enabled": False,
+            "session_active": False,
+            "state": "IDLE_SESSION",
+            "last_error": "ESP_OK",
+        },
+        playback_v2={
+            "ok": True,
+            "bridge_say_observer": True,
+            "bridge_say_queue_owner": True,
+            "bridge_say_active": False,
+            "say_queue_count": 0,
+            "say_begin_count": 1,
+            "say_end_count": 1,
+            "say_chunks_received": 40,
+            "say_chunks_played": 40,
+            "say_chunks_dropped": 0,
+            "say_chunks_dropped_listening": 0,
+            "last_error": "ESP_OK",
+        },
+        metrics={"last_voice_session": {}},
+    )
+
+    assert check.ok is False
+    codec_gate = check.gates[1]
+    assert codec_gate.ok is False
+    assert codec_gate.warnings == ("opus_egress_queue_count=3",)
+
+
 def test_server_voice_release_check_fails_when_voice_v2_gate_blocks() -> None:
     release_check = importlib.import_module("noisebot_server.internal.ops.release_check")
 

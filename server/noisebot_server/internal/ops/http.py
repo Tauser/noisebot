@@ -40,7 +40,7 @@ from .dashboard import get_dashboard_html
 from .firmware_agenda import FirmwareAgendaClient, FirmwareAgendaError
 from .firmware_diag import FirmwareDiagClient, FirmwareDiagError
 from .log_buffer import install_recent_log_handler
-from .release_check import build_release_check
+from .release_check import build_release_check, maybe_auto_drain_codec_egress
 from .security import check_token, load_or_create_token
 from .status import StatusStore
 from ..agent.playback import (
@@ -620,6 +620,14 @@ class OpsHttpServer:
                 asyncio.to_thread(self._firmware_diag_client.audio_codec_v2_health),
                 asyncio.to_thread(self._firmware_diag_client.audio_capture_v2_status),
                 asyncio.to_thread(self._firmware_diag_client.audio_playback_v2_status),
+            )
+            voice_v2, codec_v2 = await asyncio.to_thread(
+                maybe_auto_drain_codec_egress,
+                firmware=self._firmware_diag_client,
+                voice_v2=voice_v2,
+                codec_v2=codec_v2,
+                capture_v2=capture_v2,
+                playback_v2=playback_v2,
             )
         except FirmwareDiagError as exc:
             return _json(error_response(str(exc)), status=503)
