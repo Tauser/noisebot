@@ -297,6 +297,97 @@ def test_server_cli_runs_debug_transcript_without_bridge_entrypoint(monkeypatch)
     assert calls == {"text": "oi noise", "turn_id": 42}
 
 
+def test_server_cli_runs_debug_transcript_live(monkeypatch) -> None:
+    cli = importlib.import_module("noisebot_server.cli")
+    manual = importlib.import_module("noisebot_server.internal.debug.manual")
+
+    calls: dict[str, object] = {}
+
+    def fake_run_live_transcript_debug(
+        *,
+        text: str,
+        server_url: str,
+        turn_id: int,
+        token: str,
+        emit_json: bool,
+    ) -> int:
+        calls["text"] = text
+        calls["server_url"] = server_url
+        calls["turn_id"] = turn_id
+        calls["token"] = token
+        calls["emit_json"] = emit_json
+        return 9
+
+    monkeypatch.setattr(manual, "run_live_transcript_debug", fake_run_live_transcript_debug)
+
+    try:
+        cli.main([
+            "debug",
+            "transcript-live",
+            "que horas são?",
+            "--server-url",
+            "http://127.0.0.1:8765",
+            "--turn-id",
+            "77",
+            "--token",
+            "secret",
+            "--json",
+        ])
+    except SystemExit as exc:
+        assert exc.code == 9
+    else:
+        raise AssertionError("debug command must exit with helper return code")
+
+    assert calls == {
+        "text": "que horas são?",
+        "server_url": "http://127.0.0.1:8765",
+        "turn_id": 77,
+        "token": "secret",
+        "emit_json": True,
+    }
+
+
+def test_server_live_transcript_debug_posts_to_ops_http(monkeypatch, capsys) -> None:
+    manual = importlib.import_module("noisebot_server.internal.debug.manual")
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return b'{"status":"ok","turn_id":77}'
+
+    def fake_urlopen(request, timeout: float):
+        captured["url"] = request.full_url
+        captured["timeout"] = timeout
+        captured["headers"] = dict(request.header_items())
+        captured["body"] = request.data.decode("utf-8")
+        return FakeResponse()
+
+    monkeypatch.setattr(manual, "urlopen", fake_urlopen)
+
+    code = manual.run_live_transcript_debug(
+        text="olá, são 10h",
+        server_url="http://127.0.0.1:8765/",
+        turn_id=77,
+        token="secret",
+    )
+
+    assert code == 0
+    assert captured["url"] == "http://127.0.0.1:8765/debug/transcript"
+    assert captured["timeout"] == 5.0
+    assert captured["headers"]["Authorization"] == "Bearer secret"
+    assert json.loads(captured["body"]) == {"text": "olá, são 10h", "turn_id": 77}
+    assert "transcript injetado: turn_id=77" in capsys.readouterr().out
+
+
 def test_server_cli_parses_audio_report_debug_command() -> None:
     cli = importlib.import_module("noisebot_server.cli")
 

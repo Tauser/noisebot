@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from ..agent.orchestrator import Orchestrator
 from ..agent.runtime import (
@@ -93,6 +97,81 @@ async def run_transcript_debug(text: str, turn_id: int = 1) -> int:
         await orchestrator.shutdown()
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+def run_live_transcript_debug(
+    text: str,
+    server_url: str = "http://127.0.0.1:8765",
+    turn_id: int = 0,
+    token: str = "",
+    emit_json: bool = False,
+) -> int:
+    """Inject a transcript through the running Ops HTTP server."""
+    resolved_token = _resolve_ops_token(token)
+    if not resolved_token:
+        print(
+            "token ausente: informe --token, configure NOISEBOT_OPS_TOKEN "
+            "ou verifique ~/.noisebot-server/ops_token"
+        )
+        return 1
+
+    payload: dict[str, Any] = {"text": text}
+    if turn_id > 0:
+        payload["turn_id"] = turn_id
+
+    url = server_url.rstrip("/") + "/debug/transcript"
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = Request(
+        url,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {resolved_token}",
+            "Content-Type": "application/json",
+            "User-Agent": "NoiseBot-Server/0.1",
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=5.0) as response:
+            response_body = response.read().decode("utf-8")
+            status = getattr(response, "status", 200)
+    except HTTPError as exc:
+        response_body = exc.read().decode("utf-8", errors="replace")
+        status = exc.code
+    except (URLError, TimeoutError, OSError) as exc:
+        print(f"falha ao chamar {url}: {exc}")
+        return 1
+
+    try:
+        decoded = json.loads(response_body)
+    except json.JSONDecodeError:
+        decoded = {"ok": False, "status": status, "body": response_body}
+
+    if emit_json:
+        print(json.dumps(decoded, ensure_ascii=False, indent=2))
+    else:
+        ok = bool(decoded.get("status") == "ok" or decoded.get("ok"))
+        turn = decoded.get("turn_id", payload.get("turn_id", "auto"))
+        if ok and status < 400:
+            print(f"transcript injetado: turn_id={turn} text={text!r}")
+        else:
+            print(json.dumps(decoded, ensure_ascii=False, indent=2))
+
+    return 0 if status < 400 else 1
+
+
+def _resolve_ops_token(token: str) -> str:
+    if token.strip():
+        return token.strip()
+    env_token = os.environ.get("NOISEBOT_OPS_TOKEN", "").strip()
+    if env_token:
+        return env_token
+    token_file = Path.home() / ".noisebot-server" / "ops_token"
+    try:
+        return token_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 async def run_fake_firmware_debug(

@@ -35,6 +35,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     transcript.add_argument("text")
     transcript.add_argument("--turn-id", type=int, default=1)
 
+    transcript_live = debug_sub.add_parser("transcript-live")
+    transcript_live.add_argument("text")
+    transcript_live.add_argument("--turn-id", type=int, default=0)
+    transcript_live.add_argument("--server-url", default="http://127.0.0.1:8765")
+    transcript_live.add_argument("--token", default="")
+    transcript_live.add_argument("--json", action="store_true", help="Emitir JSON")
+
     fake_fw = debug_sub.add_parser("fake-fw")
     fake_fw.add_argument("--host", default="127.0.0.1")
     fake_fw.add_argument("--port", type=int, default=9001)
@@ -290,10 +297,24 @@ def apply_env_overrides(args: argparse.Namespace) -> None:
 
 def run_debug_command(args: argparse.Namespace) -> None:
     """Run server-owned debug commands."""
-    from .internal.debug.manual import run_fake_firmware_debug, run_transcript_debug
+    from .internal.debug.manual import (
+        run_fake_firmware_debug,
+        run_live_transcript_debug,
+        run_transcript_debug,
+    )
 
     if args.debug_command == "transcript":
         raise SystemExit(asyncio.run(run_transcript_debug(args.text, args.turn_id)))
+    if args.debug_command == "transcript-live":
+        raise SystemExit(
+            run_live_transcript_debug(
+                text=args.text,
+                server_url=args.server_url,
+                turn_id=args.turn_id,
+                token=args.token,
+                emit_json=args.json,
+            )
+        )
     if args.debug_command == "fake-fw":
         features = [item.strip() for item in args.features.split(",") if item.strip()]
         raise SystemExit(
