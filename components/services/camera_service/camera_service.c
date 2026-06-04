@@ -215,6 +215,19 @@ static void camera_service_analyze_yuv422(const nb_camera_frame_t *frame)
                                  : 0U;
 }
 
+static void camera_service_mark_scene_unknown(const nb_camera_frame_t *frame)
+{
+    s_scene_metrics.valid = false;
+    s_scene_metrics.timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000LL);
+    s_scene_metrics.width = frame ? frame->width : 0U;
+    s_scene_metrics.height = frame ? frame->height : 0U;
+    s_scene_metrics.luma_avg = 0U;
+    s_scene_metrics.luma_min = 0U;
+    s_scene_metrics.luma_max = 0U;
+    s_scene_metrics.contrast = 0U;
+    s_scene_metrics.motion_score = 0U;
+}
+
 static esp_err_t camera_service_encode_yuv422_to_jpeg(const nb_camera_frame_t *frame,
                                                        nb_camera_snapshot_t *out)
 {
@@ -420,6 +433,108 @@ void camera_service_get_scene_metrics(nb_camera_scene_metrics_t *out)
         return;
     }
     *out = s_scene_metrics;
+}
+
+esp_err_t camera_service_observe_scene(nb_camera_observation_t *out)
+{
+    if (!out) {
+        return camera_service_fail(ESP_ERR_INVALID_ARG, "arg");
+    }
+    memset(out, 0, sizeof(*out));
+    if (!camera_hal_is_supported()) {
+        return camera_service_fail(ESP_ERR_NOT_SUPPORTED, "unsupported");
+    }
+
+    if (!s_initialized) {
+        esp_err_t svc_err = camera_service_init();
+        if (svc_err != ESP_OK && svc_err != ESP_ERR_INVALID_STATE) {
+            return camera_service_fail(svc_err, "service_init");
+        }
+    }
+    if (!s_mutex) {
+        return camera_service_fail(ESP_ERR_INVALID_STATE, "mutex");
+    }
+
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    if (s_snapshot_borrowed) {
+        xSemaphoreGive(s_mutex);
+        return camera_service_fail(ESP_ERR_INVALID_STATE, "borrowed");
+    }
+
+    camera_service_hold_cancel();
+    nb_camera_diag_status_t diag;
+    camera_service_get_diag_status(&diag);
+    s_last_dma_before = diag.dma_free;
+    s_last_dma_largest_before = diag.dma_largest;
+    s_last_internal_before = diag.internal_free;
+    s_last_psram_before = diag.psram_free;
+
+    if (!camera_hal_is_ready()) {
+        esp_err_t init_err = camera_hal_init();
+        if (init_err != ESP_OK) {
+            xSemaphoreGive(s_mutex);
+            return camera_service_fail(init_err, "hal_init");
+        }
+        camera_service_set_session_active(true);
+    }
+
+    int64_t capture_start_us = esp_timer_get_time();
+    esp_err_t err = camera_hal_capture();
+    if (err != ESP_OK) {
+        camera_hal_deinit();
+        camera_service_set_session_active(false);
+        camera_service_record_after_release();
+        xSemaphoreGive(s_mutex);
+        return camera_service_fail(err, "capture");
+    }
+
+    nb_camera_frame_t *frame = camera_hal_get_frame();
+    if (!frame || !frame->buf || frame->len == 0U) {
+        camera_hal_release_frame();
+        camera_hal_deinit();
+        camera_service_set_session_active(false);
+        camera_service_record_after_release();
+        xSemaphoreGive(s_mutex);
+        return camera_service_fail(ESP_FAIL, "frame");
+    }
+
+    if (frame->format == (int)V4L2_PIX_FMT_YUV422P) {
+        camera_service_analyze_yuv422(frame);
+    } else {
+        camera_service_mark_scene_unknown(frame);
+    }
+
+    out->valid = s_scene_metrics.valid;
+    out->frame_bytes = frame->len;
+    out->format = frame->format;
+    out->scene = s_scene_metrics;
+    camera_hal_release_frame();
+
+    s_last_dma_after_capture = heap_caps_get_free_size(MALLOC_CAP_DMA);
+    s_last_dma_largest_after_capture = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+    s_last_internal_after_capture = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    s_last_psram_after_capture = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    s_last_jpeg_bytes = 0U;
+    int64_t capture_elapsed_us = esp_timer_get_time() - capture_start_us;
+    s_last_capture_ms = (uint32_t)(capture_elapsed_us / 1000LL);
+    if (capture_elapsed_us > 0 && s_last_capture_ms == 0U) {
+        s_last_capture_ms = 1U;
+    }
+    out->capture_ms = s_last_capture_ms;
+    s_capture_count++;
+    s_last_error = ESP_OK;
+    s_last_error_phase = "";
+    s_has_last_error = false;
+    camera_service_record_after_release();
+    if (camera_hal_is_ready()) {
+        camera_service_hold_arm(CAMERA_SVC_SESSION_HOLD_US);
+    }
+    ESP_LOGI(TAG, "observacao ok frame=%u capture_ms=%lu count=%lu",
+             (unsigned)out->frame_bytes,
+             (unsigned long)s_last_capture_ms,
+             (unsigned long)s_capture_count);
+    xSemaphoreGive(s_mutex);
+    return ESP_OK;
 }
 
 esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out)

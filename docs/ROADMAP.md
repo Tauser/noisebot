@@ -812,6 +812,7 @@ Critérios adicionais de integração do Bloco 0:
 - Comparado com StackChan/Xiaozhi: ambos mantêm `width`/`height` vindos de `VIDIOC_G_FMT` e selecionam principalmente o formato V4L2; o NoiseBot agora tenta o modo selecionado e faz fallback para a geometria atual do driver.
 - O caminho `safe` usa JPEG qualidade 20, alinhado ao streaming de câmera do StackChan, reduzindo payload invisível sem alterar o modo `better` de qualidade 82.
 - Hardware COM12 / `http://192.168.1.30`: `/api/vision/observe` validou sessão quente com `640×480` por fallback, `jpeg_bytes` ~16 KB e captura ~783–886 ms; soak curto de 4 s teve 3/3 observações válidas, zero falhas/reboots e fechamento final da câmera OK.
+- A visão invisível deixou de usar snapshot JPEG: `vision_service` chama `camera_service_observe_scene()`, analisa o frame e solta o buffer. Validação em hardware após flash: `/api/vision/observe` retornou `jpeg_bytes=0`, captura ~650 ms; soak curto de 4 s teve 4/4 observações válidas, `max_capture_ms=672`, zero falhas/reboots e fechamento final OK.
 
 **Critérios de aceitação:**
 

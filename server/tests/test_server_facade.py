@@ -7775,6 +7775,9 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert "vision_service_reset_presence" in vision_c
     assert "camera_service_get_mode() != NB_CAMERA_MODE_SAFE_QQVGA" in vision_c
     assert "camera_service_set_mode(NB_CAMERA_MODE_SAFE_QQVGA)" in vision_c
+    assert "camera_service_observe_scene(&cam_obs)" in vision_c
+    assert "camera_service_capture_snapshot" not in vision_c
+    assert ".jpeg_bytes = 0U" in vision_c
     assert "vision_presence_json" in web_c
     assert "vision_service_get_presence(&presence)" in web_c
     assert '"/api/vision/presence/reset"' in web_c
@@ -7822,6 +7825,32 @@ def test_firmware_camera_service_uses_stackchan_safe_jpeg_quality() -> None:
     assert "CAMERA_SVC_BETTER_JPEG_QUALITY 82" in camera_c
     assert "camera_hal_get_mode() == NB_CAMERA_MODE_SAFE_QQVGA" in camera_c
     assert ".quality = quality" in camera_c
+
+
+def test_firmware_camera_service_exposes_no_jpeg_scene_observation() -> None:
+    root = Path(__file__).resolve().parents[2]
+    camera_h = (
+        root
+        / "components"
+        / "services"
+        / "camera_service"
+        / "camera_service.h"
+    ).read_text(encoding="utf-8")
+    camera_c = (
+        root
+        / "components"
+        / "services"
+        / "camera_service"
+        / "camera_service.c"
+    ).read_text(encoding="utf-8")
+
+    assert "nb_camera_observation_t" in camera_h
+    assert "camera_service_observe_scene" in camera_h
+    assert "sem gerar JPEG" in camera_h
+    assert "esp_err_t camera_service_observe_scene" in camera_c
+    assert "camera_service_analyze_yuv422(frame)" in camera_c
+    assert "s_last_jpeg_bytes = 0U" in camera_c
+    assert "camera_service_hold_arm(CAMERA_SVC_SESSION_HOLD_US)" in camera_c
 
 
 def test_firmware_render_metrics_contract_is_exposed() -> None:

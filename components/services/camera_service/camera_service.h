@@ -39,6 +39,14 @@ typedef struct {
 } nb_camera_scene_metrics_t;
 
 typedef struct {
+    bool valid;
+    uint32_t capture_ms;
+    size_t frame_bytes;
+    int format;
+    nb_camera_scene_metrics_t scene;
+} nb_camera_observation_t;
+
+typedef struct {
     size_t dma_free;
     size_t dma_largest;
     size_t internal_free;
@@ -88,6 +96,13 @@ esp_err_t camera_service_set_mode(nb_camera_mode_t mode);
 nb_camera_mode_t camera_service_get_mode(void);
 void camera_service_get_diag_status(nb_camera_diag_status_t *out);
 void camera_service_get_scene_metrics(nb_camera_scene_metrics_t *out);
+
+/**
+ * @brief Captura e analisa um frame sem gerar JPEG.
+ *
+ * Usado por visão/presença invisível para evitar custo de encode e payload.
+ */
+esp_err_t camera_service_observe_scene(nb_camera_observation_t *out);
 
 /**
  * @brief Captura snapshot JPEG e empresta o buffer ao chamador.

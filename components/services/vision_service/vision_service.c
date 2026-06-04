@@ -175,25 +175,24 @@ esp_err_t vision_service_observe(nb_vision_observation_t *out)
         }
     }
 
-    nb_camera_snapshot_t snap;
     int64_t start_us = esp_timer_get_time();
-    esp_err_t err = camera_service_capture_snapshot(&snap);
+    nb_camera_observation_t cam_obs;
+    esp_err_t err = camera_service_observe_scene(&cam_obs);
     if (err != ESP_OK) {
         return err;
     }
 
-    nb_camera_scene_metrics_t metrics;
-    camera_service_get_scene_metrics(&metrics);
+    nb_camera_scene_metrics_t metrics = cam_obs.scene;
 
     nb_vision_observation_t obs = {
         .valid = metrics.valid,
         .timestamp_ms = metrics.valid
                       ? metrics.timestamp_ms
                       : (uint32_t)(esp_timer_get_time() / 1000LL),
-        .width = snap.width,
-        .height = snap.height,
-        .jpeg_bytes = snap.len,
-        .capture_ms = (uint32_t)((esp_timer_get_time() - start_us) / 1000LL),
+        .width = metrics.width,
+        .height = metrics.height,
+        .jpeg_bytes = 0U,
+        .capture_ms = cam_obs.capture_ms,
         .luma_avg = metrics.luma_avg,
         .luma_min = metrics.luma_min,
         .luma_max = metrics.luma_max,
@@ -202,10 +201,11 @@ esp_err_t vision_service_observe(nb_vision_observation_t *out)
         .scene = classify_scene(&metrics),
     };
     if (obs.capture_ms == 0U) {
+        obs.capture_ms = (uint32_t)((esp_timer_get_time() - start_us) / 1000LL);
+    }
+    if (obs.capture_ms == 0U) {
         obs.capture_ms = 1U;
     }
-
-    camera_service_release_snapshot();
 
     if (s_mutex && xSemaphoreTake(s_mutex, pdMS_TO_TICKS(250)) == pdTRUE) {
         s_last = obs;
