@@ -365,6 +365,12 @@ Incremento atual da Fase N3:
   reportava `format=pcm16`, mas a sessao registrava `audio_codec=opus-v2`; o
   gate passa a mostrar os dois sem alterar runtime. Teste focado passou com 14
   casos.
+- P2 firmware diagnostico: `audio_codec_service_v2` nao usa mais
+  `opus_codec_error=-1` como estado publico limpo em init/reset/worker-start.
+  Evidencia: o health degradava com worker `running`, filas zeradas e sem
+  drops; contrato firmware focado, testes server focados e `idf.py build`
+  passaram. Inferencia da IA: `-1` permanece valido apenas como sentinela
+  interno de teste/timeout, nao como erro publico de status limpo.
 
 ### Wake Word
 

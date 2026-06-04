@@ -170,6 +170,8 @@ def test_audio_v2_contract_keeps_pcm16_default_and_opus_opt_in():
     assert "s_status.worker_active = worker_active;" in codec_c
     assert "s_status.worker_state = worker_state;" in codec_c
     assert "s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;" in codec_c
+    assert "s_status.opus_codec_error = 0;" in codec_c
+    assert "s_status.opus_codec_error = -1;" not in codec_c
     assert "reset_worker_status();" in codec_c
     assert "NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED" in codec_c
     assert 'return "not_started";' in codec_c

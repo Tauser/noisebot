@@ -39,7 +39,7 @@
 
 static nb_audio_codec_v2_status_t s_status = {
     .format = NB_AUDIO_CODEC_V2_FORMAT_PCM16,
-    .opus_codec_error = -1,
+    .opus_codec_error = 0,
     .worker_supported = true,
     .worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_NOT_STARTED,
 };
@@ -492,7 +492,7 @@ esp_err_t audio_codec_service_v2_init(void)
     clear_opus_egress_queue();
     s_status.initialized = true;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
-    s_status.opus_codec_error = -1;
+    s_status.opus_codec_error = 0;
     s_status.bridge_handoff_supported = true;
     reset_worker_status();
     return ESP_OK;
@@ -521,7 +521,7 @@ esp_err_t audio_codec_service_v2_deinit(void)
         s_opus_egress_packets = NULL;
     }
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
-    s_status.opus_codec_error = -1;
+    s_status.opus_codec_error = 0;
     s_status.bridge_handoff_supported = true;
     reset_worker_status();
     return ESP_OK;
@@ -677,7 +677,7 @@ esp_err_t audio_codec_service_v2_reset_diagnostics(void)
     clear_opus_egress_queue();
     s_status.initialized = was_initialized;
     s_status.format = NB_AUDIO_CODEC_V2_FORMAT_PCM16;
-    s_status.opus_codec_error = -1;
+    s_status.opus_codec_error = 0;
     s_status.bridge_handoff_supported = true;
     s_status.bridge_handoff_active = false;
     s_status.worker_supported = worker_supported;
@@ -782,6 +782,7 @@ esp_err_t audio_codec_service_v2_worker_start(void)
     }
 
     s_worker_stop_requested = false;
+    s_status.opus_codec_error = 0;
     s_status.worker_supported = true;
     s_status.worker_active = false;
     s_status.worker_state = NB_AUDIO_CODEC_V2_WORKER_STATE_STARTING;

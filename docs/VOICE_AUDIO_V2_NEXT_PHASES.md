@@ -2415,6 +2415,14 @@ codec, Playback, Capture ou runtime. Validacao local:
 `server/tests/test_server_facade.py -k voice_release_check` com 14 testes
 verdes.
 
+Incremento firmware seguinte: `audio_codec_service_v2` deixou de usar
+`opus_codec_error=-1` como estado publico limpo em init/reset/worker-start.
+Esse valor ficava preso apos reset/reativacao e derrubava o `codec-v2 health`
+mesmo com worker rodando, filas zeradas e sem drops. O status limpo agora usa
+`opus_codec_error=0`; erro real continua sendo registrado quando o encoder
+retorna falha. Validacao local: contrato firmware Voice Audio v2 focado,
+testes focados de Codec/Release Check no server e `idf.py build` limpos.
+
 Nao fazer em P2:
 
 - Nao mover `audio_hal_spk_write()` para Playback v2 ainda.

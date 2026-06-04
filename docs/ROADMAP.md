@@ -3057,6 +3057,10 @@ no protocolo.
       `last_voice_session.audio_codec`, evitando confundir status bruto
       `pcm16` do firmware com turno real `opus-v2`. Validado com 14 testes
       focados de `voice_release_check`.
+- [x] Diagnostico firmware do Codec v2 saneado: init/reset/worker-start nao
+      deixam mais `opus_codec_error=-1` preso em status limpo. Erro real do
+      encoder continua reportado; estado sem erro volta a `0`. Validado com
+      contrato firmware focado, testes server focados e `idf.py build`.
 - [x] Fase N planejada como migracao estrutural do firmware Voice v2:
       N0 congela baseline/gates; N1 torna Capture v2 default controlado; N2
       promove Activity v2 a decisor dentro da sessao; N3 migra RX/TX para
