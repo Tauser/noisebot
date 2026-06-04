@@ -1229,6 +1229,139 @@ static void rx_dispatch_bridge_tx_cb(const nb_audio_io_v2_pcm_frame_t *frame,
     }
 }
 
+static bool audio_service_process_rx_chunk(bool wrote_audio,
+                                           play_state_t play_state,
+                                           FILE **rec_file)
+{
+    size_t mic_n = 0;
+    esp_err_t rc = audio_hal_mic_read(s_mic_buf, NB_AUDIO_CHUNK_FRAMES,
+                                      &mic_n, pdMS_TO_TICKS(100));
+    if (rc != ESP_OK) {
+        audio_note_mic_result(rc);
+        return false;
+    }
+    audio_note_mic_result(ESP_OK);
+
+    for (size_t i = 0; i < mic_n; i++) {
+        int32_t v = s_mic_buf[i] >> 8;
+        if (v >  32767) v =  32767;
+        if (v < -32768) v = -32768;
+        s_wake_buf[i] = (int16_t)v;
+    }
+
+    mic_condition_signal(s_mic_buf, s_mic_proc, mic_n);
+
+    /* Converte int32 (24-bit) -> int16 sem ganho extra (nivel calibrado). */
+    for (size_t i = 0; i < mic_n; i++) {
+        int32_t v = s_mic_proc[i] >> 8;
+        if (v >  32767) v =  32767;
+        if (v < -32768) v = -32768;
+        s_sa_buf[i] = (int16_t)v;
+    }
+
+    rx_dispatch_context_t rx_dispatch = {0};
+    xSemaphoreTake(s.mutex, portMAX_DELAY);
+    rx_dispatch.io_v2_session_context = s.listen_session_active;
+    rx_dispatch.activity_session_context = s.listen_session_active;
+    rx_dispatch.activity_bridge_say_context = (s.play_state == PLAY_BRIDGE_SAY);
+    xSemaphoreGive(s.mutex);
+    rx_dispatch.local_output_active = wrote_audio;
+    rx_dispatch.mic_samples = s_mic_proc;
+    rx_dispatch.wake_samples = s_wake_buf;
+    rx_dispatch.activity_playback_context =
+        wrote_audio ||
+        play_state == PLAY_ACTIVE ||
+        play_state == PLAY_BRIDGE_SAY ||
+        rx_dispatch.activity_bridge_say_context ||
+        audio_playback_service_v2_is_playing();
+
+    const nb_audio_io_v2_rx_consumer_t rx_consumers[] = {
+        { .cb = rx_dispatch_sound_analysis_cb, .ctx = NULL },
+        { .cb = rx_dispatch_processor_shadow_cb, .ctx = NULL },
+        { .cb = rx_dispatch_io_probe_cb, .ctx = NULL },
+        { .cb = rx_dispatch_session_mirror_cb, .ctx = &rx_dispatch },
+        { .cb = rx_dispatch_activity_cb, .ctx = &rx_dispatch },
+        { .cb = rx_dispatch_vad_cb, .ctx = &rx_dispatch },
+        { .cb = rx_dispatch_preroll_cb, .ctx = &rx_dispatch },
+        { .cb = rx_dispatch_bridge_tx_cb, .ctx = NULL },
+    };
+    audio_io_service_v2_rx_dispatch_frame(s_sa_buf,
+                                          (uint16_t)mic_n,
+                                          0U,
+                                          rx_consumers,
+                                          (uint8_t)(sizeof(rx_consumers) /
+                                                    sizeof(rx_consumers[0])),
+                                          NULL);
+
+    /* ── 4d. Session timeouts ────────────────────────────────────────── */
+    if (s.listen_session_active) {
+        if (s.listen_phase == LISTEN_PHASE_WAITING_FOR_SPEECH) {
+            if (s.listen_wait_remaining_ms <= CHUNK_DURATION_MS) {
+                listen_session_finish(NB_LISTEN_END_TIMEOUT);
+            } else {
+                s.listen_wait_remaining_ms -= CHUNK_DURATION_MS;
+            }
+        } else if (s.listen_phase == LISTEN_PHASE_CAPTURING_SPEECH
+                || s.listen_phase == LISTEN_PHASE_ENDING_ON_SILENCE) {
+            if (s.listen_speech_elapsed_ms >= LISTEN_MAX_SPEECH_MS) {
+                ESP_LOGW(TAG, "sessao listen atingiu teto de fala (%ums)",
+                         (unsigned)LISTEN_MAX_SPEECH_MS);
+                listen_session_finish(NB_LISTEN_END_TIMEOUT);
+            } else {
+                s.listen_speech_elapsed_ms += CHUNK_DURATION_MS;
+            }
+        }
+    }
+
+    /* ── 5. Diagnóstico ─────────────────────────────────────────────── */
+    if (s.rec_state == REC_ACTIVE) {
+        if (!*rec_file) {
+            *rec_file = fopen(s.rec_path, "wb");
+            if (!*rec_file) {
+                ESP_LOGE(TAG, "rec fopen falhou: %s", s.rec_path);
+                s.rec_state = REC_IDLE;
+            } else {
+                uint32_t data_bytes = s.rec_samples_remaining * sizeof(int16_t);
+                wav_write_header(*rec_file, data_bytes);
+                ESP_LOGI(TAG, "gravacao iniciada: %s", s.rec_path);
+            }
+        }
+
+        if (*rec_file && s.rec_samples_remaining > 0) {
+            size_t to_write = mic_n < s.rec_samples_remaining
+                              ? mic_n : (size_t)s.rec_samples_remaining;
+            if (s.rec_bridge_tx_source) {
+                bridge_prepare_tx_audio(s_sa_buf, s_rec_chunk, to_write,
+                                        NULL, NULL, NULL, NULL, NULL);
+            } else {
+                for (size_t i = 0; i < to_write; i++) {
+                    /*
+                     * s_mic_proc[i]: valor 24-bit condicionado (audio_hal ja
+                     * fez >> 8 do raw 32-bit). Shift >> 8 para descer ao
+                     * range 16-bit antes do clamp. Pico tipico de voz direta
+                     * ~400K-800K -> ~1500-3000 em 16-bit.
+                     */
+                    int32_t v = (s_mic_proc[i] >> 8) << 3;
+                    if (v >  32767) v =  32767;
+                    if (v < -32768) v = -32768;
+                    s_rec_chunk[i] = (int16_t)v;
+                }
+            }
+            fwrite(s_rec_chunk, sizeof(int16_t), to_write, *rec_file);
+            s.rec_samples_remaining -= (uint32_t)to_write;
+
+            if (s.rec_samples_remaining == 0) {
+                fclose(*rec_file);
+                *rec_file = NULL;
+                s.rec_state = REC_IDLE;
+                ESP_LOGI(TAG, "gravacao concluida: %s", s.rec_path);
+            }
+        }
+    }
+
+    return true;
+}
+
 static void vad_update(const int32_t *mic, const int16_t *pcm16, size_t n,
                        bool local_output_active)
 {
@@ -1483,129 +1616,8 @@ static void audio_task(void *arg)
         }
 
         /* ── 2. Chunk RX ─────────────────────────────────────────────────── */
-        size_t mic_n = 0;
-        esp_err_t rc = audio_hal_mic_read(s_mic_buf, NB_AUDIO_CHUNK_FRAMES,
-                                           &mic_n, pdMS_TO_TICKS(100));
-        if (rc != ESP_OK) {
-            audio_note_mic_result(rc);
+        if (!audio_service_process_rx_chunk(wrote_audio, play_state, &rec_file)) {
             continue;
-        }
-        audio_note_mic_result(ESP_OK);
-
-        for (size_t i = 0; i < mic_n; i++) {
-            int32_t v = s_mic_buf[i] >> 8;
-            if (v >  32767) v =  32767;
-            if (v < -32768) v = -32768;
-            s_wake_buf[i] = (int16_t)v;
-        }
-
-        mic_condition_signal(s_mic_buf, s_mic_proc, mic_n);
-
-        /* ── 3. Sound analysis ──────────────────────────────────────────── */
-        /* Converte int32 (24-bit) → int16 sem ganho extra (nível calibrado). */
-        for (size_t i = 0; i < mic_n; i++) {
-            int32_t v = s_mic_proc[i] >> 8;
-            if (v >  32767) v =  32767;
-            if (v < -32768) v = -32768;
-            s_sa_buf[i] = (int16_t)v;
-        }
-        rx_dispatch_context_t rx_dispatch = {0};
-        xSemaphoreTake(s.mutex, portMAX_DELAY);
-        rx_dispatch.io_v2_session_context = s.listen_session_active;
-        rx_dispatch.activity_session_context = s.listen_session_active;
-        rx_dispatch.activity_bridge_say_context = (s.play_state == PLAY_BRIDGE_SAY);
-        xSemaphoreGive(s.mutex);
-        rx_dispatch.local_output_active = wrote_audio;
-        rx_dispatch.mic_samples = s_mic_proc;
-        rx_dispatch.wake_samples = s_wake_buf;
-        rx_dispatch.activity_playback_context =
-            wrote_audio ||
-            play_state == PLAY_ACTIVE ||
-            play_state == PLAY_BRIDGE_SAY ||
-            rx_dispatch.activity_bridge_say_context ||
-            audio_playback_service_v2_is_playing();
-        const nb_audio_io_v2_rx_consumer_t rx_consumers[] = {
-            { .cb = rx_dispatch_sound_analysis_cb, .ctx = NULL },
-            { .cb = rx_dispatch_processor_shadow_cb, .ctx = NULL },
-            { .cb = rx_dispatch_io_probe_cb, .ctx = NULL },
-            { .cb = rx_dispatch_session_mirror_cb, .ctx = &rx_dispatch },
-            { .cb = rx_dispatch_activity_cb, .ctx = &rx_dispatch },
-            { .cb = rx_dispatch_vad_cb, .ctx = &rx_dispatch },
-            { .cb = rx_dispatch_preroll_cb, .ctx = &rx_dispatch },
-            { .cb = rx_dispatch_bridge_tx_cb, .ctx = NULL },
-        };
-        audio_io_service_v2_rx_dispatch_frame(s_sa_buf,
-                                              (uint16_t)mic_n,
-                                              0U,
-                                              rx_consumers,
-                                              (uint8_t)(sizeof(rx_consumers) /
-                                                        sizeof(rx_consumers[0])),
-                                              NULL);
-
-        /* ── 4d. Session timeouts ────────────────────────────────────────── */
-        if (s.listen_session_active) {
-            if (s.listen_phase == LISTEN_PHASE_WAITING_FOR_SPEECH) {
-                if (s.listen_wait_remaining_ms <= CHUNK_DURATION_MS) {
-                    listen_session_finish(NB_LISTEN_END_TIMEOUT);
-                } else {
-                    s.listen_wait_remaining_ms -= CHUNK_DURATION_MS;
-                }
-            } else if (s.listen_phase == LISTEN_PHASE_CAPTURING_SPEECH
-                    || s.listen_phase == LISTEN_PHASE_ENDING_ON_SILENCE) {
-                if (s.listen_speech_elapsed_ms >= LISTEN_MAX_SPEECH_MS) {
-                    ESP_LOGW(TAG, "sessao listen atingiu teto de fala (%ums)",
-                             (unsigned)LISTEN_MAX_SPEECH_MS);
-                    listen_session_finish(NB_LISTEN_END_TIMEOUT);
-                } else {
-                    s.listen_speech_elapsed_ms += CHUNK_DURATION_MS;
-                }
-            }
-        }
-
-        /* ── 5. Diagnóstico ─────────────────────────────────────────────── */
-        if (s.rec_state == REC_ACTIVE) {
-            if (!rec_file) {
-                rec_file = fopen(s.rec_path, "wb");
-                if (!rec_file) {
-                    ESP_LOGE(TAG, "rec fopen falhou: %s", s.rec_path);
-                    s.rec_state = REC_IDLE;
-                } else {
-                    uint32_t data_bytes = s.rec_samples_remaining * sizeof(int16_t);
-                    wav_write_header(rec_file, data_bytes);
-                    ESP_LOGI(TAG, "gravacao iniciada: %s", s.rec_path);
-                }
-            }
-
-            if (rec_file && s.rec_samples_remaining > 0) {
-                size_t to_write = mic_n < s.rec_samples_remaining
-                                  ? mic_n : (size_t)s.rec_samples_remaining;
-                if (s.rec_bridge_tx_source) {
-                    bridge_prepare_tx_audio(s_sa_buf, s_rec_chunk, to_write,
-                                            NULL, NULL, NULL, NULL, NULL);
-                } else {
-                    for (size_t i = 0; i < to_write; i++) {
-                        /*
-                         * s_mic_proc[i]: valor 24-bit condicionado (audio_hal já
-                         * fez >> 8 do raw 32-bit).
-                         * Shift >> 8 para descer ao range 16-bit antes do clamp.
-                         * Pico típico de voz direta ~400K–800K → ~1500–3000 em 16-bit.
-                         */
-                        int32_t v = (s_mic_proc[i] >> 8) << 3;  /* +18 dB de ganho de gravação */
-                        if (v >  32767) v =  32767;
-                        if (v < -32768) v = -32768;
-                        s_rec_chunk[i] = (int16_t)v;
-                    }
-                }
-                fwrite(s_rec_chunk, sizeof(int16_t), to_write, rec_file);
-                s.rec_samples_remaining -= (uint32_t)to_write;
-
-                if (s.rec_samples_remaining == 0) {
-                    fclose(rec_file);
-                    rec_file = NULL;
-                    s.rec_state = REC_IDLE;
-                    ESP_LOGI(TAG, "gravacao concluida: %s", s.rec_path);
-                }
-            }
         }
     }
 }
