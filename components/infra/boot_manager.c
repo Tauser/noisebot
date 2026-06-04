@@ -1002,15 +1002,8 @@ static esp_err_t phase_hal(void)
         } else {
             touch_service_set_sensitivity(sens_factor);
             touch_service_set_event_cb(on_touch_event);
-            BaseType_t rc;
-#if CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY
-            rc = xTaskCreateWithCaps(touch_update_task, "touch_task",
-                                     4096, NULL, 4, NULL,
-                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-#else
-            rc = xTaskCreate(touch_update_task, "touch_task",
-                             4096, NULL, 4, NULL);
-#endif
+            BaseType_t rc = xTaskCreate(touch_update_task, "touch_task",
+                                        4096, NULL, 4, NULL);
             NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate touch_task falhou");
         }
     }

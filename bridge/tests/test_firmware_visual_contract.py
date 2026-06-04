@@ -119,6 +119,19 @@ def test_touch_config_applies_runtime_sensitivity():
     assert "touch_sens_pct * 0.2f" in block
 
 
+def test_touch_task_uses_internal_stack():
+    src = BOOT_MANAGER.read_text(encoding="utf-8")
+
+    start = src.index("touch_update_task")
+    start = src.index("touch_service_set_event_cb(on_touch_event);", start)
+    end = src.index('NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate touch_task falhou");', start)
+    block = src[start:end]
+
+    assert "xTaskCreate(touch_update_task" in block
+    assert "xTaskCreateWithCaps(touch_update_task" not in block
+    assert "MALLOC_CAP_SPIRAM" not in block
+
+
 def test_ui_overlay_uses_stackchan_montserrat_font_family():
     src = UI_OVERLAY.read_text(encoding="utf-8")
     assets = UI_OVERLAY_ASSETS.read_text(encoding="utf-8")
