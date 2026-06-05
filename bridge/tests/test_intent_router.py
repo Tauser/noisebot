@@ -54,6 +54,68 @@ class IntentRouterTests(unittest.TestCase):
         self.assertEqual(result.intent, "local_status")
         self.assertEqual(result.reply, "Status: saude 99%, atencao 42%.")
         self.assertTrue(result.speak_reply)
+        self.assertEqual(result.device_commands[0].name, "show_status")
+        self.assertTrue(result.device_commands[0].supported)
+
+    def test_status_intent_accepts_show_status_command(self):
+        result = self.router.route("mostrar status")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_status")
+        self.assertEqual(result.reply, "")
+        self.assertFalse(result.speak_reply)
+        self.assertEqual(result.device_commands[0].name, "show_status")
+        self.assertTrue(result.device_commands[0].supported)
+
+    def test_status_intent_accepts_show_the_status_command(self):
+        result = self.router.route("mostra o status")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_status")
+        self.assertEqual(result.reply, "")
+        self.assertFalse(result.speak_reply)
+        self.assertEqual(result.device_commands[0].name, "show_status")
+        self.assertTrue(result.device_commands[0].supported)
+
+    def test_status_intent_accepts_display_status_command_without_text(self):
+        result = self.router.route("exibir status")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_status")
+        self.assertEqual(result.reply, "")
+        self.assertFalse(result.speak_reply)
+        self.assertEqual(result.device_commands[0].name, "show_status")
+        self.assertTrue(result.device_commands[0].supported)
+
+    def test_status_intent_accepts_exiba_status_command_without_text(self):
+        result = self.router.route("exiba status")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_status")
+        self.assertEqual(result.reply, "")
+        self.assertFalse(result.speak_reply)
+        self.assertEqual(result.device_commands[0].name, "show_status")
+        self.assertTrue(result.device_commands[0].supported)
+
+    def test_status_intent_accepts_transcribed_wrong_article_without_text(self):
+        result = self.router.route("Mostre a status.")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_status")
+        self.assertEqual(result.reply, "")
+        self.assertFalse(result.speak_reply)
+        self.assertEqual(result.device_commands[0].name, "show_status")
+        self.assertTrue(result.device_commands[0].supported)
+
+    def test_status_intent_accepts_transcribed_ai_particle_without_text(self):
+        result = self.router.route("Mostra aí status.")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.intent, "local_status")
+        self.assertEqual(result.reply, "")
+        self.assertFalse(result.speak_reply)
+        self.assertEqual(result.device_commands[0].name, "show_status")
+        self.assertTrue(result.device_commands[0].supported)
 
     def test_social_wellbeing_question_uses_mood_not_status(self):
         result = self.router.route("como você está", status={"health": 99, "attention": 0.42})
@@ -93,6 +155,8 @@ class IntentRouterTests(unittest.TestCase):
         self.assertEqual(result.intent, "local_network_status")
         self.assertEqual(result.reply, "Rede: bridge conectado, ip indisponivel.")
         self.assertTrue(result.speak_reply)
+        self.assertEqual(result.device_commands[0].name, "show_status")
+        self.assertTrue(result.device_commands[0].supported)
 
     def test_network_status_uses_ip_when_available(self):
         result = self.router.route("qual seu ip", status={"ip": "192.168.1.23"})

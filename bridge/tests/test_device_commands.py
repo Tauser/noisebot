@@ -3,7 +3,17 @@ import unittest
 
 from noisebot_bridge.device_commands import DeviceCommandDispatcher
 from noisebot_bridge.intent_router import DeviceCommand
-from noisebot_bridge.protocol import MSG_ACTION, MSG_EXPR, MSG_GAZE, MSG_TEXT_SCROLL, MSG_VOLUME, decode_frames, encode_frame
+from noisebot_bridge.protocol import (
+    MSG_ACTION,
+    MSG_EXPR,
+    MSG_GAZE,
+    MSG_SESSION,
+    MSG_TEXT_SCROLL,
+    MSG_VOLUME,
+    decode_frames,
+    decode_session_payload,
+    encode_frame,
+)
 from noisebot_bridge.transport import NullTransport
 
 
@@ -100,6 +110,17 @@ class DeviceCommandDispatcherTests(unittest.TestCase):
         self.assertTrue(result.executed)
         self.assertIn((MSG_VOLUME, b"\x3c"), decoded)
         self.assertIn((MSG_TEXT_SCROLL, b"Volume 60%"), decoded)
+
+    def test_show_status_command_sends_session_status_command(self):
+        result = self.dispatcher.dispatch(DeviceCommand("show_status", {}, supported=True))
+
+        frames = decode_frames(bytearray(self.transport.sent[-1][1]))
+        self.assertTrue(result.executed)
+        self.assertEqual(frames[-1][0], MSG_SESSION)
+        self.assertEqual(
+            decode_session_payload(frames[-1][1]),
+            {"event": "STATUS_COMMAND", "session_id": 0, "action": "quick_status"},
+        )
 
     def test_tool_logs_differentiate_call_result_and_rejected(self):
         with self.assertLogs("noisebot_bridge.device_commands", level="INFO") as cm:

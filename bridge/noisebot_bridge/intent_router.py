@@ -200,13 +200,16 @@ class LocalIntentRouter:
             if attention is not None:
                 details.append(f"atencao {int(float(attention) * 100.0)}%")
             suffix = ", ".join(details) if details else "operacional"
+            visual_only = self._is_status_display_command(norm)
             return LocalIntentResult(
                 intent="local_status",
                 confidence=0.88,
-                reply=f"Status: {suffix}.",
+                reply="" if visual_only else f"Status: {suffix}.",
                 expression_id=1,
                 action=1,
                 emot_event=2,
+                speak_reply=not visual_only,
+                device_commands=(DeviceCommand("show_status", {}, supported=True),),
             )
 
         if self._is_network(norm):
@@ -219,6 +222,7 @@ class LocalIntentRouter:
                 expression_id=2,
                 action=0,
                 emot_event=2,
+                device_commands=(DeviceCommand("show_status", {}, supported=True),),
             )
 
         if self._is_btc_price(norm):
@@ -310,7 +314,21 @@ class LocalIntentRouter:
 
     @staticmethod
     def _is_status(text: str) -> bool:
-        return _has_any(text, ("qual seu status", "status do sistema", "diagnostico", "diagnostico do sistema"))
+        return LocalIntentRouter._is_status_display_command(text) or _has_any(
+            text,
+            ("qual seu status", "seu status", "status do sistema", "diagnostico", "diagnostico do sistema"),
+        )
+
+    @staticmethod
+    def _is_status_display_command(text: str) -> bool:
+        if "barra de status" in text:
+            return True
+        return re.search(
+            r"\b(?:mostrar|mostra|mostre|exibir|exibe|exiba)"
+            r"(?:\s+(?:o|a|ai|aqui|pra|para|mim|me|por|favor)){0,5}"
+            r"\s+status\b",
+            text,
+        ) is not None
 
     @staticmethod
     def _is_mood(text: str) -> bool:

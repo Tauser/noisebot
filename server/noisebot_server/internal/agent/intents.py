@@ -143,6 +143,24 @@ def _alert_command(action: str) -> dict[str, object]:
     }
 
 
+def _status_command() -> dict[str, object]:
+    return {
+        "event": "STATUS_COMMAND",
+        "action": "quick_status",
+    }
+
+
+def _is_status_display_command(text: str) -> bool:
+    if "barra de status" in text:
+        return True
+    return re.search(
+        r"\b(?:mostrar|mostra|mostre|exibir|exibe|exiba)"
+        r"(?:\s+(?:o|a|ai|aqui|pra|para|mim|me|por|favor)){0,5}"
+        r"\s+status\b",
+        text,
+    ) is not None
+
+
 def _extract_timer_label(text: str) -> str:
     match = re.search(r"\bchamado\s+(.+?)\s+(?:de|por|para)\s+\d+\s*(?:segundos?|minutos?|horas?)\b", text)
     if match:
@@ -871,7 +889,13 @@ class LocalIntentProvider:
             )
 
         # -- Status do sistema -------------------------------------------------
-        if _has(norm, "seu status", "status do sistema", "diagnostico", "diagnostico do sistema"):
+        if _is_status_display_command(norm) or _has(
+            norm,
+            "seu status",
+            "status do sistema",
+            "diagnostico",
+            "diagnostico do sistema",
+        ):
             health = status.get("health")
             attention = status.get("attention")
             details = []
@@ -880,13 +904,15 @@ class LocalIntentProvider:
             if attention is not None:
                 details.append(f"atencao {int(float(attention) * 100.0)}%")
             suffix = ", ".join(details) if details else "operacional"
+            visual_only = _is_status_display_command(norm)
             return IntentResolved(
                 turn_id=turn_id,
                 intent_name="local_status",
-                reply_text=f"Status: {suffix}.",
+                reply_text=None if visual_only else f"Status: {suffix}.",
                 expression_id=_EXPR_ATTENTIVE,
                 action_id=_ACTION_NOD,
                 emot_event_id=_EMOT_NEUTRAL,
+                device_command=_status_command(),
             )
 
         # -- Status de rede ----------------------------------------------------
@@ -901,6 +927,7 @@ class LocalIntentProvider:
                 expression_id=_EXPR_NEUTRAL,
                 action_id=_ACTION_NONE,
                 emot_event_id=_EMOT_NEUTRAL,
+                device_command=_status_command(),
             )
 
         # -- Preco do Bitcoin --------------------------------------------------

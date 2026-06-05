@@ -51,6 +51,7 @@ TOOL_ALIASES = {
     "scroll_text": "noisebot.robot.show_text",
     "set_led_color": "noisebot.robot.set_led_mood",
     "set_volume": "noisebot.robot.set_volume",
+    "show_status": "noisebot.robot.show_status",
 }
 
 
@@ -111,6 +112,11 @@ TOOL_CATALOG = {
         command_name="set_volume",
         description="Ajusta o volume local do robo e mostra feedback visual.",
         args={"percent": ToolArgSpec(int, minimum=0, maximum=100)},
+    ),
+    "noisebot.robot.show_status": ToolSpec(
+        name="noisebot.robot.show_status",
+        command_name="show_status",
+        description="Mostra a barra de status rapido no firmware.",
     ),
     "noisebot.robot.create_reminder": ToolSpec(
         name="noisebot.robot.create_reminder",

@@ -10,8 +10,10 @@ from .protocol import (
     MSG_EMOT_EVENT,
     MSG_EXPR,
     MSG_GAZE,
+    MSG_SESSION,
     MSG_TEXT_SCROLL,
     MSG_VOLUME,
+    encode_session_payload,
 )
 from .tools import validate_tool_call
 
@@ -71,6 +73,8 @@ class DeviceCommandDispatcher:
                 self._scroll_text(str(args["text"]))
             elif command_name == "set_volume":
                 self._set_volume(int(args["percent"]))
+            elif command_name == "show_status":
+                self._show_status()
             else:
                 log.info("tool_rejected name=%s reason=no_firmware_command args=%r", tool_name, args)
                 return DeviceCommandResult(tool_name, supported=True, executed=False, error="no_firmware_command")
@@ -111,3 +115,9 @@ class DeviceCommandDispatcher:
     def _set_volume(self, percent: int):
         self.send_msg(MSG_VOLUME, struct.pack("<B", percent))
         self._scroll_text(f"Volume {percent}%")
+
+    def _show_status(self):
+        self.send_msg(
+            MSG_SESSION,
+            encode_session_payload("STATUS_COMMAND", 0, action="quick_status"),
+        )

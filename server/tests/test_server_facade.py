@@ -7385,13 +7385,129 @@ def test_server_agent_local_intent_answers_curiosity_in_pt_br() -> None:
     assert result.expression_id == 2
 
 
+def test_server_agent_local_status_emits_visual_command() -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match(
+        "qual seu status",
+        turn_id=44,
+        context={"status": {"health": 99, "attention": 0.42}},
+    )
+
+    assert result.intent_name == "local_status"
+    assert result.reply_text == "Status: saude 99%, atencao 42%."
+    assert result.device_command == {
+        "event": "STATUS_COMMAND",
+        "action": "quick_status",
+    }
+
+
+def test_server_agent_show_status_phrase_emits_visual_command() -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("mostrar status", turn_id=45)
+
+    assert result.intent_name == "local_status"
+    assert result.reply_text is None
+    assert result.device_command == {
+        "event": "STATUS_COMMAND",
+        "action": "quick_status",
+    }
+
+
+def test_server_agent_show_the_status_phrase_emits_visual_command() -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("mostra o status", turn_id=46)
+
+    assert result.intent_name == "local_status"
+    assert result.reply_text is None
+    assert result.device_command == {
+        "event": "STATUS_COMMAND",
+        "action": "quick_status",
+    }
+
+
+def test_server_agent_display_status_phrase_does_not_emit_text() -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("exibir status", turn_id=47)
+
+    assert result.intent_name == "local_status"
+    assert result.reply_text is None
+    assert result.device_command == {
+        "event": "STATUS_COMMAND",
+        "action": "quick_status",
+    }
+
+
+def test_server_agent_exiba_status_phrase_does_not_emit_text() -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("exiba status", turn_id=48)
+
+    assert result.intent_name == "local_status"
+    assert result.reply_text is None
+    assert result.device_command == {
+        "event": "STATUS_COMMAND",
+        "action": "quick_status",
+    }
+
+
+def test_server_agent_wrong_article_status_phrase_does_not_emit_text() -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("Mostre a status.", turn_id=49)
+
+    assert result.intent_name == "local_status"
+    assert result.reply_text is None
+    assert result.device_command == {
+        "event": "STATUS_COMMAND",
+        "action": "quick_status",
+    }
+
+
+def test_server_agent_ai_particle_status_phrase_does_not_emit_text() -> None:
+    _ensure_bridgev2_path()
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match("Mostra aí status.", turn_id=50)
+
+    assert result.intent_name == "local_status"
+    assert result.reply_text is None
+    assert result.device_command == {
+        "event": "STATUS_COMMAND",
+        "action": "quick_status",
+    }
+
+
 def test_server_agent_local_intent_handles_bare_stop_without_llm() -> None:
     _ensure_bridgev2_path()
 
     agent = importlib.import_module("noisebot_server.internal.agent")
     provider = agent.LocalIntentProvider()
 
-    result = provider.match("Pare.", turn_id=45)
+    result = provider.match("Pare.", turn_id=51)
 
     assert result.intent_name == "local_stop"
     assert result.reply_text == "Pronto, parei."
