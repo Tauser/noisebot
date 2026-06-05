@@ -68,9 +68,20 @@ tools/piper/
 
 # Documentação gerada
 docs/_build/
+docs/archive/
+docs/history/
+docs/modules/
 
 # microSD content (assets não versionados)
-assets/
+assets/*
+!assets/ui/
+assets/ui/*
+!assets/ui/icons/
+assets/ui/icons/*
+!assets/ui/icons/SVG/
+!assets/ui/icons/SVG/*.svg
+!assets/ui/icons/28x28/
+!assets/ui/icons/28x28/*.pbm
 
 # Credenciais locais de dev — nunca commitar
 .env

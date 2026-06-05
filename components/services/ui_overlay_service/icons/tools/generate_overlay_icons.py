@@ -9,9 +9,10 @@ import argparse
 import sys
 
 
-ROOT = Path(__file__).resolve().parents[1]
-SOURCE_DIR = ROOT / "source"
-OUTPUT = ROOT / "generated" / "nb_ui_overlay_icons.h"
+ICON_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[5]
+DEFAULT_SOURCE_DIR = REPO_ROOT / "assets" / "ui" / "icons" / "28x28"
+DEFAULT_OUTPUT = ICON_ROOT / "generated" / "nb_ui_overlay_icons.h"
 
 
 @dataclass(frozen=True)
@@ -110,23 +111,38 @@ def render_header(icons: list[Icon]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--source",
+        type=Path,
+        default=DEFAULT_SOURCE_DIR,
+        help="directory containing PBM P1 icon masks",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_OUTPUT,
+        help="generated C header path",
+    )
     parser.add_argument("--check", action="store_true", help="fail if output is stale")
     args = parser.parse_args()
 
-    icons = [read_pbm(path) for path in sorted(SOURCE_DIR.glob("*.pbm"))]
+    source_dir = args.source.resolve()
+    output = args.output.resolve()
+
+    icons = [read_pbm(path) for path in sorted(source_dir.glob("*.pbm"))]
     if not icons:
-        raise RuntimeError(f"no PBM icons found in {SOURCE_DIR}")
+        raise RuntimeError(f"no PBM icons found in {source_dir}")
 
     rendered = render_header(icons)
     if args.check:
-        current = OUTPUT.read_text(encoding="ascii") if OUTPUT.exists() else ""
+        current = output.read_text(encoding="ascii") if output.exists() else ""
         if current != rendered:
-            print(f"{OUTPUT} is stale", file=sys.stderr)
+            print(f"{output} is stale", file=sys.stderr)
             return 1
         return 0
 
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(rendered, encoding="ascii", newline="\n")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(rendered, encoding="ascii", newline="\n")
     return 0
 
 

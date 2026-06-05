@@ -38,22 +38,19 @@ static constexpr int     SLEEP_MSG_W            = 142;
 static constexpr int     SLEEP_MSG_H            = 52;
 static constexpr int     SLEEP_MSG_Y_OFFSET     = 24;
 static constexpr int     SLEEP_MSG_MARGIN       = 6;
-static constexpr int     LISTENING_ICON_W       = 24;
-static constexpr int     LISTENING_ICON_H       = 24;
-static constexpr int     LISTENING_ICON_MARGIN  = 8;
-static constexpr int     CAMERA_ICON_W          = 24;
-static constexpr int     CAMERA_ICON_H          = 24;
-static constexpr int     CAMERA_ICON_MARGIN     = 8;
+static constexpr int     STATUS_RAIL_SLOT_W     = 24;
+static constexpr int     STATUS_RAIL_SLOT_H     = 24;
+static constexpr int     STATUS_RAIL_MARGIN     = 8;
 static constexpr int     STATUS_ICON_GAP        = 6;
+static constexpr int     STATUS_RAIL_MAX_ICONS  = 4;
 static constexpr int     TIMER_BADGE_W          = 94;
-static constexpr int     TIMER_BADGE_H          = 20;
+static constexpr int     TIMER_BADGE_H          = 24;
 static constexpr int     TIMER_BADGE_MARGIN     = 8;
 
 static volatile bool  s_sleep_bubble_active   = false;
-static volatile bool  s_listening_indicator_active = false;
-static volatile bool  s_camera_indicator_active = false;
 static volatile bool  s_timer_badge_active = false;
 static volatile uint32_t s_timer_badge_remaining_ms = 0;
+static volatile uint32_t s_status_icon_flags = 0;
 static int64_t        s_sleep_bubble_start_us = 0;
 static bool           s_sleep_bubble_was_active = false;
 static int16_t        s_eye_left_cx = 96;
@@ -63,16 +60,11 @@ static int            s_bubble_prev_x = 0;
 static int            s_bubble_prev_y = 0;
 static int            s_bubble_prev_w = 0;
 static int            s_bubble_prev_h = 0;
-static bool           s_listening_was_active = false;
-static int            s_listening_prev_x = 0;
-static int            s_listening_prev_y = 0;
-static int            s_listening_prev_w = 0;
-static int            s_listening_prev_h = 0;
-static bool           s_camera_was_active = false;
-static int            s_camera_prev_x = 0;
-static int            s_camera_prev_y = 0;
-static int            s_camera_prev_w = 0;
-static int            s_camera_prev_h = 0;
+static bool           s_status_rail_was_active = false;
+static int            s_status_rail_prev_x = 0;
+static int            s_status_rail_prev_y = 0;
+static int            s_status_rail_prev_w = 0;
+static int            s_status_rail_prev_h = 0;
 static bool           s_timer_badge_was_active = false;
 static int            s_timer_badge_prev_x = 0;
 static int            s_timer_badge_prev_y = 0;
@@ -156,6 +148,8 @@ static void draw_sleep_bubble(LGFX_Sprite *spr, int64_t now_us,
 
 static constexpr uint8_t OVERLAY_Z_ORDER = 30;
 static constexpr int TEXT_MAX_LEN = 129; /* 128 bytes + NUL, igual ao bridge */
+static constexpr int QUICK_STATUS_LABEL_LEN = 24;
+static constexpr int QUICK_STATUS_BAR_H = 32;
 
 static const lgfx::LVGLfont UI_FONT_STACKCHAN_TITLE(&MontserratSemiBold26);
 static const lgfx::LVGLfont UI_FONT_MONTSERRAT_PTBR(&MontserratPtBr16);
@@ -184,15 +178,24 @@ typedef enum {
     OVERLAY_TEXT,
     OVERLAY_TOAST,
     OVERLAY_CLOCK,
-    OVERLAY_STATUS,
     OVERLAY_CONNECTION,
+    OVERLAY_QUICK_STATUS,
 } overlay_kind_t;
+
+typedef struct {
+    nb_ui_status_icon_t left_icon;
+    nb_ui_status_icon_t right_icon;
+    char left_label[QUICK_STATUS_LABEL_LEN];
+    char center_label[QUICK_STATUS_LABEL_LEN];
+    char right_label[QUICK_STATUS_LABEL_LEN];
+} quick_status_state_t;
 
 typedef struct {
     overlay_kind_t kind;
     nb_ui_overlay_tone_t tone;
     uint8_t        percent;
     char           text[TEXT_MAX_LEN];
+    quick_status_state_t quick_status;
     int64_t        expires_us;
 } overlay_state_t;
 
@@ -212,7 +215,12 @@ static void overlay_rect(overlay_kind_t kind, int *x, int *y, int *w, int *h)
     if (dw <= 0) dw = 320;
     if (dh <= 0) dh = 240;
 
-    if (kind == OVERLAY_TOAST) {
+    if (kind == OVERLAY_QUICK_STATUS) {
+        *w = dw;
+        *h = QUICK_STATUS_BAR_H;
+        *x = 0;
+        *y = 0;
+    } else if (kind == OVERLAY_TOAST) {
         *w = (dw < 312) ? (dw - 16) : 304;
         *h = 52;
         *x = (dw - *w) / 2;
@@ -222,7 +230,7 @@ static void overlay_rect(overlay_kind_t kind, int *x, int *y, int *w, int *h)
         *h = dh;
         *x = 0;
         *y = 0;
-    } else if (kind == OVERLAY_STATUS || kind == OVERLAY_CONNECTION) {
+    } else if (kind == OVERLAY_CONNECTION) {
         *w = (dw < 286) ? (dw - 28) : 258;
         *h = 68;
         *x = (dw - *w) / 2;
@@ -270,68 +278,160 @@ static void draw_icon_mask(LGFX_Sprite *spr,
                            uint16_t color)
 {
     if (!spr || !icon || !icon->mask) return;
-    const int draw_x = x + ((w - (int)icon->width) / 2);
-    const int draw_y = y + ((h - (int)icon->height) / 2);
+    if (w <= 0 || h <= 0) return;
 
-    for (uint8_t py = 0U; py < icon->height; py++) {
+    for (int dy = 0; dy < h; dy++) {
+        const uint8_t py = (uint8_t)((dy * (int)icon->height) / h);
         const uint8_t *row = &icon->mask[(size_t)py * (size_t)icon->stride];
-        for (uint8_t px = 0U; px < icon->width; px++) {
+        for (int dx = 0; dx < w; dx++) {
+            const uint8_t px = (uint8_t)((dx * (int)icon->width) / w);
             const uint8_t bit = (uint8_t)(0x80U >> (px & 0x07U));
             if ((row[px >> 3] & bit) != 0U) {
-                spr->drawPixel(draw_x + (int)px, draw_y + (int)py, color);
+                spr->drawPixel(x + dx, y + dy, color);
             }
         }
     }
 }
 
-static void listening_icon_rect(int *x, int *y, int *w, int *h)
+static bool status_icon_enabled(uint32_t flags, nb_ui_status_icon_t icon)
 {
-    int dw = display_hal_width();
-    if (dw <= 0) dw = 320;
-
-    *w = LISTENING_ICON_W;
-    *h = LISTENING_ICON_H;
-    *x = dw - LISTENING_ICON_W - LISTENING_ICON_MARGIN;
-    *y = LISTENING_ICON_MARGIN;
+    if ((int)icon < 0 || icon >= NB_UI_STATUS_ICON_COUNT) return false;
+    return (flags & (1UL << (uint32_t)icon)) != 0U;
 }
 
-static void camera_icon_rect(int *x, int *y, int *w, int *h)
+static const nb_ui_overlay_icon_t *status_icon_asset(nb_ui_status_icon_t icon)
 {
-    int dw = display_hal_width();
-    if (dw <= 0) dw = 320;
-
-    *w = CAMERA_ICON_W;
-    *h = CAMERA_ICON_H;
-    *x = dw - CAMERA_ICON_W - CAMERA_ICON_MARGIN;
-    if (s_listening_indicator_active) {
-        *x -= LISTENING_ICON_W + STATUS_ICON_GAP;
+    switch (icon) {
+        case NB_UI_STATUS_ICON_MIC_ACTIVE:        return &NB_UI_OVERLAY_ICON_MICROFONE;
+        case NB_UI_STATUS_ICON_MIC_BLOCKED:       return &NB_UI_OVERLAY_ICON_MICROFONE_BLOQUEADO;
+        case NB_UI_STATUS_ICON_CAMERA_ACTIVE:     return &NB_UI_OVERLAY_ICON_CAMERA;
+        case NB_UI_STATUS_ICON_SPEAKER_ACTIVE:    return &NB_UI_OVERLAY_ICON_VOLUME;
+        case NB_UI_STATUS_ICON_BRIDGE_CONNECTED:  return &NB_UI_OVERLAY_ICON_SERVER_ON;
+        case NB_UI_STATUS_ICON_BRIDGE_BUSY:       return &NB_UI_OVERLAY_ICON_SERVER_RELOAD;
+        case NB_UI_STATUS_ICON_BRIDGE_OFFLINE:    return &NB_UI_OVERLAY_ICON_SERVER_OFF;
+        case NB_UI_STATUS_ICON_WIFI_1:            return &NB_UI_OVERLAY_ICON_WIFI_1;
+        case NB_UI_STATUS_ICON_WIFI_2:            return &NB_UI_OVERLAY_ICON_WI_FI_2;
+        case NB_UI_STATUS_ICON_WIFI_3:            return &NB_UI_OVERLAY_ICON_WI_FI_3;
+        case NB_UI_STATUS_ICON_WIFI_ALERT:        return &NB_UI_OVERLAY_ICON_WI_FI_ALERTA;
+        case NB_UI_STATUS_ICON_WIFI_UNAVAILABLE:  return &NB_UI_OVERLAY_ICON_WI_FI_INDISPONIVEL;
+        case NB_UI_STATUS_ICON_VOLUME_LOW:        return &NB_UI_OVERLAY_ICON_VOLUME_BAIXO;
+        case NB_UI_STATUS_ICON_VOLUME_HIGH:       return &NB_UI_OVERLAY_ICON_VOLUME;
+        case NB_UI_STATUS_ICON_VOLUME_MUTED:      return &NB_UI_OVERLAY_ICON_VOLUME_MUDO;
+        case NB_UI_STATUS_ICON_VOLUME_OFF:        return &NB_UI_OVERLAY_ICON_VOLUME_DESLIGADO;
+        case NB_UI_STATUS_ICON_BATTERY_ABSENT:    return &NB_UI_OVERLAY_ICON_BATERIA_AUSENTE;
+        case NB_UI_STATUS_ICON_BATTERY_EMPTY:     return &NB_UI_OVERLAY_ICON_BATERIA_VAZIA;
+        case NB_UI_STATUS_ICON_BATTERY_25:        return &NB_UI_OVERLAY_ICON_BATERIA_QUARTO;
+        case NB_UI_STATUS_ICON_BATTERY_50:        return &NB_UI_OVERLAY_ICON_BATERIA_METADE;
+        case NB_UI_STATUS_ICON_BATTERY_75:        return &NB_UI_OVERLAY_ICON_BATERIA_TRES_QUARTOS;
+        case NB_UI_STATUS_ICON_BATTERY_FULL:      return &NB_UI_OVERLAY_ICON_BATERIA_CHEIA;
+        case NB_UI_STATUS_ICON_BATTERY_100:       return &NB_UI_OVERLAY_ICON_BATERIA_100;
+        case NB_UI_STATUS_ICON_BATTERY_CHARGING:  return &NB_UI_OVERLAY_ICON_BATERIA_CARREGANDO;
+        case NB_UI_STATUS_ICON_ALARM_ACTIVE:      return &NB_UI_OVERLAY_ICON_DESPERTADOR;
+        case NB_UI_STATUS_ICON_LOCKED:            return &NB_UI_OVERLAY_ICON_BLOQUEAR;
+        case NB_UI_STATUS_ICON_USER_IDENTIFYING:  return &NB_UI_OVERLAY_ICON_IDENTIFICACAO_USUARIO;
+        case NB_UI_STATUS_ICON_WIFI_PASSWORD:     return &NB_UI_OVERLAY_ICON_SENHA_DO_WIFI;
+        case NB_UI_STATUS_ICON_TEMP_ALERT:        return &NB_UI_OVERLAY_ICON_ALERTA_DE_ALTA_TEMPERATURA;
+        case NB_UI_STATUS_ICON_CALENDAR_CLOCK:    return &NB_UI_OVERLAY_ICON_RELOGIO_CALENDARIO;
+        default:                                  return NULL;
     }
-    *y = CAMERA_ICON_MARGIN;
 }
 
-static void draw_listening_icon(LGFX_Sprite *spr, int x, int y, int w, int h, int64_t now_us)
-{
-    const float phase = (float)((now_us / 1000LL) % 1400LL) / 1400.0f;
-    const float pulse = 0.5f + (0.5f * sinf(phase * 2.0f * BUBBLE_NB_PI_F));
-    const uint8_t glow = (uint8_t)(190.0f + (pulse * 52.0f));
-    const uint16_t fg = spr->color565(122, glow, 246);
-
-    const int mx = x + (w / 2);
-    const int my = y + 1;
-    spr->fillRoundRect(mx - 5, my, 10, 14, 5, fg);
-    spr->drawArc(mx, my + 8, 10, 9, 28, 152, fg);
-    spr->drawLine(mx, my + 18, mx, my + 22, fg);
-    spr->drawLine(mx - 6, my + 22, mx + 6, my + 22, fg);
-}
-
-static void draw_camera_icon(LGFX_Sprite *spr, int x, int y, int w, int h, int64_t now_us)
+static uint16_t status_icon_color(LGFX_Sprite *spr, nb_ui_status_icon_t icon, int64_t now_us)
 {
     const float phase = (float)((now_us / 1000LL) % 1600LL) / 1600.0f;
     const float pulse = 0.5f + (0.5f * sinf(phase * 2.0f * BUBBLE_NB_PI_F));
-    const uint8_t glow = (uint8_t)(178.0f + (pulse * 46.0f));
-    const uint16_t fg = spr->color565(118, glow, 250);
 
-    draw_icon_mask(spr, &NB_UI_OVERLAY_ICON_CAMERA, x, y, w, h, fg);
+    switch (icon) {
+        case NB_UI_STATUS_ICON_MIC_BLOCKED:
+        case NB_UI_STATUS_ICON_VOLUME_MUTED:
+        case NB_UI_STATUS_ICON_VOLUME_OFF:
+        case NB_UI_STATUS_ICON_BATTERY_ABSENT:
+            return spr->color565(244, 174, 82);
+        case NB_UI_STATUS_ICON_WIFI_ALERT:
+        case NB_UI_STATUS_ICON_WIFI_UNAVAILABLE:
+        case NB_UI_STATUS_ICON_BRIDGE_OFFLINE:
+        case NB_UI_STATUS_ICON_BATTERY_EMPTY:
+        case NB_UI_STATUS_ICON_TEMP_ALERT:
+            return spr->color565(246, 93, 83);
+        case NB_UI_STATUS_ICON_BATTERY_CHARGING:
+            return spr->color565(92, 232, 141);
+        case NB_UI_STATUS_ICON_MIC_ACTIVE:
+        case NB_UI_STATUS_ICON_CAMERA_ACTIVE:
+        case NB_UI_STATUS_ICON_SPEAKER_ACTIVE: {
+            const uint8_t glow = (uint8_t)(178.0f + (pulse * 48.0f));
+            return spr->color565(118, glow, 250);
+        }
+        default:
+            return spr->color565(226, 238, 246);
+    }
+}
+
+static void status_rail_rect(int *x, int *y, int *w, int *h)
+{
+    int dw = display_hal_width();
+    if (dw <= 0) dw = 320;
+
+    *w = (STATUS_RAIL_MAX_ICONS * STATUS_RAIL_SLOT_W)
+       + ((STATUS_RAIL_MAX_ICONS - 1) * STATUS_ICON_GAP);
+    *h = STATUS_RAIL_SLOT_H;
+    *x = dw - STATUS_RAIL_MARGIN - *w;
+    *y = STATUS_RAIL_MARGIN;
+}
+
+static void draw_status_rail(LGFX_Sprite *spr, uint32_t flags, int64_t now_us)
+{
+    static const nb_ui_status_icon_t PRIORITY[] = {
+        NB_UI_STATUS_ICON_TEMP_ALERT,
+        NB_UI_STATUS_ICON_BATTERY_EMPTY,
+        NB_UI_STATUS_ICON_BRIDGE_OFFLINE,
+        NB_UI_STATUS_ICON_MIC_BLOCKED,
+        NB_UI_STATUS_ICON_CAMERA_ACTIVE,
+        NB_UI_STATUS_ICON_MIC_ACTIVE,
+        NB_UI_STATUS_ICON_SPEAKER_ACTIVE,
+        NB_UI_STATUS_ICON_BRIDGE_BUSY,
+        NB_UI_STATUS_ICON_WIFI_ALERT,
+        NB_UI_STATUS_ICON_WIFI_UNAVAILABLE,
+        NB_UI_STATUS_ICON_WIFI_1,
+        NB_UI_STATUS_ICON_WIFI_2,
+        NB_UI_STATUS_ICON_WIFI_3,
+        NB_UI_STATUS_ICON_VOLUME_MUTED,
+        NB_UI_STATUS_ICON_VOLUME_OFF,
+        NB_UI_STATUS_ICON_VOLUME_LOW,
+        NB_UI_STATUS_ICON_VOLUME_HIGH,
+        NB_UI_STATUS_ICON_BATTERY_ABSENT,
+        NB_UI_STATUS_ICON_BATTERY_CHARGING,
+        NB_UI_STATUS_ICON_BATTERY_25,
+        NB_UI_STATUS_ICON_BATTERY_50,
+        NB_UI_STATUS_ICON_BATTERY_75,
+        NB_UI_STATUS_ICON_BATTERY_FULL,
+        NB_UI_STATUS_ICON_BATTERY_100,
+        NB_UI_STATUS_ICON_ALARM_ACTIVE,
+        NB_UI_STATUS_ICON_LOCKED,
+        NB_UI_STATUS_ICON_USER_IDENTIFYING,
+        NB_UI_STATUS_ICON_WIFI_PASSWORD,
+        NB_UI_STATUS_ICON_CALENDAR_CLOCK,
+    };
+
+    int rail_x = 0, rail_y = 0, rail_w = 0, rail_h = 0;
+    status_rail_rect(&rail_x, &rail_y, &rail_w, &rail_h);
+
+    int slot = 0;
+    for (size_t i = 0; i < (sizeof(PRIORITY) / sizeof(PRIORITY[0])); i++) {
+        nb_ui_status_icon_t icon = PRIORITY[i];
+        if (!status_icon_enabled(flags, icon)) continue;
+        const nb_ui_overlay_icon_t *asset = status_icon_asset(icon);
+        if (!asset) continue;
+
+        const int x = rail_x + rail_w - STATUS_RAIL_SLOT_W
+                    - (slot * (STATUS_RAIL_SLOT_W + STATUS_ICON_GAP));
+        const int y = rail_y;
+        draw_icon_mask(spr, asset, x, y,
+                       STATUS_RAIL_SLOT_W, STATUS_RAIL_SLOT_H,
+                       status_icon_color(spr, icon, now_us));
+
+        slot++;
+        if (slot >= STATUS_RAIL_MAX_ICONS) break;
+    }
 }
 
 static void timer_badge_rect(int *x, int *y, int *w, int *h)
@@ -416,11 +516,6 @@ static bool is_clock_text(const char *text)
     return text &&
            std::strstr(text, "Agora") == text &&
            (std::strstr(text, "hora") || std::strstr(text, "minuto"));
-}
-
-static bool is_status_text(const char *text)
-{
-    return text && std::strstr(text, "Status:") == text;
 }
 
 static bool is_connection_text(const char *text)
@@ -629,50 +724,6 @@ static void draw_clock_overlay(LGFX_Sprite *spr,
     ui_reset_font(spr);
 }
 
-static void draw_status_overlay(LGFX_Sprite *spr,
-                                int x,
-                                int y,
-                                int w,
-                                int h,
-                                const overlay_state_t *state)
-{
-    const uint16_t bg = spr->color565(9, 18, 16);
-    const uint16_t fg = TFT_WHITE;
-    const uint16_t dim = spr->color565(112, 132, 126);
-    const uint16_t accent = spr->color565(72, 208, 129);
-
-    int health = -1;
-    int attention = -1;
-    const char *health_p = std::strstr(state->text, "saude ");
-    const char *attn_p = std::strstr(state->text, "atencao ");
-    if (health_p) health = std::atoi(health_p + 6);
-    if (attn_p) attention = std::atoi(attn_p + 8);
-    if (health < 0) health = -1;
-    if (health > 100) health = 100;
-    if (attention < 0) attention = -1;
-    if (attention > 100) attention = 100;
-
-    spr->fillRoundRect(x, y, w, h, 8, bg);
-    spr->drawRoundRect(x, y, w, h, 8, accent);
-    spr->fillCircle(x + 28, y + 28, 12, accent);
-    spr->drawLine(x + 21, y + 28, x + 26, y + 34, bg);
-    spr->drawLine(x + 26, y + 34, x + 37, y + 21, bg);
-
-    spr->setTextColor(fg, bg);
-    ui_set_font(spr, UI_FONT_TITLE);
-    spr->drawString("Status", x + 54, y + 10);
-    spr->setTextColor(dim, bg);
-    ui_set_font(spr, UI_FONT_SMALL);
-    if (health >= 0 && attention >= 0) {
-        char line[32];
-        std::snprintf(line, sizeof(line), "saude %d%%  atencao %d%%", health, attention);
-        spr->drawString(line, x + 56, y + 39);
-    } else {
-        spr->drawString("operacional", x + 56, y + 39);
-    }
-    ui_reset_font(spr);
-}
-
 static void draw_connection_overlay(LGFX_Sprite *spr,
                                     int x,
                                     int y,
@@ -701,6 +752,97 @@ static void draw_connection_overlay(LGFX_Sprite *spr,
     spr->setTextColor(dim, bg);
     ui_set_font(spr, UI_FONT_SMALL);
     spr->drawString(line, x + 60, y + 38);
+    ui_reset_font(spr);
+}
+
+static void draw_clipped_label(LGFX_Sprite *spr,
+                               const char *label,
+                               int x,
+                               int y,
+                               int w,
+                               uint16_t fg,
+                               uint16_t bg)
+{
+    if (!label || label[0] == '\0' || w <= 0) return;
+
+    spr->setTextColor(fg, bg);
+    spr->setClipRect(x, y - 2, w, 22);
+    spr->drawString(label, x, y);
+    spr->clearClipRect();
+}
+
+static void draw_centered_clipped_label(LGFX_Sprite *spr,
+                                        const char *label,
+                                        int x,
+                                        int y,
+                                        int w,
+                                        uint16_t fg,
+                                        uint16_t bg)
+{
+    if (!label || label[0] == '\0' || w <= 0) return;
+
+    int text_w = spr->textWidth(label);
+    int text_x = x + ((w - text_w) / 2);
+    if (text_x < x) text_x = x;
+    spr->setTextColor(fg, bg);
+    spr->setClipRect(x, y - 2, w, 22);
+    spr->drawString(label, text_x, y);
+    spr->clearClipRect();
+}
+
+static void draw_quick_status_overlay(LGFX_Sprite *spr,
+                                      int x,
+                                      int y,
+                                      int w,
+                                      int h,
+                                      const overlay_state_t *state,
+                                      int64_t now_us)
+{
+    const quick_status_state_t *quick = &state->quick_status;
+    const uint16_t bg = spr->color565(4, 10, 14);
+    const uint16_t fg = spr->color565(232, 242, 246);
+    const uint16_t dim = spr->color565(111, 132, 138);
+    const uint16_t line = spr->color565(24, 46, 54);
+    const int icon_y = y + ((h - STATUS_RAIL_SLOT_H) / 2);
+    const int text_y = y + ((h - 16) / 2) - 1;
+
+    spr->fillRect(x, y, w, h, bg);
+    spr->drawFastHLine(x, y + h - 1, w, line);
+    ui_set_font(spr, UI_FONT_SMALL);
+
+    int left_text_x = x + 10;
+    int left_text_w = 92;
+    const nb_ui_overlay_icon_t *left_asset = status_icon_asset(quick->left_icon);
+    if (left_asset) {
+        draw_icon_mask(spr, left_asset, x + 6, icon_y,
+                       STATUS_RAIL_SLOT_W, STATUS_RAIL_SLOT_H,
+                       status_icon_color(spr, quick->left_icon, now_us));
+        left_text_x = x + 31;
+        left_text_w = 82;
+    }
+    draw_clipped_label(spr, quick->left_label, left_text_x, text_y,
+                       left_text_w, fg, bg);
+
+    const int center_x = x + 112;
+    const int center_w = (w > 224) ? (w - 224) : 76;
+    draw_centered_clipped_label(spr, quick->center_label, center_x, text_y,
+                                center_w, fg, bg);
+
+    const nb_ui_overlay_icon_t *right_asset = status_icon_asset(quick->right_icon);
+    int right_icon_x = x + w - 26;
+    int right_text_x = x + w - 100;
+    int right_text_w = 68;
+    if (right_asset) {
+        draw_icon_mask(spr, right_asset, right_icon_x, icon_y,
+                       STATUS_RAIL_SLOT_W, STATUS_RAIL_SLOT_H,
+                       status_icon_color(spr, quick->right_icon, now_us));
+    } else {
+        right_text_x = x + w - 86;
+        right_text_w = 76;
+    }
+    draw_clipped_label(spr, quick->right_label, right_text_x, text_y,
+                       right_text_w, dim, bg);
+
     ui_reset_font(spr);
 }
 
@@ -757,6 +899,7 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
     LGFX_Sprite *spr = static_cast<LGFX_Sprite *>(canvas);
     overlay_state_t state = {};
     bool visible = false;
+    uint32_t status_flags = s_status_icon_flags;
     int64_t now_us = esp_timer_get_time();
 
     if (xSemaphoreTake(s_mutex, 0) == pdTRUE) {
@@ -790,45 +933,25 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
     }
     s_sleep_bubble_was_active = bubble;
 
-    bool listening = s_listening_indicator_active;
-    if (listening) {
+    if (status_flags != 0U) {
         int dirty_x = 0, dirty_y = 0, dirty_w = 0, dirty_h = 0;
-        listening_icon_rect(&dirty_x, &dirty_y, &dirty_w, &dirty_h);
-        if (s_listening_was_active) {
-            render_service_mark_dirty(s_listening_prev_x, s_listening_prev_y,
-                                      s_listening_prev_w, s_listening_prev_h);
+        status_rail_rect(&dirty_x, &dirty_y, &dirty_w, &dirty_h);
+        if (s_status_rail_was_active) {
+            render_service_mark_dirty(s_status_rail_prev_x, s_status_rail_prev_y,
+                                      s_status_rail_prev_w, s_status_rail_prev_h);
         }
-        draw_listening_icon(spr, dirty_x, dirty_y, dirty_w, dirty_h, now_us);
+        draw_status_rail(spr, status_flags, now_us);
         render_service_mark_dirty(dirty_x, dirty_y, dirty_w, dirty_h);
-        s_listening_prev_x = dirty_x;
-        s_listening_prev_y = dirty_y;
-        s_listening_prev_w = dirty_w;
-        s_listening_prev_h = dirty_h;
-    } else if (s_listening_was_active) {
-        render_service_mark_dirty(s_listening_prev_x, s_listening_prev_y,
-                                  s_listening_prev_w, s_listening_prev_h);
+        s_status_rail_prev_x = dirty_x;
+        s_status_rail_prev_y = dirty_y;
+        s_status_rail_prev_w = dirty_w;
+        s_status_rail_prev_h = dirty_h;
+        s_status_rail_was_active = true;
+    } else if (s_status_rail_was_active) {
+        render_service_mark_dirty(s_status_rail_prev_x, s_status_rail_prev_y,
+                                  s_status_rail_prev_w, s_status_rail_prev_h);
+        s_status_rail_was_active = false;
     }
-    s_listening_was_active = listening;
-
-    bool camera = s_camera_indicator_active;
-    if (camera) {
-        int dirty_x = 0, dirty_y = 0, dirty_w = 0, dirty_h = 0;
-        camera_icon_rect(&dirty_x, &dirty_y, &dirty_w, &dirty_h);
-        if (s_camera_was_active) {
-            render_service_mark_dirty(s_camera_prev_x, s_camera_prev_y,
-                                      s_camera_prev_w, s_camera_prev_h);
-        }
-        draw_camera_icon(spr, dirty_x, dirty_y, dirty_w, dirty_h, now_us);
-        render_service_mark_dirty(dirty_x, dirty_y, dirty_w, dirty_h);
-        s_camera_prev_x = dirty_x;
-        s_camera_prev_y = dirty_y;
-        s_camera_prev_w = dirty_w;
-        s_camera_prev_h = dirty_h;
-    } else if (s_camera_was_active) {
-        render_service_mark_dirty(s_camera_prev_x, s_camera_prev_y,
-                                  s_camera_prev_w, s_camera_prev_h);
-    }
-    s_camera_was_active = camera;
 
     bool timer_badge = s_timer_badge_active;
     if (timer_badge) {
@@ -879,11 +1002,11 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
         case OVERLAY_CLOCK:
             draw_clock_overlay(spr, x, y, w, h, &state);
             break;
-        case OVERLAY_STATUS:
-            draw_status_overlay(spr, x, y, w, h, &state);
-            break;
         case OVERLAY_CONNECTION:
             draw_connection_overlay(spr, x, y, w, h, &state);
+            break;
+        case OVERLAY_QUICK_STATUS:
+            draw_quick_status_overlay(spr, x, y, w, h, &state, now_us);
             break;
         default:
             return;
@@ -953,9 +1076,6 @@ extern "C" void ui_overlay_show_text(const char *text, uint32_t duration_ms)
         s_state.percent = percent;
     } else if (is_clock_text(text)) {
         s_state.kind = OVERLAY_CLOCK;
-        s_state.percent = 0;
-    } else if (is_status_text(text)) {
-        s_state.kind = OVERLAY_STATUS;
         s_state.percent = 0;
     } else if (is_connection_text(text)) {
         s_state.kind = OVERLAY_CONNECTION;
@@ -1027,16 +1147,55 @@ extern "C" void ui_overlay_clear(void)
     render_service_force_full_refresh();
 }
 
+extern "C" void ui_overlay_show_quick_status(const nb_ui_quick_status_t *status,
+                                             uint32_t duration_ms)
+{
+    if (!s_initialized || !s_mutex || !status) return;
+    if (duration_ms == 0U) duration_ms = 3200U;
+
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    s_state.kind = OVERLAY_QUICK_STATUS;
+    s_state.tone = NB_UI_OVERLAY_INFO;
+    s_state.percent = 0;
+    s_state.text[0] = '\0';
+    s_state.quick_status.left_icon = status->left_icon;
+    s_state.quick_status.right_icon = status->right_icon;
+    copy_text(s_state.quick_status.left_label,
+              sizeof(s_state.quick_status.left_label),
+              status->left_label);
+    copy_text(s_state.quick_status.center_label,
+              sizeof(s_state.quick_status.center_label),
+              status->center_label);
+    copy_text(s_state.quick_status.right_label,
+              sizeof(s_state.quick_status.right_label),
+              status->right_label);
+    s_state.expires_us = esp_timer_get_time() + ((int64_t)duration_ms * 1000LL);
+    xSemaphoreGive(s_mutex);
+
+    ESP_LOGI(TAG, "quick status overlay");
+    render_service_force_full_refresh();
+}
+
+extern "C" void ui_overlay_status_icon_set(nb_ui_status_icon_t icon, bool enabled)
+{
+    if ((int)icon < 0 || icon >= NB_UI_STATUS_ICON_COUNT) return;
+    const uint32_t bit = 1UL << (uint32_t)icon;
+    if (enabled) {
+        s_status_icon_flags |= bit;
+    } else {
+        s_status_icon_flags &= ~bit;
+    }
+    render_service_force_full_refresh();
+}
+
 extern "C" void ui_overlay_listening_set(bool enabled)
 {
-    s_listening_indicator_active = enabled;
-    render_service_force_full_refresh();
+    ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_ACTIVE, enabled);
 }
 
 extern "C" void ui_overlay_camera_set(bool enabled)
 {
-    s_camera_indicator_active = enabled;
-    render_service_force_full_refresh();
+    ui_overlay_status_icon_set(NB_UI_STATUS_ICON_CAMERA_ACTIVE, enabled);
 }
 
 extern "C" void ui_overlay_timer_badge_set(bool enabled, uint32_t remaining_ms)

@@ -25,11 +25,55 @@ typedef enum {
     NB_UI_OVERLAY_ERROR,
 } nb_ui_overlay_tone_t;
 
+typedef enum {
+    NB_UI_STATUS_ICON_MIC_ACTIVE = 0,
+    NB_UI_STATUS_ICON_MIC_BLOCKED,
+    NB_UI_STATUS_ICON_CAMERA_ACTIVE,
+    NB_UI_STATUS_ICON_SPEAKER_ACTIVE,
+    NB_UI_STATUS_ICON_BRIDGE_CONNECTED,
+    NB_UI_STATUS_ICON_BRIDGE_BUSY,
+    NB_UI_STATUS_ICON_BRIDGE_OFFLINE,
+    NB_UI_STATUS_ICON_WIFI_1,
+    NB_UI_STATUS_ICON_WIFI_2,
+    NB_UI_STATUS_ICON_WIFI_3,
+    NB_UI_STATUS_ICON_WIFI_ALERT,
+    NB_UI_STATUS_ICON_WIFI_UNAVAILABLE,
+    NB_UI_STATUS_ICON_VOLUME_LOW,
+    NB_UI_STATUS_ICON_VOLUME_HIGH,
+    NB_UI_STATUS_ICON_VOLUME_MUTED,
+    NB_UI_STATUS_ICON_VOLUME_OFF,
+    NB_UI_STATUS_ICON_BATTERY_ABSENT,
+    NB_UI_STATUS_ICON_BATTERY_EMPTY,
+    NB_UI_STATUS_ICON_BATTERY_25,
+    NB_UI_STATUS_ICON_BATTERY_50,
+    NB_UI_STATUS_ICON_BATTERY_75,
+    NB_UI_STATUS_ICON_BATTERY_FULL,
+    NB_UI_STATUS_ICON_BATTERY_100,
+    NB_UI_STATUS_ICON_BATTERY_CHARGING,
+    NB_UI_STATUS_ICON_ALARM_ACTIVE,
+    NB_UI_STATUS_ICON_LOCKED,
+    NB_UI_STATUS_ICON_USER_IDENTIFYING,
+    NB_UI_STATUS_ICON_WIFI_PASSWORD,
+    NB_UI_STATUS_ICON_TEMP_ALERT,
+    NB_UI_STATUS_ICON_CALENDAR_CLOCK,
+    NB_UI_STATUS_ICON_COUNT,
+} nb_ui_status_icon_t;
+
+typedef struct {
+    nb_ui_status_icon_t left_icon;  /* Use NB_UI_STATUS_ICON_COUNT para ocultar. */
+    nb_ui_status_icon_t right_icon; /* Use NB_UI_STATUS_ICON_COUNT para ocultar. */
+    const char *left_label;
+    const char *center_label;
+    const char *right_label;
+} nb_ui_quick_status_t;
+
 void ui_overlay_show_volume(uint8_t percent, uint32_t duration_ms);
 void ui_overlay_show_text(const char *text, uint32_t duration_ms);
 void ui_overlay_clear_text(void);
 void ui_overlay_show_toast(const char *text, nb_ui_overlay_tone_t tone, uint32_t duration_ms);
 void ui_overlay_clear(void);
+void ui_overlay_status_icon_set(nb_ui_status_icon_t icon, bool enabled);
+void ui_overlay_show_quick_status(const nb_ui_quick_status_t *status, uint32_t duration_ms);
 void ui_overlay_listening_set(bool enabled);
 void ui_overlay_camera_set(bool enabled);
 void ui_overlay_timer_badge_set(bool enabled, uint32_t remaining_ms);

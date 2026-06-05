@@ -67,8 +67,10 @@
 #include "esp_ota_ops.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
+#include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #define TAG "nb_boot"
 
@@ -105,6 +107,7 @@ static bool     s_bridge_reply_playing = false; /* PLAYBACK atual veio de SAY do
 static uint32_t s_sleep_touch_guard_ms = 0; /* ignora toque residual ao entrar em SLEEPING */
 static uint32_t s_sleep_wake_guard_ms  = 0; /* evita falso wake word logo após dormir */
 static uint32_t s_timer_badge_tick_ms  = 0; /* atualiza badge visual do timer em 1 Hz */
+static bool     s_status_bridge_connected = false;
 
 /* ── Helpers de NVS (acesso direto, sem config_manager) ──────────────────── */
 
@@ -396,13 +399,16 @@ static void on_audio_event(nb_audio_event_t evt, uint32_t data)
             if (audio_service_is_listening()) {
                 NB_LOGW(TAG, "PLAYBACK_START ignorado durante escuta ativa");
                 audio_play_stop();
+                ui_overlay_status_icon_set(NB_UI_STATUS_ICON_SPEAKER_ACTIVE, false);
                 return;
             }
+            ui_overlay_status_icon_set(NB_UI_STATUS_ICON_SPEAKER_ACTIVE, true);
             s_bridge_reply_playing = (data == 0U);
             state_machine_on_audio_started();
             bus_evt.type = NB_EVT_AUDIO_STARTED;
             break;
         case NB_AUDIO_EVT_PLAYBACK_END:
+            ui_overlay_status_icon_set(NB_UI_STATUS_ICON_SPEAKER_ACTIVE, false);
             start_followup = s_bridge_reply_playing;
             s_bridge_reply_playing = false;
             if (start_followup) {
@@ -447,6 +453,56 @@ static void silence_active_alert(const char *source)
 {
     synth_stop();
     NB_LOGI(TAG, "alerta silenciado (%s)", source ? source : "unknown");
+}
+
+static bool state_is_intentional_silent(nb_robot_state_t state)
+{
+    return state == NB_STATE_MEDITATION || state == NB_STATE_SILENT_COMPANY;
+}
+
+static void update_silent_status_icon(nb_robot_state_t new_state,
+                                      nb_robot_state_t old_state)
+{
+    const bool now_silent = state_is_intentional_silent(new_state);
+    const bool was_silent = state_is_intentional_silent(old_state);
+
+    if (now_silent) {
+        ui_overlay_listening_set(false);
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, true);
+    } else if (was_silent) {
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, false);
+    }
+}
+
+static void format_quick_status_time(char *out, size_t out_size)
+{
+    if (!out || out_size == 0U) return;
+    out[0] = '\0';
+
+    struct tm local_time;
+    if (time_service_get_local_time(&local_time) == ESP_OK) {
+        snprintf(out, out_size, "%02d:%02d",
+                 local_time.tm_hour, local_time.tm_min);
+    } else {
+        snprintf(out, out_size, "--:--");
+    }
+}
+
+static void show_quick_status_bar(void)
+{
+    char time_label[8];
+    format_quick_status_time(time_label, sizeof(time_label));
+
+    nb_ui_quick_status_t status = {
+        .left_icon = s_status_bridge_connected
+                   ? NB_UI_STATUS_ICON_BRIDGE_CONNECTED
+                   : NB_UI_STATUS_ICON_BRIDGE_OFFLINE,
+        .right_icon = NB_UI_STATUS_ICON_BATTERY_ABSENT,
+        .left_label = s_status_bridge_connected ? "Bridge" : "Offline",
+        .center_label = time_label,
+        .right_label = "Sem bat.",
+    };
+    ui_overlay_show_quick_status(&status, 3600U);
 }
 
 /* Relay de touch: chama SM diretamente (contexto da touch task, não dispatcher)
@@ -555,6 +611,7 @@ static void on_state_changed(nb_robot_state_t new_state,
     expression_service_set_sleep_anim_enabled(new_state == NB_STATE_SLEEPING);
     expression_service_set_speaking_mouth_enabled(new_state == NB_STATE_RESPONDING);
     ui_overlay_sleep_bubble_set(new_state == NB_STATE_SLEEPING);
+    update_silent_status_icon(new_state, old_state);
     if (new_state == NB_STATE_SLEEPING) {
         s_sleep_touch_guard_ms = 500u;
         s_sleep_wake_guard_ms  = 1500u;
@@ -632,6 +689,27 @@ static void on_bridge_alert_command(const nb_event_t *ev, void *ctx)
     if (strstr(payload, "\"event\":\"ALERT_COMMAND\"") &&
         strstr(payload, "\"action\":\"silence\"")) {
         silence_active_alert("bridge");
+    } else if ((strstr(payload, "\"event\":\"STATUS_COMMAND\"") != NULL) ||
+               (strstr(payload, "\"action\":\"status\"") != NULL) ||
+               (strstr(payload, "\"action\":\"quick_status\"") != NULL)) {
+        show_quick_status_bar();
+    }
+}
+
+static void on_bridge_status_event(const nb_event_t *ev, void *ctx)
+{
+    (void)ctx;
+    if (!ev) return;
+
+    if (ev->type == NB_EVT_BRIDGE_CONNECTED) {
+        s_status_bridge_connected = true;
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_CONNECTED, false);
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_OFFLINE, false);
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_WIFI_UNAVAILABLE, false);
+    } else if (ev->type == NB_EVT_BRIDGE_DISCONNECTED) {
+        s_status_bridge_connected = false;
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_CONNECTED, false);
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_OFFLINE, true);
     }
 }
 
@@ -1266,6 +1344,8 @@ static esp_err_t phase_services(void)
     camera_service_set_event_cb(on_camera_event);
 
     nb_event_subscribe(NB_EVT_BRIDGE_SESSION, on_bridge_alert_command, NULL, NULL);
+    nb_event_subscribe(NB_EVT_BRIDGE_CONNECTED, on_bridge_status_event, NULL, NULL);
+    nb_event_subscribe(NB_EVT_BRIDGE_DISCONNECTED, on_bridge_status_event, NULL, NULL);
 
     /* diagnostics_service (Etapa 9.1): observabilidade e health score */
     {

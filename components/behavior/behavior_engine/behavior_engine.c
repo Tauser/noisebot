@@ -567,6 +567,7 @@ static void bridge_on_event(const nb_event_t *evt)
         uint8_t level = (evt->data.u32 > 100U) ? 100U : (uint8_t)evt->data.u32;
         audio_set_volume(level);
         synth_set_volume(level);
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_VOLUME_OFF, level == 0U);
         esp_err_t cfg_err = config_set_volume(level);
         if (cfg_err != ESP_OK) {
             NB_LOGW(TAG, "persistencia do volume via bridge falhou: %s", esp_err_to_name(cfg_err));
