@@ -42,7 +42,7 @@ Ver `docs/HARDWARE.md` para especificações completas e mapa de pinos.
 
 - **MCU:** Freenove ESP32-S3-WROOM CAM N16R8
 - **Framework:** ESP-IDF (não Arduino)
-- **Linguagem:** C17 (exceto `hal/display`: C++ para LovyanGFX)
+- **Linguagem:** C17 (exceto `nb_hal/display`: C++ para LovyanGFX)
 - **RTOS:** FreeRTOS (incluso no ESP-IDF)
 - **Stack gráfica:** LovyanGFX (contrato arquitetural, ver `docs/ARCHITECTURE.md`)
 - **Build:** CMake via `idf.py`
@@ -50,22 +50,20 @@ Ver `docs/HARDWARE.md` para especificações completas e mapa de pinos.
 
 ## Definição de "Base Sólida Concluída"
 
-O marco **BASE SÓLIDA** é atingido quando todos os critérios de aceitação do Bloco 0 e dos gates de safety do Bloco 3 estiverem verificados com hardware real. Ver `docs/ROADMAP.md` para a lista completa.
+O `docs/ROADMAP.md` atual funciona como painel vivo de produto: mostra decisoes,
+fila P0/P1/P2, itens feitos e criterios de aceite. Logs longos e criterios
+antigos completos podem ser mantidos em arquivos locais de limpeza, mas nao
+precisam ser versionados.
 
 Nenhuma feature de expressividade ou comportamento é liberada antes deste marco.
 
-## Roadmap Resumido
+## Roadmap De Produto
 
-| Bloco | Nome          | Resultado                                                  |
-| ----- | ------------- | ---------------------------------------------------------- |
-| 0     | Fundação      | Boot, watchdog, NVS, SD, event bus, brownout               |
-| 1     | Display       | LovyanGFX, framebuffer, face procedural                    |
-| 2     | Periféricos   | WS2812, touch capacitivo                                   |
-| 3     | Motion Safety | Driver servo, safety layer, motion primitivos              |
-| 4     | Áudio         | Microfone + VAD, speaker + playback                        |
-| 5     | Comportamento | State machine, gaze, idle, expressão, conductor            |
-| 6     | Integração    | Integração completa, memória de longo prazo                |
-| 7     | Polimento     | Performance, refinamento comportamental, testes de produto |
-| 8+    | Expansões     | Câmera, IMU, bateria                                       |
+| Horizonte | Resultado |
+| --- | --- |
+| Base consolidada | Display/render, event bus, camadas, voice/bridge e feedback visual |
+| Agora | Touch confiavel, presence/camera leve, agenda local, status rail e documentacao limpa |
+| Proximo | Motion safety, persistencia/SD, WiFi offline-first, observabilidade e voice polish |
+| Adiado | Servos reais, IMU, bateria e camera avancada |
 
-Ver `docs/ROADMAP.md` para etapas detalhadas, critérios de aceitação e dependências.
+Ver `docs/ROADMAP.md` para o roadmap ativo.

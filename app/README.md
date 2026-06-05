@@ -2,9 +2,9 @@
 
 Dashboard amigavel do usuario para o NoiseBot.
 
-O app segue a fronteira inspirada no StackChan:
+O app segue a fronteira de produto do NoiseBot:
 
-- `firmware/` ou `components/`: ESP32-S3 leve, sem UI pesada.
+- `components/` e `main/`: firmware ESP32-S3 leve, sem UI pesada.
 - `server/`: backend local, IA, TTS, STT, visao, rotina e APIs.
 - `app/`: interface de produto para o usuario.
 
