@@ -31,7 +31,7 @@
 #define MOTION_TASK_PERIOD_MS   20u     /* 50Hz */
 #define MOTION_CMD_QUEUE_DEPTH   8u
 #define MOTION_MIN_DURATION_MS  100u    /* evita degraus secos em comandos externos */
-#define MOTION_TRACK_TIME_MS     20u    /* estilo StackChan: tracking curto por frame */
+#define MOTION_TRACK_TIME_MS     20u    /* tracking curto por frame */
 #define MOTION_TORQUE_RELEASE_MS 220u   /* solta torque em repouso para evitar jitter */
 
 /* ── Conversão de unidades ───────────────────────────────────────────────── */
@@ -270,7 +270,7 @@ static void update_servo(uint8_t id, uint32_t dt_ms)
         return;
     }
 
-    /* Envia ao servo no mesmo espírito do StackChan: pequeno tracking por frame.
+    /* Envia ao servo em pequeno tracking por frame.
      * O perfil suave vem da task (50Hz), não de um salto grande no firmware do servo. */
     servo_hal_write_position(id, new_pos, (uint16_t)MOTION_TRACK_TIME_MS);
     sv->pos_current = new_pos;

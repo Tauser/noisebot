@@ -135,6 +135,29 @@ static esp_err_t restore_idle_timeout_if_legacy(void)
     return err;
 }
 
+static esp_err_t restore_touch_sensitivity_if_legacy(void)
+{
+    uint8_t touch_sens = nvs_hal_get_u8(s_h_cfg,
+                                        NB_CFG_KEY_TOUCH_SENS,
+                                        NB_CFG_DEFAULT_TOUCH_SENS);
+
+    if (touch_sens != 10U) {
+        return ESP_OK;
+    }
+
+    NB_LOGI(TAG, "touch_sens legado=%u — restaurando para %u",
+            (unsigned)touch_sens,
+            (unsigned)NB_CFG_DEFAULT_TOUCH_SENS);
+
+    esp_err_t err = nvs_hal_set_u8(s_h_cfg,
+                                   NB_CFG_KEY_TOUCH_SENS,
+                                   NB_CFG_DEFAULT_TOUCH_SENS);
+    if (err == ESP_OK) {
+        nvs_hal_commit(s_h_cfg);
+    }
+    return err;
+}
+
 static esp_err_t ensure_voice_audio_v2_defaults(void)
 {
     bool changed = false;
@@ -233,6 +256,13 @@ esp_err_t config_manager_init(void)
 
     if ((err = restore_idle_timeout_if_legacy()) != ESP_OK) {
         NB_LOGE(TAG, "restore_idle_timeout_if_legacy falhou: %s", esp_err_to_name(err));
+        nvs_hal_close(s_h_cfg);
+        nvs_hal_close(s_h_svc);
+        return err;
+    }
+
+    if ((err = restore_touch_sensitivity_if_legacy()) != ESP_OK) {
+        NB_LOGE(TAG, "restore_touch_sensitivity_if_legacy falhou: %s", esp_err_to_name(err));
         nvs_hal_close(s_h_cfg);
         nvs_hal_close(s_h_svc);
         return err;

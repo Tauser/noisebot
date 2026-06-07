@@ -14,7 +14,14 @@ UI_OVERLAY_ASSETS = (
 )
 BOOT_MANAGER = ROOT / "components" / "infra" / "boot_manager.c"
 NB_CONFIG_KEYS = ROOT / "components" / "infra" / "nb_config_keys.h"
-STACKCHAN_TITLE_FONT = (
+EXPRESSION_SERVICE = (
+    ROOT
+    / "components"
+    / "services"
+    / "expression_service"
+    / "expression_service.cpp"
+)
+TITLE_FONT = (
     ROOT
     / "components"
     / "services"
@@ -111,8 +118,81 @@ def test_touch_boot_uses_persisted_sensitivity():
 def test_touch_default_is_conservative_for_copper_pad():
     src = NB_CONFIG_KEYS.read_text(encoding="utf-8")
 
-    assert "#define NB_CFG_DEFAULT_TOUCH_SENS        10" in src
+    assert "#define NB_CFG_DEFAULT_TOUCH_SENS        25" in src
     assert "passos de 0,2%" in src
+
+
+def test_touch_legacy_default_migrates_to_conservative_threshold():
+    src = (ROOT / "components" / "infra" / "config_manager.c").read_text(encoding="utf-8")
+
+    assert "restore_touch_sensitivity_if_legacy()" in src
+    assert "touch_sens != 10U" in src
+    assert "NB_CFG_DEFAULT_TOUCH_SENS" in src
+
+
+def test_touch_current_pad_uses_stable_press_timing():
+    src = (ROOT / "components" / "services" / "touch_service" / "touch_service.c").read_text(
+        encoding="utf-8"
+    )
+
+    assert "#define LONG_PRESS_MS        1500U" in src
+    assert "#define DEBOUNCE_ON_COUNT      3U" in src
+    assert "#define DEBOUNCE_OFF_COUNT     3U" in src
+    assert "controladores capacitivos dedicados" in src
+
+
+def test_touch_long_press_is_affection_not_startle_by_default():
+    src = BEHAVIOR_ENGINE.read_text(encoding="utf-8")
+
+    start = src.index("{ NB_EVT_TOUCH_LONG_PRESS")
+    end = src.index("}},", start)
+    block = src[start:end]
+
+    assert "ACT_EMOT(TOUCH_LONG)" in block
+    assert "ACT_PLAY(TOUCH_WARM)" in block
+    assert "ACT_PLAY(TOUCH_STARTLE)" not in block
+
+
+def test_speaking_mouth_uses_viseme_poses_from_closed_base():
+    src = EXPRESSION_SERVICE.read_text(encoding="utf-8")
+
+    assert "SPEAKING_EYE_Y_NORM  = -0.55f" in src
+    assert "SPEAKING_EYE_OPEN    = 0.70f" in src
+    assert "MOUTH_CENTER_X       = 160" in src
+    assert "MOUTH_CENTER_Y       = 120" in src
+    assert "MOUTH_REF_OFF_X      = 0" in src
+    assert "MOUTH_REF_OFF_Y      = 44" in src
+    assert "MOUTH_BASE_W         = 90" in src
+    assert "MOUTH_BASE_H         = 6" in src
+    assert "MOUTH_TOP_Y          = MOUTH_CENTER_Y + MOUTH_REF_OFF_Y - (MOUTH_BASE_H / 2)" in src
+    assert "MOUTH_CORNER_RADIUS  = 3" in src
+    assert "MOUTH_TALK_INTERVAL_US = 118000LL" in src
+    assert "MOUTH_TALK_EASE_US     = 72000LL" in src
+    assert "typedef struct {" in src
+    assert "nb_mouth_pose_t" in src
+    assert "static constexpr nb_mouth_pose_t MOUTH_POSES[] = {" in src
+    assert "{90,  6}" in src
+    assert "{56, 22}" in src
+    assert "{48, 18}" in src
+    assert "MOUTH_CLOSED_POSE = 0" in src
+    assert "static constexpr uint8_t MOUTH_TALK_SEQUENCE[] = {" in src
+    assert "0, 1, 2, 1, 3, 1, 5, 1, 2, 1, 4, 1" in src
+    assert "float y_l = clamp_abs(face.y_l + gy + dy_l_ovl, GAZE_Y_MAX);" in src
+    assert "float y_r = clamp_abs(face.y_r + gy + dy_r_ovl, GAZE_Y_MAX);" in src
+    assert "s_speaking_mouth_from_pose = s_speaking_mouth_to_pose;" in src
+    assert "s_speaking_mouth_to_pose = MOUTH_TALK_SEQUENCE[seq_idx];" in src
+    assert "esp_random() % (MOUTH_POSE_COUNT - 1U)" not in src
+    assert "nb_mouth_pose_t from = MOUTH_POSES[s_speaking_mouth_from_pose];" in src
+    assert "nb_mouth_pose_t to = MOUTH_POSES[s_speaking_mouth_to_pose];" in src
+    assert "int16_t mouth_y = MOUTH_TOP_Y;" in src
+    assert "mouth_offset_y" not in src
+    assert "edge_color" not in src
+    assert "spr->fillRoundRect(mouth_x - 1, mouth_y - 1, mouth_w + 2, mouth_h + 2" not in src
+    assert "spr->fillRoundRect(mouth_x, mouth_y, mouth_w, mouth_h, MOUTH_CORNER_RADIUS, color);" in src
+    assert "MOUTH_MAX_RADIUS" not in src
+    assert "s_speaking_mouth_from_weight" not in src
+    assert "visual_radius" not in src
+    assert "inner_x" not in src
 
 
 def test_touch_config_applies_runtime_sensitivity():
@@ -140,11 +220,11 @@ def test_touch_task_uses_internal_stack():
     assert "MALLOC_CAP_SPIRAM" not in block
 
 
-def test_ui_overlay_uses_stackchan_montserrat_font_family():
+def test_ui_overlay_uses_custom_montserrat_font_family():
     src = UI_OVERLAY.read_text(encoding="utf-8")
     assets = UI_OVERLAY_ASSETS.read_text(encoding="utf-8")
     cmake = UI_OVERLAY_CMAKE.read_text(encoding="utf-8")
-    font_src = STACKCHAN_TITLE_FONT.read_text(encoding="utf-8")
+    font_src = TITLE_FONT.read_text(encoding="utf-8")
 
     assert '#include "ui_overlay_assets.h"' in src
     assert "extern const lv_font_t MontserratSemiBold26;" in assets
@@ -158,6 +238,7 @@ def test_ui_overlay_uses_stackchan_montserrat_font_family():
     assert "lv_font_montserrat_16" in src
     assert "lv_font_montserrat_48" in src
     assert "UI_FONT_TEXT  = &UI_FONT_MONTSERRAT_PTBR" in src
+    assert "UI_FONT_TITLE = &UI_FONT_BRAND_TITLE" in src
     assert "ui_set_font(spr, UI_FONT_BODY);" in src
     assert "ui_set_font(spr, UI_FONT_TEXT);" in src
     assert "ui_set_font(spr, UI_FONT_TITLE);" in src

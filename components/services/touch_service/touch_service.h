@@ -10,7 +10,7 @@
  *
  * Eventos (one-shot via callback):
  *   TAP          — primeiro toque detectado (<20ms de latência)
- *   LONG_PRESS   — press contínuo ≥ 800ms
+ *   LONG_PRESS   — press contínuo ≥ 1500ms
  *   SUSTAINED    — press contínuo ≥ 3000ms
  *   WAKE         — qualquer toque quando sleeping=true
  *
@@ -86,6 +86,7 @@ esp_err_t touch_service_init(void);
  * @brief Avança detecção em dt_ms e dispara callbacks se necessário.
  *
  * Chamar a cada 20ms (50Hz). Não bloqueante.
+ * A confirmação de toque exige 3 amostras consecutivas (~60ms).
  */
 void touch_service_update(uint32_t dt_ms);
 

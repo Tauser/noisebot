@@ -214,7 +214,7 @@ esp_err_t wake_service_init(void)
         return ESP_FAIL;
     }
 
-    /* Perfil alinhado ao Xiaozhi/StackChan: WakeNet AFE em HIGH_PERF no S3.
+    /* Perfil de produto conversacional: WakeNet AFE em HIGH_PERF no S3.
      * Durante TTS, a interrupção confiável vem da wake word, então o detector
      * precisa de mais margem do que o modo low-cost oferece. */
     afe_config_t *cfg = afe_config_init("M", models, AFE_TYPE_SR, AFE_MODE_HIGH_PERF);

@@ -187,9 +187,33 @@ Alimentação TTLinker: 5V (mesmo barramento dos servos).
 | TOUCH\_IN | 2   | Touch T2 — fita de cobre          |
 
 Threshold calibrado em runtime (`baseline × (1 + touch_sens*0.2/100)`).
-`touch_sens` default: 10, equivalente a 2% acima do baseline para a fita de cobre atual.
+`touch_sens` default: 25, equivalente a 5% acima do baseline para a fita de cobre
+com fio atual. Valores menores, como o legado 10/2%, podem disparar por toque no
+fio ou aproximação.
 
 GPIOs touch disponíveis para expansão futura: GPIO 1 (T1, em uso como WS), GPIO 3 (T3, spare).
+
+### Touch multi-zona futuro
+
+Para aproximar a interação de cabeça do modelo StackChan, a evolução planejada
+é adicionar um controlador capacitivo dedicado no I2C (`NB_I2C_PIN_SDA` GPIO 4,
+`NB_I2C_PIN_SCL` GPIO 5) com três eletrodos de fita de cobre:
+
+| Zona | Uso esperado |
+| --- | --- |
+| Esquerda | Início/fim de carinho lateral e swipe |
+| Centro | Toque/cuidado central |
+| Direita | Início/fim de carinho lateral e swipe |
+
+Candidatos de hardware:
+
+- `MPR121`: 12 canais I2C, comum em módulos prontos; usar inicialmente só 3
+  entradas.
+- `CAP1203`: 3 canais I2C, encaixe ideal se houver módulo pronto disponível.
+
+O touch nativo do ESP32-S3 em GPIO 2 permanece como entrada provisória até a
+placa chegar. O controlador dedicado deve ficar fisicamente perto das fitas, com
+fios curtos entre módulo e eletrodos; o trecho mais longo fica no barramento I2C.
 
 ---
 

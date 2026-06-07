@@ -115,17 +115,39 @@ static constexpr float GAZE_X_MAX             = 0.65f;
 static constexpr float   SPEAKING_EYE_Y_NORM  = -0.55f;
 static constexpr float   SPEAKING_EYE_OPEN    = 0.70f;
 
-/* Boca de fala: pequena, centralizada abaixo dos olhos, ativada durante
- * RESPONDING. Fica acima da cauda do balão inferior. */
-static constexpr int16_t MOUTH_CX             = 160;
-static constexpr int16_t MOUTH_CY             = 166;
-static constexpr int16_t MOUTH_MIN_W          = 38;
-static constexpr int16_t MOUTH_MAX_W          = 58;
-static constexpr int16_t MOUTH_MIN_H          = 3;
-static constexpr int16_t MOUTH_MAX_H          = 13;
-static constexpr int16_t MOUTH_EYE_GAP_PX     = 10;
-static constexpr int16_t MOUTH_MAX_BOTTOM_Y   = 174;
-static constexpr int64_t MOUTH_PERIOD_US      = 320000LL;
+/* Boca de fala do NoiseBot: a boca fechada e o desenho-base. A fala alterna
+ * entre poses de visema curtas, com cantos fixos para manter a mesma linguagem
+ * visual em qualquer abertura. */
+static constexpr int16_t MOUTH_CENTER_X       = 160;
+static constexpr int16_t MOUTH_CENTER_Y       = 120;
+static constexpr int16_t MOUTH_REF_OFF_X      = 0;
+static constexpr int16_t MOUTH_REF_OFF_Y      = 44;
+static constexpr int16_t MOUTH_BASE_W         = 90;
+static constexpr int16_t MOUTH_BASE_H         = 6;
+static constexpr int16_t MOUTH_TOP_Y          = MOUTH_CENTER_Y + MOUTH_REF_OFF_Y - (MOUTH_BASE_H / 2);
+static constexpr int16_t MOUTH_CORNER_RADIUS  = 3;
+static constexpr int64_t MOUTH_TALK_INTERVAL_US = 118000LL;
+static constexpr int64_t MOUTH_TALK_EASE_US     = 72000LL;
+
+typedef struct {
+    int16_t w;
+    int16_t h;
+} nb_mouth_pose_t;
+
+static constexpr nb_mouth_pose_t MOUTH_POSES[] = {
+    {90,  6},  /* fechado */
+    {82,  8},  /* bilabial/pausa */
+    {76, 10},  /* e/i */
+    {66, 16},  /* a/e medio */
+    {56, 22},  /* a aberto */
+    {48, 18},  /* o/u */
+};
+static constexpr uint8_t MOUTH_CLOSED_POSE = 0;
+static constexpr uint8_t MOUTH_TALK_SEQUENCE[] = {
+    0, 1, 2, 1, 3, 1, 5, 1, 2, 1, 4, 1,
+};
+static constexpr uint8_t MOUTH_TALK_SEQUENCE_COUNT =
+    (uint8_t)(sizeof(MOUTH_TALK_SEQUENCE) / sizeof(MOUTH_TALK_SEQUENCE[0]));
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
 
@@ -315,6 +337,11 @@ static volatile bool      s_speaking_mouth_enabled = false;
 static bool               s_blink_prev_enabled = true;
 static int64_t            s_sleep_anim_start_us = 0;
 static int64_t            s_speaking_mouth_start_us = 0;
+static int64_t            s_speaking_mouth_next_tick_us = 0;
+static int64_t            s_speaking_mouth_ease_start_us = 0;
+static uint8_t            s_speaking_mouth_from_pose = MOUTH_CLOSED_POSE;
+static uint8_t            s_speaking_mouth_to_pose = MOUTH_CLOSED_POSE;
+static uint8_t            s_speaking_mouth_step = 0;
 
 static constexpr float BREATH_PERIOD_MS    = 5200.0f;
 static constexpr float BREATH_AMP          = 0.045f;
@@ -1050,33 +1077,38 @@ static void draw_speaking_mouth(LGFX_Sprite *spr,
                                 float right_eye_bottom)
 {
     if (!s_speaking_mouth_enabled) return;
+    (void)left_eye_bottom;
+    (void)right_eye_bottom;
 
-    int64_t elapsed_us = now_us - s_speaking_mouth_start_us;
-    if (elapsed_us < 0) elapsed_us = 0;
-
-    float phase = (float)(elapsed_us % MOUTH_PERIOD_US) / (float)MOUTH_PERIOD_US;
-    float wave  = 0.5f + 0.5f * sinf(phase * 2.0f * NB_PI_F);
-    float bite  = 0.5f + 0.5f * sinf((phase * 3.0f + 0.18f) * 2.0f * NB_PI_F);
-    float open  = (wave * 0.72f) + (bite * 0.28f);
-
-    int16_t mouth_w = (int16_t)((float)MOUTH_MIN_W
-                     + ((float)(MOUTH_MAX_W - MOUTH_MIN_W) * (0.35f + open * 0.65f))
-                     + 0.5f);
-    int16_t mouth_h = (int16_t)((float)MOUTH_MIN_H
-                     + ((float)(MOUTH_MAX_H - MOUTH_MIN_H) * open)
-                     + 0.5f);
-    float eye_bottom = (left_eye_bottom > right_eye_bottom) ? left_eye_bottom : right_eye_bottom;
-    int16_t mouth_x = MOUTH_CX - (mouth_w / 2);
-    int16_t mouth_y = MOUTH_CY - (mouth_h / 2);
-    int16_t safe_y = (int16_t)(eye_bottom + (float)MOUTH_EYE_GAP_PX + 0.5f);
-    if (mouth_y < safe_y) mouth_y = safe_y;
-    if ((mouth_y + mouth_h) > MOUTH_MAX_BOTTOM_Y) {
-        mouth_y = (int16_t)(MOUTH_MAX_BOTTOM_Y - mouth_h);
+    if (now_us < s_speaking_mouth_start_us) {
+        now_us = s_speaking_mouth_start_us;
     }
-    int16_t radius  = mouth_h / 2;
-    if (radius < 2) radius = 2;
 
-    spr->fillRoundRect(mouth_x, mouth_y, mouth_w, mouth_h, radius, color);
+    int64_t ease_elapsed_us = now_us - s_speaking_mouth_ease_start_us;
+    if (ease_elapsed_us < 0) ease_elapsed_us = 0;
+    float ease_t = (float)ease_elapsed_us / (float)MOUTH_TALK_EASE_US;
+    if (ease_t > 1.0f) ease_t = 1.0f;
+    ease_t = ease_t * ease_t * (3.0f - (2.0f * ease_t));
+
+    if (now_us >= s_speaking_mouth_next_tick_us) {
+        s_speaking_mouth_next_tick_us = now_us + MOUTH_TALK_INTERVAL_US;
+        s_speaking_mouth_from_pose = s_speaking_mouth_to_pose;
+        s_speaking_mouth_step++;
+        uint8_t seq_idx = (uint8_t)(s_speaking_mouth_step % MOUTH_TALK_SEQUENCE_COUNT);
+        s_speaking_mouth_to_pose = MOUTH_TALK_SEQUENCE[seq_idx];
+        s_speaking_mouth_ease_start_us = now_us;
+        ease_t = 0.0f;
+    }
+
+    nb_mouth_pose_t from = MOUTH_POSES[s_speaking_mouth_from_pose];
+    nb_mouth_pose_t to = MOUTH_POSES[s_speaking_mouth_to_pose];
+
+    int16_t mouth_w = (int16_t)((float)from.w + (((float)to.w - (float)from.w) * ease_t) + 0.5f);
+    int16_t mouth_h = (int16_t)((float)from.h + (((float)to.h - (float)from.h) * ease_t) + 0.5f);
+    int16_t mouth_cx = (int16_t)(MOUTH_CENTER_X + MOUTH_REF_OFF_X);
+    int16_t mouth_x = mouth_cx - (mouth_w / 2);
+    int16_t mouth_y = MOUTH_TOP_Y;
+    spr->fillRoundRect(mouth_x, mouth_y, mouth_w, mouth_h, MOUTH_CORNER_RADIUS, color);
 }
 
 static void apply_speaking_pose(nb_face_state_t *face)
@@ -1982,6 +2014,17 @@ void expression_service_set_speaking_mouth_enabled(bool enabled)
 {
     if (enabled && !s_speaking_mouth_enabled) {
         s_speaking_mouth_start_us = esp_timer_get_time();
+        s_speaking_mouth_next_tick_us = s_speaking_mouth_start_us;
+        s_speaking_mouth_ease_start_us = s_speaking_mouth_start_us;
+        s_speaking_mouth_from_pose = MOUTH_CLOSED_POSE;
+        s_speaking_mouth_to_pose = MOUTH_CLOSED_POSE;
+        s_speaking_mouth_step = 0;
+    } else if (!enabled) {
+        s_speaking_mouth_ease_start_us = 0;
+        s_speaking_mouth_from_pose = MOUTH_CLOSED_POSE;
+        s_speaking_mouth_to_pose = MOUTH_CLOSED_POSE;
+        s_speaking_mouth_step = 0;
+        s_speaking_mouth_next_tick_us = 0;
     }
     s_speaking_mouth_enabled = enabled;
 }

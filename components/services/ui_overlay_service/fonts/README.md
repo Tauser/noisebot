@@ -1,13 +1,12 @@
-Fontes de overlay importadas/adaptadas de `D:\Projetos\StackChan`.
+Fontes de overlay importadas/adaptadas para o NoiseBot.
 
 - `MontserratSemiBold26.c`: fonte LVGL gerada a partir de
-  `Montserrat-SemiBold.ttf` e usada pelo StackChan no launcher.
+  `Montserrat-SemiBold.ttf` e usada em títulos/destaques.
 - `symbols.txt`: lista ASCII usada para gerar a fonte.
 
 Adaptação NoiseBot:
 
-- `ui_overlay_assets.h` centraliza a declaração da fonte, equivalente ao papel
-  do `assets/assets.h` no StackChan;
+- `ui_overlay_assets.h` centraliza a declaração da fonte;
 - removido o campo `static_bitmap` do descritor `lv_font_t`, pois o shim LVGL
   embutido no LovyanGFX do NoiseBot não expõe esse campo;
 - `MontserratPtBr16.c`: fonte LVGL gerada a partir de

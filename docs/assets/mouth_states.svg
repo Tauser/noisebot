@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420">
+  <rect width="1280" height="420" fill="#0b0f14"/>
+  <text x="40" y="52" fill="#e8eef6" font-family="Arial, sans-serif" font-size="30" font-weight="700">NoiseBot mouth states</text>
+  <text x="40" y="84" fill="#9fb2c8" font-family="Arial, sans-serif" font-size="18">Fixed upper lip: top y stays locked; height grows downward. Geometry: width 90->60, height 6->50, radius 0->16 with visual minimum radius 2.</text>
+
+  <g font-family="Arial, sans-serif" text-anchor="middle">
+    <g transform="translate(90,140)">
+      <rect x="0" y="0" width="130" height="170" rx="10" fill="#111923" stroke="#263446"/>
+      <line x1="20" y1="54" x2="110" y2="54" stroke="#36506a" stroke-dasharray="5 5"/>
+      <rect x="19" y="53" width="92" height="8" rx="3" fill="#637284"/>
+      <rect x="20" y="54" width="90" height="6" rx="2" fill="#f2f7ff"/>
+      <text x="65" y="130" fill="#e8eef6" font-size="18" font-weight="700">0</text>
+      <text x="65" y="153" fill="#8da1b6" font-size="13">90 x 6 r2</text>
+    </g>
+
+    <g transform="translate(260,140)">
+      <rect x="0" y="0" width="130" height="170" rx="10" fill="#111923" stroke="#263446"/>
+      <line x1="20" y1="54" x2="110" y2="54" stroke="#36506a" stroke-dasharray="5 5"/>
+      <rect x="21" y="53" width="89" height="12" rx="4" fill="#637284"/>
+      <rect x="22" y="54" width="87" height="10" rx="2" fill="#f2f7ff"/>
+      <text x="65" y="130" fill="#e8eef6" font-size="18" font-weight="700">10</text>
+      <text x="65" y="153" fill="#8da1b6" font-size="13">87 x 10 r2</text>
+    </g>
+
+    <g transform="translate(430,140)">
+      <rect x="0" y="0" width="130" height="170" rx="10" fill="#111923" stroke="#263446"/>
+      <line x1="20" y1="54" x2="110" y2="54" stroke="#36506a" stroke-dasharray="5 5"/>
+      <rect x="22" y="53" width="86" height="17" rx="5" fill="#637284"/>
+      <rect x="23" y="54" width="84" height="15" rx="3" fill="#f2f7ff"/>
+      <text x="65" y="130" fill="#e8eef6" font-size="18" font-weight="700">20</text>
+      <text x="65" y="153" fill="#8da1b6" font-size="13">84 x 15 r3</text>
+    </g>
+
+    <g transform="translate(600,140)">
+      <rect x="0" y="0" width="130" height="170" rx="10" fill="#111923" stroke="#263446"/>
+      <line x1="20" y1="54" x2="110" y2="54" stroke="#36506a" stroke-dasharray="5 5"/>
+      <rect x="25" y="53" width="80" height="26" rx="7" fill="#637284"/>
+      <rect x="26" y="54" width="78" height="24" rx="6" fill="#f2f7ff"/>
+      <text x="65" y="130" fill="#e8eef6" font-size="18" font-weight="700">40</text>
+      <text x="65" y="153" fill="#8da1b6" font-size="13">78 x 24 r6</text>
+    </g>
+
+    <g transform="translate(770,140)">
+      <rect x="0" y="0" width="130" height="170" rx="10" fill="#111923" stroke="#48d59b" stroke-width="2"/>
+      <line x1="20" y1="54" x2="110" y2="54" stroke="#36506a" stroke-dasharray="5 5"/>
+      <rect x="28" y="53" width="74" height="35" rx="11" fill="#637284"/>
+      <rect x="29" y="54" width="72" height="32" rx="10" fill="#f2f7ff"/>
+      <text x="65" y="130" fill="#e8eef6" font-size="18" font-weight="700">60</text>
+      <text x="65" y="153" fill="#8da1b6" font-size="13">72 x 32 r10</text>
+      <text x="65" y="32" fill="#48d59b" font-size="12" font-weight="700">max fala</text>
+    </g>
+
+    <g transform="translate(940,140)">
+      <rect x="0" y="0" width="130" height="170" rx="10" fill="#111923" stroke="#263446"/>
+      <line x1="20" y1="54" x2="110" y2="54" stroke="#36506a" stroke-dasharray="5 5"/>
+      <rect x="31" y="53" width="68" height="44" rx="14" fill="#637284"/>
+      <rect x="32" y="54" width="66" height="41" rx="13" fill="#f2f7ff"/>
+      <text x="65" y="130" fill="#e8eef6" font-size="18" font-weight="700">80</text>
+      <text x="65" y="153" fill="#8da1b6" font-size="13">66 x 41 r13</text>
+      <text x="65" y="32" fill="#d9a15f" font-size="12" font-weight="700">fora fala</text>
+    </g>
+
+    <g transform="translate(1110,140)">
+      <rect x="0" y="0" width="130" height="170" rx="10" fill="#111923" stroke="#263446"/>
+      <line x1="20" y1="54" x2="110" y2="54" stroke="#36506a" stroke-dasharray="5 5"/>
+      <rect x="34" y="53" width="62" height="52" rx="17" fill="#637284"/>
+      <rect x="35" y="54" width="60" height="50" rx="16" fill="#f2f7ff"/>
+      <text x="65" y="130" fill="#e8eef6" font-size="18" font-weight="700">100</text>
+      <text x="65" y="153" fill="#8da1b6" font-size="13">60 x 50 r16</text>
+      <text x="65" y="32" fill="#d9a15f" font-size="12" font-weight="700">limite</text>
+    </g>
+  </g>
+
+  <rect x="60" y="336" width="1160" height="46" rx="8" fill="#111923" stroke="#263446"/>
+  <text x="80" y="366" fill="#cfe0f4" font-family="Arial, sans-serif" font-size="18">Runtime ranges: closed targets use weight 0-15; open targets use weight 30-60. Weights 80 and 100 are geometric references only.</text>
+</svg>

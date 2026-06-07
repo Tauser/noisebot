@@ -85,7 +85,7 @@
 #define NB_CFG_DEFAULT_V2_ACT_DEC         1     /* on por padrao: Activity v2 decide com rollback */
 #define NB_CFG_DEFAULT_V2_ACT_MIG         0     /* off ate aplicar a migracao one-shot */
 #define NB_CFG_DEFAULT_BRIGHTNESS       180     /* ~70% — confortável em ambiente escuro */
-#define NB_CFG_DEFAULT_TOUCH_SENS        10     /* 2% acima do baseline (copper pad, ESP32-S3) */
+#define NB_CFG_DEFAULT_TOUCH_SENS        25     /* 5% acima do baseline (copper pad + fio) */
 #define NB_CFG_DEFAULT_IDLE_TIMEOUT_S   3600    /* 60 minutos */
 
 #define NB_SVC_DEFAULT_EMOTION            0     /* NEUTRAL */

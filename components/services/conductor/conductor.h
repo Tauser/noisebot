@@ -29,8 +29,8 @@ typedef enum {
     NB_ACTION_AGREE         = 2,   /**< Concordar / affirmar                      */
     NB_ACTION_DISAGREE      = 3,   /**< Discordar / negar                         */
     NB_ACTION_CURIOUS       = 4,   /**< Demonstrar curiosidade                    */
-    NB_ACTION_TOUCH_WARM    = 5,   /**< Resposta calorosa a toque (TAP)           */
-    NB_ACTION_TOUCH_STARTLE = 6,   /**< Sobressalto a toque longo                 */
+    NB_ACTION_TOUCH_WARM    = 5,   /**< Resposta calorosa a toque/carinho         */
+    NB_ACTION_TOUCH_STARTLE = 6,   /**< Sobressalto a toque inesperado            */
     NB_ACTION_SPEAK_LOOP    = 7,   /**< Modo de fala ativa (durante playback)     */
     NB_ACTION_SLEEP         = 8,   /**< Entrar em modo dormindo                   */
     NB_ACTION_WAKE_UP       = 9,   /**< Despertar                                 */

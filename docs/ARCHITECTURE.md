@@ -69,7 +69,8 @@ components/
 │   ├── audio_hal.c / .h         # I2S0 (mic) + I2S1 (speaker)
 │   ├── board_caps.c / .h        # Capacidades reais da placa (AEC, canais, camera)
 │   ├── led_hal.c / .h           # RMT + WS2812
-│   ├── touch_hal.c / .h         # Touch peripheral ESP32-S3
+│   ├── touch_hal.c / .h         # Touch peripheral ESP32-S3 (fita provisória)
+│   ├── touch_zone_hal.*         # FUTURO: controlador I2C MPR121/CAP1203 (3 zonas)
 │   ├── sd_hal.c / .h            # SPI3 + FATFS + mount
 │   └── nb_hw_config.h           # GPIO, limites HW, constantes de hardware
 │                                # (safety/ não existe como diretório separado:
@@ -82,6 +83,7 @@ components/
 │   ├── audio_service.c / .h     # Playback WAV do SD
 │   ├── led_service.c / .h       # Animações de LED
 │   ├── touch_service.c / .h     # Detecção TAP/LONG/SUSTAINED + eventos
+│   ├── touch_zone_service.*     # FUTURO: press/release/swipe de carinho multi-zona
 │   ├── gaze_service.c / .h      # Saccade model, gaze targets (sem pupila)
 │   ├── idle_service.c / .h      # Microbehaviors de idle
 │   ├── expression_service.cpp/.h # Modelo EMO: nb_face_state_t paramétrica,

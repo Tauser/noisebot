@@ -13,9 +13,9 @@
  *   Evita chatter quando sinal oscila perto do limite de detecção.
  *
  * ── Debounce de entrada ───────────────────────────────────────────────────
- *   Exige DEBOUNCE_ON_COUNT (2) amostras consecutivas de filtered_raw acima
+ *   Exige DEBOUNCE_ON_COUNT (3) amostras consecutivas de filtered_raw acima
  *   de threshold_on para confirmar toque e sair de IDLE.
- *   Tradeoff: latência real de TAP ≈ 2×20ms = 40ms (vs. spec <20ms),
+ *   Tradeoff: latência real de TAP ≈ 3×20ms = 60ms,
  *   mas elimina disparo por pico isolado de ruído.
  *
  * ── Debounce de release ───────────────────────────────────────────────────
@@ -38,11 +38,11 @@
  *
  * ── Máquina de estados ───────────────────────────────────────────────────
  *   IDLE
- *     └─(debounce_on OK: 2× filtered_raw ≥ thr_on)──► TOUCHING [TAP/WAKE]
+ *     └─(debounce_on OK: 3× filtered_raw ≥ thr_on)──► TOUCHING [TAP/WAKE]
  *
  *   TOUCHING
  *     ├─(debounce_off OK)──────► IDLE
- *     └─(press_ms ≥ 800)───────► LONG_PRESSING  [LONG_PRESS]
+ *     └─(press_ms ≥ 1500)──────► LONG_PRESSING  [LONG_PRESS]
  *
  *   LONG_PRESSING
  *     ├─(debounce_off OK)──────► IDLE
@@ -65,7 +65,7 @@ static const char *TAG = "nb_touch_svc";
 
 /* ── Constantes ──────────────────────────────────────────────────────────── */
 
-#define LONG_PRESS_MS         800U
+#define LONG_PRESS_MS        1500U
 #define SUSTAINED_MS         3000U
 
 #define SENS_DEFAULT           0.20f
@@ -81,14 +81,13 @@ static const char *TAG = "nb_touch_svc";
 #define HYST_FACTOR            0.40f   /* threshold_off = span × HYST_FACTOR (mais gap) */
 
 /*
- * DEBOUNCE_ON_COUNT = 2: exige 2 amostras consecutivas (40ms a 50Hz) acima de
- * threshold_on para confirmar toque. Filtra picos isolados de ruído sem adicionar
- * latência perceptível. Threshold de 0.8% já afasta a maioria do noise floor;
- * o debounce de 2 cobre os picos residuais que ainda cruzam o limiar.
- * Tradeoff: latência de TAP ≈ 40ms — imperceptível ao toque humano.
+ * DEBOUNCE_ON_COUNT = 3: exige 3 amostras consecutivas (60ms a 50Hz) acima de
+ * threshold_on para confirmar toque. Isso aproxima o filtro temporal de
+ * controladores capacitivos dedicados com polling de 50ms e reduz disparos por fio ou
+ * aproximação sem tornar o toque humano lento.
  */
-#define DEBOUNCE_ON_COUNT      2U      /* amostras para confirmar toque (ver nota acima) */
-#define DEBOUNCE_OFF_COUNT     2U      /* amostras consecutivas para confirmar release  */
+#define DEBOUNCE_ON_COUNT      3U      /* amostras para confirmar toque (ver nota acima) */
+#define DEBOUNCE_OFF_COUNT     3U      /* amostras consecutivas para confirmar release  */
 
 #define SIGNAL_EMA_ALPHA       0.20f   /* suavização do sinal (α=0.2 → τ≈4 ticks)     */
 
@@ -288,7 +287,7 @@ static void service_tick(uint32_t dt_ms)
             s_svc.press_ms     = 0;
             s_svc.debounce_off = 0;
             s_svc.debounce_on  = 0;
-            /* TAP/WAKE: latência = DEBOUNCE_ON_COUNT × dt_ms (≈40ms). */
+            /* TAP/WAKE: latência = DEBOUNCE_ON_COUNT × dt_ms (≈60ms). */
             queue_event(s_svc.sleeping ? NB_TOUCH_EVT_WAKE : NB_TOUCH_EVT_TAP);
         }
         break;

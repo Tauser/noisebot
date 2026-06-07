@@ -38,6 +38,7 @@
 #include "led_service.h"
 #include "audio_service.h"
 #include "synth_service.h"
+#include "voice_capture_session_v2.h"
 #include "config_manager.h"
 #include "attention_service.h"
 #include "diagnostics_service.h"
@@ -209,7 +210,7 @@ static const nb_be_rule_t k_rules[] = {
 
     { NB_EVT_TOUCH_LONG_PRESS, NULL, {
         ACT_EMOT(TOUCH_LONG),
-        ACT_PLAY(TOUCH_STARTLE), ACT_LTM(TOUCH_LONG) }},
+        ACT_PLAY(TOUCH_WARM), ACT_LTM(TOUCH_LONG) }},
 
     { NB_EVT_TOUCH_WAKE, NULL, {
         ACT_PLAY(WAKE_UP), ACT_LTM(WAKE) }},
@@ -672,6 +673,7 @@ static void bridge_on_event(const nb_event_t *evt)
     case NB_EVT_BRIDGE_DISCONNECTED:
         s_bridge_voice_pending = false;
         esp_timer_stop(s_bridge_resp_timer);
+        voice_capture_session_v2_cancel();
         expression_service_set(NB_EXPR_NEUTRAL, 500.0f);
         ui_overlay_listening_set(false);
         ui_overlay_show_toast("Bridge offline", NB_UI_OVERLAY_WARNING, BRIDGE_ERROR_TOAST_MS);

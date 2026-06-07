@@ -99,6 +99,8 @@ Escopo:
 - Revisar calibracao, thresholds e filtragem.
 - Conferir debounce e publicacao de eventos.
 - Validar diferenca entre toque curto, toque longo e ruido.
+- Aproximar a semantica atual da referencia StackChan: press/release estavel
+  como carinho, sem tratar long press comum como susto por padrao.
 - Documentar qualquer limitacao fisica encontrada.
 
 Criterios de aceite:
@@ -107,11 +109,22 @@ Criterios de aceite:
 - Ruido ou flutuacao nao dispara acao indevida.
 - O servico continua respeitando camadas e event bus.
 - O comportamento fica reproduzivel apos reboot.
+- Com o hardware atual, tap curto nao deve virar long press em condicao normal.
 
 Nao entra:
 
 - Gestos complexos.
 - Dependencia de servo ou conectividade.
+- Touch multi-zona real; fica para a placa dedicada.
+
+Extensao futura planejada:
+
+- Adicionar controlador capacitivo I2C multi-zona inspirado no StackChan.
+- Usar tres fitas de cobre independentes: esquerda, centro e direita.
+- Candidatos de compra: `MPR121` usando 3 de 12 entradas, ou `CAP1203` se houver
+  modulo pronto de 3 canais.
+- Novo driver/servico deve publicar press, release e swipe sem substituir o
+  baseline de `IDLE`; enquanto isso, o touch GPIO 2 segue como fallback.
 
 ### Etapa 13.1 - Presence Detection Via Camera
 

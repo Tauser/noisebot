@@ -151,12 +151,12 @@ static constexpr int TEXT_MAX_LEN = 129; /* 128 bytes + NUL, igual ao bridge */
 static constexpr int QUICK_STATUS_LABEL_LEN = 24;
 static constexpr int QUICK_STATUS_BAR_H = 32;
 
-static const lgfx::LVGLfont UI_FONT_STACKCHAN_TITLE(&MontserratSemiBold26);
+static const lgfx::LVGLfont UI_FONT_BRAND_TITLE(&MontserratSemiBold26);
 static const lgfx::LVGLfont UI_FONT_MONTSERRAT_PTBR(&MontserratPtBr16);
 static const lgfx::IFont * const UI_FONT_BODY  = &lgfx::fonts::lv_font_montserrat_16;
 static const lgfx::IFont * const UI_FONT_SMALL = &lgfx::fonts::lv_font_montserrat_14;
 static const lgfx::IFont * const UI_FONT_TEXT  = &UI_FONT_MONTSERRAT_PTBR;
-static const lgfx::IFont * const UI_FONT_TITLE = &UI_FONT_STACKCHAN_TITLE;
+static const lgfx::IFont * const UI_FONT_TITLE = &UI_FONT_BRAND_TITLE;
 static const lgfx::IFont * const UI_FONT_CLOCK = &lgfx::fonts::lv_font_montserrat_48;
 
 static void ui_set_font(LGFX_Sprite *spr, const lgfx::IFont *font)
