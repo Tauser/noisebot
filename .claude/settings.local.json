@@ -38,7 +38,25 @@
       "Bash(python -m pytest tests/integration/test_resilience.py::TestLlmFailures::test_llm_exception_ends_turn_in_idle -v -s)",
       "Bash(python -m pytest \"tests/integration/test_resilience.py::TestLlmFailures::test_llm_exception_ends_turn_in_idle\" -v)",
       "Bash(python -m pytest tests/integration/test_dashboard_api.py -q)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(xargs grep -l -i \"camera\\\\|liveview\\\\|live.view\\\\|baby\\\\|bab\")",
+      "Bash(xargs grep -l \"agenda\\\\|schedule\\\\|timer_service\\\\|alarm\")",
+      "Bash(xargs grep -l \"wifi_service\\\\|web_service\")",
+      "Bash(xargs grep -n \"wifi\\\\|web_service\\\\|agenda\\\\|persona\\\\|long_term\")",
+      "Bash(xargs grep -l \"_service\\\\|_hal\\\\|_manager\\\\|_engine\\\\|_model\\\\|_memory\\\\|_policy\")",
+      "Bash(xargs grep -l \"onCamera\\\\|offCamera\\\\|jpeg\\\\|stream.*camera\\\\|camera.*stream\\\\|MSG.*JPEG\\\\|JPEG.*MSG\")",
+      "Bash(npx tsc *)",
+      "Bash(awk 'NR==591,NR==600' components/infra/web_service.c)",
+      "Bash(python3 -c ' *)",
+      "Bash(xargs grep -ln \"OV2640\")",
+      "Bash(git check-ignore *)",
+      "Bash(sed -n '145,155p' sdkconfig.defaults)",
+      "Bash(tasklist)",
+      "Bash(powershell *)",
+      "PowerShell(. C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.ps1 *> $null; idf.py -p COM12 flash 2>&1 | Select-Object -Last 80)",
+      "Bash(where clangd *)",
+      "Bash(where clang *)",
+      "Bash(clangd --version)"
     ]
   }
 }
