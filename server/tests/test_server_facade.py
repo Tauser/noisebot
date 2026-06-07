@@ -7289,15 +7289,16 @@ def test_server_app_state_imports_firmware_agenda_without_duplicates(tmp_path) -
     assert store.list_agenda()["items"] == []
 
 
-def test_server_ops_serves_app_dist_when_available(tmp_path, monkeypatch) -> None:
+async def test_server_ops_root_is_api_info_not_dashboard() -> None:
     http = importlib.import_module("noisebot_server.internal.ops.http")
-    dist = tmp_path / "dist"
-    dist.mkdir()
-    (dist / "index.html").write_text("<div>NoiseBot App</div>", encoding="utf-8")
+    server = http.OpsHttpServer.__new__(http.OpsHttpServer)
 
-    monkeypatch.setenv("NOISEBOT_APP_DIST", str(dist))
+    response = await server._get_root(None)
+    payload = json.loads(response.text)
 
-    assert http._find_app_dist() == dist.resolve()
+    assert response.status == 200
+    assert payload["service"] == "noisebot_ops_api"
+    assert payload["dashboard_url"] == "http://127.0.0.1:5173"
 
 
 def test_server_agenda_payload_recreates_edited_alarm() -> None:
@@ -7919,7 +7920,7 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert '"/api/vision/poll/stop"' in web_c
 
 
-def test_firmware_camera_hal_prefers_selected_mode_with_driver_fallback() -> None:
+def test_firmware_camera_hal_reports_honest_native_resolution() -> None:
     root = Path(__file__).resolve().parents[2]
     camera_h = (
         root
@@ -7936,25 +7937,65 @@ def test_firmware_camera_hal_prefers_selected_mode_with_driver_fallback() -> Non
 
     assert "NB_CAMERA_MODE_SAFE_QQVGA" in camera_h
     assert "NB_CAMERA_MODE_BETTER_QVGA" in camera_h
-    assert "return (mode == NB_CAMERA_MODE_BETTER_QVGA) ? 320U : 160U;" in camera_c
-    assert "return (mode == NB_CAMERA_MODE_BETTER_QVGA) ? 240U : 120U;" in camera_c
-    assert "fmt.fmt.pix.width = (uint32_t)camera_hal_mode_width(s_mode);" in camera_c
-    assert "fmt.fmt.pix.height = (uint32_t)camera_hal_mode_height(s_mode);" in camera_c
-    assert "fallback V4L2 usando resolucao atual" in camera_c
-    assert "fallback_width = current_fmt.fmt.pix.width" in camera_c
-    assert "fallback_height = current_fmt.fmt.pix.height" in camera_c
+    # Resolution is native/effective and fixed by whichever
+    # CONFIG_CAMERA_OV2640_DVP_* Kconfig choice is compiled in — mode never
+    # fakes a higher resolution, it only selects JPEG quality elsewhere. The
+    # mode_width/height fallback constants must track the active Kconfig
+    # choice (currently the final 240x240 YUV422 baseline after the failed
+    # native-JPEG experiments) so /api/camera/status never reports a stale
+    # native size before the first frame lands.
+    assert "size_t camera_hal_mode_width(nb_camera_mode_t mode)" in camera_c
+    assert "size_t camera_hal_mode_height(nb_camera_mode_t mode)" in camera_c
+    assert "#define NB_CAMERA_NATIVE_FALLBACK_WIDTH  240U" in camera_c
+    assert "#define NB_CAMERA_NATIVE_FALLBACK_HEIGHT 240U" in camera_c
+    assert "return NB_CAMERA_NATIVE_FALLBACK_WIDTH;" in camera_c
+    assert "return NB_CAMERA_NATIVE_FALLBACK_HEIGHT;" in camera_c
+    assert "size_t camera_hal_effective_width(void)" in camera_h
+    assert "size_t camera_hal_effective_height(void)" in camera_h
+    assert "return s_frame_width;" in camera_c
+    assert "return s_frame_height;" in camera_c
+    assert "if (g_fmt_ok) {\n        fmt = current_fmt;" in camera_c
+    assert "fmt.fmt.pix.width = 240U;" in camera_c
+    assert "fmt.fmt.pix.height = 240U;" in camera_c
+    assert "Build the VIDIOC_S_FMT request from VIDIOC_G_FMT's own struct" in camera_c
+    assert "int camera_hal_last_sfmt_errno(void)" in camera_h
+    assert "s_last_sfmt_errno = errno;" in camera_c
+    # Real VIDIOC_TRY_FMT negotiation proof — logged at every boot, not assumed.
+    assert "static void camera_hal_probe_try_fmt(int fd, uint32_t pixfmt" in camera_c
+    assert "ioctl(fd, VIDIOC_TRY_FMT, &probe)" in camera_c
+    assert "static void camera_hal_log_sensor_format(int fd)" in camera_c
+    assert "ioctl(fd, VIDIOC_G_SENSOR_FMT, &sensor_fmt)" in camera_c
 
 
-def test_firmware_camera_sensor_default_is_low_res_yuv422() -> None:
+def test_firmware_camera_sensor_returns_to_validated_yuv422_baseline() -> None:
     root = Path(__file__).resolve().parents[2]
     defaults = (root / "sdkconfig.defaults").read_text(encoding="utf-8")
 
+    # 2026-06-07 high-resolution experiment: native JPEG modes
+    # JPEG_640X480_25FPS and JPEG_320X240_50FPS were measured on hardware and
+    # marked non-functional for this OV2640 DVP board. The validated baseline
+    # is therefore back to 240x240 YUV422. Exactly one OV2640 DVP resolution
+    # choice must be active — selecting more than one is a Kconfig
+    # misconfiguration.
     assert "CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y" in defaults
-    assert "CONFIG_CAMERA_OV2640_DVP_YUV422_640X480_6FPS=y" not in defaults
+    assert "CONFIG_CAMERA_OV2640_DVP_JPEG_640X480_25FPS=y" not in defaults
+    assert "CONFIG_CAMERA_OV2640_DVP_JPEG_320X240_50FPS=y" not in defaults
+    active_resolution_lines = [
+        line for line in defaults.splitlines()
+        if line.startswith("CONFIG_CAMERA_OV2640_DVP_") and line.endswith("=y")
+    ]
+    assert active_resolution_lines == ["CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y"]
 
 
-def test_firmware_camera_service_uses_stackchan_safe_jpeg_quality() -> None:
+def test_firmware_camera_service_uses_snapshot_only_quality() -> None:
     root = Path(__file__).resolve().parents[2]
+    camera_h = (
+        root
+        / "components"
+        / "services"
+        / "camera_service"
+        / "camera_service.h"
+    ).read_text(encoding="utf-8")
     camera_c = (
         root
         / "components"
@@ -7963,9 +8004,23 @@ def test_firmware_camera_service_uses_stackchan_safe_jpeg_quality() -> None:
         / "camera_service.c"
     ).read_text(encoding="utf-8")
 
-    assert "CAMERA_SVC_SAFE_JPEG_QUALITY   20" in camera_c
-    assert "CAMERA_SVC_BETTER_JPEG_QUALITY 82" in camera_c
-    assert "camera_hal_get_mode() == NB_CAMERA_MODE_SAFE_QQVGA" in camera_c
+    # Camera is no longer a monitoring/video feature. It is used for short
+    # vision captures, so the service keeps one high-detail snapshot quality
+    # path and must not expose live-stream quality/downscale knobs.
+    assert "nb_camera_quality_t" in camera_h
+    assert "NB_CAMERA_QUALITY_SNAPSHOT" in camera_h
+    assert "NB_CAMERA_QUALITY_LIVE" not in camera_h
+    assert (
+        "esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out,\n"
+        "                                          nb_camera_quality_t quality);"
+        in camera_h
+    )
+    assert "#define CAMERA_SVC_SNAPSHOT_JPEG_QUALITY 82" in camera_c
+    assert "CAMERA_SVC_LIVE" not in camera_c
+    assert "downscale_yuv422_for_live" not in camera_c
+    assert "camera_service_live_target_size" not in camera_c
+    assert "camera_service_is_stream_active" not in camera_h
+    assert "camera_service_set_stream_active" not in camera_h
     assert ".quality = quality" in camera_c
 
 
@@ -8019,13 +8074,64 @@ def test_firmware_camera_status_reports_last_real_frame() -> None:
     assert "last_frame_width" in camera_h
     assert "last_frame_height" in camera_h
     assert "last_frame_format" in camera_h
+    assert "effective_width" in camera_h
+    assert "effective_height" in camera_h
+    assert "last_sfmt_errno" in camera_h
     assert "camera_service_format_name" in camera_h
-    assert 'case V4L2_PIX_FMT_YUV422P: return "yuv422";' in camera_c
+    assert 'case V4L2_PIX_FMT_YUYV:   return "yuyv";' in camera_c
+    assert 'case V4L2_PIX_FMT_YUV422P: return "yuv422p";' in camera_c
     assert "s_last_frame_width = frame->width" in camera_c
+    assert "out->effective_width = camera_hal_effective_width();" in camera_c
+    assert "out->last_sfmt_errno = camera_hal_last_sfmt_errno();" in camera_c
     assert "has_last_frame ? diag.last_frame_width : diag.mode_width" in web_c
     assert '\\"last_frame_format\\":\\"%s\\",' in web_c
     assert '\\"format\\":\\"%s\\",\\"width\\":%lu,\\"height\\":%lu' in web_c
     assert '"format":"jpeg","width":%lu,"height":%lu' not in web_c
+    assert '\\"effective_width\\":%lu,\\"effective_height\\":%lu' in web_c
+    assert '\\"last_sfmt_errno\\":%d}' in web_c
+    assert "stream_active" not in web_c
+
+
+def test_server_and_app_do_not_expose_camera_monitoring_stream() -> None:
+    root = Path(__file__).resolve().parents[2]
+    http_py = (
+        root
+        / "server"
+        / "noisebot_server"
+        / "internal"
+        / "ops"
+        / "http.py"
+    ).read_text(encoding="utf-8")
+    contract_py = (root / "server" / "noisebot_server" / "api" / "contract.py").read_text(
+        encoding="utf-8"
+    )
+    app_api = (root / "app" / "src" / "api.ts").read_text(encoding="utf-8")
+    app_tsx = (root / "app" / "src" / "App.tsx").read_text(encoding="utf-8")
+
+    for text in (http_py, contract_py, app_api, app_tsx):
+        assert "stream.mjpg" not in text
+        assert "visionStreamUrl" not in text
+        assert "Monitoramento ao vivo" not in text
+
+
+def test_firmware_camera_stream_endpoint_is_removed() -> None:
+    root = Path(__file__).resolve().parents[2]
+    camera_h = (
+        root
+        / "components"
+        / "services"
+        / "camera_service"
+        / "camera_service.h"
+    ).read_text(encoding="utf-8")
+    web_c = (root / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+
+    assert '"/api/camera/stream.mjpg"' not in web_c
+    assert "handle_api_camera_stream" not in web_c
+    assert "mjpeg_stream_task" not in web_c
+    assert "s_mjpeg_active" not in web_c
+    assert "stream_active" not in web_c
+    assert "camera_service_is_stream_active" not in camera_h
+    assert "camera_service_set_stream_active" not in camera_h
 
 
 def test_firmware_expression_uses_dynamic_dirty_rect_for_normal_face() -> None:

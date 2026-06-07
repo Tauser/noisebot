@@ -28,7 +28,7 @@ export type DashboardSnapshot = {
     reminders: number;
   };
   vision: {
-    mode: "idle" | "monitoring" | "analyzing";
+    mode: "idle" | "detecting" | "analyzing";
     lastObservation: string;
     light: string;
     motion: string;
@@ -496,11 +496,6 @@ export async function restartServer(token: string): Promise<void> {
 export function visionSnapshotUrl(): string {
   const separator = SERVER_URL.includes("?") ? "&" : "?";
   return `${SERVER_URL}/api/vision/snapshot${separator}ts=${Date.now()}`;
-}
-
-export function visionStreamUrl(): string {
-  const separator = SERVER_URL.includes("?") ? "&" : "?";
-  return `${SERVER_URL}/api/vision/stream.mjpg${separator}ts=${Date.now()}`;
 }
 
 export async function loadAudioSampleFiles(): Promise<AudioSampleFile[]> {

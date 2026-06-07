@@ -1,7 +1,7 @@
 """noisebot_server.internal.ops.http — servidor HTTP local-only async.
 
 Endpoints operacionais:
-  GET  /            Dashboard HTML (painel de operação)
+  GET  /            API info (dashboard oficial roda no Vite em :5173)
   GET  /health
   GET  /ai/status
   GET  /ai/metrics
@@ -22,7 +22,6 @@ import json
 import logging
 import os
 import time
-from pathlib import Path
 from typing import Any
 
 from aiohttp import web
@@ -36,7 +35,6 @@ from .schemas import (
     health_response,
     ok_response,
 )
-from .dashboard import get_dashboard_html
 from .firmware_agenda import FirmwareAgendaClient, FirmwareAgendaError
 from .firmware_diag import FirmwareDiagClient, FirmwareDiagError
 from .log_buffer import install_recent_log_handler
@@ -96,14 +94,13 @@ class OpsHttpServer:
         self._agenda_client = FirmwareAgendaClient.from_config(app._config)
         self._firmware_diag_client = FirmwareDiagClient.from_config(app._config)
         self._vision_client = VisionClient.from_config(app._config)
-        self._app_dist = _find_app_dist()
         self._t_start = time.monotonic()
         self._runner: web.AppRunner | None = None
         self._web_app = self._build_app()
 
     def _build_app(self) -> web.Application:
         wa = web.Application(middlewares=[self._error_middleware])
-        wa.router.add_get("/",                self._get_dashboard)
+        wa.router.add_get("/",                self._get_root)
         wa.router.add_get("/health",          self._get_health)
         wa.router.add_get("/ai/status",       self._get_ai_status)
         wa.router.add_get("/ai/metrics",      self._get_ai_metrics)
@@ -179,10 +176,6 @@ class OpsHttpServer:
         wa.router.add_get("/api/vision/observe", self._get_vision_observe)
         wa.router.add_get("/api/vision/analyze", self._get_vision_analyze)
         wa.router.add_get("/api/vision/snapshot", self._get_vision_snapshot)
-        wa.router.add_get("/api/vision/stream.mjpg", self._get_vision_stream)
-        if self._app_dist is not None and (self._app_dist / "assets").exists():
-            wa.router.add_static("/assets", self._app_dist / "assets")
-        wa.router.add_get("/{tail:.*}", self._get_spa_fallback)
         return wa
 
     # -- Lifecycle -------------------------------------------------------------
@@ -226,19 +219,16 @@ class OpsHttpServer:
 
     # -- GET handlers ----------------------------------------------------------
 
-    async def _get_dashboard(self, request: web.Request) -> web.Response:
-        if self._app_dist is not None:
-            return web.FileResponse(self._app_dist / "index.html")
-        return web.Response(
-            text=get_dashboard_html(),
-            content_type="text/html",
-            charset="utf-8",
+    async def _get_root(self, request: web.Request) -> web.Response:
+        return _json(
+            {
+                "ok": True,
+                "service": "noisebot_ops_api",
+                "dashboard_url": "http://127.0.0.1:5173",
+                "health_url": "/health",
+            },
+            status=200,
         )
-
-    async def _get_spa_fallback(self, request: web.Request) -> web.StreamResponse:
-        if request.path.startswith(("/api/", "/ai/", "/debug/")):
-            raise web.HTTPNotFound()
-        return await self._get_dashboard(request)
 
     async def _get_health(self, request: web.Request) -> web.Response:
         healthy = is_healthy()
@@ -780,13 +770,15 @@ class OpsHttpServer:
             analysis = await asyncio.to_thread(self._vision_client.analyze)
         except VisionError as exc:
             return _json(error_response(str(exc)), status=503)
+        finally:
+            await asyncio.to_thread(self._vision_client.session_close)
         return _json(ok_response("análise visual concluída", analysis=_vision_analysis_dict(analysis)))
 
     async def _get_vision_snapshot(self, request: web.Request) -> web.Response:
         if self._vision_client is None:
             return _json(error_response("visão não configurada"), status=503)
         try:
-            jpeg = await asyncio.to_thread(self._vision_client.snapshot)
+            jpeg = await asyncio.to_thread(self._vision_client.snapshot_and_close)
         except VisionError as exc:
             return _json(error_response(str(exc)), status=503)
         return web.Response(
@@ -794,43 +786,6 @@ class OpsHttpServer:
             content_type="image/jpeg",
             headers={"Cache-Control": "no-store"},
         )
-
-    async def _get_vision_stream(self, request: web.Request) -> web.StreamResponse:
-        if self._vision_client is None:
-            return _json(error_response("visão não configurada"), status=503)
-
-        boundary = "noisebot-frame"
-        response = web.StreamResponse(
-            status=200,
-            headers={
-                "Cache-Control": "no-store, no-cache, must-revalidate",
-                "Connection": "close",
-                "Content-Type": f"multipart/x-mixed-replace; boundary={boundary}",
-                "Pragma": "no-cache",
-            },
-        )
-        await response.prepare(request)
-
-        frame_delay_s = _env_float("NOISEBOT_VISION_STREAM_DELAY_S", 0.05)
-        while True:
-            try:
-                jpeg = await asyncio.to_thread(self._vision_client.snapshot)
-                await response.write(
-                    (
-                        f"--{boundary}\r\n"
-                        "Content-Type: image/jpeg\r\n"
-                        f"Content-Length: {len(jpeg)}\r\n\r\n"
-                    ).encode("ascii")
-                )
-                await response.write(jpeg)
-                await response.write(b"\r\n")
-                await asyncio.sleep(frame_delay_s)
-            except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError):
-                break
-            except VisionError as exc:
-                log.debug("Ops API: stream de visao interrompido: %s", exc)
-                await asyncio.sleep(0.5)
-        return response
 
     # -- POST handlers ---------------------------------------------------------
 
@@ -1366,16 +1321,3 @@ def _vision_analysis_dict(analysis) -> dict[str, Any]:
         },
         "error": analysis.error,
     }
-
-
-def _find_app_dist() -> Path | None:
-    configured = os.environ.get("NOISEBOT_APP_DIST", "").strip()
-    candidates = [Path(configured)] if configured else []
-    candidates.append(Path(__file__).resolve().parents[4] / "app" / "dist")
-    for candidate in candidates:
-        if not str(candidate):
-            continue
-        resolved = candidate.resolve()
-        if (resolved / "index.html").exists():
-            return resolved
-    return None

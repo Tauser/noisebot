@@ -390,9 +390,8 @@ static esp_err_t handle_api_camera_snapshot(httpd_req_t *req)
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
     }
-
     nb_camera_snapshot_t snap;
-    esp_err_t err = camera_service_capture_snapshot(&snap);
+    esp_err_t err = camera_service_capture_snapshot(&snap, NB_CAMERA_QUALITY_SNAPSHOT);
     if (err != ESP_OK) {
         char buf[96];
         snprintf(buf, sizeof(buf), "{\"ok\":false,\"error\":\"%s\"}", esp_err_to_name(err));
@@ -501,6 +500,9 @@ static esp_err_t handle_api_camera_status(httpd_req_t *req)
 
     httpd_resp_set_type(req, "application/json");
 
+    size_t eff_w = camera_hal_effective_width();
+    size_t eff_h = camera_hal_effective_height();
+
     snprintf(chunk, sizeof(chunk),
              "{\"supported\":%s,\"ready\":%s,\"active\":%s,"
              "\"bridge_connected\":%s,",
@@ -521,12 +523,15 @@ static esp_err_t handle_api_camera_status(httpd_req_t *req)
     snprintf(chunk, sizeof(chunk),
              "\"last_error_name\":\"%s\",\"last_error_phase\":\"%s\","
              "\"mode\":\"%s\","
-             "\"mode_width\":%lu,\"mode_height\":%lu,",
+             "\"mode_width\":%lu,\"mode_height\":%lu,"
+             "\"effective_width\":%lu,\"effective_height\":%lu,",
              last_error,
              diag.last_error_phase ? diag.last_error_phase : "",
              diag.mode_name,
              (unsigned long)diag.mode_width,
-             (unsigned long)diag.mode_height);
+             (unsigned long)diag.mode_height,
+             (unsigned long)eff_w,
+             (unsigned long)eff_h);
     httpd_resp_sendstr_chunk(req, chunk);
 
     snprintf(chunk, sizeof(chunk),
@@ -599,8 +604,9 @@ static esp_err_t handle_api_camera_status(httpd_req_t *req)
     httpd_resp_sendstr_chunk(req, chunk);
 
     snprintf(chunk, sizeof(chunk),
-             "\"min_internal_before\":%lu}",
-             (unsigned long)diag.min_internal_before);
+             "\"min_internal_before\":%lu,\"last_sfmt_errno\":%d}",
+             (unsigned long)diag.min_internal_before,
+             diag.last_sfmt_errno);
     httpd_resp_sendstr_chunk(req, chunk);
     return httpd_resp_sendstr_chunk(req, NULL);
 }
@@ -695,7 +701,6 @@ static esp_err_t handle_api_vision_observe(httpd_req_t *req)
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
     }
-
     nb_vision_observation_t obs;
     esp_err_t err = vision_service_observe(&obs);
     if (err != ESP_OK) {

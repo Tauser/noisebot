@@ -147,8 +147,26 @@ CONFIG_HTTPD_MAX_URI_LEN=2048
 CONFIG_NB_CAMERA_DIAG_ENABLED=y
 CONFIG_ESP_VIDEO_ENABLE_DVP_VIDEO_DEVICE=y
 CONFIG_CAMERA_OV2640=y
-# Mantem o caminho StackChan/Xiaozhi (esp_video/V4L2 + geometria do driver),
-# mas evita VGA para observacoes invisiveis: 240x240 YUV reduz carga de frame.
+# EXPERIMENTO 2026-06-07 (alta resolucao) — CONCLUIDO, revertido ao baseline:
+# JPEG_640X480_25FPS e JPEG_320X240_50FPS foram testados em hardware real
+# (boot + flash + captura via /api/camera/snapshot, log serial capturado em
+# paralelo) e marcados NAO-FUNCIONAIS: em ambos, a negociacao de formato
+# funciona perfeitamente (G_FMT/S_FMT aceitam a resolucao nativa, TRY_FMT
+# recusa tudo com errno=22 — inclusive a propria struct que G_FMT reportou,
+# byte a byte identica, provando que a recusa nao e sensivel ao conteudo da
+# struct), mas camera_hal_capture() recebe bytesused=0 (ou, numa tentativa,
+# um tamanho de lixo ~4GB) em 48/48 tentativas ao longo de QUATRO rodadas de
+# boot independentes (12 por rodada, 2 rodadas por modo). A assinatura de
+# falha e identica nos dois modos — descarta "resolucao especifica" e aponta
+# para um problema estrutural no caminho de captura JPEG nativo do
+# esp_video/esp_cam_sensor para o OV2640 nesta placa (DVP), fora do alcance
+# de qualquer ajuste a partir do codigo da aplicacao. Ver
+# docs/CAMERA_INTEGRATION.md "Experimento de alta resolucao (640x480)" e
+# "(320x240)" para a evidencia completa, struct-a-struct.
+#
+# YUV422_240X240_25FPS e o UNICO modo com captura comprovadamente funcional
+# nesta placa (base de todo o trabalho de visao/snapshot/MJPEG existente) —
+# volta a ser o baseline definitivo, sem ressalvas.
 CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y
 
 # ── OTA com rollback automático (Etapa 15.2) ──────────────────────────────────

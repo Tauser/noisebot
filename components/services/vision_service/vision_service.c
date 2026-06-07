@@ -37,6 +37,8 @@ static nb_vision_presence_status_t s_presence = {
 static TaskHandle_t s_poll_task = NULL;
 static nb_vision_poll_status_t s_poll = {0};
 static uint64_t s_poll_capture_sum_ms = 0U;
+static nb_vision_scene_t s_last_logged_scene = NB_VISION_SCENE_UNKNOWN;
+static bool s_last_logged_scene_valid = false;
 
 static nb_vision_scene_t classify_scene(const nb_camera_scene_metrics_t *m)
 {
@@ -225,7 +227,17 @@ esp_err_t vision_service_observe(nb_vision_observation_t *out)
     (void)vision_service_evaluate_presence(&obs, NULL);
     *out = obs;
 
-    ESP_LOGI(TAG,
+    if (!s_last_logged_scene_valid || obs.scene != s_last_logged_scene) {
+        ESP_LOGI(TAG, "cena mudou: %s -> %s (luma=%u motion=%u)",
+                 s_last_logged_scene_valid ? vision_service_scene_name(s_last_logged_scene) : "n/a",
+                 vision_service_scene_name(obs.scene),
+                 (unsigned)obs.luma_avg,
+                 (unsigned)obs.motion_score);
+        s_last_logged_scene = obs.scene;
+        s_last_logged_scene_valid = true;
+    }
+
+    ESP_LOGD(TAG,
              "observacao scene=%s luma=%u contrast=%u motion=%u spatial=%u jpeg=%uB ms=%lu",
              vision_service_scene_name(obs.scene),
              (unsigned)obs.luma_avg,

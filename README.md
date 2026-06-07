@@ -122,9 +122,9 @@ Para apontar para outro IP do robo:
 .\dev.ps1 -RobotHost 192.168.1.50
 ```
 
-Quando existe build em `app/dist`, o `noisebot_server` tambem pode servir o
-dashboard diretamente em `http://127.0.0.1:8765`. O Vite continua sendo o fluxo
-principal para desenvolvimento com hot reload.
+O dashboard oficial roda apenas pelo Vite em `http://127.0.0.1:5173`. A porta
+`8765` e reservada para a API operacional do `noisebot_server`; a raiz `/`
+retorna apenas informacoes da API e nao serve mais a interface web.
 
 ### App
 

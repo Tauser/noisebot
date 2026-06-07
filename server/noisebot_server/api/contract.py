@@ -116,13 +116,6 @@ def default_app_contract() -> tuple[AppEndpoint, ...]:
             implemented=True,
         ),
         AppEndpoint(
-            domain="vision",
-            method="GET",
-            path="/api/vision/stream.mjpg",
-            purpose="Live MJPEG camera stream proxied by server.",
-            implemented=True,
-        ),
-        AppEndpoint(
             domain="agent",
             method="POST",
             path="/api/agent/turn",

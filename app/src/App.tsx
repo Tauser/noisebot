@@ -65,7 +65,7 @@ import {
 } from "./api";
 
 type AppMode = "user" | "dev";
-type UserSection = "home" | "interaction" | "routine" | "basics";
+type UserSection = "home" | "interaction" | "routine" | "vision" | "basics";
 type DevSection = "telemetry" | "integrations" | "sensors" | "console";
 
 type NavItem<T extends string> = {
@@ -78,6 +78,7 @@ const userNav: NavItem<UserSection>[] = [
   { id: "home", label: "Início", icon: Home },
   { id: "interaction", label: "Interação", icon: MessageSquare },
   { id: "routine", label: "Rotinas", icon: CalendarDays },
+  { id: "vision", label: "Visão", icon: Camera },
   { id: "basics", label: "Ajustes", icon: SlidersHorizontal },
 ];
 
@@ -169,13 +170,22 @@ const defaultDevData: DevData = {
 };
 
 const cardClass = "rounded-xl border border-slate-200 bg-white p-4 shadow-sm";
-const primaryButtonClass = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 font-semibold text-white transition hover:bg-slate-700";
-const secondaryButtonClass = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 font-semibold text-slate-700 transition hover:bg-slate-50";
-const iconButtonClass = "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100";
-const inputClass = "min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none";
+const primaryButtonClass =
+  "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 font-semibold text-white transition hover:bg-slate-700";
+const secondaryButtonClass =
+  "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 font-semibold text-slate-700 transition hover:bg-slate-50";
+const iconButtonClass =
+  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100";
+const inputClass =
+  "min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none";
 
-function editableContext(mode: AppMode, userSection: UserSection, devSection: DevSection) {
-  if (mode === "user") return userSection === "routine" || userSection === "basics";
+function editableContext(
+  mode: AppMode,
+  userSection: UserSection,
+  devSection: DevSection,
+) {
+  if (mode === "user")
+    return userSection === "routine" || userSection === "basics";
   return devSection === "console";
 }
 
@@ -191,13 +201,19 @@ export function App() {
   const [mode, setMode] = useState<AppMode>("user");
   const [userSection, setUserSection] = useState<UserSection>("home");
   const [devSection, setDevSection] = useState<DevSection>("telemetry");
-  const contextRef = useRef({ mode: "user" as AppMode, userSection: "home" as UserSection, devSection: "telemetry" as DevSection });
+  const contextRef = useRef({
+    mode: "user" as AppMode,
+    userSection: "home" as UserSection,
+    devSection: "telemetry" as DevSection,
+  });
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(initialSnapshot);
   const [appData, setAppData] = useState<AppData>(defaultAppData);
   const [devData, setDevData] = useState<DevData>(defaultDevData);
   const [volume, setVolume] = useState(defaultAppData.settings.volume);
   const [leds, setLeds] = useState(defaultAppData.settings.led_brightness);
-  const [opsToken, setOpsToken] = useState(() => localStorage.getItem("noisebot_ops_token") ?? "");
+  const [opsToken, setOpsToken] = useState(
+    () => localStorage.getItem("noisebot_ops_token") ?? "",
+  );
   const [commandText, setCommandText] = useState("");
   const [commandStatus, setCommandStatus] = useState("pronto");
   const [routineStatus, setRoutineStatus] = useState("pronto");
@@ -226,11 +242,18 @@ export function App() {
   const refreshAll = async () => {
     setRefreshing(true);
     try {
-      const [nextSnapshot, nextData, nextDevData] = await Promise.all([loadSnapshot(), loadAppData(), safeLoadDevData()]);
+      const [nextSnapshot, nextData, nextDevData] = await Promise.all([
+        loadSnapshot(),
+        loadAppData(),
+        safeLoadDevData(),
+      ]);
       setSnapshot(withRoutine(nextSnapshot, nextData));
       setDevData(nextDevData);
       const ctx = contextRef.current;
-      applyAppData(nextData, !editableContext(ctx.mode, ctx.userSection, ctx.devSection));
+      applyAppData(
+        nextData,
+        !editableContext(ctx.mode, ctx.userSection, ctx.devSection),
+      );
     } finally {
       setRefreshing(false);
     }
@@ -239,12 +262,19 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
-      const [nextSnapshot, nextData, nextDevData] = await Promise.all([loadSnapshot(), loadAppData(), safeLoadDevData()]);
+      const [nextSnapshot, nextData, nextDevData] = await Promise.all([
+        loadSnapshot(),
+        loadAppData(),
+        safeLoadDevData(),
+      ]);
       if (!cancelled) {
         setSnapshot(withRoutine(nextSnapshot, nextData));
         setDevData(nextDevData);
         const ctx = contextRef.current;
-        applyAppData(nextData, !editableContext(ctx.mode, ctx.userSection, ctx.devSection));
+        applyAppData(
+          nextData,
+          !editableContext(ctx.mode, ctx.userSection, ctx.devSection),
+        );
       }
     };
     void refresh();
@@ -296,7 +326,11 @@ export function App() {
     if (!token) return;
     setRoutineStatus("criando timer");
     try {
-      const routine = await createAgendaItem("timer", { title, duration_min: durationMin }, token);
+      const routine = await createAgendaItem(
+        "timer",
+        { title, duration_min: durationMin },
+        token,
+      );
       updateRoutine(routine);
       setRoutineStatus("timer criado");
     } catch (error) {
@@ -309,7 +343,11 @@ export function App() {
     if (!token) return;
     setRoutineStatus("criando alarme");
     try {
-      const routine = await createAgendaItem("alarm", { title, time, repeat }, token);
+      const routine = await createAgendaItem(
+        "alarm",
+        { title, time, repeat },
+        token,
+      );
       updateRoutine(routine);
       setRoutineStatus("alarme criado");
     } catch (error) {
@@ -322,7 +360,11 @@ export function App() {
     if (!token) return;
     setRoutineStatus("criando lembrete");
     try {
-      const routine = await createAgendaItem("reminder", { title, duration_min: durationMin }, token);
+      const routine = await createAgendaItem(
+        "reminder",
+        { title, duration_min: durationMin },
+        token,
+      );
       updateRoutine(routine);
       setRoutineStatus("lembrete criado");
     } catch (error) {
@@ -334,7 +376,11 @@ export function App() {
     const token = requireToken("routine");
     if (!token) return;
     try {
-      const routine = await updateAgendaItem(item.id, { enabled: !item.enabled }, token);
+      const routine = await updateAgendaItem(
+        item.id,
+        { enabled: !item.enabled },
+        token,
+      );
       updateRoutine(routine);
       setRoutineStatus("rotina atualizada");
     } catch (error) {
@@ -428,7 +474,9 @@ export function App() {
     }
   };
 
-  const handleAudioProcessorAction = async (action: "shadow_start" | "shadow_stop" | "bridge_start" | "bridge_stop") => {
+  const handleAudioProcessorAction = async (
+    action: "shadow_start" | "shadow_stop" | "bridge_start" | "bridge_stop",
+  ) => {
     const token = opsToken.trim();
     if (!token) {
       setDevStatus("token local obrigatório para executar esta ação");
@@ -461,21 +509,42 @@ export function App() {
     return list.find((item) => item.id === active)?.label ?? "NoiseBot";
   }, [mode, userSection, devSection]);
 
-  const currentTime = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const currentTime = now.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   return (
     <main className="grid min-h-screen grid-cols-[240px_minmax(0,1fr)] bg-slate-100 max-lg:grid-cols-1">
       <aside className="border-r border-slate-200 bg-slate-950 px-4 py-5 text-white max-lg:border-r-0 max-lg:border-b">
         <div className="mb-5 grid gap-1 px-2">
           <strong className="text-lg">NoiseBot</strong>
-          <span className="text-sm text-slate-400">{mode === "user" ? "Companheiro de mesa" : "Centro de comando"}</span>
+          <span className="text-sm text-slate-400">
+            {mode === "user" ? "Companheiro de mesa" : "Centro de comando"}
+          </span>
         </div>
 
         <div className="mb-5 grid grid-cols-2 rounded-xl bg-slate-900 p-1 text-sm font-semibold">
-          <button className={mode === "user" ? "rounded-lg bg-white px-3 py-2 text-slate-950" : "rounded-lg px-3 py-2 text-slate-400"} onClick={() => setAppMode("user")} type="button">
+          <button
+            className={
+              mode === "user"
+                ? "rounded-lg bg-white px-3 py-2 text-slate-950"
+                : "rounded-lg px-3 py-2 text-slate-400"
+            }
+            onClick={() => setAppMode("user")}
+            type="button"
+          >
             User
           </button>
-          <button className={mode === "dev" ? "rounded-lg bg-white px-3 py-2 text-slate-950" : "rounded-lg px-3 py-2 text-slate-400"} onClick={() => setAppMode("dev")} type="button">
+          <button
+            className={
+              mode === "dev"
+                ? "rounded-lg bg-white px-3 py-2 text-slate-950"
+                : "rounded-lg px-3 py-2 text-slate-400"
+            }
+            onClick={() => setAppMode("dev")}
+            type="button"
+          >
             Dev
           </button>
         </div>
@@ -483,10 +552,17 @@ export function App() {
         <nav className="grid gap-1" aria-label="Navegação principal">
           {(mode === "user" ? userNav : devNav).map((item) => {
             const Icon = item.icon;
-            const active = mode === "user" ? userSection === item.id : devSection === item.id;
+            const active =
+              mode === "user"
+                ? userSection === item.id
+                : devSection === item.id;
             return (
               <button
-                className={active ? "flex min-h-11 items-center gap-3 rounded-lg bg-slate-800 px-3 text-white" : "flex min-h-11 items-center gap-3 rounded-lg px-3 text-slate-300 hover:bg-slate-900 hover:text-white"}
+                className={
+                  active
+                    ? "flex min-h-11 items-center gap-3 rounded-lg bg-slate-800 px-3 text-white"
+                    : "flex min-h-11 items-center gap-3 rounded-lg px-3 text-slate-300 hover:bg-slate-900 hover:text-white"
+                }
                 key={item.id}
                 onClick={() => {
                   if (mode === "user") setUserSection(item.id as UserSection);
@@ -506,16 +582,39 @@ export function App() {
         <header className="border-b border-slate-200 bg-white px-6 py-4">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{title}</h1>
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
+                {title}
+              </h1>
               <p className="text-sm text-slate-500">{snapshot.robot.mood}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Vital icon={BatteryCharging} label={snapshot.robot.batteryLabel || "energia"} />
-              <Vital icon={Wifi} label={snapshot.robot.firmwareOnline ? "online" : "offline"} good={snapshot.robot.firmwareOnline} />
-              <Vital icon={snapshot.robot.state === "listening" ? Mic : MicOff} label={snapshot.robot.state === "listening" ? "ouvindo" : "mic"} />
-              <Vital icon={CloudSun} label={`${currentTime} · ${appData.advanced.location || "local"}`} />
-              <button className={refreshing ? "inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 [&_svg]:animate-spin" : "inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600"} onClick={() => void refreshAll()} type="button">
+              <Vital
+                icon={BatteryCharging}
+                label={snapshot.robot.batteryLabel || "energia"}
+              />
+              <Vital
+                icon={Wifi}
+                label={snapshot.robot.firmwareOnline ? "online" : "offline"}
+                good={snapshot.robot.firmwareOnline}
+              />
+              <Vital
+                icon={snapshot.robot.state === "listening" ? Mic : MicOff}
+                label={snapshot.robot.state === "listening" ? "ouvindo" : "mic"}
+              />
+              <Vital
+                icon={CloudSun}
+                label={`${currentTime} · ${appData.advanced.location || "local"}`}
+              />
+              <button
+                className={
+                  refreshing
+                    ? "inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 [&_svg]:animate-spin"
+                    : "inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600"
+                }
+                onClick={() => void refreshAll()}
+                type="button"
+              >
                 <RefreshCw size={18} />
               </button>
             </div>
@@ -525,7 +624,11 @@ export function App() {
         <div className="min-w-0 px-6 py-5">
           <div className="mx-auto max-w-7xl">
             {mode === "user" && userSection === "home" && (
-              <UserHomeView appData={appData} onNavigate={setUserSection} snapshot={snapshot} />
+              <UserHomeView
+                appData={appData}
+                onNavigate={setUserSection}
+                snapshot={snapshot}
+              />
             )}
             {mode === "user" && userSection === "interaction" && (
               <InteractionView
@@ -548,6 +651,9 @@ export function App() {
                 summary={appData.routine.summary}
               />
             )}
+            {mode === "user" && userSection === "vision" && (
+              <UserVisionView snapshot={snapshot} />
+            )}
             {mode === "user" && userSection === "basics" && (
               <BasicSettingsView
                 appData={appData}
@@ -559,9 +665,15 @@ export function App() {
                 volume={volume}
               />
             )}
-            {mode === "dev" && devSection === "telemetry" && <DevTelemetryView devData={devData} snapshot={snapshot} />}
-            {mode === "dev" && devSection === "integrations" && <DevIntegrationsView devData={devData} snapshot={snapshot} />}
-            {mode === "dev" && devSection === "sensors" && <DevSensorsView devData={devData} snapshot={snapshot} />}
+            {mode === "dev" && devSection === "telemetry" && (
+              <DevTelemetryView devData={devData} snapshot={snapshot} />
+            )}
+            {mode === "dev" && devSection === "integrations" && (
+              <DevIntegrationsView devData={devData} snapshot={snapshot} />
+            )}
+            {mode === "dev" && devSection === "sensors" && (
+              <DevSensorsView devData={devData} snapshot={snapshot} />
+            )}
             {mode === "dev" && devSection === "console" && (
               <DevConsoleView
                 devData={devData}
@@ -581,6 +693,84 @@ export function App() {
   );
 }
 
+function UserVisionView({ snapshot }: { snapshot: DashboardSnapshot }) {
+  const [frameUrl, setFrameUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState("pronto");
+  const [analysis, setAnalysis] = useState<VisionAnalysis | null>(null);
+
+  const capture = async () => {
+    setStatus("capturando");
+    try {
+      await observeVision();
+      setFrameUrl(visionSnapshotUrl());
+      setStatus("captura atualizada");
+    } catch (error) {
+      setStatus(errorMessage(error));
+    }
+  };
+
+  const runAnalysis = async () => {
+    setStatus("analisando");
+    try {
+      const result = await analyzeVision();
+      setAnalysis(result);
+      setFrameUrl(visionSnapshotUrl());
+      setStatus("análise concluída");
+    } catch (error) {
+      setStatus(errorMessage(error));
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <section className={cardClass}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Visão</h2>
+            <p className="text-sm text-slate-500">
+              Captura curta para análise e face detect.
+            </p>
+          </div>
+          <StatusPill ok={status === "captura atualizada" || status === "análise concluída"} label={status} />
+        </div>
+        <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-slate-950 text-slate-400">
+          {frameUrl ? (
+            <img
+              alt="Câmera do NoiseBot"
+              className="h-full w-full object-contain"
+              src={frameUrl}
+              onError={() => setFrameUrl(null)}
+            />
+          ) : (
+            <span className="text-sm">
+              {snapshot.robot.firmwareOnline
+                ? "Capture uma imagem para analisar"
+                : "Robô offline"}
+            </span>
+          )}
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <button className={secondaryButtonClass} onClick={() => void capture()} type="button">
+            <Camera size={17} />
+            Capturar foto
+          </button>
+          <button className={primaryButtonClass} onClick={() => void runAnalysis()} type="button">
+            <Activity size={17} />
+            Analisar visão
+          </button>
+        </div>
+        {analysis && (
+          <div className="mt-4 grid gap-2 text-sm text-slate-600">
+            <Metric label="Cena" value={analysis.observation.scene} />
+            <Metric label="Rostos" value={String(analysis.face_count)} />
+            <Metric label="Luz" value={String(analysis.observation.luma_avg)} />
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function UserHomeView({
   appData,
   onNavigate,
@@ -596,15 +786,25 @@ function UserHomeView({
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">Resumo do dia</h2>
-            <p className="text-sm text-slate-500">{appData.routine.summary.next}</p>
+            <p className="text-sm text-slate-500">
+              {appData.routine.summary.next}
+            </p>
           </div>
-          <StatusPill ok={snapshot.robot.firmwareOnline} label={snapshot.robot.firmwareOnline ? "robô online" : "robô offline"} />
+          <StatusPill
+            ok={snapshot.robot.firmwareOnline}
+            label={
+              snapshot.robot.firmwareOnline ? "robô online" : "robô offline"
+            }
+          />
         </div>
         <div className="grid gap-3 md:grid-cols-4">
           <Metric label="Próximo" value={snapshot.routine.next} />
           <Metric label="Timers" value={String(snapshot.routine.timers)} />
           <Metric label="Alarmes" value={String(snapshot.routine.alarms)} />
-          <Metric label="Lembretes" value={String(snapshot.routine.reminders)} />
+          <Metric
+            label="Lembretes"
+            value={String(snapshot.routine.reminders)}
+          />
         </div>
       </section>
 
@@ -612,8 +812,16 @@ function UserHomeView({
         <section className={cardClass}>
           <h2 className="mb-3 text-lg font-semibold">Widgets de mesa</h2>
           <div className="grid gap-3 md:grid-cols-2">
-            <PlannedFeature icon={Timer} title="Pomodoro visual" description="Timer com estado visual no robô." />
-            <PlannedFeature icon={Clock3} title="Acompanhamento do dia" description="Relógio, clima e foco no display." />
+            <PlannedFeature
+              icon={Timer}
+              title="Pomodoro visual"
+              description="Timer com estado visual no robô."
+            />
+            <PlannedFeature
+              icon={Clock3}
+              title="Acompanhamento do dia"
+              description="Relógio, clima e foco no display."
+            />
           </div>
         </section>
 
@@ -622,7 +830,11 @@ function UserHomeView({
           <div className="grid gap-2">
             <DisabledButton label="Modo silencioso" />
             <DisabledButton label="Não perturbe" />
-            <button className={secondaryButtonClass} onClick={() => onNavigate("routine")} type="button">
+            <button
+              className={secondaryButtonClass}
+              onClick={() => onNavigate("routine")}
+              type="button"
+            >
               Abrir rotinas
             </button>
           </div>
@@ -650,7 +862,10 @@ function InteractionView({
       <section className={cardClass}>
         <h2 className="mb-3 text-lg font-semibold">Chat e comandos</h2>
         <div className="mb-4 grid gap-3">
-          <TurnBubble label="Última fala" text={snapshot.robot.lastTranscript || "Sem transcrição recente."} />
+          <TurnBubble
+            label="Última fala"
+            text={snapshot.robot.lastTranscript || "Sem transcrição recente."}
+          />
           <TurnBubble label="Última resposta" text={lastReplyText(snapshot)} />
         </div>
         <form
@@ -660,7 +875,12 @@ function InteractionView({
             void onCommandSubmit();
           }}
         >
-          <input className={inputClass} onChange={(event) => onCommandChange(event.target.value)} placeholder="Digite algo para o NoiseBot falar" value={commandText} />
+          <input
+            className={inputClass}
+            onChange={(event) => onCommandChange(event.target.value)}
+            placeholder="Digite algo para o NoiseBot falar"
+            value={commandText}
+          />
           <button className={primaryButtonClass} type="submit">
             <SendHorizontal size={17} />
             Enviar
@@ -672,11 +892,19 @@ function InteractionView({
       <aside className="grid content-start gap-4">
         <section className={cardClass}>
           <h2 className="mb-3 text-lg font-semibold">Expressão visual</h2>
-          <PlannedFeature icon={Shield} title="Galeria de olhos" description="Pixel art, reações e estilos visuais." />
+          <PlannedFeature
+            icon={Shield}
+            title="Galeria de olhos"
+            description="Pixel art, reações e estilos visuais."
+          />
         </section>
         <section className={cardClass}>
           <h2 className="mb-3 text-lg font-semibold">Personalidade</h2>
-          <PlannedFeature icon={Brain} title="Perfis de LLM" description="Assistente sério, companheiro irônico e outros estilos." />
+          <PlannedFeature
+            icon={Brain}
+            title="Perfis de LLM"
+            description="Assistente sério, companheiro irônico e outros estilos."
+          />
         </section>
       </aside>
     </div>
@@ -727,18 +955,41 @@ function RoutineView({
           <h2 className="mb-3 text-lg font-semibold">Itens</h2>
           <div className="grid gap-2">
             {items.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">Nenhum item criado.</p>
+              <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+                Nenhum item criado.
+              </p>
             ) : (
               items.map((item) => (
-                <article className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-slate-200 p-3" key={item.id}>
-                  <button className={item.enabled ? "inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700" : "inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500"} onClick={() => onToggle(item)} type="button">
-                    {item.enabled ? <CheckCircle2 size={16} /> : <Pause size={16} />}
+                <article
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-slate-200 p-3"
+                  key={item.id}
+                >
+                  <button
+                    className={
+                      item.enabled
+                        ? "inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"
+                        : "inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500"
+                    }
+                    onClick={() => onToggle(item)}
+                    type="button"
+                  >
+                    {item.enabled ? (
+                      <CheckCircle2 size={16} />
+                    ) : (
+                      <Pause size={16} />
+                    )}
                   </button>
                   <div className="min-w-0">
                     <strong className="block truncate">{item.title}</strong>
-                    <span className="text-sm text-slate-500">{kindLabel(item.kind)} · {item.detail || item.status}</span>
+                    <span className="text-sm text-slate-500">
+                      {kindLabel(item.kind)} · {item.detail || item.status}
+                    </span>
                   </div>
-                  <button className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50" onClick={() => onRemove(item)} type="button">
+                  <button
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    onClick={() => onRemove(item)}
+                    type="button"
+                  >
                     <Trash2 size={17} />
                   </button>
                 </article>
@@ -748,22 +999,55 @@ function RoutineView({
         </section>
 
         <aside className="grid content-start gap-4">
-          <RoutineForm icon={Timer} title="Novo timer" onSubmit={() => onCreateTimer(timerTitle, timerMin)}>
-            <input className={inputClass} onChange={(event) => setTimerTitle(event.target.value)} value={timerTitle} />
+          <RoutineForm
+            icon={Timer}
+            title="Novo timer"
+            onSubmit={() => onCreateTimer(timerTitle, timerMin)}
+          >
+            <input
+              className={inputClass}
+              onChange={(event) => setTimerTitle(event.target.value)}
+              value={timerTitle}
+            />
             <NumberInput onChange={setTimerMin} value={timerMin} />
           </RoutineForm>
-          <RoutineForm icon={Bell} title="Novo alarme" onSubmit={() => onCreateAlarm(alarmTitle, alarmTime, alarmRepeat)}>
-            <input className={inputClass} onChange={(event) => setAlarmTitle(event.target.value)} value={alarmTitle} />
-            <input className={inputClass} onChange={(event) => setAlarmTime(event.target.value)} type="time" value={alarmTime} />
-            <select className={inputClass} onChange={(event) => setAlarmRepeat(event.target.value)} value={alarmRepeat}>
+          <RoutineForm
+            icon={Bell}
+            title="Novo alarme"
+            onSubmit={() => onCreateAlarm(alarmTitle, alarmTime, alarmRepeat)}
+          >
+            <input
+              className={inputClass}
+              onChange={(event) => setAlarmTitle(event.target.value)}
+              value={alarmTitle}
+            />
+            <input
+              className={inputClass}
+              onChange={(event) => setAlarmTime(event.target.value)}
+              type="time"
+              value={alarmTime}
+            />
+            <select
+              className={inputClass}
+              onChange={(event) => setAlarmRepeat(event.target.value)}
+              value={alarmRepeat}
+            >
               <option value="diário">Diário</option>
               <option value="dias úteis">Dias úteis</option>
               <option value="fim de semana">Fim de semana</option>
               <option value="uma vez">Uma vez</option>
             </select>
           </RoutineForm>
-          <RoutineForm icon={Clock3} title="Novo lembrete" onSubmit={() => onCreateReminder(reminderTitle, reminderMin)}>
-            <input className={inputClass} onChange={(event) => setReminderTitle(event.target.value)} value={reminderTitle} />
+          <RoutineForm
+            icon={Clock3}
+            title="Novo lembrete"
+            onSubmit={() => onCreateReminder(reminderTitle, reminderMin)}
+          >
+            <input
+              className={inputClass}
+              onChange={(event) => setReminderTitle(event.target.value)}
+              value={reminderTitle}
+            />
             <NumberInput onChange={setReminderMin} value={reminderMin} />
           </RoutineForm>
         </aside>
@@ -795,13 +1079,27 @@ function BasicSettingsView({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Hardware</h2>
-            <p className="text-sm text-slate-500">Controles aplicados pelo server.</p>
+            <p className="text-sm text-slate-500">
+              Controles aplicados pelo server.
+            </p>
           </div>
-          <button className={primaryButtonClass} onClick={onSave} type="button">Salvar</button>
+          <button className={primaryButtonClass} onClick={onSave} type="button">
+            Salvar
+          </button>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <ControlPanel icon={Volume2} label="Volume" onChange={onVolumeChange} value={volume} />
-          <ControlPanel icon={SlidersHorizontal} label="LEDs" onChange={onLedsChange} value={leds} />
+          <ControlPanel
+            icon={Volume2}
+            label="Volume"
+            onChange={onVolumeChange}
+            value={volume}
+          />
+          <ControlPanel
+            icon={SlidersHorizontal}
+            label="LEDs"
+            onChange={onLedsChange}
+            value={leds}
+          />
         </div>
         <p className="mt-3 text-sm text-slate-500">{status}</p>
       </section>
@@ -809,19 +1107,35 @@ function BasicSettingsView({
       <aside className="grid content-start gap-4">
         <section className={cardClass}>
           <h2 className="mb-3 text-lg font-semibold">Localização</h2>
-          <InfoRow label="Cidade" value={appData.advanced.location || "Não definida"} />
-          <InfoRow label="Fuso" value={appData.advanced.timezone || "Não definido"} />
+          <InfoRow
+            label="Cidade"
+            value={appData.advanced.location || "Não definida"}
+          />
+          <InfoRow
+            label="Fuso"
+            value={appData.advanced.timezone || "Não definido"}
+          />
         </section>
         <section className={cardClass}>
           <h2 className="mb-3 text-lg font-semibold">Permissões</h2>
-          <PlannedFeature icon={Camera} title="Captura por contexto" description="Controle fino de quando a câmera pode ser usada." />
+          <PlannedFeature
+            icon={Camera}
+            title="Captura por contexto"
+            description="Controle fino de quando a câmera pode ser usada."
+          />
         </section>
       </aside>
     </div>
   );
 }
 
-function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: DashboardSnapshot }) {
+function DevTelemetryView({
+  devData,
+  snapshot,
+}: {
+  devData: DevData;
+  snapshot: DashboardSnapshot;
+}) {
   const totalTurns = devData.metrics.turns.total ?? 0;
   const sttLatency = formatLatency(devData.metrics.latency_ms.stt);
   const llmLatency = formatLatency(devData.metrics.latency_ms.llm_total);
@@ -851,9 +1165,13 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
     try {
       const files = await loadAudioSampleFiles();
       setAudioFiles(files);
-      setAudioFilesStatus(files.length ? `${files.length} arquivo(s)` : "Nenhum WAV encontrado");
+      setAudioFilesStatus(
+        files.length ? `${files.length} arquivo(s)` : "Nenhum WAV encontrado",
+      );
     } catch (error) {
-      setAudioFilesStatus(error instanceof Error ? error.message : "Falha ao listar arquivos");
+      setAudioFilesStatus(
+        error instanceof Error ? error.message : "Falha ao listar arquivos",
+      );
     } finally {
       setAudioFilesLoading(false);
     }
@@ -865,38 +1183,84 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Ciclo de voz</h2>
-            <p className="text-sm text-slate-500">Mostra o que aconteceu quando o robô ouviu, pensou e tentou responder.</p>
+            <p className="text-sm text-slate-500">
+              Mostra o que aconteceu quando o robô ouviu, pensou e tentou
+              responder.
+            </p>
           </div>
           <span className={voiceSummary.className}>{voiceSummary.label}</span>
         </div>
         {voiceAlert && <VoiceAlertBanner alert={voiceAlert} />}
         <div className="grid gap-3 lg:grid-cols-4">
-          <VoiceStage label="Áudio" state={voiceStageState(voice, "audio")} detail={voiceStageDetail(voice, "audio")} />
-          <VoiceStage label="STT" state={voiceStageState(voice, "stt")} detail={voiceStageDetail(voice, "stt")} />
-          <VoiceStage label="Decisão" state={voiceStageState(voice, "decision")} detail={voiceStageDetail(voice, "decision")} />
-          <VoiceStage label="Resposta" state={voiceStageState(voice, "reply")} detail={voiceStageDetail(voice, "reply")} />
+          <VoiceStage
+            label="Áudio"
+            state={voiceStageState(voice, "audio")}
+            detail={voiceStageDetail(voice, "audio")}
+          />
+          <VoiceStage
+            label="STT"
+            state={voiceStageState(voice, "stt")}
+            detail={voiceStageDetail(voice, "stt")}
+          />
+          <VoiceStage
+            label="Decisão"
+            state={voiceStageState(voice, "decision")}
+            detail={voiceStageDetail(voice, "decision")}
+          />
+          <VoiceStage
+            label="Resposta"
+            state={voiceStageState(voice, "reply")}
+            detail={voiceStageDetail(voice, "reply")}
+          />
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_260px]">
-          <TurnBubble label="Transcrição" text={voice.transcript || snapshot.robot.lastTranscript || "Sem transcrição recente."} />
-          <TurnBubble label="Resposta" text={voice.reply || lastReplyText(snapshot)} />
+          <TurnBubble
+            label="Transcrição"
+            text={
+              voice.transcript ||
+              snapshot.robot.lastTranscript ||
+              "Sem transcrição recente."
+            }
+          />
+          <TurnBubble
+            label="Resposta"
+            text={voice.reply || lastReplyText(snapshot)}
+          />
           <article className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <span className="text-xs font-bold uppercase text-slate-500">Gargalo provável</span>
-            <strong className="mt-1 block text-sm text-slate-900">{latencyBottleneck.label}</strong>
-            <p className="mt-1 text-sm text-slate-600">{latencyBottleneck.detail}</p>
+            <span className="text-xs font-bold uppercase text-slate-500">
+              Gargalo provável
+            </span>
+            <strong className="mt-1 block text-sm text-slate-900">
+              {latencyBottleneck.label}
+            </strong>
+            <p className="mt-1 text-sm text-slate-600">
+              {latencyBottleneck.detail}
+            </p>
           </article>
         </div>
       </section>
 
       <DiagnosticCard defaultOpen icon={Cpu} title="Hardware e build">
         <div className="grid gap-3 md:grid-cols-2">
-          <Metric label="Firmware" value={snapshot.robot.firmwareOnline ? "online" : "offline"} />
+          <Metric
+            label="Firmware"
+            value={snapshot.robot.firmwareOnline ? "online" : "offline"}
+          />
           <Metric label="Estado" value={snapshot.robot.state} />
           <Metric label="Projeto" value={textValue(version.project)} />
           <Metric label="Versão" value={textValue(version.version)} />
           <Metric label="ESP-IDF" value={textValue(version.idf_ver)} />
-          <Metric label="Build" value={`${textValue(version.build_date)} ${textValue(version.build_time)}`.trim()} />
+          <Metric
+            label="Build"
+            value={`${textValue(version.build_date)} ${textValue(version.build_time)}`.trim()}
+          />
           <Metric label="Health score" value={numberValue(health.health, "")} />
-          <Metric label="Uptime" value={formatSeconds(readNumber(health.uptime_s) ?? readNumber(diag.uptime_s))} />
+          <Metric
+            label="Uptime"
+            value={formatSeconds(
+              readNumber(health.uptime_s) ?? readNumber(diag.uptime_s),
+            )}
+          />
           <Metric label="Tasks" value={numberValue(health.task_count, "")} />
           <Metric label="FPS render" value={numberValue(diag.fps, " fps")} />
         </div>
@@ -904,16 +1268,43 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
 
       <DiagnosticCard defaultOpen icon={Database} title="Memória">
         <div className="grid gap-3 md:grid-cols-2">
-          <Metric label="PSRAM livre" value={bytesValue(health.heap_psram_free)} />
-          <Metric label="PSRAM mínimo" value={bytesValue(health.heap_psram_min)} />
-          <Metric label="Maior bloco PSRAM" value={bytesValue(health.heap_psram_largest)} />
-          <Metric label="Interna livre" value={bytesValue(health.heap_internal_free)} />
-          <Metric label="Interna mínima" value={bytesValue(health.heap_internal_min)} />
-          <Metric label="Maior bloco interno" value={bytesValue(health.heap_internal_largest)} />
+          <Metric
+            label="PSRAM livre"
+            value={bytesValue(health.heap_psram_free)}
+          />
+          <Metric
+            label="PSRAM mínimo"
+            value={bytesValue(health.heap_psram_min)}
+          />
+          <Metric
+            label="Maior bloco PSRAM"
+            value={bytesValue(health.heap_psram_largest)}
+          />
+          <Metric
+            label="Interna livre"
+            value={bytesValue(health.heap_internal_free)}
+          />
+          <Metric
+            label="Interna mínima"
+            value={bytesValue(health.heap_internal_min)}
+          />
+          <Metric
+            label="Maior bloco interno"
+            value={bytesValue(health.heap_internal_largest)}
+          />
           <Metric label="DMA livre" value={bytesValue(health.heap_dma_free)} />
-          <Metric label="Maior bloco DMA" value={bytesValue(health.heap_dma_largest)} />
-          <Metric label="Heap total livre" value={bytesValue(health.heap_dram_free)} />
-          <Metric label="Heap total mínimo" value={bytesValue(health.heap_dram_min)} />
+          <Metric
+            label="Maior bloco DMA"
+            value={bytesValue(health.heap_dma_largest)}
+          />
+          <Metric
+            label="Heap total livre"
+            value={bytesValue(health.heap_dram_free)}
+          />
+          <Metric
+            label="Heap total mínimo"
+            value={bytesValue(health.heap_dram_min)}
+          />
         </div>
       </DiagnosticCard>
 
@@ -921,8 +1312,14 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
         <div className="grid gap-3 md:grid-cols-2">
           <Metric label="SD montado" value={boolValue(storage.sd_mounted)} />
           <Metric label="SD livre" value={bytesValue(storage.sd_free_bytes)} />
-          <Metric label="Config" value={firmware.config ? "exposta" : "não exposta"} />
-          <Metric label="LTM" value={firmware.ltm ? "exposta" : "não exposta"} />
+          <Metric
+            label="Config"
+            value={firmware.config ? "exposta" : "não exposta"}
+          />
+          <Metric
+            label="LTM"
+            value={firmware.ltm ? "exposta" : "não exposta"}
+          />
         </div>
         <AudioSamplesPanel
           files={audioFiles}
@@ -934,20 +1331,47 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
 
       <DiagnosticCard defaultOpen icon={Wifi} title="Rede e bridge">
         <div className="grid gap-3 md:grid-cols-2">
-          <Metric label="Server" value={snapshot.robot.serverOnline ? "online" : "offline"} />
-          <Metric label="Transporte" value={`${devData.device.transport_host || "--"}:${devData.device.transport_port || "--"}`} />
-          <Metric label="Ops port" value={String(devData.device.ops_port || "--")} />
-          <Metric label="Dry run" value={devData.device.dry_run ? "sim" : "não"} />
+          <Metric
+            label="Server"
+            value={snapshot.robot.serverOnline ? "online" : "offline"}
+          />
+          <Metric
+            label="Transporte"
+            value={`${devData.device.transport_host || "--"}:${devData.device.transport_port || "--"}`}
+          />
+          <Metric
+            label="Ops port"
+            value={String(devData.device.ops_port || "--")}
+          />
+          <Metric
+            label="Dry run"
+            value={devData.device.dry_run ? "sim" : "não"}
+          />
           <Metric label="HTTP robô" value={firmware.base_url || "--"} />
-          <Metric label="Latência diag" value={numberValue(firmware.latency_ms, " ms")} />
+          <Metric
+            label="Latência diag"
+            value={numberValue(firmware.latency_ms, " ms")}
+          />
           <Metric label="WiFi" value={boolValue(wifi.connected)} />
           <Metric label="SSID" value={textValue(wifi.ssid)} />
           <Metric label="IP" value={textValue(wifi.ip)} />
           <Metric label="RSSI" value={numberValue(wifi.rssi, " dBm")} />
-          <Metric label="Bridge conectado" value={boolValue(diag.bridge_connected)} />
-          <Metric label="Protocolo" value={numberValue(diag.bridge_protocol_v, "")} />
-          <Metric label="Último RX bridge" value={numberValue(diag.bridge_last_rx_ms, " ms")} />
-          <Metric label="Supervisor" value={devData.device.supervisor || "--"} />
+          <Metric
+            label="Bridge conectado"
+            value={boolValue(diag.bridge_connected)}
+          />
+          <Metric
+            label="Protocolo"
+            value={numberValue(diag.bridge_protocol_v, "")}
+          />
+          <Metric
+            label="Último RX bridge"
+            value={numberValue(diag.bridge_last_rx_ms, " ms")}
+          />
+          <Metric
+            label="Supervisor"
+            value={devData.device.supervisor || "--"}
+          />
         </div>
       </DiagnosticCard>
 
@@ -956,15 +1380,36 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
           <Metric label="Suportada" value={boolValue(camera.supported)} />
           <Metric label="Ativa" value={boolValue(camera.active)} />
           <Metric label="Modo" value={textValue(camera.mode)} />
-          <Metric label="Resolução" value={`${numberValue(camera.mode_width, "")} x ${numberValue(camera.mode_height, "")}`} />
-          <Metric label="Último JPEG" value={bytesValue(camera.last_jpeg_bytes)} />
-          <Metric label="Última captura" value={numberValue(camera.last_capture_ms, " ms")} />
-          <Metric label="Capturas" value={numberValue(camera.capture_count, "")} />
+          <Metric
+            label="Resolução"
+            value={`${numberValue(camera.mode_width, "")} x ${numberValue(camera.mode_height, "")}`}
+          />
+          <Metric
+            label="Último JPEG"
+            value={bytesValue(camera.last_jpeg_bytes)}
+          />
+          <Metric
+            label="Última captura"
+            value={numberValue(camera.last_capture_ms, " ms")}
+          />
+          <Metric
+            label="Capturas"
+            value={numberValue(camera.capture_count, "")}
+          />
           <Metric label="Falhas" value={numberValue(camera.fail_count, "")} />
-          <Metric label="Erro câmera" value={textValue(camera.last_error_name)} />
+          <Metric
+            label="Erro câmera"
+            value={textValue(camera.last_error_name)}
+          />
           <Metric label="DMA câmera" value={bytesValue(camera.heap_dma_free)} />
-          <Metric label="Bloco DMA câmera" value={bytesValue(camera.heap_dma_largest)} />
-          <Metric label="Interna câmera" value={bytesValue(camera.heap_internal_free)} />
+          <Metric
+            label="Bloco DMA câmera"
+            value={bytesValue(camera.heap_dma_largest)}
+          />
+          <Metric
+            label="Interna câmera"
+            value={bytesValue(camera.heap_internal_free)}
+          />
         </div>
       </DiagnosticCard>
 
@@ -974,11 +1419,23 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
           <Metric label="RMS" value={numberValue(diag.audio_rms, "")} />
           <Metric label="Volume" value={numberValue(audio.volume, "%")} />
           <Metric label="BPM" value={numberValue(audio.bpm, "")} />
-          <Metric label="BPM confiança" value={numberValue(audio.bpm_conf, "%")} />
-          <Metric label="Freq. dominante" value={numberValue(audio.dominant_freq, " Hz")} />
+          <Metric
+            label="BPM confiança"
+            value={numberValue(audio.bpm_conf, "%")}
+          />
+          <Metric
+            label="Freq. dominante"
+            value={numberValue(audio.dominant_freq, " Hz")}
+          />
           <Metric label="Wake ativo" value={boolValue(diag.wake_active)} />
-          <Metric label="Wake threshold" value={numberValue(diag.wake_threshold, "")} />
-          <Metric label="Detecções wake" value={numberValue(diag.wake_detections, "")} />
+          <Metric
+            label="Wake threshold"
+            value={numberValue(diag.wake_threshold, "")}
+          />
+          <Metric
+            label="Detecções wake"
+            value={numberValue(diag.wake_detections, "")}
+          />
           <Metric label="Modelo wake" value={textValue(diag.wake_model)} />
         </div>
       </DiagnosticCard>
@@ -988,24 +1445,63 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
           <Metric label="Turno" value={numberValue(voice.turn_id, "")} />
           <Metric label="Resultado" value={textValue(voice.outcome)} />
           <Metric label="Estado final" value={textValue(voice.state)} />
-          <Metric label="Fim da voz" value={textValue(voice.voice_end_reason)} />
+          <Metric
+            label="Fim da voz"
+            value={textValue(voice.voice_end_reason)}
+          />
           <Metric label="Descarte" value={textValue(voice.discard_reason)} />
-          <Metric label="Duração fala" value={numberValue(voice.duration_ms, " ms")} />
+          <Metric
+            label="Duração fala"
+            value={numberValue(voice.duration_ms, " ms")}
+          />
           <Metric label="Chunks" value={numberValue(voice.chunk_count, "")} />
-          <Metric label="Samples" value={numberValue(voice.total_samples, "")} />
-          <Metric label="STT qualidade" value={textValue(voice.transcript_quality)} />
-          <Metric label="No speech" value={numberValue(voice.no_speech_prob, "")} />
+          <Metric
+            label="Samples"
+            value={numberValue(voice.total_samples, "")}
+          />
+          <Metric
+            label="STT qualidade"
+            value={textValue(voice.transcript_quality)}
+          />
+          <Metric
+            label="No speech"
+            value={numberValue(voice.no_speech_prob, "")}
+          />
           <Metric label="Logprob" value={numberValue(voice.avg_logprob, "")} />
-          <Metric label="Compressão" value={numberValue(voice.compression_ratio, "")} />
+          <Metric
+            label="Compressão"
+            value={numberValue(voice.compression_ratio, "")}
+          />
           <Metric label="Intent" value={textValue(voice.intent_name)} />
-          <Metric label="Resposta chars" value={numberValue(voice.reply_chars, "")} />
-          <Metric label="VOICE_END → STT" value={numberValue(voice.voice_end_to_stt_start_ms, " ms")} />
+          <Metric
+            label="Resposta chars"
+            value={numberValue(voice.reply_chars, "")}
+          />
+          <Metric
+            label="VOICE_END → STT"
+            value={numberValue(voice.voice_end_to_stt_start_ms, " ms")}
+          />
           <Metric label="STT" value={numberValue(voice.stt_ms, " ms")} />
-          <Metric label="Fim de turno" value={numberValue(voice.end_of_turn_ms, " ms")} />
-          <Metric label="TTS até 1º áudio" value={numberValue(voice.tts_first_audio_ms, " ms")} />
-          <Metric label="1º áudio" value={numberValue(voice.first_audio_out_ms, " ms")} />
-          <Metric label="1º áudio pós-fim" value={numberValue(voice.first_audio_after_voice_end_ms, " ms")} />
-          <Metric label="Fala total" value={numberValue(voice.speech_total_ms, " ms")} />
+          <Metric
+            label="Fim de turno"
+            value={numberValue(voice.end_of_turn_ms, " ms")}
+          />
+          <Metric
+            label="TTS até 1º áudio"
+            value={numberValue(voice.tts_first_audio_ms, " ms")}
+          />
+          <Metric
+            label="1º áudio"
+            value={numberValue(voice.first_audio_out_ms, " ms")}
+          />
+          <Metric
+            label="1º áudio pós-fim"
+            value={numberValue(voice.first_audio_after_voice_end_ms, " ms")}
+          />
+          <Metric
+            label="Fala total"
+            value={numberValue(voice.speech_total_ms, " ms")}
+          />
           <Metric label="Erro estágio" value={textValue(voice.error_stage)} />
           <Metric label="Erro motivo" value={textValue(voice.error_reason)} />
         </div>
@@ -1020,24 +1516,63 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
           <Metric label="Touch pressed" value={boolValue(touch.pressed)} />
           <Metric label="Touch state" value={textValue(touch.state)} />
           <Metric label="Touch raw" value={numberValue(touch.raw, "")} />
-          <Metric label="Touch filtered" value={numberValue(touch.filtered, "")} />
-          <Metric label="Touch baseline" value={numberValue(touch.baseline, "")} />
+          <Metric
+            label="Touch filtered"
+            value={numberValue(touch.filtered, "")}
+          />
+          <Metric
+            label="Touch baseline"
+            value={numberValue(touch.baseline, "")}
+          />
+          <Metric
+            label="Touch threshold on"
+            value={numberValue(touch.threshold_on, "")}
+          />
+          <Metric
+            label="Touch threshold off"
+            value={numberValue(touch.threshold_off, "")}
+          />
           <Metric label="Último touch" value={textValue(touch.last_event)} />
           <Metric label="Sessões" value={numberValue(ltm.sessions, "")} />
-          <Metric label="Horas vivo" value={numberValue(ltm.hours_alive, " h")} />
-          <Metric label="Toques" value={numberValue(ltm.touch_count ?? diag.touch_count, "")} />
-          <Metric label="Temperatura" value={<span className="inline-flex items-center gap-1"><Thermometer size={14} /> não exposta</span>} />
+          <Metric
+            label="Horas vivo"
+            value={numberValue(ltm.hours_alive, " h")}
+          />
+          <Metric
+            label="Toques"
+            value={numberValue(ltm.touch_count ?? diag.touch_count, "")}
+          />
+          <Metric
+            label="Temperatura"
+            value={
+              <span className="inline-flex items-center gap-1">
+                <Thermometer size={14} /> não exposta
+              </span>
+            }
+          />
         </div>
       </DiagnosticCard>
 
       <DiagnosticCard icon={Activity} title="Métricas de turnos">
         <div className="grid gap-3 md:grid-cols-3">
           <Metric label="Total" value={String(totalTurns)} />
-          <Metric label="Intent local" value={String(devData.metrics.turns.local_intent ?? 0)} />
+          <Metric
+            label="Intent local"
+            value={String(devData.metrics.turns.local_intent ?? 0)}
+          />
           <Metric label="LLM" value={String(devData.metrics.turns.llm ?? 0)} />
-          <Metric label="Falhas" value={String(devData.metrics.turns.failed ?? 0)} />
-          <Metric label="Interrompidos" value={String(devData.metrics.turns.interrupted ?? 0)} />
-          <Metric label="Fallback" value={String(devData.metrics.turns.fallback ?? 0)} />
+          <Metric
+            label="Falhas"
+            value={String(devData.metrics.turns.failed ?? 0)}
+          />
+          <Metric
+            label="Interrompidos"
+            value={String(devData.metrics.turns.interrupted ?? 0)}
+          />
+          <Metric
+            label="Fallback"
+            value={String(devData.metrics.turns.fallback ?? 0)}
+          />
         </div>
       </DiagnosticCard>
 
@@ -1062,7 +1597,13 @@ function DevTelemetryView({ devData, snapshot }: { devData: DevData; snapshot: D
   );
 }
 
-function DevIntegrationsView({ devData, snapshot }: { devData: DevData; snapshot: DashboardSnapshot }) {
+function DevIntegrationsView({
+  devData,
+  snapshot,
+}: {
+  devData: DevData;
+  snapshot: DashboardSnapshot;
+}) {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <section className={cardClass}>
@@ -1078,8 +1619,14 @@ function DevIntegrationsView({ devData, snapshot }: { devData: DevData; snapshot
         <InfoRow label="Último erro" value={snapshot.robot.lastError || "--"} />
         <InfoRow label="Rota" value={snapshot.robot.lastRoute || "--"} />
         <InfoRow label="Turno" value={String(snapshot.robot.lastTurnId || 0)} />
-        <InfoRow label="Pipeline" value={devData.config.pipeline_mode || snapshot.robot.mode || "--"} />
-        <InfoRow label="Modelo" value={devData.config.llm?.model || snapshot.robot.model || "--"} />
+        <InfoRow
+          label="Pipeline"
+          value={devData.config.pipeline_mode || snapshot.robot.mode || "--"}
+        />
+        <InfoRow
+          label="Modelo"
+          value={devData.config.llm?.model || snapshot.robot.model || "--"}
+        />
       </section>
       <section className={`${cardClass} lg:col-span-2`}>
         <h2 className="mb-3 text-lg font-semibold">Erros recentes</h2>
@@ -1089,7 +1636,13 @@ function DevIntegrationsView({ devData, snapshot }: { devData: DevData; snapshot
   );
 }
 
-function DevSensorsView({ devData, snapshot }: { devData: DevData; snapshot: DashboardSnapshot }) {
+function DevSensorsView({
+  devData,
+  snapshot,
+}: {
+  devData: DevData;
+  snapshot: DashboardSnapshot;
+}) {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <CameraPanel snapshot={snapshot} />
@@ -1097,11 +1650,17 @@ function DevSensorsView({ devData, snapshot }: { devData: DevData; snapshot: Das
         <section className={cardClass}>
           <h2 className="mb-3 text-lg font-semibold">Áudio raw</h2>
           <Metric label="Status STT" value={snapshot.robot.sttStatus} />
-          <p className="mt-3 text-sm text-slate-500">Espectro em tempo real ainda depende de endpoint dedicado do firmware/server.</p>
+          <p className="mt-3 text-sm text-slate-500">
+            Espectro em tempo real ainda depende de endpoint dedicado do
+            firmware/server.
+          </p>
         </section>
         <section className={cardClass}>
           <h2 className="mb-3 text-lg font-semibold">Visão futura</h2>
-          <InfoRow label="Disponível" value={devData.vision.available ? "sim" : "não"} />
+          <InfoRow
+            label="Disponível"
+            value={devData.vision.available ? "sim" : "não"}
+          />
           <InfoRow label="Origem" value={devData.vision.source || "--"} />
         </section>
       </aside>
@@ -1110,7 +1669,9 @@ function DevSensorsView({ devData, snapshot }: { devData: DevData; snapshot: Das
 }
 
 function CameraPanel({ snapshot }: { snapshot: DashboardSnapshot }) {
-  const [frameUrl, setFrameUrl] = useState<string | null>(snapshot.vision.frameUrl);
+  const [frameUrl, setFrameUrl] = useState<string | null>(
+    snapshot.vision.frameUrl,
+  );
   const [status, setStatus] = useState("pronto");
   const [analysis, setAnalysis] = useState<VisionAnalysis | null>(null);
 
@@ -1145,31 +1706,73 @@ function CameraPanel({ snapshot }: { snapshot: DashboardSnapshot }) {
     <section className={cardClass}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Câmera raw</h2>
-          <p className="text-sm text-slate-500">Captura manual estável por enquanto.</p>
+          <h2 className="text-lg font-semibold">Câmera</h2>
+          <p className="text-sm text-slate-500">
+            Captura sob demanda para visão e face detect.
+          </p>
         </div>
-        <StatusPill ok={status === "captura atualizada"} label={status} />
+        <StatusPill
+          ok={status === "captura atualizada" || status === "análise concluída"}
+          label={status}
+        />
       </div>
-      <div className="flex aspect-4/3 items-center justify-center overflow-hidden rounded-lg bg-slate-950 text-slate-300">
-        {frameUrl ? <img alt="Câmera do NoiseBot" className="h-full w-full object-contain" src={frameUrl} /> : <span>Sem imagem</span>}
+      <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-slate-950 text-slate-300">
+        {frameUrl ? (
+          <img
+            alt="Câmera do NoiseBot"
+            className="h-full w-full object-contain"
+            src={frameUrl}
+            onError={() => setFrameUrl(null)}
+          />
+        ) : (
+          <span>Sem imagem</span>
+        )}
       </div>
-      <button className={`${primaryButtonClass} mt-4`} onClick={() => void capture()} type="button">
-        <Camera size={17} />
-        Capturar foto
-      </button>
-      <button className={`${secondaryButtonClass} mt-2`} onClick={() => void runAnalysis()} type="button">
-        <Activity size={17} />
-        Analisar cena
-      </button>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <button
+          className={secondaryButtonClass}
+          onClick={() => void capture()}
+          type="button"
+        >
+          <Camera size={17} />
+          Capturar foto
+        </button>
+        <button
+          className={secondaryButtonClass}
+          onClick={() => void runAnalysis()}
+          type="button"
+        >
+          <Activity size={17} />
+          Analisar cena
+        </button>
+      </div>
       {analysis && (
         <div className="mt-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <InfoRow label="Cena" value={analysis.observation.scene} />
-          <InfoRow label="Resolução" value={`${analysis.observation.width}x${analysis.observation.height}`} />
-          <InfoRow label="JPEG" value={`${analysis.observation.jpeg_bytes} bytes`} />
-          <InfoRow label="Captura" value={`${analysis.observation.capture_ms} ms`} />
-          <InfoRow label="Luz média" value={String(analysis.observation.luma_avg)} />
-          <InfoRow label="Movimento" value={String(analysis.observation.motion_score)} />
-          <InfoRow label="Face" value={analysis.face_detected ? `${analysis.face_count}` : "não"} />
+          <InfoRow
+            label="Resolução"
+            value={`${analysis.observation.width}x${analysis.observation.height}`}
+          />
+          <InfoRow
+            label="JPEG"
+            value={`${analysis.observation.jpeg_bytes} bytes`}
+          />
+          <InfoRow
+            label="Captura"
+            value={`${analysis.observation.capture_ms} ms`}
+          />
+          <InfoRow
+            label="Luz média"
+            value={String(analysis.observation.luma_avg)}
+          />
+          <InfoRow
+            label="Movimento"
+            value={String(analysis.observation.motion_score)}
+          />
+          <InfoRow
+            label="Face"
+            value={analysis.face_detected ? `${analysis.face_count}` : "não"}
+          />
         </div>
       )}
     </section>
@@ -1187,7 +1790,9 @@ function DevConsoleView({
   status,
 }: {
   devData: DevData;
-  onAudioProcessorAction: (action: "shadow_start" | "shadow_stop" | "bridge_start" | "bridge_stop") => void;
+  onAudioProcessorAction: (
+    action: "shadow_start" | "shadow_stop" | "bridge_start" | "bridge_stop",
+  ) => void;
   onResetMetrics: () => void;
   onRestartServer: () => void;
   opsToken: string;
@@ -1206,13 +1811,30 @@ function DevConsoleView({
           </span>
         </div>
         <div className="min-h-72 overflow-auto rounded-xl bg-slate-950 p-4 font-mono text-sm text-slate-300">
-          <p className="text-slate-500">{">"} firmware: {snapshot.robot.firmwareOnline ? "online" : "offline"} | turnos: {devData.metrics.turns.total ?? 0}</p>
-          {snapshot.robot.lastError && <p className="mt-2 text-rose-300">{">"} último erro: {snapshot.robot.lastError}</p>}
-          {devData.logs.length === 0 && <p className="mt-3 text-slate-500">{">"} sem logs recentes capturados pelo server</p>}
+          <p className="text-slate-500">
+            {">"} firmware:{" "}
+            {snapshot.robot.firmwareOnline ? "online" : "offline"} | turnos:{" "}
+            {devData.metrics.turns.total ?? 0}
+          </p>
+          {snapshot.robot.lastError && (
+            <p className="mt-2 text-rose-300">
+              {">"} último erro: {snapshot.robot.lastError}
+            </p>
+          )}
+          {devData.logs.length === 0 && (
+            <p className="mt-3 text-slate-500">
+              {">"} sem logs recentes capturados pelo server
+            </p>
+          )}
           {devData.logs.map((entry, index) => (
-            <p className="mt-2 break-words" key={`${entry.ts}-${entry.level}-${index}`}>
+            <p
+              className="mt-2 wrap-break-word"
+              key={`${entry.ts}-${entry.level}-${index}`}
+            >
               <span className="text-slate-500">{formatTime(entry.ts)}</span>{" "}
-              <span className={logLevelClass(entry.level)}>{entry.level.padEnd(7, " ")}</span>{" "}
+              <span className={logLevelClass(entry.level)}>
+                {entry.level.padEnd(7, " ")}
+              </span>{" "}
               <span className="text-slate-500">{entry.logger}</span>{" "}
               {entry.message}
             </p>
@@ -1222,8 +1844,12 @@ function DevConsoleView({
           <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             <strong className="block">Erros estruturados</strong>
             {devData.errors.slice(0, 3).map((error) => (
-              <p className="mt-1" key={`${error.ts}-${error.turn_id}-${error.kind}`}>
-                [{formatTime(error.ts)}] {error.kind} turn={error.turn_id} {error.message}
+              <p
+                className="mt-1"
+                key={`${error.ts}-${error.turn_id}-${error.kind}`}
+              >
+                [{formatTime(error.ts)}] {error.kind} turn={error.turn_id}{" "}
+                {error.message}
               </p>
             ))}
           </div>
@@ -1234,39 +1860,103 @@ function DevConsoleView({
           <h2 className="mb-3 text-lg font-semibold">Token local</h2>
           {!opsToken.trim() && (
             <p className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-              Este host ainda não tem token salvo. Cole o mesmo token usado no localhost.
+              Este host ainda não tem token salvo. Cole o mesmo token usado no
+              localhost.
             </p>
           )}
           <label className="grid gap-2 text-sm font-semibold text-slate-600">
             Ops token
-            <input className={inputClass} onChange={(event) => onOpsTokenChange(event.target.value)} placeholder="cole o token local" type="password" value={opsToken} />
+            <input
+              className={inputClass}
+              onChange={(event) => onOpsTokenChange(event.target.value)}
+              placeholder="cole o token local"
+              type="password"
+              value={opsToken}
+            />
           </label>
         </section>
         <section className={cardClass}>
           <h2 className="mb-3 text-lg font-semibold">AFE de voz</h2>
           <div className="grid gap-2">
-            <Metric label="Shadow" value={boolValue(audioProcessor.shadow_active)} />
-            <Metric label="Bridge AFE" value={boolValue(audioProcessor.processed_bridge_enabled)} />
-            <Metric label="Captura AFE" value={boolValue(audioProcessor.processed_capture_active)} />
-            <Metric label="Chunks AFE" value={numberValue(audioProcessor.processed_bridge_chunks, "")} />
-            <Metric label="Fallbacks" value={numberValue(audioProcessor.processed_bridge_fallbacks, "")} />
-            <Metric label="Buffer" value={numberValue(audioProcessor.processed_buffer_level, " samples")} />
-            <Metric label="Overruns" value={numberValue(audioProcessor.processed_output_overruns, "")} />
+            <Metric
+              label="Shadow"
+              value={boolValue(audioProcessor.shadow_active)}
+            />
+            <Metric
+              label="Bridge AFE"
+              value={boolValue(audioProcessor.processed_bridge_enabled)}
+            />
+            <Metric
+              label="Captura AFE"
+              value={boolValue(audioProcessor.processed_capture_active)}
+            />
+            <Metric
+              label="Chunks AFE"
+              value={numberValue(audioProcessor.processed_bridge_chunks, "")}
+            />
+            <Metric
+              label="Fallbacks"
+              value={numberValue(audioProcessor.processed_bridge_fallbacks, "")}
+            />
+            <Metric
+              label="Buffer"
+              value={numberValue(
+                audioProcessor.processed_buffer_level,
+                " samples",
+              )}
+            />
+            <Metric
+              label="Overruns"
+              value={numberValue(audioProcessor.processed_output_overruns, "")}
+            />
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <button className={secondaryButtonClass} onClick={() => onAudioProcessorAction("shadow_start")} type="button">Shadow on</button>
-            <button className={secondaryButtonClass} onClick={() => onAudioProcessorAction("shadow_stop")} type="button">Shadow off</button>
-            <button className={primaryButtonClass} onClick={() => onAudioProcessorAction("bridge_start")} type="button">Bridge AFE</button>
-            <button className={secondaryButtonClass} onClick={() => onAudioProcessorAction("bridge_stop")} type="button">Bridge raw</button>
+            <button
+              className={secondaryButtonClass}
+              onClick={() => onAudioProcessorAction("shadow_start")}
+              type="button"
+            >
+              Shadow on
+            </button>
+            <button
+              className={secondaryButtonClass}
+              onClick={() => onAudioProcessorAction("shadow_stop")}
+              type="button"
+            >
+              Shadow off
+            </button>
+            <button
+              className={primaryButtonClass}
+              onClick={() => onAudioProcessorAction("bridge_start")}
+              type="button"
+            >
+              Bridge AFE
+            </button>
+            <button
+              className={secondaryButtonClass}
+              onClick={() => onAudioProcessorAction("bridge_stop")}
+              type="button"
+            >
+              Bridge raw
+            </button>
           </div>
         </section>
         <section className={cardClass}>
           <h2 className="mb-3 text-lg font-semibold">Manutenção</h2>
           <div className="grid gap-2">
-            <button className={secondaryButtonClass} onClick={onResetMetrics} type="button">
+            <button
+              className={secondaryButtonClass}
+              onClick={onResetMetrics}
+              type="button"
+            >
               Zerar métricas
             </button>
-            <button className="inline-flex min-h-10 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-4 font-semibold text-slate-400" disabled onClick={onRestartServer} type="button">
+            <button
+              className="inline-flex min-h-10 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-4 font-semibold text-slate-400"
+              disabled
+              onClick={onRestartServer}
+              type="button"
+            >
               Reiniciar server
             </button>
             <DisabledButton label="OTA firmware" />
@@ -1293,7 +1983,9 @@ function RoutineForm({
 }) {
   return (
     <section className={cardClass}>
-      <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><Icon size={18} /> {title}</h2>
+      <h2 className="mb-3 flex items-center gap-2 text-base font-semibold">
+        <Icon size={18} /> {title}
+      </h2>
       <form
         className="grid gap-3"
         onSubmit={(event) => {
@@ -1302,7 +1994,9 @@ function RoutineForm({
         }}
       >
         {children}
-        <button className={primaryButtonClass} type="submit">Criar</button>
+        <button className={primaryButtonClass} type="submit">
+          Criar
+        </button>
       </form>
     </section>
   );
@@ -1321,14 +2015,29 @@ function ControlPanel({
 }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <h3 className="mb-3 flex items-center gap-2 font-semibold"><Icon size={18} /> {label}</h3>
+      <h3 className="mb-3 flex items-center gap-2 font-semibold">
+        <Icon size={18} /> {label}
+      </h3>
       <strong className="mb-4 block text-4xl leading-none">{value}%</strong>
-      <input className="w-full accent-slate-900" max="100" min="0" onChange={(event) => onChange(Number(event.target.value))} type="range" value={value} />
+      <input
+        className="w-full accent-slate-900"
+        max="100"
+        min="0"
+        onChange={(event) => onChange(Number(event.target.value))}
+        type="range"
+        value={value}
+      />
     </section>
   );
 }
 
-function NumberInput({ onChange, value }: { onChange: (value: number) => void; value: number }) {
+function NumberInput({
+  onChange,
+  value,
+}: {
+  onChange: (value: number) => void;
+  value: number;
+}) {
   return (
     <input
       className={inputClass}
@@ -1345,7 +2054,9 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
   return (
     <article className="min-h-20 rounded-lg border border-slate-200 bg-slate-50 p-3">
       <span className="block text-sm text-slate-500">{label}</span>
-      <strong className="mt-1 block break-words text-base text-slate-950">{value}</strong>
+      <strong className="mt-1 block wrap-break-word text-base text-slate-950">
+        {value}
+      </strong>
     </article>
   );
 }
@@ -1365,10 +2076,17 @@ function AudioSamplesPanel({
     <div className="mt-4 border-t border-slate-100 pt-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-900">Amostras de áudio</h3>
+          <h3 className="text-sm font-bold text-slate-900">
+            Amostras de áudio
+          </h3>
           <p className="text-sm text-slate-500">{status}</p>
         </div>
-        <button className={secondaryButtonClass} disabled={loading} onClick={onRefresh} type="button">
+        <button
+          className={secondaryButtonClass}
+          disabled={loading}
+          onClick={onRefresh}
+          type="button"
+        >
           <RefreshCw size={16} />
           {loading ? "Listando" : "Atualizar"}
         </button>
@@ -1386,10 +2104,18 @@ function AudioSamplesPanel({
               key={file.name}
             >
               <div className="min-w-0">
-                <strong className="block break-all text-sm text-slate-900">{file.name}</strong>
-                <span className="text-xs font-semibold text-slate-500">{bytesValue(file.size)}</span>
+                <strong className="block break-all text-sm text-slate-900">
+                  {file.name}
+                </strong>
+                <span className="text-xs font-semibold text-slate-500">
+                  {bytesValue(file.size)}
+                </span>
               </div>
-              <a className={iconButtonClass} href={audioSampleDownloadUrl(file.name)} title={`Baixar ${file.name}`}>
+              <a
+                className={iconButtonClass}
+                href={audioSampleDownloadUrl(file.name)}
+                title={`Baixar ${file.name}`}
+              >
                 <Download size={16} />
               </a>
             </div>
@@ -1414,7 +2140,10 @@ function DiagnosticCard({
   wide?: boolean;
 }) {
   return (
-    <details className={`${cardClass} group ${wide ? "xl:col-span-2" : ""}`} open={defaultOpen}>
+    <details
+      className={`${cardClass} group ${wide ? "xl:col-span-2" : ""}`}
+      open={defaultOpen}
+    >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
         <span className="flex items-center gap-2 text-lg font-semibold">
           <Icon size={18} />
@@ -1436,14 +2165,28 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex min-h-9 items-center justify-between gap-3 border-b border-slate-100 py-2 last:border-0">
       <span className="text-sm text-slate-500">{label}</span>
-      <strong className="break-words text-right text-sm">{value}</strong>
+      <strong className="wrap-break-word text-right text-sm">{value}</strong>
     </div>
   );
 }
 
-function Vital({ good, icon: Icon, label }: { good?: boolean; icon: typeof BatteryCharging; label: string }) {
+function Vital({
+  good,
+  icon: Icon,
+  label,
+}: {
+  good?: boolean;
+  icon: typeof BatteryCharging;
+  label: string;
+}) {
   return (
-    <span className={good ? "inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-50 px-3 text-sm font-semibold text-emerald-700" : "inline-flex min-h-10 items-center gap-2 rounded-lg bg-slate-100 px-3 text-sm font-semibold text-slate-600"}>
+    <span
+      className={
+        good
+          ? "inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-50 px-3 text-sm font-semibold text-emerald-700"
+          : "inline-flex min-h-10 items-center gap-2 rounded-lg bg-slate-100 px-3 text-sm font-semibold text-slate-600"
+      }
+    >
       <Icon size={16} />
       {label}
     </span>
@@ -1452,7 +2195,13 @@ function Vital({ good, icon: Icon, label }: { good?: boolean; icon: typeof Batte
 
 function StatusPill({ label, ok }: { label: string; ok: boolean }) {
   return (
-    <span className={ok ? "inline-flex rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700" : "inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500"}>
+    <span
+      className={
+        ok
+          ? "inline-flex rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700"
+          : "inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500"
+      }
+    >
       {label}
     </span>
   );
@@ -1461,13 +2210,23 @@ function StatusPill({ label, ok }: { label: string; ok: boolean }) {
 function TurnBubble({ label, text }: { label: string; text: string }) {
   return (
     <article className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <span className="text-xs font-bold uppercase text-slate-500">{label}</span>
+      <span className="text-xs font-bold uppercase text-slate-500">
+        {label}
+      </span>
       <p className="mt-1 text-sm text-slate-800">{text}</p>
     </article>
   );
 }
 
-function PlannedFeature({ description, icon: Icon, title }: { description: string; icon: typeof Timer; title: string }) {
+function PlannedFeature({
+  description,
+  icon: Icon,
+  title,
+}: {
+  description: string;
+  icon: typeof Timer;
+  title: string;
+}) {
   return (
     <article className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
       <div className="mb-2 flex items-center gap-2 font-semibold text-slate-700">
@@ -1475,14 +2234,20 @@ function PlannedFeature({ description, icon: Icon, title }: { description: strin
         {title}
       </div>
       <p className="text-sm text-slate-500">{description}</p>
-      <span className="mt-3 inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">planejado</span>
+      <span className="mt-3 inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">
+        planejado
+      </span>
     </article>
   );
 }
 
 function DisabledButton({ label }: { label: string }) {
   return (
-    <button className="inline-flex min-h-10 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-4 font-semibold text-slate-400" disabled type="button">
+    <button
+      className="inline-flex min-h-10 cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 px-4 font-semibold text-slate-400"
+      disabled
+      type="button"
+    >
       {label}
     </button>
   );
@@ -1492,7 +2257,13 @@ function ServiceTile({ label, value }: { label: string; value: string }) {
   const ok = value === "ok" || value === "ready" || value === "enabled";
   return (
     <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <span className={ok ? "mb-3 block h-2 w-2 rounded-full bg-emerald-500" : "mb-3 block h-2 w-2 rounded-full bg-amber-500"} />
+      <span
+        className={
+          ok
+            ? "mb-3 block h-2 w-2 rounded-full bg-emerald-500"
+            : "mb-3 block h-2 w-2 rounded-full bg-amber-500"
+        }
+      />
       <strong className="block">{label}</strong>
       <span className="text-sm text-slate-500">{value || "--"}</span>
     </article>
@@ -1523,10 +2294,15 @@ function VoiceStage({
   );
 }
 
-function VoiceAlertBanner({ alert }: { alert: NonNullable<DevData["metrics"]["voice_alert"]> }) {
-  const style = alert.level === "error"
-    ? "border-red-200 bg-red-50 text-red-800"
-    : "border-amber-200 bg-amber-50 text-amber-800";
+function VoiceAlertBanner({
+  alert,
+}: {
+  alert: NonNullable<DevData["metrics"]["voice_alert"]>;
+}) {
+  const style =
+    alert.level === "error"
+      ? "border-red-200 bg-red-50 text-red-800"
+      : "border-amber-200 bg-amber-50 text-amber-800";
   return (
     <div className={`mb-4 rounded-lg border p-3 ${style}`}>
       <strong className="block text-sm">{alert.title}</strong>
@@ -1535,29 +2311,66 @@ function VoiceAlertBanner({ alert }: { alert: NonNullable<DevData["metrics"]["vo
   );
 }
 
-function VoiceSessionHistory({ sessions }: { sessions: VoiceSessionSummary[] }) {
+function VoiceSessionHistory({
+  sessions,
+}: {
+  sessions: VoiceSessionSummary[];
+}) {
   if (sessions.length === 0) {
-    return <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">Nenhuma sessão de voz registrada ainda.</p>;
+    return (
+      <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+        Nenhuma sessão de voz registrada ainda.
+      </p>
+    );
   }
   return (
     <div className="grid gap-2">
       {sessions.slice(0, 8).map((session, index) => (
-        <article className="rounded-lg border border-slate-200 bg-slate-50 p-3" key={`${session.turn_id ?? "turn"}-${index}`}>
+        <article
+          className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+          key={`${session.turn_id ?? "turn"}-${index}`}
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <strong className="text-sm text-slate-900">Turno {session.turn_id ?? "--"}</strong>
-            <span className={voiceOutcomeClass(session.outcome)}>{session.outcome || "--"}</span>
+            <strong className="text-sm text-slate-900">
+              Turno {session.turn_id ?? "--"}
+            </strong>
+            <span className={voiceOutcomeClass(session.outcome)}>
+              {session.outcome || "--"}
+            </span>
           </div>
           {(session.transcript || session.reply) && (
             <div className="mt-2 grid gap-2 text-sm text-slate-600">
-              {session.transcript && <p><strong className="text-slate-800">Ouvi:</strong> {session.transcript}</p>}
-              {session.reply && <p><strong className="text-slate-800">Respondi:</strong> {session.reply}</p>}
+              {session.transcript && (
+                <p>
+                  <strong className="text-slate-800">Ouvi:</strong>{" "}
+                  {session.transcript}
+                </p>
+              )}
+              {session.reply && (
+                <p>
+                  <strong className="text-slate-800">Respondi:</strong>{" "}
+                  {session.reply}
+                </p>
+              )}
             </div>
           )}
           <div className="mt-2 grid gap-2 text-sm text-slate-600 md:grid-cols-2">
-            <InfoRow label="Duração" value={numberValue(session.duration_ms, " ms")} />
-            <InfoRow label="Chunks" value={numberValue(session.chunk_count, "")} />
-            <InfoRow label="Qualidade" value={textValue(session.transcript_quality)} />
-            <InfoRow label="Descarte" value={textValue(session.discard_reason)} />
+            <InfoRow
+              label="Duração"
+              value={numberValue(session.duration_ms, " ms")}
+            />
+            <InfoRow
+              label="Chunks"
+              value={numberValue(session.chunk_count, "")}
+            />
+            <InfoRow
+              label="Qualidade"
+              value={textValue(session.transcript_quality)}
+            />
+            <InfoRow
+              label="Descarte"
+              value={textValue(session.discard_reason)}
+            />
           </div>
         </article>
       ))}
@@ -1572,42 +2385,57 @@ function summarizeVoiceSession(session: VoiceSessionSummary) {
   if (!session.turn_id) {
     return {
       label: "sem turno recente",
-      className: "rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500",
+      className:
+        "rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500",
     };
   }
   if (outcome === "failed" || session.error_stage) {
     return {
       label: `falhou: ${session.error_stage || session.error_reason || "erro"}`,
-      className: "rounded-full bg-red-100 px-3 py-1 text-sm font-bold text-red-700",
+      className:
+        "rounded-full bg-red-100 px-3 py-1 text-sm font-bold text-red-700",
     };
   }
-  if (outcome === "audio_rejected" || discard === "audio_curto" || discard === "audio_longo") {
+  if (
+    outcome === "audio_rejected" ||
+    discard === "audio_curto" ||
+    discard === "audio_longo"
+  ) {
     return {
       label: `não ouvi direito: ${discard || outcome}`,
-      className: "rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-700",
+      className:
+        "rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-700",
     };
   }
-  if (outcome === "stt_rejected" || discard.startsWith("stt_") || (quality && quality !== "good" && quality !== "ok")) {
+  if (
+    outcome === "stt_rejected" ||
+    discard.startsWith("stt_") ||
+    (quality && quality !== "good" && quality !== "ok")
+  ) {
     return {
       label: "não entendeu e pediu repetição",
-      className: "rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-700",
+      className:
+        "rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-700",
     };
   }
   if (outcome === "interrupted" || outcome === "cancelled") {
     return {
       label: "interrompido",
-      className: "rounded-full bg-sky-100 px-3 py-1 text-sm font-bold text-sky-700",
+      className:
+        "rounded-full bg-sky-100 px-3 py-1 text-sm font-bold text-sky-700",
     };
   }
   if (session.reply || session.reply_chars) {
     return {
       label: "respondeu",
-      className: "rounded-full bg-emerald-100 px-3 py-1 text-sm font-bold text-emerald-700",
+      className:
+        "rounded-full bg-emerald-100 px-3 py-1 text-sm font-bold text-emerald-700",
     };
   }
   return {
     label: outcome || "sem resposta",
-    className: "rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500",
+    className:
+      "rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500",
   };
 }
 
@@ -1623,11 +2451,21 @@ function voiceStageState(
     if (stage === "reply" || session.error_stage === stage) return "error";
   }
   if (stage === "audio") {
-    if (outcome === "audio_rejected" || discard === "audio_curto" || discard === "audio_longo") return "warn";
+    if (
+      outcome === "audio_rejected" ||
+      discard === "audio_curto" ||
+      discard === "audio_longo"
+    )
+      return "warn";
     return session.total_samples ? "ok" : "idle";
   }
   if (stage === "stt") {
-    if (outcome === "stt_rejected" || discard.startsWith("stt_") || (quality && quality !== "good" && quality !== "ok")) return "warn";
+    if (
+      outcome === "stt_rejected" ||
+      discard.startsWith("stt_") ||
+      (quality && quality !== "good" && quality !== "ok")
+    )
+      return "warn";
     return session.transcript_quality || session.transcript ? "ok" : "idle";
   }
   if (stage === "decision") {
@@ -1657,7 +2495,9 @@ function voiceStageDetail(
   if (session.reply || session.reply_chars) {
     return `${numberValue(session.first_audio_after_voice_end_ms, " ms")} até 1º áudio`;
   }
-  return textValue(session.discard_reason || session.error_reason || "sem fala enviada");
+  return textValue(
+    session.discard_reason || session.error_reason || "sem fala enviada",
+  );
 }
 
 function voiceStateLabel(state: "ok" | "warn" | "error" | "idle") {
@@ -1672,30 +2512,53 @@ function voiceLatencyBottleneck(session: VoiceSessionSummary) {
   const stt = readNumber(session.stt_ms);
   const voiceEndToStt = readNumber(session.voice_end_to_stt_start_ms) ?? 0;
   const ttsAudio = readNumber(session.tts_first_audio_ms);
-  const postSttToAudio = firstAudio !== null && stt !== null
-    ? Math.max(0, firstAudio - voiceEndToStt - stt)
-    : null;
+  const postSttToAudio =
+    firstAudio !== null && stt !== null
+      ? Math.max(0, firstAudio - voiceEndToStt - stt)
+      : null;
   const candidates = [
     { key: "STT", value: stt },
     { key: "decisão e TTS", value: postSttToAudio },
     { key: "TTS", value: ttsAudio },
-  ].filter((item): item is { key: string; value: number } => item.value !== null);
+  ].filter(
+    (item): item is { key: string; value: number } => item.value !== null,
+  );
   if (candidates.length === 0) {
-    return { label: "sem dados suficientes", detail: "faça um teste de voz para medir o ciclo." };
+    return {
+      label: "sem dados suficientes",
+      detail: "faça um teste de voz para medir o ciclo.",
+    };
   }
-  const highest = candidates.reduce((best, item) => (item.value > best.value ? item : best));
+  const highest = candidates.reduce((best, item) =>
+    item.value > best.value ? item : best,
+  );
   if (highest.value < 1500) {
-    return { label: "ciclo saudável", detail: `${highest.key} foi o maior trecho medido: ${highest.value} ms.` };
+    return {
+      label: "ciclo saudável",
+      detail: `${highest.key} foi o maior trecho medido: ${highest.value} ms.`,
+    };
   }
   const speechTotal = readNumber(session.speech_total_ms);
-  const firstAudioNote = firstAudio !== null ? ` Tempo total até 1º áudio: ${firstAudio} ms.` : "";
-  const speechNote = speechTotal !== null ? ` Fala total: ${speechTotal} ms, apenas informativo.` : "";
-  return { label: highest.key, detail: `maior atraso medido no último turno: ${highest.value} ms.${firstAudioNote}${speechNote}` };
+  const firstAudioNote =
+    firstAudio !== null ? ` Tempo total até 1º áudio: ${firstAudio} ms.` : "";
+  const speechNote =
+    speechTotal !== null
+      ? ` Fala total: ${speechTotal} ms, apenas informativo.`
+      : "";
+  return {
+    label: highest.key,
+    detail: `maior atraso medido no último turno: ${highest.value} ms.${firstAudioNote}${speechNote}`,
+  };
 }
 
 function voiceOutcomeClass(outcome: string | undefined) {
-  if (outcome === "failed") return "rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700";
-  if (outcome === "audio_rejected" || outcome === "stt_rejected" || outcome === "cancelled") {
+  if (outcome === "failed")
+    return "rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700";
+  if (
+    outcome === "audio_rejected" ||
+    outcome === "stt_rejected" ||
+    outcome === "cancelled"
+  ) {
     return "rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-700";
   }
   return "rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700";
@@ -1711,27 +2574,41 @@ function lastReplyText(snapshot: DashboardSnapshot) {
 
 function logLevelClass(level: string) {
   const normalized = level.toUpperCase();
-  if (normalized === "ERROR" || normalized === "CRITICAL") return "text-rose-300";
-  if (normalized === "WARNING" || normalized === "WARN") return "text-amber-300";
+  if (normalized === "ERROR" || normalized === "CRITICAL")
+    return "text-rose-300";
+  if (normalized === "WARNING" || normalized === "WARN")
+    return "text-amber-300";
   if (normalized === "DEBUG") return "text-sky-300";
   return "text-emerald-300";
 }
 
 function ErrorLog({ errors }: { errors: DevData["errors"] }) {
   if (errors.length === 0) {
-    return <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">Nenhum erro recente registrado.</p>;
+    return (
+      <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+        Nenhum erro recente registrado.
+      </p>
+    );
   }
   return (
     <div className="grid gap-2">
       {errors.map((error) => (
-        <article className="rounded-lg border border-slate-200 bg-slate-50 p-3" key={`${error.ts}-${error.turn_id}-${error.kind}`}>
+        <article
+          className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+          key={`${error.ts}-${error.turn_id}-${error.kind}`}
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-sm text-slate-900">{error.kind}</strong>
-            <span className="text-xs font-semibold text-slate-500">{formatTime(error.ts)}</span>
+            <span className="text-xs font-semibold text-slate-500">
+              {formatTime(error.ts)}
+            </span>
           </div>
-          <p className="mt-1 text-sm text-slate-600">{error.message || "sem mensagem"}</p>
+          <p className="mt-1 text-sm text-slate-600">
+            {error.message || "sem mensagem"}
+          </p>
           <p className="mt-1 text-xs text-slate-500">
-            turn={error.turn_id || 0} provider={error.provider || "--"} model={error.model || "--"}
+            turn={error.turn_id || 0} provider={error.provider || "--"} model=
+            {error.model || "--"}
           </p>
         </article>
       ))}
@@ -1739,7 +2616,10 @@ function ErrorLog({ errors }: { errors: DevData["errors"] }) {
   );
 }
 
-function withRoutine(snapshot: DashboardSnapshot, data: AppData): DashboardSnapshot {
+function withRoutine(
+  snapshot: DashboardSnapshot,
+  data: AppData,
+): DashboardSnapshot {
   return {
     ...snapshot,
     routine: {
@@ -1751,7 +2631,9 @@ function withRoutine(snapshot: DashboardSnapshot, data: AppData): DashboardSnaps
   };
 }
 
-function formatLatency(value: { p50: number | null; p95: number | null; count: number } | undefined) {
+function formatLatency(
+  value: { p50: number | null; p95: number | null; count: number } | undefined,
+) {
   if (!value || value.count <= 0) return "--";
   const p50 = value.p50 === null ? "--" : `${value.p50} ms`;
   const p95 = value.p95 === null ? "--" : `${value.p95} ms`;

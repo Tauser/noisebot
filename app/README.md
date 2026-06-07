@@ -47,5 +47,6 @@ app/
 - Home nao e painel tecnico.
 - Rotina, timers, alarmes e agenda sao fluxos centrais.
 - Ajustes do dia a dia ficam separados de configuracoes avancadas.
-- Visao tem dois modos: inteligente e monitoramento.
+- Visao e captura/análise sob demanda; a camera fica reservada para face detect
+  e outros recursos internos de percepção, sem monitoramento contínuo.
 - Logs, bridge e detalhes de diagnostico ficam em configuracoes/avancado.

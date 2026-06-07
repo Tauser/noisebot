@@ -1,0 +1,29 @@
+# NoiseBot camera experiment profile: OV2640 DVP raw VGA.
+#
+# Purpose:
+# - Tests whether the DVP/raw path can capture VGA at all on this board.
+# - This is NOT the stable product baseline and should not replace
+#   sdkconfig.defaults unless the hardware validation below passes.
+#
+# Expected tradeoff:
+# - Native frame: YUV422 640x480 at nominal 6 FPS.
+# - Frame payload is much larger than 240x240 YUV422, and software JPEG encode
+#   will be expensive. This is a diagnostic experiment for snapshot/analyze,
+#   not a monitoring default.
+#
+# How to use from a clean config:
+#   Rename or remove sdkconfig, then configure with both defaults files:
+#   idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.experiment.ov2640-yuv422-640x480.defaults" reconfigure
+#   idf.py build
+#   idf.py -p COM12 flash monitor
+#
+# Success criteria after flash:
+# - Boot log reports sensor mode 640x480 YUV422 6fps.
+# - /api/camera/status reports effective_width=640, effective_height=480.
+# - /api/camera/snapshot returns HTTP 200 with a valid JPEG.
+# - Record capture_ms, jpeg_bytes, free PSRAM/internal heap, and face-detect
+#   analysis latency when that pipeline is enabled.
+
+# Override the stable OV2640 DVP choice from sdkconfig.defaults.
+# CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS is not set
+CONFIG_CAMERA_OV2640_DVP_YUV422_640X480_6FPS=y

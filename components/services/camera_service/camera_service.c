@@ -17,8 +17,9 @@
 #define TAG "nb_camera_svc"
 #define CAMERA_SVC_SESSION_HOLD_US (45ULL * 1000ULL * 1000ULL)
 #define CAMERA_SVC_RETRY_CLOSE_US  (1ULL * 1000ULL * 1000ULL)
-#define CAMERA_SVC_SAFE_JPEG_QUALITY   20
-#define CAMERA_SVC_BETTER_JPEG_QUALITY 82
+/* Resolution is native/effective (driver-fixed at build time). The camera is
+ * used for short vision captures, so JPEG quality favors detail. */
+#define CAMERA_SVC_SNAPSHOT_JPEG_QUALITY 82
 #define CAMERA_SVC_MOTION_GRID_W   16U
 #define CAMERA_SVC_MOTION_GRID_H   12U
 #define CAMERA_SVC_MOTION_CELLS    (CAMERA_SVC_MOTION_GRID_W * CAMERA_SVC_MOTION_GRID_H)
@@ -115,33 +116,6 @@ static void camera_service_hold_timer_cb(void *arg)
     xSemaphoreGive(s_mutex);
 }
 
-static void camera_service_reset_stats(void)
-{
-    s_last_error = ESP_OK;
-    s_last_error_phase = "";
-    s_has_last_error = false;
-    s_last_frame_bytes = 0;
-    s_last_frame_width = 0;
-    s_last_frame_height = 0;
-    s_last_frame_format = 0;
-    s_last_jpeg_bytes = 0;
-    s_last_capture_ms = 0;
-    s_capture_count = 0;
-    s_fail_count = 0;
-    s_last_dma_before = 0;
-    s_last_dma_after_capture = 0;
-    s_last_dma_after_release = 0;
-    s_last_dma_largest_before = 0;
-    s_last_dma_largest_after_capture = 0;
-    s_last_dma_largest_after_release = 0;
-    s_last_internal_before = 0;
-    s_last_internal_after_capture = 0;
-    s_last_internal_after_release = 0;
-    s_last_psram_before = 0;
-    s_last_psram_after_capture = 0;
-    s_last_psram_after_release = 0;
-}
-
 static esp_err_t camera_service_fail(esp_err_t err, const char *phase)
 {
     s_last_error = err;
@@ -155,23 +129,38 @@ static esp_err_t camera_service_fail(esp_err_t err, const char *phase)
 
 static void camera_service_analyze_yuv422(const nb_camera_frame_t *frame)
 {
-    if (!frame || !frame->buf || frame->width == 0U || frame->height == 0U ||
-        frame->len < frame->width * frame->height) {
+    if (!frame || !frame->buf || frame->width == 0U || frame->height == 0U) {
+        s_scene_metrics.valid = false;
+        return;
+    }
+
+    /* YUYV interleaved (stride=width*2, Y at even byte offsets).
+     * YUV422P planar: Y plane is the first width*height bytes, stride=width. */
+    const bool is_yuyv = (frame->format == (int)V4L2_PIX_FMT_YUYV);
+    const size_t row_stride = is_yuyv ? (frame->width * 2U) : frame->width;
+    const size_t min_len = is_yuyv
+        ? (frame->width * frame->height * 2U)
+        : (frame->width * frame->height);
+
+    if (frame->len < min_len) {
         s_scene_metrics.valid = false;
         return;
     }
 
     const size_t pixels = frame->width * frame->height;
-    const uint8_t *y_plane = frame->buf;
+    const uint8_t *buf = frame->buf;
     uint32_t sum = 0;
     uint8_t min_y = 255U;
     uint8_t max_y = 0U;
 
-    for (size_t i = 0; i < pixels; i++) {
-        uint8_t y = y_plane[i];
-        sum += y;
-        if (y < min_y) min_y = y;
-        if (y > max_y) max_y = y;
+    for (size_t row = 0; row < frame->height; row++) {
+        const uint8_t *r = buf + row * row_stride;
+        for (size_t col = 0; col < frame->width; col++) {
+            uint8_t y = is_yuyv ? r[col * 2U] : r[col];
+            sum += y;
+            if (y < min_y) min_y = y;
+            if (y > max_y) max_y = y;
+        }
     }
 
     uint8_t grid[CAMERA_SVC_MOTION_CELLS] = {0};
@@ -189,9 +178,9 @@ static void camera_service_analyze_yuv422(const nb_camera_frame_t *frame)
             uint32_t cell_sum = 0;
             uint32_t cell_count = 0;
             for (uint32_t yy = y0; yy < y1; yy++) {
-                const uint8_t *row = y_plane + ((size_t)yy * frame->width);
+                const uint8_t *row = buf + (size_t)yy * row_stride;
                 for (uint32_t xx = x0; xx < x1; xx++) {
-                    cell_sum += row[xx];
+                    cell_sum += is_yuyv ? row[xx * 2U] : row[xx];
                     cell_count++;
                 }
             }
@@ -252,8 +241,11 @@ static void camera_service_mark_scene_unknown(const nb_camera_frame_t *frame)
 }
 
 static esp_err_t camera_service_encode_yuv422_to_jpeg(const nb_camera_frame_t *frame,
-                                                       nb_camera_snapshot_t *out)
+                                                       nb_camera_snapshot_t *out,
+                                                       int quality)
 {
+    /* Accepts YUYV interleaved (0x56595559) and YUV422P planar — both use
+     * JPEG_PIXEL_FORMAT_YCbYCr with subsampling 4:2:2. */
     if (!frame || !frame->buf || !out ||
         frame->width == 0U || frame->height == 0U ||
         frame->len < frame->width * frame->height * 2U) {
@@ -261,13 +253,14 @@ static esp_err_t camera_service_encode_yuv422_to_jpeg(const nb_camera_frame_t *f
     }
 
     camera_service_analyze_yuv422(frame);
-    int quality = (camera_hal_get_mode() == NB_CAMERA_MODE_SAFE_QQVGA)
-                ? CAMERA_SVC_SAFE_JPEG_QUALITY
-                : CAMERA_SVC_BETTER_JPEG_QUALITY;
+
+    size_t encode_len = frame->len;
+    size_t encode_width = frame->width;
+    size_t encode_height = frame->height;
 
     jpeg_enc_config_t enc_config = {
-        .width = (int)frame->width,
-        .height = (int)frame->height,
+        .width = (int)encode_width,
+        .height = (int)encode_height,
         .src_type = JPEG_PIXEL_FORMAT_YCbYCr,
         .subsampling = JPEG_SUBSAMPLE_422,
         .quality = quality,
@@ -280,7 +273,7 @@ static esp_err_t camera_service_encode_yuv422_to_jpeg(const nb_camera_frame_t *f
         return err;
     }
 
-    uint32_t jpeg_capacity = (uint32_t)(frame->width * frame->height * 3U / 4U);
+    uint32_t jpeg_capacity = (uint32_t)(encode_width * encode_height * 3U / 4U);
     if (jpeg_capacity < 4096U) {
         jpeg_capacity = 4096U;
     }
@@ -294,7 +287,7 @@ static esp_err_t camera_service_encode_yuv422_to_jpeg(const nb_camera_frame_t *f
     int jpeg_len = 0;
     err = jpeg_enc_process(enc,
                            frame->buf,
-                           (int)frame->len,
+                           (int)encode_len,
                            jpeg_buf,
                            (int)jpeg_capacity,
                            &jpeg_len);
@@ -307,8 +300,8 @@ static esp_err_t camera_service_encode_yuv422_to_jpeg(const nb_camera_frame_t *f
 
     out->data = jpeg_buf;
     out->len = (size_t)jpeg_len;
-    out->width = frame->width;
-    out->height = frame->height;
+    out->width = encode_width;
+    out->height = encode_height;
     out->format = (int)V4L2_PIX_FMT_JPEG;
     s_snapshot_owned_data = jpeg_buf;
     s_snapshot_owned_jpeg = true;
@@ -390,17 +383,8 @@ esp_err_t camera_service_set_mode(nb_camera_mode_t mode)
         return ESP_ERR_INVALID_STATE;
     }
 
-    camera_service_hold_cancel();
-    if (camera_hal_is_ready()) {
-        camera_hal_deinit();
-        camera_service_set_session_active(false);
-        camera_service_record_after_release();
-    }
-
+    /* Mode only changes JPEG encode quality — no deinit/reinit needed. */
     esp_err_t err = camera_hal_set_mode(mode);
-    if (err == ESP_OK) {
-        camera_service_reset_stats();
-    }
     xSemaphoreGive(s_mutex);
     return err;
 }
@@ -413,10 +397,11 @@ nb_camera_mode_t camera_service_get_mode(void)
 const char *camera_service_format_name(int format)
 {
     switch (format) {
-    case V4L2_PIX_FMT_YUV422P: return "yuv422";
-    case V4L2_PIX_FMT_JPEG: return "jpeg";
-    case 0: return "pending";
-    default: return "unknown";
+    case V4L2_PIX_FMT_YUYV:   return "yuyv";
+    case V4L2_PIX_FMT_YUV422P: return "yuv422p";
+    case V4L2_PIX_FMT_JPEG:    return "jpeg";
+    case 0:                    return "pending";
+    default:                   return "unknown";
     }
 }
 
@@ -434,6 +419,9 @@ void camera_service_get_diag_status(nb_camera_diag_status_t *out)
     out->mode_name = camera_hal_mode_name(out->mode);
     out->mode_width = camera_hal_mode_width(out->mode);
     out->mode_height = camera_hal_mode_height(out->mode);
+    out->effective_width = camera_hal_effective_width();
+    out->effective_height = camera_hal_effective_height();
+    out->last_sfmt_errno = camera_hal_last_sfmt_errno();
     out->last_frame_bytes = s_last_frame_bytes;
     out->last_frame_width = s_last_frame_width;
     out->last_frame_height = s_last_frame_height;
@@ -535,7 +523,8 @@ esp_err_t camera_service_observe_scene(nb_camera_observation_t *out)
         return camera_service_fail(ESP_FAIL, "frame");
     }
 
-    if (frame->format == (int)V4L2_PIX_FMT_YUV422P) {
+    if (frame->format == (int)V4L2_PIX_FMT_YUYV ||
+        frame->format == (int)V4L2_PIX_FMT_YUV422P) {
         camera_service_analyze_yuv422(frame);
     } else {
         camera_service_mark_scene_unknown(frame);
@@ -570,16 +559,19 @@ esp_err_t camera_service_observe_scene(nb_camera_observation_t *out)
     if (camera_hal_is_ready()) {
         camera_service_hold_arm(CAMERA_SVC_SESSION_HOLD_US);
     }
-    ESP_LOGI(TAG, "observacao ok frame=%u capture_ms=%lu count=%lu",
+    ESP_LOGD(TAG, "observacao ok frame=%u capture_ms=%lu count=%lu",
              (unsigned)out->frame_bytes,
              (unsigned long)s_last_capture_ms,
              (unsigned long)s_capture_count);
     xSemaphoreGive(s_mutex);
     return ESP_OK;
 }
-
-esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out)
+esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out,
+                                          nb_camera_quality_t quality)
 {
+    (void)quality;
+    int jpeg_quality = CAMERA_SVC_SNAPSHOT_JPEG_QUALITY;
+
     if (!out) {
         return camera_service_fail(ESP_ERR_INVALID_ARG, "arg");
     }
@@ -656,12 +648,13 @@ esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out)
         s_last_frame_width = frame->width;
         s_last_frame_height = frame->height;
         s_last_frame_format = frame->format;
-    } else if (frame->format == (int)V4L2_PIX_FMT_YUV422P) {
+    } else if (frame->format == (int)V4L2_PIX_FMT_YUYV ||
+               frame->format == (int)V4L2_PIX_FMT_YUV422P) {
         s_last_frame_bytes = frame->len;
         s_last_frame_width = frame->width;
         s_last_frame_height = frame->height;
         s_last_frame_format = frame->format;
-        err = camera_service_encode_yuv422_to_jpeg(frame, out);
+        err = camera_service_encode_yuv422_to_jpeg(frame, out, jpeg_quality);
         camera_hal_release_frame();
         if (err != ESP_OK) {
             camera_hal_deinit();

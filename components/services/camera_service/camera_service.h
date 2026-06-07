@@ -26,6 +26,16 @@ typedef struct {
     int format;
 } nb_camera_snapshot_t;
 
+/**
+ * @brief Encode quality intent for a JPEG capture.
+ *
+ * Resolution is native/effective (driver-fixed); this only selects the JPEG
+ * encoder quality tradeoff for short camera captures.
+ */
+typedef enum {
+    NB_CAMERA_QUALITY_SNAPSHOT = 0, /**< High detail — on-demand snapshot/analyze. */
+} nb_camera_quality_t;
+
 typedef struct {
     bool valid;
     uint32_t timestamp_ms;
@@ -59,6 +69,9 @@ typedef struct {
     const char *mode_name;
     size_t mode_width;
     size_t mode_height;
+    size_t effective_width;
+    size_t effective_height;
+    int last_sfmt_errno;
     size_t last_frame_bytes;
     size_t last_frame_width;
     size_t last_frame_height;
@@ -113,9 +126,14 @@ esp_err_t camera_service_observe_scene(nb_camera_observation_t *out);
 /**
  * @brief Captura snapshot JPEG e empresta o buffer ao chamador.
  *
+ * @param quality Define o tradeoff de qualidade JPEG. Atualmente apenas
+ *                NB_CAMERA_QUALITY_SNAPSHOT e usado; a camera fica reservada
+ *                para capturas curtas de visao.
+ *
  * O chamador deve sempre finalizar com camera_service_release_snapshot().
  */
-esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out);
+esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out,
+                                          nb_camera_quality_t quality);
 
 void camera_service_release_snapshot(void);
 

@@ -226,14 +226,285 @@ copying board-specific implementations from other products.
   firmware UI keeps small status indicators as icons. NoiseBot mirrors that
   product behavior with a camera badge in `ui_overlay_service`: the badge is on
   while the camera hot session is active and is cleared when the session closes.
-- Low-resolution policy after StackChan/Xiaozhi comparison on 2026-06-04:
-  their V4L2 path does not expose a separate resolution mode per purpose; it
-  keeps streaming buffers warm, measures capture/JPEG time, uses JPEG quality 20
-  for live streaming, and lowers task priority before AI photo capture. NoiseBot
-  keeps that principle but applies it to the existing modes: invisible
-  perception through `vision_service` forces `safe`/QQVGA 160x120, while
-  dashboard diagnostics can still request `better`/QVGA 320x240 through the
-  camera mode endpoint.
+- Resolution and JPEG quality model (corrected 2026-06-07): the OV2640 DVP
+  driver only ever delivers its native `240x240` frame — `VIDIOC_S_FMT`/
+  `VIDIOC_TRY_FMT` with a forced QQVGA/QVGA/VGA size is rejected on this path
+  with `errno=22` (`EINVAL`), proven empirically and traced to its root cause
+  in the vendored driver source (see "Why resolution is fixed at 240x240"
+  below) — not assumed from a comment. The HAL keeps the driver's reported
+  width/height and only negotiates the pixel format.
+  `camera_hal_mode_width()`/`camera_hal_mode_height()` therefore always report
+  `240`, and `/api/camera/status` additionally exposes `effective_width`/
+  `effective_height` (read back from `VIDIOC_G_FMT` after init) so the
+  dashboard never has to guess. `safe`/`better` camera modes still exist (they
+  drive memory-threshold checks before HAL init) but **no longer claim to
+  change resolution or JPEG quality** — the previous "safe=QQVGA 160x120,
+  better=QVGA 320x240" framing was aspirational and never matched what the
+  driver could deliver. JPEG quality is now a short-capture vision intent:
+  `camera_service_capture_snapshot()` uses
+  `CAMERA_SVC_SNAPSHOT_JPEG_QUALITY=82` for snapshot/analyze/face-detect
+  workflows. The robot no longer exposes live MJPEG monitoring; camera time is
+  reserved for internal perception and explicit analysis calls.
+- Why resolution is fixed at 240x240 — full evidence chain (investigated
+  2026-06-07, replacing the earlier "errno=22" comment with a proven root
+  cause traced through the vendored driver source rather than an assumption):
+  - The OV2640 sensor driver genuinely supports far more than 240x240. Its
+    compiled-in mode table `ov2640_format_info[]`
+    (`managed_components/espressif__esp_cam_sensor/sensors/ov2640/ov2640.c:56`)
+    has 12 entries with full SCCB register sequences, including
+    `RGB565/YUV422/JPEG 640x480`, `JPEG 320x240`, `JPEG 1280x720`,
+    `JPEG 1600x1200` and several `RAW8` modes up to `1024x600`; the project's
+    `Kconfig.ov2640` (`managed_components/espressif__esp_cam_sensor/sensors/ov2640/Kconfig.ov2640:24`)
+    exposes all of them as a `choice`. `ov2640_query_support_capability()`
+    reports `fmt_yuv=fmt_rgb565=fmt_jpeg=1`.
+  - Which entry is active is decided exactly **once**, at build/init time, not
+    negotiable at runtime through the standard V4L2 surface:
+    `dvp_video_init()` (`esp_video_dvp_device.c:196`) calls
+    `esp_cam_sensor_set_format(sensor, NULL)`; inside `ov2640_set_format()`
+    (`ov2640.c:696-709`) a `NULL` format falls back to
+    `&ov2640_format_info[CONFIG_CAMERA_OV2640_DVP_IF_FORMAT_INDEX_DEFAULT]` — a
+    **compile-time Kconfig constant**. `sdkconfig.defaults` selects index 4
+    (`CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y`).
+  - `VIDIOC_S_FMT`/`VIDIOC_TRY_FMT` on the DVP video device
+    (`dvp_video_set_format()`, `esp_video_dvp_device.c:365-377`) is a **hard
+    equality check**: any `width`/`height`/`pixelformat` that does not exactly
+    match the format the sensor was already initialized with returns
+    `ESP_ERR_INVALID_ARG` (`errno=22`/`EINVAL`) immediately — no negotiation,
+    no fallback, no attempt to reconfigure the sensor or reallocate buffers.
+    `camera_hal_init()` now runs a real `VIDIOC_TRY_FMT` sweep at every boot
+    (`camera_hal_probe_try_fmt()`) over `160x120`/`320x240`/`640x480` plus the
+    native size, logging accept/reject + `errno` for each — turning this from
+    an asserted fact into a per-boot, hardware-observable proof. (`TRY_FMT` is
+    non-committing — it never changes driver state — so the sweep is safe to
+    run unconditionally before the real `VIDIOC_S_FMT`.)
+  - `VIDIOC_ENUM_FMT` on this device always reports exactly one pixel format
+    (`dvp_video_enum_format()` rejects any `index >= 1`,
+    `esp_video_dvp_device.c:354-363`), and `enum_framesizes`/
+    `enum_frameintervals` are `NULL` in `s_dvp_video_ops`
+    (`esp_video_dvp_device.c:463-478`) — so `VIDIOC_ENUM_FRAMESIZES` always
+    returns `ESP_ERR_NOT_SUPPORTED` on the DVP backend. This is *why*
+    `camera_hal_log_framesizes()` never finds anything: the capability is
+    architecturally unexposed on this backend, not a bug in the probe.
+  - There **is** a private ioctl pair that genuinely reprograms the sensor at
+    runtime — `VIDIOC_S_SENSOR_FMT`/`VIDIOC_G_SENSOR_FMT`
+    (`esp_video_ioctl.h:24-25` →
+    `dvp_video_set_sensor_format()`/`dvp_video_get_sensor_format()`,
+    `esp_video_dvp_device.c:425-439`), which call
+    `esp_cam_sensor_set_format()` (rewrites SCCB registers + `ov2640_set_outsize`)
+    followed by `init_config()` (recomputes `buf_size = width * height * bpp / 8`
+    and DMA alignment for the new mode — at `640x480` YUV422 that is `614400`
+    bytes/frame vs `115200` at `240x240`, i.e. roughly 5x the PSRAM per buffer).
+    `camera_hal_init()` now calls `VIDIOC_G_SENSOR_FMT`
+    (`camera_hal_log_sensor_format()`) and logs the active sensor mode's build-
+    time name/size/fps directly from the driver, e.g.
+    `"DVP_8bit_20Minput_YUV422_240x240_25fps"`.
+  - However, `VIDIOC_S_SENSOR_FMT` is **not actually usable from application
+    code** to switch resolution: it requires a valid
+    `const esp_cam_sensor_format_t *` pointing at one of the *other* entries in
+    `ov2640_format_info[]` (with their private, internal `regs`/`regs_size`
+    register-list pointers). `esp_video` 1.3.1 never calls
+    `esp_cam_sensor_query_support_formats()` and exposes no ioctl that
+    enumerates that table to applications — `VIDIOC_G_SENSOR_FMT` only ever
+    returns the *currently active* entry. There is no supported way to obtain
+    a pointer to, say, the `640x480` entry from outside the sensor driver.
+  - **Conclusion**: 240x240 is not a hardware ceiling and not a `camera_hal.c`
+    limitation — it is a deliberate compile-time choice
+    (`CONFIG_CAMERA_OV2640_DVP_DEFAULT_FMT` in `sdkconfig.defaults`) baked into
+    the vendored `esp_video`==1.3.1 + `esp_cam_sensor` OV2640 pairing, and the
+    standard V4L2 negotiation surface (`TRY_FMT`/`S_FMT`/`ENUM_FMT`/
+    `ENUM_FRAMESIZES`) is architecturally incapable of changing it on this DVP
+    backend. The only real path to a higher resolution is to **reflash** with
+    a different `CAMERA_OV2640_DVP_DEFAULT_FMT` Kconfig choice (e.g.
+    `CAMERA_OV2640_DVP_JPEG_640X480_25FPS`) — a build-time decision with a real
+    PSRAM-budget consequence (`>300KB` free headroom rule in `CLAUDE.md`/
+    `docs/PERSISTENCE.md`) that needs its own measurement on hardware, not a
+    runtime negotiation routine in `camera_hal.c`.
+- **Experimento de alta resolucao (640x480) — concluido 2026-06-07: `JPEG_640X480_25FPS`
+  marcado NAO-FUNCIONAL em hardware real, com evidencia de captura quebrada.**
+  `sdkconfig.defaults` selecionou `CONFIG_CAMERA_OV2640_DVP_JPEG_640X480_25FPS=y`
+  (no lugar de `YUV422_240X240_25FPS`), o firmware foi compilado e flashado via
+  `idf.py -p COM12 flash`, e o resultado foi validado em hardware real (nao
+  assumido) em duas rodadas independentes de boot + captura via
+  `/api/camera/snapshot` + `/api/camera/status`, com leitura do log serial em
+  paralelo.
+  - **A negociacao de formato funcionou exatamente como o codigo espera** — o
+    sensor entrou no modo nativo 640x480 (`modo do sensor ativo:
+    "DVP_8bit_20Minput_JPEG_640x480_25fps" 640x480 fmt=12 fps=25`),
+    `VIDIOC_G_FMT` reportou `640x480 fmt=JPEG`, e `VIDIOC_S_FMT` aceitou o
+    formato (`last_sfmt_errno=0`). Os probes `VIDIOC_TRY_FMT` confirmaram que
+    QQVGA/QVGA/VGA continuam recusados com `errno=22` (EINVAL) e so o tamanho
+    nativo e aceito pelo `S_FMT` — a mesma assinatura ja documentada para
+    240x240, agora provada tambem para 640x480.
+  - **Mas a captura de frames falha de forma reprodutivel e consistente.**
+    Em ambas as rodadas, `camera_hal_capture()` recebeu 10-12 buffers
+    consecutivos com `bytesused=0` (`frame invalido tentativa=N ... bytes=0
+    fmt=0x4745504a`); na primeira rodada as 12 tentativas falharam e a camera
+    foi desinicializada com `ESP_FAIL` (`/api/camera/snapshot` -> HTTP 503
+    `{"ok": false, "error": "ESP_FAIL"}`, `/api/camera/status` ->
+    `effective_width=0 effective_height=0 last_error=-1 (ESP_FAIL)
+    phase=capture`); na segunda rodada uma tentativa "passou" do ponto de
+    vista do V4L2 (sem log de `frame invalido`), mas o buffer dequeued trazia
+    um tamanho de **lixo/memoria nao inicializada — `last_jpeg_bytes=4294780279`
+    (`(uint32_t)(-187017)`, ~4GB, impossivel para um JPEG 640x480 num buffer de
+    307200 bytes)** que `camera_service` registrou como sucesso
+    (`capture_count=1 fail_count=0 last_error=0`); so a checagem de sanidade da
+    camada HTTP recusou o payload (`/api/camera/snapshot` -> HTTP 503
+    `ESP_FAIL`). **Achado adicional, fora do escopo deste experimento mas digno
+    de nota**: `camera_service` confia no `bytesused` retornado pelo driver sem
+    validar contra o tamanho do buffer alocado — vale revisitar essa checagem
+    de sanidade especificamente (nao so o caminho feliz `>0 && <= buf_size`).
+  - **Por que nao e um problema do struct `v4l2_format` zero-inicializado** —
+    a hipotese natural antes de testar em hardware era que um `v4l2_format`
+    zero-inicializado (so `width`/`height`/`pixelformat` preenchidos, sem
+    `field`/`bytesperline`/`sizeimage`/`colorspace`/etc.) pudesse ser um
+    descritor invalido para o caminho JPEG e explicar tanto a recusa do
+    `TRY_FMT` quanto os buffers vazios. Para testar isso de forma controlada,
+    `camera_hal_init()` agora loga a struct completa (todos os campos de
+    `v4l2_pix_format`, nao so resolucao/formato) antes/depois de `G_FMT`,
+    `TRY_FMT` e `S_FMT`, e o probe nativo do `TRY_FMT` passou a reusar — campo
+    a campo, via `*base_fmt` — exatamente a struct que `VIDIOC_G_FMT` reportou,
+    em vez de zero-inicializar e preencher so tres campos
+    (`camera_hal_log_v4l2_format()`, `camera_hal_probe_try_fmt(fd, pixfmt,
+    base_fmt, base_valid)`). O resultado refutou a hipotese de forma limpa:
+    - `VIDIOC_G_FMT` em si reporta `field=0 bytesperline=0 sizeimage=0
+      colorspace=0 priv=0 flags=0 ycbcr_enc=0 quantization=0 xfer_func=0` — ou
+      seja, **a struct zero-inicializada e exatamente o que o proprio driver
+      considera "formato atual valido"**.
+    - `VIDIOC_TRY_FMT` recusa essa mesma struct, byte a byte identica ao que
+      `G_FMT` acabou de devolver, com `errno=22` —
+      `VIDIOC_TRY_FMT nativo (struct preservada de G_FMT): rejeitado errno=22
+      ... ate o proprio formato reportado pelo driver foi recusado`. Isso prova
+      que `TRY_FMT` esta simplesmente nao-implementado/sempre-EINVAL no backend
+      DVP (consistente com `VIDIOC_ENUM_FRAMESIZES` tambem sempre falhar com
+      `errno=22`), e nao e sensivel ao conteudo da struct.
+    - `VIDIOC_S_FMT`, com a mesma struct preservada de `G_FMT`, **aceita**
+      (`last_sfmt_errno=0`) e devolve a struct sem recalcular
+      `bytesperline`/`sizeimage` — confirmando que o `set_format` do driver so
+      faz a checagem de igualdade de `width`/`height`/`pixelformat` ja
+      documentada acima, e ignora os demais campos tanto na entrada quanto na
+      saida.
+    - **Conclusao**: a falha de captura nao tem nada a ver com a forma como o
+      app monta o `v4l2_format` — a negociacao (`G_FMT`/`TRY_FMT`/`S_FMT`) se
+      comporta de modo identico independentemente da struct usada. O problema
+      esta no pipeline de captura em si (DMA/timing/registradores do modo
+      `DVP_8bit_20Minput_JPEG_640x480_25fps` especificamente), fora do alcance
+      de qualquer ajuste possivel a partir do codigo da aplicacao.
+  - **Conhecido e esperado, nao uma regressao**: enquanto este modo estava
+    ativo, frames JPEG nativos nao alimentam `camera_service_analyze_yuv422()`
+    (precisa de `YUYV`/`YUV422P`), entao `/api/vision/observe` reportava
+    `scene=unknown`. Esse trade-off ja era esperado e documentado antes do
+    teste — nao influenciou a decisao de marcar o modo como nao-funcional
+    (a captura quebrada sozinha ja e suficiente).
+  - **Decisao**: `JPEG_640X480_25FPS` esta marcado **nao-funcional nesta placa**
+    para fins de monitoramento/snapshot — nenhum frame valido foi produzido em
+    24 tentativas de captura ao longo de duas rodadas de boot independentes.
+    Nao ha numeros de FPS/tempo de captura/tamanho medio de frame a registrar
+    porque nunca houve um frame valido para medir. Proximo passo: testar
+    `JPEG_320X240_50FPS` (outro modo OV2640 nativo compilavel, ver secao
+    abaixo) antes de decidir se volta para `YUV422_240X240_25FPS` como
+    baseline definitivo.
+  - **Rollback (mantido pronto, nao executado ainda)**: revert
+    `sdkconfig.defaults` para `CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y`,
+    apagar o `sdkconfig` em cache (ou `idf.py fullclean`), `idf.py reconfigure`,
+    rebuild e reflash. Nenhuma mudanca em `camera_hal.c`/`camera_service.c`
+    precisa ser desfeita — o codigo de pass-through/diagnostico honesto
+    funciona para qualquer um dos tres modos (`YUV422_240X240`,
+    `JPEG_640X480`, `JPEG_320X240`).
+- **Experimento de alta resolucao (320x240) — concluido 2026-06-07: tambem
+  NAO-FUNCIONAL, com a MESMA assinatura de falha do modo 640x480.**
+  `sdkconfig.defaults` selecionou `CONFIG_CAMERA_OV2640_DVP_JPEG_320X240_50FPS=y`,
+  o firmware foi recompilado (full rebuild — a troca de `choice` do Kconfig
+  altera `CONFIG_CAMERA_OV2640_DVP_IF_FORMAT_INDEX_DEFAULT`, uma constante de
+  build-time) e flashado via `idf.py -p COM12 flash`, e validado em hardware
+  real em duas rodadas de boot independentes, com leitura do log serial em
+  paralelo a chamadas de `/api/camera/snapshot`/`/api/camera/status`.
+  - **Negociacao de formato — identica ao modo 640x480, exatamente como
+    previsto**: `modo do sensor ativo: "DVP_8bit_20Minput_JPEG_320x240_50fps"
+    320x240 fmt=12 fps=50`; `VIDIOC_G_FMT` reporta `320x240 fmt=JPEG
+    field=0 bytesperline=0 sizeimage=0 colorspace=0 ...` (struct zero exceto
+    width/height/pixelformat — confirma de novo que essa e a forma "valida"
+    para o proprio driver); `VIDIOC_TRY_FMT` recusa QQVGA/QVGA/VGA E o proprio
+    320x240 nativo com `errno=22` (incluindo a struct preservada, byte a byte
+    identica a que `G_FMT` relatou); `VIDIOC_S_FMT` aceita de primeira
+    (`last_sfmt_errno=0`) com a mesma struct preservada e a devolve sem
+    recalcular `bytesperline`/`sizeimage`. Ou seja: a camada de negociacao
+    V4L2 se comporta de forma **byte-a-byte identica** nos dois modos JPEG
+    nativos testados — a unica coisa que muda e a resolucao reportada.
+  - **Captura — falha identica, 24/24 tentativas (12+12 em duas rodadas)**:
+    `frame invalido tentativa=1..12 index=0 bytes=0 fmt=0x4745504a` em ambas
+    as rodadas, seguido de `camera desinicializada` e `ESP_FAIL`.
+    `/api/camera/snapshot` -> HTTP 503 `{"ok": false, "error": "ESP_FAIL"}`
+    (ambas as chamadas); `/api/camera/status` -> `effective_width=0
+    effective_height=0 last_error=-1 (ESP_FAIL) phase=capture fail_count=2
+    last_jpeg_bytes=0 capture_count=0`. Nenhum frame valido, nenhum dado de
+    desempenho a registrar — identico ao pior caso do experimento 640x480.
+  - **Conclusao acumulada (640x480 + 320x240): 48/48 falhas de captura em
+    QUATRO rodadas de boot independentes, em DOIS modos JPEG nativos
+    diferentes, com a MESMA assinatura (`bytesused=0`/lixo, negociacao OK,
+    pipeline de captura quebrado).** Isso descarta definitivamente a hipotese
+    de "resolucao especifica" — o problema e estrutural ao caminho de captura
+    JPEG nativo do `esp_video`/`esp_cam_sensor` para o sensor OV2640 nesta
+    placa (DVP), nao a uma resolucao ou timing de um modo isolado. Nao ha
+    ajuste possivel a partir do codigo da aplicacao (a negociacao ja se provou
+    correta e identica em ambos os modos) — seria necessario depurar o driver
+    `esp_video`/`esp_cam_sensor` em si (DMA, registradores SCCB do modo,
+    timing do controlador DVP) ou trocar de sensor/biblioteca, ambos fora do
+    escopo deste experimento.
+  - **Decisao final**: `YUV422_240X240_25FPS` — o unico modo com captura
+    *comprovadamente funcional* nesta placa (e a base de todo o trabalho de
+    visao/snapshot/MJPEG ja existente) — volta a ser o baseline, sem
+    ressalvas. Nenhum dos dois modos JPEG nativos (640x480 ou 320x240) e
+    viavel como alternativa de monitoramento de alta resolucao nesta placa.
+    `sdkconfig.defaults` foi revertido para
+    `CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y`, o firmware foi
+    recompilado e reflashado, e a captura foi revalidada em hardware antes de
+    fechar o experimento — **confirmado funcionando, primeira tentativa, sem
+    nenhum `frame invalido`**: `modo do sensor ativo:
+    "DVP_8bit_20Minput_YUV422_240x240_25fps" 240x240 fmt=2 fps=25`,
+    `/api/camera/snapshot` -> HTTP 200 `image/jpeg` 17816 bytes,
+    `/api/camera/status` -> `effective_width=240 effective_height=240
+    last_frame_format=yuv422p capture_count=1 fail_count=0 last_error=0
+    capture_ms=227`. Essa mesma rodada tambem prova que o novo logging
+    completo de `v4l2_format` (G_FMT/TRY_FMT/S_FMT) nao interfere em nada no
+    caminho de captura que funciona — `VIDIOC_TRY_FMT` continua recusando tudo
+    (inclusive a struct preservada do `G_FMT`, com o mesmo `errno=22` visto
+    nos modos JPEG — confirma mais uma vez que `TRY_FMT` e
+    universalmente nao-implementado neste backend DVP, independente do
+    formato de pixel), e mesmo assim a captura funciona perfeitamente — o
+    problema esta isolado ao pipeline de captura JPEG nativo, nao a nada que o
+    aplicativo controla.
+  - **Estado final do experimento**: `sdkconfig.defaults` no baseline
+    `YUV422_240X240_25FPS`; instrumentacao de diagnostico
+    (`camera_hal_log_sensor_format`, `camera_hal_probe_try_fmt`,
+    `camera_hal_log_v4l2_format`, named constants
+    `NB_CAMERA_NATIVE_FALLBACK_WIDTH/HEIGHT`) permanece no codigo. As
+    constantes de fallback foram realinhadas para `240x240`, acompanhando o
+    baseline final, para que `/api/camera/status` nao anuncie `640x480` antes
+    do primeiro frame. A instrumentacao roda em todo boot, documenta o
+    comportamento real do driver para qualquer pessoa que reabrir essa
+    investigacao no futuro, e nao tem custo de runtime alem de algumas linhas
+    de log no caminho de inicializacao (nao roda em nenhum caminho critico).
+- **Experimento raw VGA YUV422 — validado em hardware real em 2026-06-07**:
+  para responder se o barramento DVP/raw funciona em VGA quando o caminho JPEG
+  nativo falha, foi criado o perfil
+  `sdkconfig.experiment.ov2640-yuv422-640x480.defaults`. Ele nao troca o
+  baseline do produto; deve ser usado apenas com `sdkconfig` limpo e
+  `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.experiment.ov2640-yuv422-640x480.defaults"`.
+  O perfil seleciona `CONFIG_CAMERA_OV2640_DVP_YUV422_640X480_6FPS=y`.
+  Resultado medido apos flash: `/api/camera/snapshot` retornou JPEG valido
+  (`79951` bytes, assinatura `FF D8 FF E0`) e `/api/camera/status` reportou
+  `effective_width=640`, `effective_height=480`, `last_frame_width=640`,
+  `last_frame_height=480`, `last_frame_bytes=614400`, `last_frame_format=yuv422p`,
+  `capture_count=1`, `fail_count=0`, `last_error=0`. Isso prova que o caminho
+  DVP/raw VGA funciona nesta placa; a limitacao anterior era o caminho JPEG
+  nativo do driver, nao a camera nem o barramento DVP. As tentativas de usar
+  VGA como video ao vivo mostraram que o teto fica limitado pela captura raw
+  (~350ms/frame) e pelo encode JPEG por software. Decisao de produto em
+  2026-06-07: remover o monitoramento de video do robo e usar a camera apenas
+  para snapshot/analyze/face-detect. Com isso, `GET /api/camera/stream.mjpg` e
+  o proxy `GET /api/vision/stream.mjpg` foram removidos; `/api/camera/snapshot`,
+  `/api/vision/observe` e `/api/vision/analyze` permanecem como superficie de
+  percepcao.
 - NoiseBot now retains a strong presence candidate (`score>=60`) for up to 2.5s
   and still requires 2 raw candidate samples before publishing
   `PRESENCE_DETECTED`; retained samples keep `candidate` alive but cannot promote
@@ -270,5 +541,4 @@ copying board-specific implementations from other products.
 - Promote the basic observation into presence detection (`PRESENCE_DETECTED` /
   `PRESENCE_LOST`) continuous mode only after shadow/lighting false positives
   are measured.
-- Keep MJPEG streaming out of the main product loop until snapshot mode has a
-  long-run memory profile.
+- Implement face detect sobre snapshot/analyze sem reintroduzir video ao vivo.

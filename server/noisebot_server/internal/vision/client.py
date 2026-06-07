@@ -80,6 +80,47 @@ class VisionClient:
     def snapshot(self) -> bytes:
         return self._get_bytes("/api/camera/snapshot")
 
+    def set_mode(self, mode: str) -> None:
+        """Set firmware camera mode ('safe' or 'better').
+
+        Resolution is native/effective and fixed by the firmware's compiled
+        CONFIG_CAMERA_OV2640_DVP_* Kconfig choice regardless of mode — the
+        OV2640 DVP path rejects any other size via VIDIOC_S_FMT/TRY_FMT
+        (errno=22). Mode only selects the memory-threshold profile checked
+        before HAL init. Check /api/camera/status's effective_width/height
+        for the resolution actually active on a given build (it varies by
+        which Kconfig mode was flashed — see docs/CAMERA_INTEGRATION.md
+        "Experimento de alta resolucao (640x480)").
+        """
+        self._post_json("/api/camera/mode", {"mode": mode})
+
+    def snapshot_and_close(self) -> bytes:
+        """Capture a single JPEG and immediately release the camera session."""
+        jpeg = self._get_bytes("/api/camera/snapshot")
+        try:
+            self._post_json("/api/camera/session/close", {})
+        except VisionError:
+            pass
+        return jpeg
+
+    def session_close(self) -> None:
+        """Release the firmware camera session (allow it to power down)."""
+        try:
+            self._post_json("/api/camera/session/close", {})
+        except VisionError:
+            pass
+
+    def poll_stop(self) -> None:
+        """Pause firmware vision presence poll during explicit vision work."""
+        self._post_json("/api/vision/poll/stop", {})
+
+    def poll_start(self, interval_ms: int = 0) -> None:
+        """Resume firmware vision presence poll."""
+        body: dict = {}
+        if interval_ms > 0:
+            body["interval_ms"] = interval_ms
+        self._post_json("/api/vision/poll/start", body)
+
     def analyze(self) -> VisionAnalysis:
         observation = self.observe()
         jpeg = self.snapshot()
@@ -101,6 +142,24 @@ class VisionClient:
         try:
             with urlopen(request, timeout=self.timeout_s) as response:
                 return response.read()
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+            raise VisionError(str(exc)) from exc
+
+    def _post_json(self, path: str, body: dict) -> None:
+        url = urljoin(self.base_url, path.lstrip("/"))
+        data = json.dumps(body).encode("utf-8")
+        req = Request(
+            url,
+            data=data,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "NoiseBot-Server/0.1",
+            },
+        )
+        try:
+            with urlopen(req, timeout=self.timeout_s) as response:
+                response.read()
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             raise VisionError(str(exc)) from exc
 

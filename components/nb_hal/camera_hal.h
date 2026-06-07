@@ -34,8 +34,16 @@ typedef enum {
 esp_err_t camera_hal_set_mode(nb_camera_mode_t mode);
 nb_camera_mode_t camera_hal_get_mode(void);
 const char *camera_hal_mode_name(nb_camera_mode_t mode);
+/** @brief Returns a non-zero fallback for the Kconfig-fixed native resolution
+ *         (mode does not change it). camera_hal_effective_*() below is the
+ *         live, driver-read source of truth once a frame has been captured. */
 size_t camera_hal_mode_width(nb_camera_mode_t mode);
 size_t camera_hal_mode_height(nb_camera_mode_t mode);
+/** @brief Returns the actual resolution reported by VIDIOC_G_FMT (0 before init). */
+size_t camera_hal_effective_width(void);
+size_t camera_hal_effective_height(void);
+/** @brief Returns errno captured from the last failing VIDIOC_S_FMT, or 0 if none/success. */
+int camera_hal_last_sfmt_errno(void);
 size_t camera_hal_mode_min_dma_before(nb_camera_mode_t mode);
 size_t camera_hal_mode_min_dma_largest(nb_camera_mode_t mode);
 size_t camera_hal_mode_min_internal_before(nb_camera_mode_t mode);
