@@ -1,7 +1,10 @@
 # ESP-IDF build artifacts
 build/
+build_*/
 sdkconfig
 sdkconfig.old
+sdkconfig.bak-pre-*
+sdkconfig.yuv422_*
 .idf_build_apps.json
 dependencies.lock
 managed_components/
@@ -23,6 +26,7 @@ venv/
 .vscode/
 .idea/
 .claude/settings.local.json
+.claude/*.lock
 .codex_tmp/
 .obsidian/
 *.swp
