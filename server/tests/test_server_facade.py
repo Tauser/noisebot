@@ -1156,7 +1156,7 @@ def test_server_cli_runs_voice_v2_debug_command(monkeypatch, capsys) -> None:
     assert "HAL/I2S: audio_service" in captured.out
     assert "Bridge TX: voice_capture_session_v2" in captured.out
     assert "Playback queue: audio_playback_service_v2" in captured.out
-    assert "Playback HAL: audio_service" in captured.out
+    assert "Playback HAL: audio_playback_service_v2_say_probe_audio_service_compat" in captured.out
     assert calls["base_url"] == "http://192.168.1.30/"
 
 
@@ -8247,9 +8247,10 @@ def test_firmware_camera_active_overlay_contract_is_exposed() -> None:
     assert "camera_service_set_session_active(true)" in camera_c
     assert "camera_service_set_session_active(false)" in camera_c
     assert "ui_overlay_camera_set" in overlay_h
-    assert "draw_camera_icon" in overlay_c
+    assert "ui_overlay_status_icon_set(NB_UI_STATUS_ICON_CAMERA_ACTIVE, enabled)" in overlay_c
     assert 'icons/generated/nb_ui_overlay_icons.h' in overlay_c
-    assert "draw_icon_mask(spr, &NB_UI_OVERLAY_ICON_CAMERA" in overlay_c
+    assert "case NB_UI_STATUS_ICON_CAMERA_ACTIVE:     return &NB_UI_OVERLAY_ICON_CAMERA;" in overlay_c
+    assert "draw_icon_mask(spr, asset" in overlay_c
     assert "camera_service_set_event_cb(on_camera_event)" in boot_c
     assert "ui_overlay_camera_set(true)" in boot_c
     assert "ui_overlay_camera_set(false)" in boot_c
@@ -8277,7 +8278,7 @@ def test_firmware_overlay_icons_use_generated_masks() -> None:
     assert "typedef struct" in generated_h
     assert "NB_UI_OVERLAY_ICON_CAMERA_MASK" in generated_h
     assert "NB_UI_OVERLAY_ICON_CAMERA" in generated_h
-    assert "0x00, 0xFC, 0x00" in generated_h
+    assert "0x00, 0x3F, 0xC0, 0x00" in generated_h
     assert "--check" in generator
 
 
