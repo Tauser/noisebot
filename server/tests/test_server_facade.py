@@ -152,8 +152,34 @@ def test_llm_prompt_includes_current_user_profile() -> None:
     assert "Perfil do usuario atual" in system
     assert "Nome do usuario: Tadeu" in system
     assert "Nome/apelido do robo para este usuario: Noise" in system
-    assert "Estilo de interacao: direct_warm" in system
+    assert "Como se comportar com este usuario:" in system
+    assert "acolhedor e presente" in system
+    assert "calor humano no tom" in system
     assert "nao invente outra identidade" in system
+
+
+def test_personality_prompt_lines_compose_known_axes() -> None:
+    personality = importlib.import_module("noisebot_server.internal.agent.personality")
+
+    lines = personality.personality_prompt_lines("playful", "curious")
+
+    assert lines[0] == "Como se comportar com este usuario:"
+    assert any("humor leve" in line for line in lines)
+    assert any("interesse genuino" in line for line in lines)
+
+
+def test_personality_prompt_lines_skip_unknown_values() -> None:
+    personality = importlib.import_module("noisebot_server.internal.agent.personality")
+
+    assert personality.personality_prompt_lines("", "") == []
+    assert personality.personality_prompt_lines("modo_inexistente", "estilo_inexistente") == []
+
+    partial = personality.personality_prompt_lines("companion", "estilo_inexistente")
+    assert partial == [
+        "Como se comportar com este usuario:",
+        "- Seja acolhedor e presente; acompanhe o assunto do usuario sem se impor "
+        "ou desviar para outros temas.",
+    ]
 
 
 def test_llm_language_guard_replaces_foreign_script_reply() -> None:

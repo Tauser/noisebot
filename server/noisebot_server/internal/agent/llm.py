@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from .circuit_breaker import CircuitBreaker
+from .personality import personality_prompt_lines
 from .runtime import LlmReplyComplete
 
 log = logging.getLogger(__name__)
@@ -190,10 +191,7 @@ def _user_profile_prompt_lines(profile: dict[str, Any]) -> list[str]:
         lines.append(f"- Idioma preferido: {language}")
     if robot_nickname:
         lines.append(f"- Nome/apelido do robo para este usuario: {robot_nickname}")
-    if persona_mode:
-        lines.append(f"- Modo de persona: {persona_mode}")
-    if interaction_style:
-        lines.append(f"- Estilo de interacao: {interaction_style}")
+    lines.extend(personality_prompt_lines(persona_mode, interaction_style))
     if display_name:
         lines.append(
             f"- Ao se referir ao usuario, trate-o como {display_name}; nao invente outra identidade."
@@ -233,7 +231,7 @@ class OllamaProvider(StreamingLLMProvider):
 
     def __init__(
         self,
-        model: str = "qwen3.5:9b",
+        model: str = "gemma4:12b",
         base_url: str = "http://127.0.0.1:11434",
         temperature: float = _DEFAULT_TEMPERATURE,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
