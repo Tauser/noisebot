@@ -7,8 +7,8 @@ mantem uma personalidade consistente mesmo em repouso.
 
 O produto e **offline-first**. O firmware precisa funcionar sem internet, sem
 cloud e sem depender de dashboard externo. Recursos mais pesados, como LLM,
-STT, ferramentas de operacao e dashboard, ficam em uma camada local de
-bridge/server/app.
+STT, ferramentas de operacao e dashboard, ficam no `server/` local e no
+dashboard `app/`.
 
 ## Estado Atual
 
@@ -16,7 +16,7 @@ bridge/server/app.
 | --- | --- |
 | Firmware ESP-IDF | Base ativa em C17, com componentes organizados por camadas |
 | Display/face | Pipeline LovyanGFX, render service e overlays visuais em evolucao |
-| Voz/bridge | Base funcional com bridge/server local e pipeline de voz em refinamento |
+| Voz/server | Base funcional com server local e pipeline de voz em refinamento |
 | Touch | Ativo, mas em revisao de sensibilidade e confiabilidade |
 | Camera | Infraestrutura inicial; presence detection leve esta no roadmap atual |
 | Servos | Nao conectados; movimento real bloqueado ate `motion_safety` estar verde |
@@ -33,7 +33,7 @@ bridge/server/app.
   entre camadas distantes passa pelo event bus.
 - **Safety primeiro:** nenhum movimento de servo e liberado antes do gate de
   `motion_safety`.
-- **Offline-first:** WiFi e bridge local ajudam, mas o robo deve continuar
+- **Offline-first:** WiFi e o server local ajudam, mas o robo deve continuar
   operando sem rede.
 - **Sem Arduino:** toda a base embarcada usa ESP-IDF, FreeRTOS e APIs `esp_*`.
 
@@ -43,9 +43,9 @@ bridge/server/app.
 | --- | --- |
 | Firmware | ESP-IDF, FreeRTOS, C17, CMake, LovyanGFX no display |
 | Hardware | ESP32-S3 N16R8, ST7789, WS2812, INMP441, MAX98357A, touch capacitivo, microSD |
-| Bridge/server | Python 3.10+, `aiohttp`, adapters locais para voz/LLM/operacao |
+| Server | Python 3.10+, `aiohttp`, adapters locais para voz/LLM/operacao |
 | Dashboard | React, TypeScript, Vite, Tailwind, lucide-react |
-| Testes | Pytest para bridge/server; `idf.py build` para firmware |
+| Testes | Pytest para server; `idf.py build` para firmware |
 
 ## Estrutura Do Repositorio
 
@@ -53,8 +53,8 @@ bridge/server/app.
 Noisebot/
 +-- app/                 # Dashboard externo em React/Vite
 +-- assets/              # Assets do produto e recursos visuais/sonoros
-+-- bridge/              # Bridge Python legado/atual usado em fluxos de voz
-+-- bridge_v2/           # Bridge v2 async de baixa latencia
++-- bridge/              # [legado] pre-server, candidato a remocao
++-- bridge_v2/           # [legado] absorvido por server/, candidato a remocao
 +-- components/          # Componentes ESP-IDF do firmware
 |   +-- infra/           # Boot, config, event bus, persistence, watchdog, safety
 |   +-- hal/          # HAL de display, audio, servo, LED, touch, SD
@@ -174,7 +174,8 @@ cd server
 python -m pytest
 ```
 
-Testes do bridge:
+Testes do bridge legado (`bridge/`/`bridge_v2/` — candidatos a remocao, ja sem
+uso em runtime; `server/` roda de forma autocontida):
 
 ```powershell
 $env:PYTHONPATH = "D:\Projetos\Noisebot\bridge"

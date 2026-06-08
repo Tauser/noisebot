@@ -1,7 +1,17 @@
-# BRIDGE_V2.md — Arquitetura do Bridge v2
+# BRIDGE_V2.md — Arquitetura do Bridge v2 [SUPERADO]
 
+> **Status: superado.** `bridge_v2/` foi a base da implementacao, mas a
+> migracao para `server/` (`noisebot_server`) esta concluida — o server roda
+> de forma autocontida, sem nenhuma dependencia de runtime em `bridge`/
+> `bridge_v2` (confirmado por auditoria em 2026-06: zero imports de
+> `bridgev2.*` no pacote, e os testes de paridade que comparavam as duas
+> implementacoes foram reescritos para serem autocontidos). `bridge/` e
+> `bridge_v2/` sao candidatos a remocao — ver `docs/PROJECT_CLEANUP_AUDIT.md`
+> para o checklist restante. Este documento fica como **referencia historica**
+> de design ate a remocao definitiva; para o estado atual do server, use
+> `server/README.md` e `docs/ARCHITECTURE.md`.
+>
 > Análise técnica e proposta de design para o **Bridge v2** do NoiseBot.
-> **Status:** proposta de design — *nenhuma implementação ainda*.
 > Este documento orienta a construção de um bridge limpo, de baixa latência,
 > robusto e observável, sem quebrar o firmware atual.
 

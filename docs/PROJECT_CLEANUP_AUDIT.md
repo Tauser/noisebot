@@ -82,8 +82,14 @@ Origem: `docs/BRIDGE_V2.md`, `docs/VOICE_PIPELINE.md` e `docs/ROADMAP.md`.
   sessao e falhas terminais nomeadas.
 - Robot Tools v2, overlays expressivos de bridge e setup/diagnostico de produto
   aparecem como concluidos no roadmap principal.
-- `bridge_v2/` e `bridge/` devem ser tratados como candidatos a consolidacao
-  estrutural, nao como remocao imediata sem auditar imports/testes.
+- Auditoria de imports/testes concluida (2026-06): `noisebot_server` nao tem
+  nenhuma dependencia de runtime em `bridge`/`bridge_v2` (`grep` por
+  `import bridgev2|from bridgev2` no pacote nao retorna nada; o entrypoint real
+  e `python -m noisebot_server`). Os ~28 testes de paridade que importavam
+  `bridgev2.*` em `test_server_facade.py` foram reescritos para serem
+  autocontidos. `bridge/` e `bridge_v2/` ja podem ser tratados como candidatos
+  a remocao, nao apenas consolidacao — falta so o checklist final (ver
+  "Candidatos a Auditoria de Codigo").
 
 Implicacao no roadmap vivo:
 
@@ -152,8 +158,11 @@ Existem no codigo e precisam de verificacao antes de marcar como concluidos:
 - `agenda_service`: precisa validar criacao/listagem/cancelamento/disparo real,
   persistencia e feedback visual/sonoro no firmware.
 - `boredom_service`: escalada criativa de ociosidade e pausa por estado.
-- `bridge_v2/` vs `server/`: consolidacao estrutural, para decidir se vira
-  arquivo historico, dependencia de compatibilidade ou remocao gradual.
+- `bridge_v2/` vs `server/`: decisao tomada — `server/` absorveu a
+  implementacao e roda de forma autocontida; `bridge_v2/` vira candidato a
+  remocao apos o checklist final (scripts de servico, debug record/replay,
+  modulos de metricas e spot-check de testes — ver "Candidatos a Auditoria de
+  Codigo").
 
 ### Decisoes De Produto Ja Tomadas Nesta Limpeza
 
@@ -228,9 +237,15 @@ Movido localmente para `docs/history/` nesta rodada:
 
 Estes itens precisam de verificacao antes de qualquer remocao:
 
-- `bridge/`: bridge v1 ainda pode servir como compatibilidade/testes.
-- `bridge_v2/`: possivelmente referencia/legado enquanto `server/` absorve a
-  implementacao.
+- `bridge/` e `bridge_v2/`: confirmados como legado fora do caminho de
+  execucao (`server/` roda 100% autocontido). Antes de apagar, falta:
+  (1) confirmar/portar scripts de servico (`bridge_v2/.../service/systemd`,
+  `service/windows/install.ps1`); (2) confirmar/portar `debug/{record,replay}.py`
+  ou decidir nao migrar; (3) checar se `metrics/{logfmt,timeline,registry}.py`
+  tem equivalente em `server/internal/ops/metrics.py`; (4) spot-check de
+  `bridge/tests/` e `bridge_v2/tests/` contra `server/tests/` para garantir que
+  nao ha cenario coberto so do lado legado. `server/README.md` ja foi corrigido
+  para nao descrever mais delegacao ao `bridge_v2`.
 - `main/servo_test.*`: verificar se ainda e usado no build atual.
 - docs e scripts de fases antigas de voz: devem virar arquivo historico ou
   ser removidos se o conteudo ja estiver consolidado.
