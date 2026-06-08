@@ -127,7 +127,11 @@ parciais (`display_name`, `relationship`, `language`, `robot_nickname`,
 No dashboard, a tela `Perfil` do modo User usa o server como fronteira local:
 `app/src/App.tsx` chama `app/src/api.ts`, o server expõe
 `/api/device/persona`, e `FirmwareDiagClient` encaminha para o firmware. Assim
-o browser não precisa falar diretamente com o ESP32.
+o browser não precisa falar diretamente com o ESP32. O server tambem mantém um
+espelho persistente em `AppStateStore` (`device_persona` no `app_state.json`):
+`PUT /api/device/persona` salva localmente primeiro e tenta aplicar no firmware;
+`GET /api/device/persona` usa o firmware quando disponível e cai no cache local
+quando o HTTP do robo está offline ou não configurado.
 
 O server tambem injeta esse perfil no contexto da LLM. Antes de montar o prompt
 de um turno, `Orchestrator` tenta ler `/api/persona` via `FirmwareDiagClient`,

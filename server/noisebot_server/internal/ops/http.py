@@ -732,10 +732,23 @@ class OpsHttpServer:
         )
 
     async def _get_device_persona(self, request: web.Request) -> web.Response:
-        return await self._proxy_firmware_diag_get(
-            self._firmware_diag_client.persona
-            if self._firmware_diag_client is not None else None
-        )
+        if self._firmware_diag_client is None:
+            return _json({
+                "source": "server_cache",
+                "firmware_applied": False,
+                **self._app_state.get_device_persona(),
+            })
+        try:
+            payload = await asyncio.to_thread(self._firmware_diag_client.persona)
+        except FirmwareDiagError as exc:
+            return _json({
+                "source": "server_cache",
+                "firmware_applied": False,
+                "errors": {"firmware": str(exc)},
+                **self._app_state.get_device_persona(),
+            })
+        cached = self._app_state.update_device_persona(payload)
+        return _json({"source": "firmware_http", "firmware_applied": True, **cached})
 
     async def _put_device_persona(self, request: web.Request) -> web.Response:
         self._require_token(request)
@@ -756,10 +769,40 @@ class OpsHttpServer:
         payload = {key: value for key, value in user.items() if key in allowed}
         if not payload:
             return _json(error_response("perfil vazio"), status=400)
-        return await self._proxy_firmware_diag_post(
-            (lambda: self._firmware_diag_client.set_persona(payload))
-            if self._firmware_diag_client is not None else None
-        )
+        cached = self._app_state.update_device_persona({"user": payload})
+        if self._firmware_diag_client is None:
+            return _json({
+                "ok": True,
+                "source": "server_cache",
+                "firmware_applied": False,
+                **cached,
+            })
+        try:
+            firmware_payload = await asyncio.to_thread(
+                self._firmware_diag_client.set_persona,
+                payload,
+            )
+        except FirmwareDiagError as exc:
+            return _json({
+                "ok": True,
+                "source": "server_cache",
+                "firmware_applied": False,
+                "errors": {"firmware": str(exc)},
+                **cached,
+            })
+        status = 200 if firmware_payload.get("ok", False) else 502
+        if firmware_payload.get("ok", False):
+            try:
+                latest = await asyncio.to_thread(self._firmware_diag_client.persona)
+                cached = self._app_state.update_device_persona(latest)
+            except FirmwareDiagError:
+                pass
+        return _json({
+            "source": "firmware_http",
+            "firmware_applied": bool(firmware_payload.get("ok", False)),
+            **firmware_payload,
+            **cached,
+        }, status=status)
 
     async def _proxy_firmware_diag_get(self, fn) -> web.Response:
         if fn is None:

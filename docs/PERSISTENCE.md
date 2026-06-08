@@ -72,6 +72,16 @@ Este namespace e suficiente para operacao offline-first. Reconhecimento de voz
 ou face nao faz parte do cadastro inicial; fontes futuras podem apenas trocar o
 perfil atual e reutilizar o mesmo contrato.
 
+### Server — `app_state.json` (espelho offline do dashboard)
+
+O server local tambem persiste um espelho do perfil em
+`~/.noisebot-server/app_state.json`, no campo `device_persona`. Essa copia evita
+que a tela `Perfil` volte aos defaults quando o firmware HTTP estiver offline,
+sem IP configurado, ou indisponivel durante o boot. Quando o firmware responde,
+`GET /api/device/persona` atualiza esse espelho a partir do NVS; quando o
+dashboard salva, `PUT /api/device/persona` grava primeiro no `app_state.json` e
+depois tenta aplicar no firmware.
+
 ### microSD
 
 Todos os dados com volume alto, append-only, ou que podem ser regenerados:

@@ -35,6 +35,22 @@ DEFAULT_PROFILE: dict[str, str] = {
     "voice": "Piper Faber",
 }
 
+DEFAULT_DEVICE_PERSONA: dict[str, Any] = {
+    "warmth": 0.0,
+    "energy": 0.0,
+    "curiosity": 0.0,
+    "trust": 0.0,
+    "user": {
+        "id": "owner",
+        "display_name": "Owner",
+        "relationship": "owner",
+        "language": "pt-BR",
+        "robot_nickname": "NoiseBot",
+        "persona_mode": "companion",
+        "interaction_style": "direct_warm",
+    },
+}
+
 DEFAULT_ADVANCED_SETTINGS: dict[str, bool | int | str] = {
     "wifi_ssid": "",
     "wifi_enabled": True,
@@ -71,6 +87,7 @@ class AppStateStore:
             },
             "settings": settings,
             "profile": dict(self._state["profile"]),
+            "device_persona": _copy_device_persona(self._state["device_persona"]),
             "advanced": dict(self._state["settings"]["advanced"]),
         }
 
@@ -296,6 +313,24 @@ class AppStateStore:
             self._save_locked()
             return dict(profile)
 
+    def get_device_persona(self) -> dict[str, Any]:
+        with self._lock:
+            return _copy_device_persona(self._state["device_persona"])
+
+    def update_device_persona(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            persona = _normalize_device_persona({
+                **self._state["device_persona"],
+                **payload,
+                "user": {
+                    **self._state["device_persona"]["user"],
+                    **(payload.get("user") if isinstance(payload.get("user"), dict) else payload),
+                },
+            })
+            self._state["device_persona"] = persona
+            self._save_locked()
+            return _copy_device_persona(persona)
+
     def get_advanced_settings(self) -> dict[str, bool | int | str]:
         with self._lock:
             return dict(self._state["settings"]["advanced"])
@@ -341,6 +376,7 @@ class AppStateStore:
         basic = settings.get("basic") if isinstance(settings, dict) else None
         advanced = settings.get("advanced") if isinstance(settings, dict) else None
         profile = raw.get("profile") if isinstance(raw, dict) else None
+        device_persona = raw.get("device_persona") if isinstance(raw, dict) else None
 
         return {
             "version": 1,
@@ -348,6 +384,9 @@ class AppStateStore:
                 "items": _normalize_items(agenda.get("items") if isinstance(agenda, dict) else []),
             },
             "profile": _normalize_profile(profile if isinstance(profile, dict) else {}),
+            "device_persona": _normalize_device_persona(
+                device_persona if isinstance(device_persona, dict) else {}
+            ),
             "settings": {
                 "basic": _normalize_settings(basic if isinstance(basic, dict) else {}),
                 "advanced": _normalize_advanced_settings(
@@ -645,6 +684,45 @@ def _normalize_profile(raw: dict[str, Any]) -> dict[str, str]:
     return profile
 
 
+def _normalize_device_persona(raw: dict[str, Any]) -> dict[str, Any]:
+    persona = _copy_device_persona(DEFAULT_DEVICE_PERSONA)
+    for key in ("warmth", "energy", "curiosity", "trust"):
+        if key in raw:
+            persona[key] = _clamp_float(raw[key], 0.0, 1.0)
+
+    user = raw.get("user") if isinstance(raw.get("user"), dict) else raw
+    if isinstance(user, dict):
+        if "id" in user:
+            persona["user"]["id"] = _clean_text(user["id"], 31) or "owner"
+        if "user_id" in user:
+            persona["user"]["id"] = _clean_text(user["user_id"], 31) or "owner"
+        if "display_name" in user:
+            persona["user"]["display_name"] = _clean_text(user["display_name"], 47) or "Owner"
+        if "relationship" in user:
+            persona["user"]["relationship"] = _clean_text(user["relationship"], 31) or "owner"
+        if "language" in user:
+            persona["user"]["language"] = _clean_text(user["language"], 15) or "pt-BR"
+        if "robot_nickname" in user:
+            persona["user"]["robot_nickname"] = _clean_text(user["robot_nickname"], 31) or "NoiseBot"
+        if "persona_mode" in user:
+            persona["user"]["persona_mode"] = _clean_text(user["persona_mode"], 31) or "companion"
+        if "interaction_style" in user:
+            persona["user"]["interaction_style"] = (
+                _clean_text(user["interaction_style"], 31) or "direct_warm"
+            )
+    return persona
+
+
+def _copy_device_persona(persona: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "warmth": persona["warmth"],
+        "energy": persona["energy"],
+        "curiosity": persona["curiosity"],
+        "trust": persona["trust"],
+        "user": dict(persona["user"]),
+    }
+
+
 def _normalize_advanced_settings(raw: dict[str, Any]) -> dict[str, bool | int | str]:
     advanced = dict(DEFAULT_ADVANCED_SETTINGS)
     for key in ("wifi_ssid", "bridge_host", "timezone", "location", "device_name"):
@@ -688,6 +766,14 @@ def _clean_text(value: Any, max_len: int) -> str:
     if value is None:
         return ""
     return str(value).strip()[:max_len]
+
+
+def _clamp_float(value: Any, minimum: float, maximum: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return minimum
+    return max(minimum, min(maximum, number))
 
 
 def _choice(value: Any, valid: set[str], default: str) -> str:

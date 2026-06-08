@@ -7170,6 +7170,36 @@ def test_server_app_state_persists_profile_and_advanced_settings(tmp_path) -> No
     assert snapshot["advanced"]["ota_channel"] == "manual"
 
 
+def test_server_app_state_persists_device_persona_profile(tmp_path) -> None:
+    app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
+    state_path = tmp_path / "app_state.json"
+
+    store = app_state.AppStateStore(state_path)
+    persona = store.update_device_persona({
+        "warmth": 1.4,
+        "user": {
+            "id": "tadeu",
+            "display_name": "Tadeu",
+            "relationship": "criador",
+            "language": "pt-BR",
+            "robot_nickname": "Noise",
+            "persona_mode": "companheiro",
+            "interaction_style": "direto_afetuoso",
+        },
+    })
+
+    assert persona["warmth"] == 1.0
+    assert persona["user"]["display_name"] == "Tadeu"
+    assert persona["user"]["robot_nickname"] == "Noise"
+
+    reloaded = app_state.AppStateStore(state_path)
+    snapshot = reloaded.snapshot()
+
+    assert snapshot["device_persona"]["user"]["id"] == "tadeu"
+    assert snapshot["device_persona"]["user"]["display_name"] == "Tadeu"
+    assert snapshot["device_persona"]["user"]["interaction_style"] == "direto_afetuoso"
+
+
 def test_server_app_state_updates_and_deletes_agenda_items(tmp_path) -> None:
     app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
     store = app_state.AppStateStore(tmp_path / "app_state.json")
@@ -7324,6 +7354,44 @@ async def test_server_ops_root_is_api_info_not_dashboard() -> None:
     assert response.status == 200
     assert payload["service"] == "noisebot_ops_api"
     assert payload["dashboard_url"] == "http://127.0.0.1:5173"
+
+
+async def test_server_device_persona_endpoint_uses_cache_when_firmware_offline(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+    app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
+
+    class FakeRequest:
+        async def json(self):
+            return {
+                "user": {
+                    "id": "tadeu",
+                    "display_name": "Tadeu",
+                    "robot_nickname": "Noise",
+                }
+            }
+
+    store = app_state.AppStateStore(tmp_path / "app_state.json")
+    server = http.OpsHttpServer.__new__(http.OpsHttpServer)
+    server._app_state = store
+    server._firmware_diag_client = None
+    server._token = "secret"
+    monkeypatch.setattr(http, "check_token", lambda request, expected: True)
+
+    put_response = await server._put_device_persona(FakeRequest())
+    put_payload = json.loads(put_response.text)
+    get_response = await server._get_device_persona(None)
+    get_payload = json.loads(get_response.text)
+
+    assert put_response.status == 200
+    assert put_payload["source"] == "server_cache"
+    assert put_payload["firmware_applied"] is False
+    assert get_payload["source"] == "server_cache"
+    assert get_payload["user"]["id"] == "tadeu"
+    assert get_payload["user"]["display_name"] == "Tadeu"
+    assert get_payload["user"]["robot_nickname"] == "Noise"
 
 
 def test_server_agenda_payload_recreates_edited_alarm() -> None:

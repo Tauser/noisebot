@@ -56,7 +56,8 @@
       "PowerShell(. C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.ps1 *> $null; idf.py -p COM12 flash 2>&1 | Select-Object -Last 80)",
       "Bash(where clangd *)",
       "Bash(where clang *)",
-      "Bash(clangd --version)"
+      "Bash(clangd --version)",
+      "Bash(./node_modules/.bin/tsc -b)"
     ]
   }
 }
