@@ -334,6 +334,8 @@ static void ota_progress_note(int pct, const char *status, const char *msg)
 
 /* ── Handlers HTTP ───────────────────────────────────────────────────────── */
 
+static bool recv_body(httpd_req_t *req, char *buf, size_t size, int *out_len);
+
 static esp_err_t handle_api_status(httpd_req_t *req)
 {
     char buf[256];
@@ -344,13 +346,82 @@ static esp_err_t handle_api_status(httpd_req_t *req)
 
 static esp_err_t handle_api_persona(httpd_req_t *req)
 {
-    char buf[128];
-    snprintf(buf, sizeof(buf),
-        "{\"warmth\":%.3f,\"energy\":%.3f,\"curiosity\":%.3f,\"trust\":%.3f}",
-        (double)persona_get_warmth(), (double)persona_get_energy(),
-        (double)persona_get_curiosity(), (double)persona_get_trust());
+    const nb_user_profile_t *profile = persona_get_current_user_profile();
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON *user = cJSON_CreateObject();
+    if (root == NULL || user == NULL) {
+        cJSON_Delete(root);
+        cJSON_Delete(user);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "json alloc");
+        return ESP_OK;
+    }
+
+    cJSON_AddNumberToObject(root, "warmth", persona_get_warmth());
+    cJSON_AddNumberToObject(root, "energy", persona_get_energy());
+    cJSON_AddNumberToObject(root, "curiosity", persona_get_curiosity());
+    cJSON_AddNumberToObject(root, "trust", persona_get_trust());
+    cJSON_AddStringToObject(user, "id", profile->user_id);
+    cJSON_AddStringToObject(user, "display_name", profile->display_name);
+    cJSON_AddStringToObject(user, "relationship", profile->relationship);
+    cJSON_AddStringToObject(user, "language", profile->language);
+    cJSON_AddStringToObject(user, "robot_nickname", profile->robot_nickname);
+    cJSON_AddStringToObject(user, "persona_mode", profile->persona_mode);
+    cJSON_AddStringToObject(user, "interaction_style", profile->interaction_style);
+    cJSON_AddItemToObject(root, "user", user);
+
+    char buf[640];
+    if (!cJSON_PrintPreallocated(root, buf, sizeof(buf), false)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "json too large");
+        return ESP_OK;
+    }
+    cJSON_Delete(root);
+
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_persona_post(httpd_req_t *req)
+{
+    char body[MAX_BODY_LEN];
+    if (!recv_body(req, body, sizeof(body), NULL)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+
+    cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
+        return ESP_OK;
+    }
+
+    nb_user_profile_t next = *persona_get_current_user_profile();
+    cJSON *user = cJSON_GetObjectItemCaseSensitive(root, "user");
+    cJSON *src = cJSON_IsObject(user) ? user : root;
+
+    copy_json_string(src, "id", next.user_id, sizeof(next.user_id));
+    copy_json_string(src, "user_id", next.user_id, sizeof(next.user_id));
+    copy_json_string(src, "display_name", next.display_name, sizeof(next.display_name));
+    copy_json_string(src, "relationship", next.relationship, sizeof(next.relationship));
+    copy_json_string(src, "language", next.language, sizeof(next.language));
+    copy_json_string(src, "robot_nickname", next.robot_nickname, sizeof(next.robot_nickname));
+    copy_json_string(src, "persona_mode", next.persona_mode, sizeof(next.persona_mode));
+    copy_json_string(src, "interaction_style", next.interaction_style, sizeof(next.interaction_style));
+    cJSON_Delete(root);
+
+    esp_err_t err = persona_set_current_user_profile(&next);
+    if (err != ESP_OK) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "application/json");
+        char err_buf[96];
+        snprintf(err_buf, sizeof(err_buf), "{\"ok\":false,\"error\":\"%s\"}",
+                 esp_err_to_name(err));
+        return httpd_resp_sendstr(req, err_buf);
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}");
 }
 
 static esp_err_t handle_api_render_status(httpd_req_t *req)
@@ -4632,6 +4703,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/status",  .method = HTTP_GET,  .handler = handle_api_status },
     { .uri = "/api/render/status", .method = HTTP_GET, .handler = handle_api_render_status },
     { .uri = "/api/persona", .method = HTTP_GET,  .handler = handle_api_persona },
+    { .uri = "/api/persona", .method = HTTP_POST, .handler = handle_api_persona_post },
     { .uri = "/api/camera/status", .method = HTTP_GET, .handler = handle_api_camera_status },
     { .uri = "/api/camera/mode", .method = HTTP_POST, .handler = handle_api_camera_mode },
     { .uri = "/api/camera/session/close", .method = HTTP_POST, .handler = handle_api_camera_session_close },

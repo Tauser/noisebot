@@ -113,6 +113,7 @@ typedef enum {
 
     /* Persona (Layer 7) */
     NB_EVT_PERSONA_REFRESHED,       /* dimensões recalculadas; sem payload      */
+    NB_EVT_USER_CONTEXT_UPDATED,    /* perfil/mode de usuario atualizado; data.ptr = nb_user_profile_t* */
 
     /* Tempo / SNTP (time_service, Etapa 13.1) */
     NB_EVT_TIME_SYNCED,             /* SNTP sincronizou; sem payload            */
