@@ -26,48 +26,38 @@ server/
 └── resource/   # Public/static/runtime resources owned by the server
 ```
 
-The existing implementation is currently in `bridge_v2/`. New product-facing
-server work should be added here gradually, with adapters into `bridge_v2/`
-instead of copying firmware dashboard code back into the ESP32.
+`noisebot_server` is the canonical, self-contained server implementation.
+`bridge` and `bridge_v2` are legacy packages from earlier iterations and are no
+longer part of the runtime path — new server work belongs entirely under
+`server/`.
 
-## Migration status
+## Status
 
-The migration is now server-first:
+The migration to a server-owned implementation is complete:
 
 - `noisebot_server` is the importable package under `server/`.
 - `noisebot-server` owns the CLI, normal runtime shell, debug tools and service
   management.
-- `NoiseBotServer` owns application composition and lifecycle.
-- Core providers still enter through server boundaries that delegate to proven
-  `bridge_v2` modules until each implementation is moved with parity tests.
-
-Next phases should continue moving responsibilities one boundary at a time:
-
-1. `internal/transport`: firmware connection, framing and reconnect.
-2. `internal/ops`: health, metrics, debug and config API.
-3. `internal/agent`: STT, local intents, LLM providers and TTS.
-4. `internal/vision`: snapshot orchestration and higher-level observations.
+- `NoiseBotServer` owns application composition and lifecycle end to end.
+- Every internal boundary (`transport`, `ops`, `agent`, `vision`) is implemented
+  and owned by `noisebot_server` — none of them delegate to `bridge_v2` at
+  runtime.
 
 ## Transport boundary
 
-`noisebot_server.internal.transport` is the first real server boundary. It
-currently delegates to `bridge_v2` for byte-compatible behavior, but new code
-should import transport and protocol symbols from the server package:
+`noisebot_server.internal.transport` owns the firmware connection: TCP/UART
+transport, framing/protocol codec and reconnect supervision.
 
 ```python
 from noisebot_server.internal.transport import TcpTransport
 from noisebot_server.internal.transport.protocol import encode_frame
 ```
 
-This keeps the migration reversible and avoids a risky one-shot move of TCP,
-UART, reconnect, handshake and framing code.
-
 ## Ops boundary
 
-`noisebot_server.internal.ops` is the server-owned import boundary for local
-operation surfaces: health, status, metrics, debug, config and token checks.
-It delegates to `bridge_v2` in this phase so the existing dashboard/API remains
-unchanged while future app-facing APIs move into the server package.
+`noisebot_server.internal.ops` is the server-owned surface for local
+operations: health, status, metrics, debug, config, device persona cache and
+token checks, serving the existing dashboard/API.
 
 ```python
 from noisebot_server.internal.ops import OpsHttpServer, StatusStore
@@ -75,10 +65,9 @@ from noisebot_server.internal.ops import OpsHttpServer, StatusStore
 
 ## Agent boundary
 
-`noisebot_server.internal.agent` is the server-owned import boundary for the
-voice/agent pipeline: conversation runtime, local intents, STT, LLM providers,
-TTS and orchestration. It delegates to `bridge_v2` in this phase so voice,
-barge-in, local LLM configuration and Piper playback behavior stay unchanged.
+`noisebot_server.internal.agent` owns the voice/agent pipeline: conversation
+runtime, local intents, STT, LLM providers, TTS and orchestration — including
+voice, barge-in, local LLM configuration and Piper playback behavior.
 
 ```python
 from noisebot_server.internal.agent import LocalIntentProvider, Orchestrator
@@ -104,7 +93,7 @@ calling firmware endpoints directly. The current contract is defined in:
 from noisebot_server.api import default_app_contract, implemented_endpoints
 ```
 
-Endpoints marked as implemented are served by the current bridge-backed runtime.
+Endpoints marked as implemented are served by `noisebot_server` itself.
 Reserved endpoints describe the next API surface for app, vision, agent, device
 and agenda work.
 
@@ -116,11 +105,10 @@ event-loop startup and the main application graph.
 
 ## Application graph
 
-`NoiseBotServer` now composes the runtime inside `noisebot_server.app` instead
-of inheriting from `bridgev2.app.Application`. Transport, ops, agent and service
-dependencies are imported through `noisebot_server.internal.*` boundaries, which
-still delegate to bridge implementations where that is the safest compatible
-step.
+`NoiseBotServer` composes the runtime inside `noisebot_server.app` as a
+self-contained application graph. Transport, ops, agent and service
+dependencies are all imported through `noisebot_server.internal.*` boundaries,
+owned end to end by the server package.
 
 ## Debug tools
 
@@ -132,7 +120,7 @@ python -m noisebot_server debug fake-fw --port 9001
 ```
 
 `debug transcript` injects a synthetic transcript into the server agent path.
-`debug fake-fw` starts a TCP firmware simulator that speaks the same bridge
+`debug fake-fw` starts a TCP firmware simulator that speaks the same wire
 protocol used by the ESP32.
 
 ## Service tools
