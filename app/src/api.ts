@@ -242,6 +242,25 @@ export type ProfileSettings = {
   voice: string;
 };
 
+export type UserPersonaProfile = {
+  id: string;
+  display_name: string;
+  relationship: string;
+  language: "pt-BR" | "en-US" | string;
+  robot_nickname: string;
+  persona_mode: string;
+  interaction_style: string;
+};
+
+export type DevicePersona = {
+  warmth: number;
+  energy: number;
+  curiosity: number;
+  trust: number;
+  user: UserPersonaProfile;
+  source?: string;
+};
+
 export type AdvancedSettings = {
   wifi_ssid: string;
   wifi_enabled: boolean;
@@ -330,6 +349,22 @@ export const defaultAppData: AppData = {
     timezone: "America/Sao_Paulo",
     location: "Brasil",
     device_name: "NoiseBot",
+  },
+};
+
+export const defaultDevicePersona: DevicePersona = {
+  warmth: 0,
+  energy: 0,
+  curiosity: 1,
+  trust: 0,
+  user: {
+    id: "owner",
+    display_name: "Owner",
+    relationship: "owner",
+    language: "pt-BR",
+    robot_nickname: "NoiseBot",
+    persona_mode: "companion",
+    interaction_style: "direct_warm",
   },
 };
 
@@ -431,6 +466,21 @@ export async function saveProfile(
     body: profile,
   });
   return body.profile;
+}
+
+export async function loadDevicePersona(): Promise<DevicePersona> {
+  const body = await getJson<DevicePersona>("/api/device/persona");
+  return normalizeDevicePersona(body);
+}
+
+export async function saveDevicePersona(
+  user: UserPersonaProfile,
+  token: string,
+): Promise<void> {
+  await authedJson<{ ok: boolean }>("/api/device/persona", token, {
+    method: "PUT",
+    body: { user },
+  });
 }
 
 export async function testProfileVoice(token: string): Promise<{ spoken: boolean; applied: string }> {
@@ -604,6 +654,25 @@ function normalizeAppData(data: AppData): AppData {
     advanced: {
       ...defaultAppData.advanced,
       ...(data.advanced ?? {}),
+    },
+  };
+}
+
+function normalizeDevicePersona(data: DevicePersona): DevicePersona {
+  const user = data.user ?? defaultDevicePersona.user;
+  return {
+    ...defaultDevicePersona,
+    ...data,
+    user: {
+      ...defaultDevicePersona.user,
+      ...user,
+      id: user.id || defaultDevicePersona.user.id,
+      display_name: user.display_name || defaultDevicePersona.user.display_name,
+      relationship: user.relationship || defaultDevicePersona.user.relationship,
+      language: user.language || defaultDevicePersona.user.language,
+      robot_nickname: user.robot_nickname || defaultDevicePersona.user.robot_nickname,
+      persona_mode: user.persona_mode || defaultDevicePersona.user.persona_mode,
+      interaction_style: user.interaction_style || defaultDevicePersona.user.interaction_style,
     },
   };
 }

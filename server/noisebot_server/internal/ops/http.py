@@ -130,6 +130,8 @@ class OpsHttpServer:
         wa.router.add_post("/api/profile/test-voice", self._post_profile_test_voice)
         wa.router.add_get("/api/device/status", self._get_device_status)
         wa.router.add_get("/api/device/diagnostics", self._get_device_diagnostics)
+        wa.router.add_get("/api/device/persona", self._get_device_persona)
+        wa.router.add_put("/api/device/persona", self._put_device_persona)
         wa.router.add_get("/api/device/audio/files", self._get_device_audio_files)
         wa.router.add_get("/api/device/audio/files/{name}", self._get_device_audio_file)
         wa.router.add_get("/api/device/audio/processor", self._get_device_audio_processor)
@@ -726,6 +728,36 @@ class OpsHttpServer:
         packets = int(data.get("packets", 45)) if data is not None else 45
         return await self._proxy_firmware_diag_post(
             (lambda: self._firmware_diag_client.audio_codec_v2_overflow_test(packets))
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _get_device_persona(self, request: web.Request) -> web.Response:
+        return await self._proxy_firmware_diag_get(
+            self._firmware_diag_client.persona
+            if self._firmware_diag_client is not None else None
+        )
+
+    async def _put_device_persona(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        data = await _read_json_object(request)
+        if data is None:
+            return _json(error_response("body JSON inválido"), status=400)
+        user = data.get("user") if isinstance(data.get("user"), dict) else data
+        allowed = {
+            "id",
+            "user_id",
+            "display_name",
+            "relationship",
+            "language",
+            "robot_nickname",
+            "persona_mode",
+            "interaction_style",
+        }
+        payload = {key: value for key, value in user.items() if key in allowed}
+        if not payload:
+            return _json(error_response("perfil vazio"), status=400)
+        return await self._proxy_firmware_diag_post(
+            (lambda: self._firmware_diag_client.set_persona(payload))
             if self._firmware_diag_client is not None else None
         )
 

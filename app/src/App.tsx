@@ -29,6 +29,7 @@ import {
   Thermometer,
   Timer,
   Trash2,
+  UserRound,
   Volume2,
   Wifi,
   Wrench,
@@ -38,6 +39,7 @@ import {
   BasicSettings,
   DashboardSnapshot,
   DevData,
+  DevicePersona,
   VisionAnalysis,
   VoiceSessionSummary,
   AudioSampleFile,
@@ -47,7 +49,9 @@ import {
   createAgendaItem,
   defaultAppData,
   deleteAgendaItem,
+  defaultDevicePersona,
   loadDevData,
+  loadDevicePersona,
   loadAudioSampleFiles,
   loadAppData,
   loadSnapshot,
@@ -55,6 +59,7 @@ import {
   resetMetrics,
   restartServer,
   saveBasicSettings,
+  saveDevicePersona,
   sendDebugTranscript,
   startAudioProcessorBridge,
   startAudioProcessorShadow,
@@ -65,7 +70,7 @@ import {
 } from "./api";
 
 type AppMode = "user" | "dev";
-type UserSection = "home" | "interaction" | "routine" | "vision" | "basics";
+type UserSection = "home" | "profile" | "interaction" | "routine" | "vision" | "basics";
 type DevSection = "telemetry" | "integrations" | "sensors" | "console";
 
 type NavItem<T extends string> = {
@@ -76,6 +81,7 @@ type NavItem<T extends string> = {
 
 const userNav: NavItem<UserSection>[] = [
   { id: "home", label: "Início", icon: Home },
+  { id: "profile", label: "Perfil", icon: UserRound },
   { id: "interaction", label: "Interação", icon: MessageSquare },
   { id: "routine", label: "Rotinas", icon: CalendarDays },
   { id: "vision", label: "Visão", icon: Camera },
@@ -185,7 +191,7 @@ function editableContext(
   devSection: DevSection,
 ) {
   if (mode === "user")
-    return userSection === "routine" || userSection === "basics";
+    return userSection === "profile" || userSection === "routine" || userSection === "basics";
   return devSection === "console";
 }
 
@@ -194,6 +200,14 @@ async function safeLoadDevData() {
     return await loadDevData();
   } catch {
     return defaultDevData;
+  }
+}
+
+async function safeLoadDevicePersona() {
+  try {
+    return await loadDevicePersona();
+  } catch {
+    return defaultDevicePersona;
   }
 }
 
@@ -208,6 +222,8 @@ export function App() {
   });
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(initialSnapshot);
   const [appData, setAppData] = useState<AppData>(defaultAppData);
+  const [devicePersona, setDevicePersona] = useState<DevicePersona>(defaultDevicePersona);
+  const [profileDraft, setProfileDraft] = useState(defaultDevicePersona.user);
   const [devData, setDevData] = useState<DevData>(defaultDevData);
   const [volume, setVolume] = useState(defaultAppData.settings.volume);
   const [leds, setLeds] = useState(defaultAppData.settings.led_brightness);
@@ -218,6 +234,7 @@ export function App() {
   const [commandStatus, setCommandStatus] = useState("pronto");
   const [routineStatus, setRoutineStatus] = useState("pronto");
   const [settingsStatus, setSettingsStatus] = useState("pronto");
+  const [profileStatus, setProfileStatus] = useState("pronto");
   const [devStatus, setDevStatus] = useState("pronto");
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(() => new Date());
@@ -247,13 +264,18 @@ export function App() {
         loadAppData(),
         safeLoadDevData(),
       ]);
+      const nextPersona = await safeLoadDevicePersona();
       setSnapshot(withRoutine(nextSnapshot, nextData));
       setDevData(nextDevData);
+      setDevicePersona(nextPersona);
       const ctx = contextRef.current;
       applyAppData(
         nextData,
         !editableContext(ctx.mode, ctx.userSection, ctx.devSection),
       );
+      if (ctx.mode !== "user" || ctx.userSection !== "profile") {
+        setProfileDraft(nextPersona.user);
+      }
     } finally {
       setRefreshing(false);
     }
@@ -303,7 +325,7 @@ export function App() {
     }
   };
 
-  const requireToken = (target: "command" | "routine" | "settings") => {
+  const requireToken = (target: "command" | "routine" | "settings" | "profile") => {
     const token = opsToken.trim();
     if (!token) {
       setMode("dev");
@@ -313,6 +335,8 @@ export function App() {
         setCommandStatus(message);
       } else if (target === "routine") {
         setRoutineStatus(message);
+      } else if (target === "profile") {
+        setProfileStatus(message);
       } else {
         setSettingsStatus(message);
       }
@@ -421,6 +445,21 @@ export function App() {
       setSettingsStatus("ajustes salvos");
     } catch (error) {
       setSettingsStatus(errorMessage(error));
+    }
+  };
+
+  const saveUserProfile = async () => {
+    const token = requireToken("profile");
+    if (!token) return;
+    setProfileStatus("salvando perfil");
+    try {
+      await saveDevicePersona(profileDraft, token);
+      const nextPersona = await safeLoadDevicePersona();
+      setDevicePersona(nextPersona);
+      setProfileDraft(nextPersona.user);
+      setProfileStatus("perfil salvo no robô");
+    } catch (error) {
+      setProfileStatus(errorMessage(error));
     }
   };
 
@@ -639,6 +678,15 @@ export function App() {
                 snapshot={snapshot}
               />
             )}
+            {mode === "user" && userSection === "profile" && (
+              <UserProfileView
+                persona={devicePersona}
+                profile={profileDraft}
+                onChange={setProfileDraft}
+                onSave={saveUserProfile}
+                status={profileStatus}
+              />
+            )}
             {mode === "user" && userSection === "routine" && (
               <RoutineView
                 items={appData.routine.items}
@@ -840,6 +888,133 @@ function UserHomeView({
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function UserProfileView({
+  onChange,
+  onSave,
+  persona,
+  profile,
+  status,
+}: {
+  onChange: (value: DevicePersona["user"]) => void;
+  onSave: () => void;
+  persona: DevicePersona;
+  profile: DevicePersona["user"];
+  status: string;
+}) {
+  const update = (key: keyof DevicePersona["user"], value: string) => {
+    onChange({ ...profile, [key]: value });
+  };
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <section className={cardClass}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Perfil do usuário</h2>
+            <p className="text-sm text-slate-500">
+              Identidade local usada pelo robô para contexto de conversa.
+            </p>
+          </div>
+          <button className={primaryButtonClass} onClick={onSave} type="button">
+            <CheckCircle2 size={17} />
+            Salvar
+          </button>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <LabeledField label="Nome do usuário">
+            <input
+              className={inputClass}
+              maxLength={31}
+              onChange={(event) => update("display_name", event.target.value)}
+              value={profile.display_name}
+            />
+          </LabeledField>
+          <LabeledField label="Identificador local">
+            <input
+              className={inputClass}
+              maxLength={15}
+              onChange={(event) => update("id", event.target.value)}
+              value={profile.id}
+            />
+          </LabeledField>
+          <LabeledField label="Relação">
+            <select
+              className={inputClass}
+              onChange={(event) => update("relationship", event.target.value)}
+              value={profile.relationship}
+            >
+              <option value="owner">Dono</option>
+              <option value="friend">Amigo</option>
+              <option value="family">Família</option>
+              <option value="guest">Convidado</option>
+            </select>
+          </LabeledField>
+          <LabeledField label="Idioma">
+            <select
+              className={inputClass}
+              onChange={(event) => update("language", event.target.value)}
+              value={profile.language}
+            >
+              <option value="pt-BR">Português</option>
+              <option value="en-US">English</option>
+            </select>
+          </LabeledField>
+          <LabeledField label="Nome do robô">
+            <input
+              className={inputClass}
+              maxLength={23}
+              onChange={(event) => update("robot_nickname", event.target.value)}
+              value={profile.robot_nickname}
+            />
+          </LabeledField>
+          <LabeledField label="Modo de persona">
+            <select
+              className={inputClass}
+              onChange={(event) => update("persona_mode", event.target.value)}
+              value={profile.persona_mode}
+            >
+              <option value="companion">Companheiro</option>
+              <option value="focus_assistant">Foco</option>
+              <option value="playful">Brincalhão</option>
+              <option value="quiet_company">Companhia quieta</option>
+            </select>
+          </LabeledField>
+          <LabeledField label="Estilo de interação">
+            <select
+              className={inputClass}
+              onChange={(event) => update("interaction_style", event.target.value)}
+              value={profile.interaction_style}
+            >
+              <option value="direct_warm">Direto e caloroso</option>
+              <option value="brief">Breve</option>
+              <option value="curious">Curioso</option>
+              <option value="calm">Calmo</option>
+            </select>
+          </LabeledField>
+        </div>
+        <p className="mt-3 text-sm text-slate-500">{status}</p>
+      </section>
+
+      <aside className="grid content-start gap-4">
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Persona atual</h2>
+          <InfoRow label="Calor" value={ratioLabel(persona.warmth)} />
+          <InfoRow label="Energia" value={ratioLabel(persona.energy)} />
+          <InfoRow label="Curiosidade" value={ratioLabel(persona.curiosity)} />
+          <InfoRow label="Confiança" value={ratioLabel(persona.trust)} />
+        </section>
+        <section className={cardClass}>
+          <h2 className="mb-3 text-lg font-semibold">Contexto</h2>
+          <InfoRow label="Origem" value={persona.source ?? "firmware"} />
+          <InfoRow label="Usuário" value={profile.display_name || "--"} />
+          <InfoRow label="Robô" value={profile.robot_nickname || "--"} />
+        </section>
+      </aside>
     </div>
   );
 }
@@ -2170,6 +2345,21 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function LabeledField({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <label className="grid gap-1 text-sm font-semibold text-slate-700">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+
 function Vital({
   good,
   icon: Icon,
@@ -2665,6 +2855,12 @@ function numberValue(value: unknown, suffix: string) {
   const number = readNumber(value);
   if (number === null) return "--";
   return `${number}${suffix}`;
+}
+
+function ratioLabel(value: unknown) {
+  const number = readNumber(value);
+  if (number === null) return "--";
+  return `${Math.round(Math.max(0, Math.min(1, number)) * 100)}%`;
 }
 
 function boolValue(value: unknown) {

@@ -138,6 +138,15 @@ class FirmwareDiagClient:
             raise FirmwareDiagError("api/audio/processor: resposta invalida")
         return payload
 
+    def persona(self) -> dict[str, Any]:
+        payload = self._get_json("api/persona")
+        if not isinstance(payload, dict):
+            raise FirmwareDiagError("api/persona: resposta invalida")
+        return payload
+
+    def set_persona(self, user: dict[str, Any]) -> dict[str, Any]:
+        return self._post_json("api/persona", {"user": user})
+
     def audio_processor_probe(self) -> dict[str, Any]:
         return self._post_json("api/audio/processor/probe")
 
