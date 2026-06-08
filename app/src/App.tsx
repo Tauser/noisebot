@@ -284,19 +284,24 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
-      const [nextSnapshot, nextData, nextDevData] = await Promise.all([
+      const [nextSnapshot, nextData, nextDevData, nextPersona] = await Promise.all([
         loadSnapshot(),
         loadAppData(),
         safeLoadDevData(),
+        safeLoadDevicePersona(),
       ]);
       if (!cancelled) {
         setSnapshot(withRoutine(nextSnapshot, nextData));
         setDevData(nextDevData);
+        setDevicePersona(nextPersona);
         const ctx = contextRef.current;
         applyAppData(
           nextData,
           !editableContext(ctx.mode, ctx.userSection, ctx.devSection),
         );
+        if (ctx.mode !== "user" || ctx.userSection !== "profile") {
+          setProfileDraft(nextPersona.user);
+        }
       }
     };
     void refresh();
