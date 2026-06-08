@@ -100,9 +100,43 @@ components/
 │
 └── persona/
     ├── CMakeLists.txt
-    ├── persona_service.c / .h   # Persona seed, preferências, modulação
+    ├── persona_service.c / .h   # Persona seed, perfil de usuario, preferencias, modulacao
     └── long_term_memory.c / .h  # interaction_history, event_journal, stats
 ```
+
+### Perfil Offline-First
+
+`persona_service` tambem mantém o contexto do usuario atual em NVS
+(`nb_persona`): `user_id`, `display_name`, `relationship`, `language`,
+`robot_nickname`, `persona_mode` e `interaction_style`. Este perfil e
+declarado/configurado, nao biometrico: o firmware nao tenta reconhecer voz ou
+face nesta fase. Ao carregar ou alterar o perfil, o servico publica
+`NB_EVT_USER_CONTEXT_UPDATED` com `data.ptr` apontando para o
+`nb_user_profile_t` estatico.
+
+O perfil serve como contrato offline-first para o bridge, dashboard, memoria e
+persona: se houver apenas um dono configurado, o NoiseBot pode assumir esse
+usuario sem rede; se futuramente houver multiplos perfis, outra fonte local
+podera selecionar o `current_user` e publicar o mesmo evento.
+
+O `web_service` expõe esse contrato em HTTP local: `GET /api/persona` retorna
+as dimensões de persona e o bloco `user`; `POST /api/persona` aceita campos
+parciais (`display_name`, `relationship`, `language`, `robot_nickname`,
+`persona_mode`, `interaction_style`) e persiste a alteração em NVS.
+
+No dashboard, a tela `Perfil` do modo User usa o server como fronteira local:
+`app/src/App.tsx` chama `app/src/api.ts`, o server expõe
+`/api/device/persona`, e `FirmwareDiagClient` encaminha para o firmware. Assim
+o browser não precisa falar diretamente com o ESP32.
+
+O server tambem injeta esse perfil no contexto da LLM. Antes de montar o prompt
+de um turno, `Orchestrator` tenta ler `/api/persona` via `FirmwareDiagClient`,
+mantem cache curto do usuario atual e passa `user_profile` para
+`build_messages()`. O prompt resultante inclui nome do usuario, idioma,
+apelido do robo, modo de persona e estilo de interacao. Isso segue o padrao do
+Xiaozhi observado em 2026-06-08: a identidade/personalidade e configuracao de
+agente no backend/UI, com system prompt e memoria, nao reconhecimento biometrico
+obrigatorio.
 
 ### Capacidades de Placa
 

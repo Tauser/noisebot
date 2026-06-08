@@ -87,6 +87,11 @@ def build_messages(
         extra.append(f"Estado do robo: {ctx['robot_state']}")
     if ctx.get("emotion_state"):
         extra.append(f"Estado emocional: {ctx['emotion_state']}")
+    user_profile = ctx.get("user_profile")
+    if isinstance(user_profile, dict):
+        lines = _user_profile_prompt_lines(user_profile)
+        if lines:
+            extra.append("Perfil do usuario atual:\n" + "\n".join(lines))
     recent_replies = ctx.get("recent_replies") or []
     if recent_replies:
         joined = "\n".join(f"- {str(reply)[:180]}" for reply in recent_replies[-5:])
@@ -166,6 +171,40 @@ def _looks_like_english_leak(text: str) -> bool:
         return True
     lower = text.casefold()
     return "did you know" in lower or "can't" in lower or "cannot" in lower
+
+
+def _user_profile_prompt_lines(profile: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    display_name = _clean_prompt_value(profile.get("display_name"), 40)
+    relationship = _clean_prompt_value(profile.get("relationship"), 24)
+    language = _clean_prompt_value(profile.get("language"), 16)
+    robot_nickname = _clean_prompt_value(profile.get("robot_nickname"), 32)
+    persona_mode = _clean_prompt_value(profile.get("persona_mode"), 32)
+    interaction_style = _clean_prompt_value(profile.get("interaction_style"), 32)
+
+    if display_name and display_name.casefold() != "owner":
+        lines.append(f"- Nome do usuario: {display_name}")
+    if relationship:
+        lines.append(f"- Relacao com o robo: {relationship}")
+    if language:
+        lines.append(f"- Idioma preferido: {language}")
+    if robot_nickname:
+        lines.append(f"- Nome/apelido do robo para este usuario: {robot_nickname}")
+    if persona_mode:
+        lines.append(f"- Modo de persona: {persona_mode}")
+    if interaction_style:
+        lines.append(f"- Estilo de interacao: {interaction_style}")
+    if display_name:
+        lines.append(
+            f"- Ao se referir ao usuario, trate-o como {display_name}; nao invente outra identidade."
+        )
+    return lines
+
+
+def _clean_prompt_value(value: Any, limit: int) -> str:
+    if value is None:
+        return ""
+    return " ".join(str(value).split())[:limit]
 
 
 def _int_or_none(value: Any) -> int | None:

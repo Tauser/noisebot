@@ -16,6 +16,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | Servos | Nao conectados; qualquer movimento continua bloqueado por `motion_safety` |
 | Camera | Pinos DVP preservados; uso atual deve ser leve, observavel e sem travar firmware |
 | Voice | Stack de voz/bridge esta funcional como base; proximas melhorias devem ser pontuais |
+| Perfil/persona local | Contexto offline-first de usuario atual e estilo de interacao ficam em NVS e possuem tela de setup no dashboard; sem reconhecimento de voz/face nesta fase |
 | Wake word customizada | Fora do ciclo atual |
 | TTS HTTP no firmware | Removido do roadmap ativo; duplicava o server/bridge atual |
 | Knowledge OS externo | Nao atualizar por enquanto, por decisao do usuario |
@@ -61,7 +62,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | AEC e audio duplex avancado | Quando houver meta clara de conversa full-duplex |
 | Wake word customizada | Quando o fluxo atual justificar treino/integracao propria |
 | Camera avancada | Quando presence leve estiver estavel e houver ganho real de produto |
-| Memoria longa/persona | Quando persistencia e privacidade estiverem bem fechadas |
+| Memoria longa avancada/persona rica | Quando persistencia e privacidade estiverem bem fechadas |
 | Polish final de icones | Quando o status rail estabilizar estados reais em hardware |
 
 ### Fora Do Ciclo Atual
@@ -83,6 +84,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | Voice/bridge base | `FEITO` como base funcional | `bridge/`, `server/`, `docs/PROJECT.md` |
 | Feedback visual de voice/bridge | `FEITO` como base de produto | `components/services/ui_overlay_service/` |
 | Camera inicial | `FEITO` como infraestrutura parcial; ainda falta presence real | `components/services/camera_service/` |
+| Perfil local de usuario/persona | `FEITO` como base offline-first com tela de setup no dashboard; cadastro declarativo, sem biometria | `components/persona/persona_service/`, `app/src/App.tsx`, `server/noisebot_server/internal/ops/http.py` |
 | Organizacao documental inicial | `EM ANDAMENTO` | `docs/README.md`, `docs/PROJECT_CLEANUP_AUDIT.md` |
 
 ## Etapas Ativas

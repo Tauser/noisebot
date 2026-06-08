@@ -52,6 +52,26 @@ O sistema usa dois mecanismos de persistência com papeis distintos e complement
 | `total_touch_count` | uint32 | Snapshot rápido de toques totais         | 0               |
 | `total_hours_x100`  | uint32 | Horas totais × 100 (sem ponto flutuante) | 0               |
 
+### NVS — Namespace `nb_persona` (persona e usuario atual)
+
+| Chave         | Tipo   | Descricao                                      | Default       |
+| ------------- | ------ | ---------------------------------------------- | ------------- |
+| `p_warmth`    | uint32 | Float bit-cast: calor relacional emergente     | 0.0           |
+| `p_energy`    | uint32 | Float bit-cast: energia conversacional         | 0.0           |
+| `p_curiosity` | uint32 | Float bit-cast: curiosidade                    | 1.0           |
+| `p_trust`     | uint32 | Float bit-cast: confianca/familiaridade        | 0.0           |
+| `user_id`     | string | Identificador local do usuario atual           | `owner`       |
+| `user_name`   | string | Nome de exibicao do usuario atual              | `Owner`       |
+| `relation`    | string | Relacao com o robot (`owner`, `friend`, etc.)   | `owner`       |
+| `language`    | string | Idioma preferido do usuario                    | `pt-BR`       |
+| `robot_name`  | string | Apelido/nome do robot nesse perfil             | `NoiseBot`    |
+| `mode`        | string | Modo de persona com esse usuario               | `companion`   |
+| `style`       | string | Estilo de interacao                            | `direct_warm` |
+
+Este namespace e suficiente para operacao offline-first. Reconhecimento de voz
+ou face nao faz parte do cadastro inicial; fontes futuras podem apenas trocar o
+perfil atual e reutilizar o mesmo contrato.
+
 ### microSD
 
 Todos os dados com volume alto, append-only, ou que podem ser regenerados:
@@ -213,6 +233,7 @@ O sistema deve funcionar em modo degradado sem SD:
 | Logging SD             | ✅     | ❌ (buffered, dropped)                 |
 | Assets de áudio        | ✅     | ❌ (silêncio)                          |
 | Memória de longo prazo | ✅     | ❌ (operações em memória, descartadas) |
+| Perfil/persona local   | ✅     | ✅ (NVS, independente do SD)           |
 | Config de NVS          | ✅     | ✅                                     |
 | Expressão facial       | ✅     | ✅                                     |
 | Motion                 | ✅     | ✅                                     |

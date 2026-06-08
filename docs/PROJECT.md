@@ -29,6 +29,7 @@ Com dois servos, um display de 2", dois LEDs, microfone, speaker e fita de cobre
 | Timing social         | Pausas, pre-speech signals, post-speech settle são parte do produto.        |
 | Coordenação de output | Face, motion e áudio são orquestrados pelo conductor — nunca independentes. |
 | Estado interno modula | Emotion model (valência × ativação) influi sutilmente em toda expressão.    |
+| Identidade local      | O robot mantém um perfil offline-first do usuário atual; reconhecimento de voz/face não é requisito para saber com quem está interagindo. |
 
 ## Hardware (Fase Inicial)
 
@@ -62,7 +63,7 @@ Nenhuma feature de expressividade ou comportamento é liberada antes deste marco
 | Horizonte | Resultado |
 | --- | --- |
 | Base consolidada | Display/render, event bus, camadas, voice/bridge e feedback visual |
-| Agora | Touch confiavel, presence/camera leve, agenda local, status rail e documentacao limpa |
+| Agora | Touch confiavel, presence/camera leve, agenda local, status rail, tela de perfil/persona local e documentacao limpa |
 | Proximo | Motion safety, persistencia/SD, WiFi offline-first, observabilidade e voice polish |
 | Adiado | Servos reais, IMU, bateria e camera avancada |
 

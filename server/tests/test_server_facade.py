@@ -131,6 +131,31 @@ def test_llm_prompt_includes_recent_replies_to_avoid_repetition() -> None:
     assert "nunca repita" in system
 
 
+def test_llm_prompt_includes_current_user_profile() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    messages = llm.build_messages(
+        "Como estou hoje?",
+        {
+            "user_profile": {
+                "display_name": "Tadeu",
+                "relationship": "owner",
+                "language": "pt-BR",
+                "robot_nickname": "Noise",
+                "persona_mode": "companion",
+                "interaction_style": "direct_warm",
+            }
+        },
+    )
+
+    system = messages[0]["content"]
+    assert "Perfil do usuario atual" in system
+    assert "Nome do usuario: Tadeu" in system
+    assert "Nome/apelido do robo para este usuario: Noise" in system
+    assert "Estilo de interacao: direct_warm" in system
+    assert "nao invente outra identidade" in system
+
+
 def test_llm_language_guard_replaces_foreign_script_reply() -> None:
     llm = importlib.import_module("noisebot_server.internal.agent.llm")
 
@@ -7759,6 +7784,36 @@ def test_server_orchestrator_mirrors_local_agenda_intent_to_app_state(tmp_path) 
     assert agenda["summary"]["timers"] == 1
     assert agenda["items"][0]["title"] == "cafe"
     assert agenda["items"][0]["duration_min"] == 5
+
+
+def test_server_orchestrator_loads_user_profile_for_llm_context() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class PersonaClient:
+        def persona(self):
+            return {
+                "user": {
+                    "id": "owner",
+                    "display_name": "Tadeu",
+                    "relationship": "owner",
+                    "language": "pt-BR",
+                    "robot_nickname": "Noise",
+                    "persona_mode": "companion",
+                    "interaction_style": "direct_warm",
+                }
+            }
+
+    orchestrator = orchestrator_module.Orchestrator(runtime.EventBus())
+    orchestrator._firmware_persona = PersonaClient()
+
+    profile = asyncio.run(orchestrator._current_user_profile())
+
+    assert profile["display_name"] == "Tadeu"
+    assert profile["robot_nickname"] == "Noise"
+    assert profile["interaction_style"] == "direct_warm"
 
 
 def test_server_agent_llm_and_intents_are_server_owned() -> None:

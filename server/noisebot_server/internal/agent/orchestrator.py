@@ -62,6 +62,7 @@ from .runtime import (
 )
 from .tts import Sentencizer
 from .vad import BargeInMonitor
+from ..ops.firmware_diag import FirmwareDiagClient, FirmwareDiagError
 from ..vision import VisionClient
 
 log = logging.getLogger(__name__)
@@ -188,6 +189,9 @@ class Orchestrator:
         self._store: Any | None = status_store
         self._app_state: Any | None = app_state_store
         self._last_status: dict[str, Any] = {}
+        self._firmware_persona = FirmwareDiagClient.from_config(config) if config is not None else None
+        self._user_profile_cache: dict[str, Any] | None = None
+        self._user_profile_cache_at = 0.0
 
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
@@ -838,6 +842,7 @@ class Orchestrator:
             context: dict = {
                 "turn_id": turn_id,
                 "robot_state": session.intent_name or "",
+                "user_profile": await self._current_user_profile(),
                 "recent_replies": list(self._recent_llm_replies),
             }
 
@@ -980,6 +985,25 @@ class Orchestrator:
             isinstance(exc, ValueError)
             and "OPENAI_API_KEY" in str(exc)
         )
+
+    async def _current_user_profile(self) -> dict[str, Any] | None:
+        now = time.monotonic()
+        if self._user_profile_cache is not None and now - self._user_profile_cache_at < 30.0:
+            return dict(self._user_profile_cache)
+        if self._firmware_persona is None:
+            return None
+        try:
+            payload = await asyncio.to_thread(self._firmware_persona.persona)
+        except FirmwareDiagError as exc:
+            log.debug("Perfil de usuario indisponivel no firmware: %s", exc)
+            return dict(self._user_profile_cache) if self._user_profile_cache else None
+
+        user = payload.get("user")
+        if not isinstance(user, dict):
+            return dict(self._user_profile_cache) if self._user_profile_cache else None
+        self._user_profile_cache = _clean_user_profile(user)
+        self._user_profile_cache_at = now
+        return dict(self._user_profile_cache)
 
     async def _emit_llm_fallback(
         self,
@@ -1557,6 +1581,29 @@ class Orchestrator:
         }
         self._store.record_voice_session(voice_session)
         _log_voice_session_final(voice_session)
+
+
+def _clean_user_profile(user: dict[str, Any]) -> dict[str, Any]:
+    fields = {
+        "id": 16,
+        "display_name": 32,
+        "relationship": 16,
+        "language": 8,
+        "robot_nickname": 24,
+        "persona_mode": 24,
+        "interaction_style": 24,
+    }
+    return {
+        key: _clean_context_text(user.get(key), limit)
+        for key, limit in fields.items()
+        if _clean_context_text(user.get(key), limit)
+    }
+
+
+def _clean_context_text(value: Any, limit: int) -> str:
+    if value is None:
+        return ""
+    return " ".join(str(value).split())[:limit]
 
 
 def _split_text_scroll_pages(
