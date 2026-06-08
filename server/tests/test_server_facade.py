@@ -212,7 +212,7 @@ def test_server_cli_parses_runtime_flags() -> None:
         "--port", "9000",
         "--pipeline", "local_only",
         "--llm", "ollama",
-        "--model", "qwen2.5:7b",
+        "--model", "gemma4:12b",
         "--audio-codec", "opus-v2",
         "--log-file", "stderr",
     ])
@@ -222,7 +222,7 @@ def test_server_cli_parses_runtime_flags() -> None:
     assert args.port == 9000
     assert args.pipeline == "local_only"
     assert args.llm == "ollama"
-    assert args.model == "qwen2.5:7b"
+    assert args.model == "gemma4:12b"
     assert args.audio_codec == "opus-v2"
     assert args.log_file == "stderr"
 
@@ -287,6 +287,18 @@ def test_server_config_loads_audio_default_codec(monkeypatch) -> None:
 
     assert config.audio.default_codec == "opus-v2"
     assert config.safe_dict()["audio"]["default_codec"] == "opus-v2"
+
+
+def test_server_config_defaults_to_gemma4_12b_for_ollama(monkeypatch) -> None:
+    config_module = importlib.import_module("noisebot_server.config")
+
+    monkeypatch.delenv("NOISEBOT_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("NOISEBOT_LLM_MODEL", raising=False)
+
+    config = config_module.load_config()
+
+    assert config.llm.provider == config_module.LlmProvider.OLLAMA
+    assert config.llm.model == "gemma4:12b"
 
 
 def test_server_config_invalid_audio_default_codec_falls_back(monkeypatch) -> None:
@@ -7106,6 +7118,7 @@ def test_server_ops_config_controller_is_server_owned() -> None:
     assert server_config.PROVIDER_CATALOG == bridge_config.PROVIDER_CATALOG
     assert server_config.VALID_MODES == bridge_config.VALID_MODES
     assert "ollama" in server_config.PROVIDER_CATALOG
+    assert "gemma4:12b" in server_config.PROVIDER_CATALOG["ollama"]
     assert "local_only" in server_config.VALID_MODES
 
 

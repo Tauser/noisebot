@@ -15,7 +15,7 @@ DEFAULT_LLM_PROVIDER = "ollama"
 DEFAULT_LLM_MODELS = {
     "openai": "gpt-4o-mini",
     "gemini": "gemini-2.5-flash",
-    "ollama": "qwen3.5:9b",
+    "ollama": "gemma4:12b",
     "none": "none",
 }
 

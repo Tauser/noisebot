@@ -14,7 +14,7 @@ from .prompt import build_messages
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "qwen3.5:9b"
+_DEFAULT_MODEL = "gemma4:12b"
 _DEFAULT_BASE_URL = "http://127.0.0.1:11434"
 _DEFAULT_TEMPERATURE = 0.7
 _DEFAULT_MAX_TOKENS = 256

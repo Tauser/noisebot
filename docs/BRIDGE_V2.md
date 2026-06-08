@@ -1281,6 +1281,10 @@ Validação (`config_controller`): `provider`/`model` precisam existir no catál
 valores fora de faixa são rejeitados com erro estruturado; a mudança só é aplicada
 após validar — e em janela segura (§11.9).
 
+Default local atual: `provider=ollama`, `model=gemma4:12b`. O catálogo mantém
+modelos anteriores (`qwen3.5:9b`, `qwen2.5:*`, `llama3.*`, `mistral:7b`) para
+rollback rápido se a latência do Gemma 4 12B ficar alta no host local.
+
 ### 11.8 `POST /ai/mode`, `/ai/restart`, `/ai/metrics/reset`
 
 - **`/ai/mode`** — troca o modo operacional (`normal` / `local_only` / `degraded`
