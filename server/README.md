@@ -27,8 +27,8 @@ server/
 ```
 
 `noisebot_server` is the canonical, self-contained server implementation.
-`bridge` and `bridge_v2` are legacy packages from earlier iterations and are no
-longer part of the runtime path — new server work belongs entirely under
+`bridge` and `bridge_v2` were legacy packages from earlier iterations; they have
+been removed from the repository — all server work belongs entirely under
 `server/`.
 
 ## Status
@@ -40,8 +40,7 @@ The migration to a server-owned implementation is complete:
   management.
 - `NoiseBotServer` owns application composition and lifecycle end to end.
 - Every internal boundary (`transport`, `ops`, `agent`, `vision`) is implemented
-  and owned by `noisebot_server` — none of them delegate to `bridge_v2` at
-  runtime.
+  and owned by `noisebot_server` — self-contained, with no legacy dependency.
 
 ## Transport boundary
 

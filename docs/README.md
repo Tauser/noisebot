@@ -19,7 +19,7 @@ validacao. Use este indice para saber por onde comecar.
 | ------- | --- |
 | `CAMERA_INTEGRATION.md` | Estrategia, achados e validacoes de camera/visao. |
 | `VOICE_AUDIO_V2_ARCHITECTURE.md` | Contrato consolidado de Voice Audio v2. |
-| `BRIDGE_V2.md` | [legado] Arquitetura do bridge_v2 — superado por `server/`; mantido como referencia ate `bridge_v2/` ser removido. |
+| `BRIDGE_V2.md` | [legado] Arquitetura do bridge_v2 — superado por `server/`; mantido como referencia historica (codigo ja removido). |
 | `PERSISTENCE.md` | Politica de NVS, SD e persistencia. |
 | `ENERGY.md` | Energia, brownout e limites eletricos. |
 | `SERVO_SAFETY.md` | Protocolo de safety antes de liberar servos. |

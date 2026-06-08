@@ -1,8 +1,0 @@
-openai-whisper
-faster-whisper
-google-genai
-openai
-piper-tts
-numpy
-pyserial
-zeroconf

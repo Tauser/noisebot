@@ -158,11 +158,9 @@ Existem no codigo e precisam de verificacao antes de marcar como concluidos:
 - `agenda_service`: precisa validar criacao/listagem/cancelamento/disparo real,
   persistencia e feedback visual/sonoro no firmware.
 - `boredom_service`: escalada criativa de ociosidade e pausa por estado.
-- `bridge_v2/` vs `server/`: decisao tomada — `server/` absorveu a
-  implementacao e roda de forma autocontida; `bridge_v2/` vira candidato a
-  remocao apos o checklist final (scripts de servico, debug record/replay,
-  modulos de metricas e spot-check de testes — ver "Candidatos a Auditoria de
-  Codigo").
+- `bridge_v2/` vs `server/`: concluido — `server/` absorveu a implementacao,
+  roda de forma autocontida, e `bridge/`/`bridge_v2/` ja foram removidos do
+  repositorio apos o checklist final (ver "Candidatos a Auditoria de Codigo").
 
 ### Decisoes De Produto Ja Tomadas Nesta Limpeza
 
@@ -237,15 +235,24 @@ Movido localmente para `docs/history/` nesta rodada:
 
 Estes itens precisam de verificacao antes de qualquer remocao:
 
-- `bridge/` e `bridge_v2/`: confirmados como legado fora do caminho de
-  execucao (`server/` roda 100% autocontido). Antes de apagar, falta:
-  (1) confirmar/portar scripts de servico (`bridge_v2/.../service/systemd`,
-  `service/windows/install.ps1`); (2) confirmar/portar `debug/{record,replay}.py`
-  ou decidir nao migrar; (3) checar se `metrics/{logfmt,timeline,registry}.py`
-  tem equivalente em `server/internal/ops/metrics.py`; (4) spot-check de
-  `bridge/tests/` e `bridge_v2/tests/` contra `server/tests/` para garantir que
-  nao ha cenario coberto so do lado legado. `server/README.md` ja foi corrigido
-  para nao descrever mais delegacao ao `bridge_v2`.
+- `bridge/` e `bridge_v2/`: **removidos do repositorio (2026-06-08)** apos
+  checklist final concluido —
+  (1) scripts de servico: sem lacuna, `server/internal/service/manager.py` ja
+  cobre Windows Task Scheduler e systemd com mais cobertura que os scripts
+  shell do bridge_v2; (2) `debug/{record,replay}.py` do bridge_v2 eram stubs
+  vazios (so TODO), nada a portar — `fake_firmware.py`/`manual.py` do server
+  cobrem o equivalente; (3) `metrics/{registry,timeline}.py` ja tem
+  equivalente (`MetricsRegistry` em `agent/metrics.py`,
+  `SessionContext.timeline`/`mark()`); so `metrics/logfmt.py` (log JSON
+  estruturado) ficou sem par — server usa `logging` `%`-format, risco baixo;
+  (4) spot-check de `bridge/tests/` vs `server/tests/`: unico arquivo notavel
+  foi `test_voice_session.py`, mas ele testava a API `noisebot_bridge`
+  (`VoiceSessionRuntime`/`classify_session_outcome`) — uma geracao mais antiga
+  que o bridge_v2, ja sem equivalente no server. Os comportamentos que cobria
+  (rejeicao por baixa confianca, fallback de LLM, device intents, barge-in)
+  ja tem cobertura propria no server com a arquitetura atual (Orchestrator
+  assincrono + FSM). `server/README.md` ja foi corrigido para nao descrever
+  mais delegacao ao `bridge_v2`.
 - `main/servo_test.*`: verificar se ainda e usado no build atual.
 - docs e scripts de fases antigas de voz: devem virar arquivo historico ou
   ser removidos se o conteudo ja estiver consolidado.
@@ -260,7 +267,8 @@ Estes itens precisam de verificacao antes de qualquer remocao:
 - [x] Criar arquivo historico local para fases fechadas.
 - [x] Atualizar `README.md` e indice de docs.
 - [x] Criar `docs/README.md` como indice de docs vivos, referencias e historicos.
-- [ ] Auditar CMake e imports Python para detectar diretorios realmente usados.
-- [ ] Remover/arquivar em commits pequenos.
-- [ ] Rodar testes de server/bridge conforme area tocada.
+- [x] Auditar CMake e imports Python para detectar diretorios realmente usados.
+- [x] Remover/arquivar em commits pequenos (`bridge/` e `bridge_v2/` removidos
+      em 2026-06-08, sem dependencia de runtime confirmada).
+- [x] Rodar testes de server/bridge conforme area tocada.
 - [ ] Rodar `idf.py build` apos qualquer remocao que afete firmware.

@@ -53,8 +53,6 @@ dashboard `app/`.
 Noisebot/
 +-- app/                 # Dashboard externo em React/Vite
 +-- assets/              # Assets do produto e recursos visuais/sonoros
-+-- bridge/              # [legado] pre-server, candidato a remocao
-+-- bridge_v2/           # [legado] absorvido por server/, candidato a remocao
 +-- components/          # Componentes ESP-IDF do firmware
 |   +-- infra/           # Boot, config, event bus, persistence, watchdog, safety
 |   +-- hal/          # HAL de display, audio, servo, LED, touch, SD
@@ -172,14 +170,6 @@ Testes do server:
 ```powershell
 cd server
 python -m pytest
-```
-
-Testes do bridge legado (`bridge/`/`bridge_v2/` — candidatos a remocao, ja sem
-uso em runtime; `server/` roda de forma autocontida):
-
-```powershell
-$env:PYTHONPATH = "D:\Projetos\Noisebot\bridge"
-python -m pytest bridge\tests
 ```
 
 Build do firmware:
