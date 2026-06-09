@@ -585,7 +585,11 @@ static void draw_volume_overlay(LGFX_Sprite *spr,
     spr->fillRoundRect(x, y, w, h, 6, TFT_BLACK);
     spr->drawRoundRect(x, y, w, h, 6, dim);
 
-    draw_speaker_icon(spr, x + 16, y + 9, fg);
+    const nb_ui_overlay_icon_t *vol_icon =
+        (state->percent == 0)  ? &NB_UI_OVERLAY_ICON_VOLUME_DESLIGADO :
+        (state->percent <= 50) ? &NB_UI_OVERLAY_ICON_VOLUME_BAIXO     :
+                                  &NB_UI_OVERLAY_ICON_VOLUME;
+    draw_icon_mask(spr, vol_icon, x + 16, y + 9, 28, 28, fg);
 
     int bar_x = x + 62;
     int bar_y = y + 28;

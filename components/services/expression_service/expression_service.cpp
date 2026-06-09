@@ -115,9 +115,14 @@ static constexpr float GAZE_X_MAX             = 0.65f;
 static constexpr float   SPEAKING_EYE_Y_NORM  = -0.55f;
 static constexpr float   SPEAKING_EYE_OPEN    = 0.70f;
 
-/* Boca de fala do NoiseBot: a boca fechada e o desenho-base. A fala alterna
- * entre poses de visema curtas, com cantos fixos para manter a mesma linguagem
- * visual em qualquer abertura. */
+/* Boca de fala do NoiseBot — animação de visemas orgânica.
+ *
+ * Cada pose define geometria (w, h) e fator de duração individual (hold).
+ * Quatro padrões prosódicos distintos são selecionados aleatoriamente a cada
+ * frase, evitando o loop mecânico de sequência única.
+ *
+ * Ease assimétrico: abertura usa ease-out (snappy), fechamento usa smoothstep.
+ */
 static constexpr int16_t MOUTH_CENTER_X       = 160;
 static constexpr int16_t MOUTH_CENTER_Y       = 120;
 static constexpr int16_t MOUTH_REF_OFF_X      = 0;
@@ -126,28 +131,45 @@ static constexpr int16_t MOUTH_BASE_W         = 90;
 static constexpr int16_t MOUTH_BASE_H         = 6;
 static constexpr int16_t MOUTH_TOP_Y          = MOUTH_CENTER_Y + MOUTH_REF_OFF_Y - (MOUTH_BASE_H / 2);
 static constexpr int16_t MOUTH_CORNER_RADIUS  = 3;
-static constexpr int64_t MOUTH_TALK_INTERVAL_US = 118000LL;
-static constexpr int64_t MOUTH_TALK_EASE_US     = 72000LL;
+static constexpr int64_t MOUTH_TALK_INTERVAL_US = 115000LL; /* base — hold multiplica por pose */
+static constexpr int64_t MOUTH_TALK_EASE_US     = 68000LL;
 
 typedef struct {
     int16_t w;
     int16_t h;
+    float   hold; /* multiplicador de duração: 1.0 = MOUTH_TALK_INTERVAL_US */
 } nb_mouth_pose_t;
 
+/* Geometria + duração por visema */
 static constexpr nb_mouth_pose_t MOUTH_POSES[] = {
-    {90,  6},  /* fechado */
-    {82,  8},  /* bilabial/pausa */
-    {76, 10},  /* e/i */
-    {66, 16},  /* a/e medio */
-    {56, 22},  /* a aberto */
-    {48, 18},  /* o/u */
+    {90,  6, 1.0f},  /* 0: fechado   — M/B/P, pausa entre frases */
+    {83,  8, 0.6f},  /* 1: bilabial  — transição, consoante leve  */
+    {75, 11, 1.0f},  /* 2: estreito  — E/I                        */
+    {65, 17, 1.3f},  /* 3: médio     — A/E médio                  */
+    {54, 24, 1.5f},  /* 4: aberto    — A pleno (vogal tônica)     */
+    {49, 19, 1.1f},  /* 5: arredond  — O/U                        */
 };
 static constexpr uint8_t MOUTH_CLOSED_POSE = 0;
-static constexpr uint8_t MOUTH_TALK_SEQUENCE[] = {
-    0, 1, 2, 1, 3, 1, 5, 1, 2, 1, 4, 1,
+
+/* Quatro padrões prosódicos — cada um representa um ritmo de fala diferente.
+ * Terminam em pausa (pose 0) para que a troca de frase seja natural. */
+static constexpr uint8_t PHRASE_A[] = {1, 3, 1, 4, 2, 1, 5, 0};           /* afirmação     */
+static constexpr uint8_t PHRASE_B[] = {2, 4, 1, 3, 1, 5, 3, 1, 4, 0};    /* pergunta      */
+static constexpr uint8_t PHRASE_C[] = {1, 3, 0, 2, 4, 1, 3, 0, 1, 2, 0}; /* fala rápida   */
+static constexpr uint8_t PHRASE_D[] = {3, 5, 3, 4, 1, 5, 1, 3, 0};       /* cadência lenta*/
+
+typedef struct {
+    const uint8_t *poses;
+    uint8_t        len;
+} nb_mouth_phrase_t;
+
+static constexpr nb_mouth_phrase_t MOUTH_PHRASES[] = {
+    {PHRASE_A, (uint8_t)sizeof(PHRASE_A)},
+    {PHRASE_B, (uint8_t)sizeof(PHRASE_B)},
+    {PHRASE_C, (uint8_t)sizeof(PHRASE_C)},
+    {PHRASE_D, (uint8_t)sizeof(PHRASE_D)},
 };
-static constexpr uint8_t MOUTH_TALK_SEQUENCE_COUNT =
-    (uint8_t)(sizeof(MOUTH_TALK_SEQUENCE) / sizeof(MOUTH_TALK_SEQUENCE[0]));
+static constexpr uint8_t MOUTH_PHRASE_COUNT = 4;
 
 /* ── Blink ───────────────────────────────────────────────────────────────── */
 
@@ -341,7 +363,8 @@ static int64_t            s_speaking_mouth_next_tick_us = 0;
 static int64_t            s_speaking_mouth_ease_start_us = 0;
 static uint8_t            s_speaking_mouth_from_pose = MOUTH_CLOSED_POSE;
 static uint8_t            s_speaking_mouth_to_pose = MOUTH_CLOSED_POSE;
-static uint8_t            s_speaking_mouth_step = 0;
+static uint8_t            s_speaking_mouth_phrase_idx = 0;
+static uint8_t            s_speaking_mouth_phrase_pos = 0;
 
 static constexpr float BREATH_PERIOD_MS    = 5200.0f;
 static constexpr float BREATH_AMP          = 0.045f;
@@ -1084,27 +1107,47 @@ static void draw_speaking_mouth(LGFX_Sprite *spr,
         now_us = s_speaking_mouth_start_us;
     }
 
+    /* Avança para a próxima pose quando o intervalo da pose atual expira */
+    if (now_us >= s_speaking_mouth_next_tick_us) {
+        s_speaking_mouth_from_pose = s_speaking_mouth_to_pose;
+        s_speaking_mouth_phrase_pos++;
+
+        const nb_mouth_phrase_t *phrase = &MOUTH_PHRASES[s_speaking_mouth_phrase_idx];
+        if (s_speaking_mouth_phrase_pos >= phrase->len) {
+            /* Frase completa — escolhe próximo padrão prosódico aleatoriamente */
+            s_speaking_mouth_phrase_idx =
+                (uint8_t)(esp_random() % MOUTH_PHRASE_COUNT);
+            s_speaking_mouth_phrase_pos = 0;
+            phrase = &MOUTH_PHRASES[s_speaking_mouth_phrase_idx];
+        }
+
+        uint8_t next = phrase->poses[s_speaking_mouth_phrase_pos];
+        s_speaking_mouth_to_pose = next;
+
+        /* Duração da pose: base × hold da pose destino + jitter ±8% */
+        float jitter = 1.0f + ((float)(int32_t)(esp_random() & 0xFF) - 128.0f) * (0.08f / 128.0f);
+        int64_t hold_us = (int64_t)((float)MOUTH_TALK_INTERVAL_US * MOUTH_POSES[next].hold * jitter);
+        s_speaking_mouth_next_tick_us  = now_us + hold_us;
+        s_speaking_mouth_ease_start_us = now_us;
+    }
+
+    nb_mouth_pose_t from = MOUTH_POSES[s_speaking_mouth_from_pose];
+    nb_mouth_pose_t to   = MOUTH_POSES[s_speaking_mouth_to_pose];
+
     int64_t ease_elapsed_us = now_us - s_speaking_mouth_ease_start_us;
     if (ease_elapsed_us < 0) ease_elapsed_us = 0;
     float ease_t = (float)ease_elapsed_us / (float)MOUTH_TALK_EASE_US;
     if (ease_t > 1.0f) ease_t = 1.0f;
-    ease_t = ease_t * ease_t * (3.0f - (2.0f * ease_t));
 
-    if (now_us >= s_speaking_mouth_next_tick_us) {
-        s_speaking_mouth_next_tick_us = now_us + MOUTH_TALK_INTERVAL_US;
-        s_speaking_mouth_from_pose = s_speaking_mouth_to_pose;
-        s_speaking_mouth_step++;
-        uint8_t seq_idx = (uint8_t)(s_speaking_mouth_step % MOUTH_TALK_SEQUENCE_COUNT);
-        s_speaking_mouth_to_pose = MOUTH_TALK_SEQUENCE[seq_idx];
-        s_speaking_mouth_ease_start_us = now_us;
-        ease_t = 0.0f;
+    /* Ease assimétrico: abertura = ease-out (snappy), fechamento = smoothstep */
+    if (to.h > from.h) {
+        ease_t = 1.0f - (1.0f - ease_t) * (1.0f - ease_t); /* ease-out quadrática */
+    } else {
+        ease_t = ease_t * ease_t * (3.0f - (2.0f * ease_t)); /* smoothstep */
     }
 
-    nb_mouth_pose_t from = MOUTH_POSES[s_speaking_mouth_from_pose];
-    nb_mouth_pose_t to = MOUTH_POSES[s_speaking_mouth_to_pose];
-
-    int16_t mouth_w = (int16_t)((float)from.w + (((float)to.w - (float)from.w) * ease_t) + 0.5f);
-    int16_t mouth_h = (int16_t)((float)from.h + (((float)to.h - (float)from.h) * ease_t) + 0.5f);
+    int16_t mouth_w = (int16_t)((float)from.w + ((float)(to.w - from.w) * ease_t) + 0.5f);
+    int16_t mouth_h = (int16_t)((float)from.h + ((float)(to.h - from.h) * ease_t) + 0.5f);
     int16_t mouth_cx = (int16_t)(MOUTH_CENTER_X + MOUTH_REF_OFF_X);
     int16_t mouth_x = mouth_cx - (mouth_w / 2);
     int16_t mouth_y = MOUTH_TOP_Y;
@@ -2013,18 +2056,20 @@ void expression_service_set_sleep_anim_enabled(bool enabled)
 void expression_service_set_speaking_mouth_enabled(bool enabled)
 {
     if (enabled && !s_speaking_mouth_enabled) {
-        s_speaking_mouth_start_us = esp_timer_get_time();
-        s_speaking_mouth_next_tick_us = s_speaking_mouth_start_us;
+        s_speaking_mouth_start_us      = esp_timer_get_time();
+        s_speaking_mouth_next_tick_us  = s_speaking_mouth_start_us;
         s_speaking_mouth_ease_start_us = s_speaking_mouth_start_us;
-        s_speaking_mouth_from_pose = MOUTH_CLOSED_POSE;
-        s_speaking_mouth_to_pose = MOUTH_CLOSED_POSE;
-        s_speaking_mouth_step = 0;
+        s_speaking_mouth_from_pose     = MOUTH_CLOSED_POSE;
+        s_speaking_mouth_to_pose       = MOUTH_CLOSED_POSE;
+        s_speaking_mouth_phrase_idx    = (uint8_t)(esp_random() % MOUTH_PHRASE_COUNT);
+        s_speaking_mouth_phrase_pos    = 0;
     } else if (!enabled) {
         s_speaking_mouth_ease_start_us = 0;
-        s_speaking_mouth_from_pose = MOUTH_CLOSED_POSE;
-        s_speaking_mouth_to_pose = MOUTH_CLOSED_POSE;
-        s_speaking_mouth_step = 0;
-        s_speaking_mouth_next_tick_us = 0;
+        s_speaking_mouth_from_pose     = MOUTH_CLOSED_POSE;
+        s_speaking_mouth_to_pose       = MOUTH_CLOSED_POSE;
+        s_speaking_mouth_phrase_idx    = 0;
+        s_speaking_mouth_phrase_pos    = 0;
+        s_speaking_mouth_next_tick_us  = 0;
     }
     s_speaking_mouth_enabled = enabled;
 }

@@ -85,10 +85,12 @@
 #define NVS_NS_MILESTONE        "nb_ms"
 #define NVS_KEY_MS_H100         "ms_h100"
 
-/* Enquanto não houver classificação robusta de fala dirigida ao robô, follow-up
- * automático abre o microfone para conversa ambiente. Primeiro contato e nova
- * fala continuam exigindo wake word explícita. */
-#define NB_VOICE_AUTO_FOLLOWUP_ENABLED 0
+/* Follow-up automático abre o microfone por uma janela curta após a fala do
+ * robô (sem exigir wake word), para permitir continuidade de conversa. O
+ * server só arma esse pedido (FOLLOWUP_ARM) quando a própria resposta do
+ * robô termina em pergunta. Primeiro contato e nova fala fora dessa janela
+ * continuam exigindo wake word explícita. */
+#define NB_VOICE_AUTO_FOLLOWUP_ENABLED 1
 
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
