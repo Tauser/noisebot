@@ -115,18 +115,21 @@ def test_touch_boot_uses_persisted_sensitivity():
     assert "sens_factor = 0.5f" not in src
 
 
-def test_touch_default_is_conservative_for_copper_pad():
+def test_touch_default_is_calibrated_for_copper_pad():
     src = NB_CONFIG_KEYS.read_text(encoding="utf-8")
 
-    assert "#define NB_CFG_DEFAULT_TOUCH_SENS        25" in src
+    # Default 5 → factor 0.01 → 1% acima do baseline, alinhado com variação real do copper strip
+    assert "#define NB_CFG_DEFAULT_TOUCH_SENS         5" in src
+    assert "copper strip" in src
     assert "passos de 0,2%" in src
 
 
-def test_touch_legacy_default_migrates_to_conservative_threshold():
+def test_touch_legacy_defaults_migrate_to_calibrated_threshold():
     src = (ROOT / "components" / "infra" / "config_manager.c").read_text(encoding="utf-8")
 
     assert "restore_touch_sensitivity_if_legacy()" in src
-    assert "touch_sens != 10U" in src
+    # Migra tanto o legado antigo (10) quanto o legado intermediário (25)
+    assert "touch_sens != 10U && touch_sens != 25U" in src
     assert "NB_CFG_DEFAULT_TOUCH_SENS" in src
 
 

@@ -141,7 +141,15 @@ static esp_err_t restore_touch_sensitivity_if_legacy(void)
                                         NB_CFG_KEY_TOUCH_SENS,
                                         NB_CFG_DEFAULT_TOUCH_SENS);
 
-    if (touch_sens != 10U) {
+    /*
+     * Histórico de defaults:
+     *   10 → primeiro default (2% de threshold) — muito alto para copper strip
+     *   25 → segundo default  (5% de threshold) — ainda alto demais
+     *    5 → default atual    (1% de threshold) — alinhado com variação real do pad
+     *
+     * Migrar qualquer dispositivo que ainda tenha os valores legados.
+     */
+    if (touch_sens != 10U && touch_sens != 25U) {
         return ESP_OK;
     }
 

@@ -163,7 +163,7 @@ static bool cond_silent_company_exit(const nb_event_t *evt)
 static bool cond_trust_low(const nb_event_t *evt)
 {
     (void)evt;
-    return persona_get_trust() < 0.3f;
+    return persona_get_trust() < 0.15f;
 }
 
 /* Toque durante RESPONDING: afeta emoção mas não interrompe áudio. */
