@@ -143,6 +143,10 @@ export type AiConfig = {
     port?: number;
     token_configured?: boolean;
   };
+  conversation?: {
+    followup_enabled?: boolean;
+    followup_window_ms?: number;
+  };
   log_level?: string;
   pipeline_mode?: string;
 };
@@ -188,6 +192,43 @@ export type AudioSampleFile = {
   name: string;
   size: number;
   path?: string;
+};
+
+export type LlmStep = {
+  raw_response: string;
+  expression_id: string | null;
+  reply: string;
+  has_tool_call?: boolean;
+  tool_name?: string | null;
+  latency_ms: number;
+};
+
+export type LlmToolDebug = {
+  name: string;
+  arguments: Record<string, string>;
+  outcome: "success" | "vetoed" | "error" | "confirmation_required";
+  veto_reason: string | null;
+  result_summary: string;
+  sandboxed?: boolean;
+};
+
+export type LlmTurnDebug = {
+  turn_id: number;
+  ts: number;
+  transcript: string;
+  turn_payload_summary: {
+    mood: string;
+    robot_state: string;
+    vision_present: boolean;
+    tools_available: string[];
+  };
+  step1: LlmStep;
+  tool: LlmToolDebug | null;
+  step2: Omit<LlmStep, "has_tool_call" | "tool_name"> | null;
+  retry_count: number;
+  final_reply: string;
+  final_expression_id: number | null;
+  total_latency_ms: number;
 };
 
 export type DevData = {
@@ -447,7 +488,7 @@ export async function deleteAgendaItem(id: string, token: string): Promise<AppDa
 }
 
 export async function saveBasicSettings(
-  settings: BasicSettings,
+  settings: Partial<BasicSettings>,
   token: string,
 ): Promise<BasicSettings> {
   const body = await authedJson<{ settings: BasicSettings }>("/api/settings/basic", token, {
@@ -535,12 +576,44 @@ export async function loadDevData(): Promise<DevData> {
   };
 }
 
+export async function fetchLlmDebug(): Promise<LlmTurnDebug[]> {
+  try {
+    const body = await getJson<{ turns: LlmTurnDebug[] }>("/ai/llm/debug");
+    return Array.isArray(body.turns) ? body.turns : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchSandboxStatus(): Promise<boolean> {
+  try {
+    const body = await getJson<{ enabled: boolean }>("/ai/sandbox");
+    return Boolean(body.enabled);
+  } catch {
+    return false;
+  }
+}
+
+export async function setSandboxMode(enabled: boolean, token: string): Promise<void> {
+  await authedJson<{ enabled: boolean }>("/ai/sandbox", token, {
+    method: "POST",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function resetMetrics(token: string): Promise<void> {
   await authedJson<{ ok: boolean }>("/ai/metrics/reset", token, { method: "POST" });
 }
 
 export async function restartServer(token: string): Promise<void> {
   await authedJson<{ ok: boolean }>("/ai/restart", token, { method: "POST" });
+}
+
+export async function setFollowupEnabled(enabled: boolean, token: string): Promise<void> {
+  await authedJson<{ ok: boolean }>("/ai/config", token, {
+    method: "POST",
+    body: { followup_enabled: enabled },
+  });
 }
 
 export function visionSnapshotUrl(): string {
