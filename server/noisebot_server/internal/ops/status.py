@@ -38,6 +38,8 @@ class StatusStore:
         self.last_voice_session: dict = {}
         self._voice_sessions: deque[dict] = deque(maxlen=12)
         self._errors: deque[ErrorEntry] = deque(maxlen=max_errors)
+        self._llm_debug_turns: deque[dict] = deque(maxlen=10)
+        self.tool_sandbox_enabled: bool = False
         self.turn_counters: dict[str, int] = {
             "total": 0,
             "local_intent": 0,
@@ -113,6 +115,20 @@ class StatusStore:
             self.llm_status = "degraded"
         elif "tts" in kind:
             self.tts_status = "degraded"
+
+    def set_sandbox_mode(self, enabled: bool) -> None:
+        """Ativa/desativa modo sandbox de tools."""
+        self.tool_sandbox_enabled = bool(enabled)
+
+    def record_llm_turn_debug(self, debug: dict) -> None:
+        """Armazena dados de debug do último turno LLM (últimos 10 turnos)."""
+        if not isinstance(debug, dict):
+            return
+        self._llm_debug_turns.append(debug)
+
+    @property
+    def llm_debug_turns(self) -> list[dict]:
+        return list(reversed(self._llm_debug_turns))
 
     def record_voice_session(self, session: dict) -> None:
         safe = _sanitize_session(session)

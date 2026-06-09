@@ -7060,6 +7060,66 @@ def test_server_ops_config_controller_exposes_provider_catalog() -> None:
     assert "local_only" in server_config.VALID_MODES
 
 
+def test_server_ops_config_controller_toggles_followup_at_runtime() -> None:
+    server_config = importlib.import_module("noisebot_server.internal.ops.config")
+
+    class _FakeOrchestrator:
+        def __init__(self) -> None:
+            self.followup_enabled: bool | None = None
+
+        def set_followup_enabled(self, enabled: bool) -> None:
+            self.followup_enabled = enabled
+
+    class _FakeApp:
+        def __init__(self, config) -> None:
+            self._config = config
+            self._orchestrator = _FakeOrchestrator()
+
+    app = _FakeApp(_make_server_config(followup_enabled=False))
+    ctrl = server_config.ConfigController(app)
+
+    assert ctrl.validate({"followup_enabled": "nope"}) == ["followup_enabled deve ser booleano"]
+    assert ctrl.validate({"followup_enabled": True}) == []
+
+    changes = ctrl.apply({"followup_enabled": True})
+
+    assert changes == {"followup_enabled": {"old": False, "new": True}}
+    assert app._config.conversation.followup_enabled is True
+    assert app._orchestrator.followup_enabled is True
+
+    # Reaplicar o mesmo valor não deve gerar mudança nem auditoria.
+    assert ctrl.apply({"followup_enabled": True}) == {}
+
+
+def test_orchestrator_set_followup_enabled_updates_live_config() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    bus = runtime.EventBus(default_maxsize=512)
+    orchestrator = orchestrator_module.Orchestrator(
+        bus,
+        _make_server_config(followup_enabled=False),
+    )
+
+    question = runtime.SessionContext(turn_id=1)
+    question.intent_name = "llm_reply"
+    question.reply_text = "Quer que eu continue?"
+    question.meta["outcome"] = "llm"
+
+    assert orchestrator._should_arm_followup(question) is False
+
+    orchestrator.set_followup_enabled(True)
+
+    assert orchestrator._config.conversation.followup_enabled is True
+    assert orchestrator._should_arm_followup(question) is True
+
+    orchestrator.set_followup_enabled(False)
+
+    assert orchestrator._should_arm_followup(question) is False
+
+
 def test_server_app_state_persists_routine_and_basic_settings(tmp_path) -> None:
     app_state = importlib.import_module("noisebot_server.internal.ops.app_state")
     state_path = tmp_path / "app_state.json"
@@ -8673,3 +8733,1390 @@ def test_server_recent_log_buffer_redacts_and_limits() -> None:
     assert [entry["ts"] for entry in entries] == [3.0, 2.0]
     assert all("sk-secret" not in entry["message"] for entry in entries)
     assert all("token=<redacted>" in entry["message"] for entry in entries)
+
+
+# ---------------------------------------------------------------------------
+# Fase 1 — Envelope JSON unificado e robustez
+# ---------------------------------------------------------------------------
+
+def test_parse_llm_json_valid_expression_string() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    parsed = llm.parse_llm_json('{"expression_id":"happy","reply":"Oi!","tool_call":null}')
+
+    assert parsed["expression_id"] == "happy"
+    assert parsed["reply"] == "Oi!"
+    assert parsed["tool_call"] is None
+
+
+def test_parse_llm_json_all_valid_expressions_accepted() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+    valid = [
+        "neutral", "happy", "curious", "sleepy", "focused",
+        "suspicious", "surprised", "sad", "alarmed", "angry",
+    ]
+
+    for expr in valid:
+        parsed = llm.parse_llm_json(
+            json.dumps({"expression_id": expr, "reply": "ok", "tool_call": None})
+        )
+        assert parsed["expression_id"] == expr, f"expressao '{expr}' deve ser aceita"
+
+
+def test_parse_llm_json_unknown_expression_returns_none() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    parsed = llm.parse_llm_json('{"expression_id":"energized","reply":"Oi!","tool_call":null}')
+
+    assert parsed["expression_id"] is None
+
+
+def test_parse_llm_json_int_expression_fallback() -> None:
+    """Modelos que ainda emitem int legado devem ser aceitos."""
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    parsed = llm.parse_llm_json('{"expression_id":1,"reply":"Oi!","tool_call":null}')
+
+    assert parsed["expression_id"] == "happy"
+
+
+def test_parse_llm_json_tool_call_absent_returns_none() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    parsed = llm.parse_llm_json('{"expression_id":"neutral","reply":"Ola"}')
+
+    assert parsed["tool_call"] is None
+
+
+def test_parse_llm_json_tool_call_null_returns_none() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    parsed = llm.parse_llm_json(
+        '{"expression_id":"neutral","reply":"Ola","tool_call":null}'
+    )
+
+    assert parsed["tool_call"] is None
+
+
+def test_parse_llm_json_tool_call_valid_structure() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    raw = json.dumps({
+        "expression_id": "focused",
+        "reply": "Vou verificar.",
+        "tool_call": {"name": "set_expression", "arguments": {"expression_id": "focused"}},
+    })
+    parsed = llm.parse_llm_json(raw)
+
+    assert parsed["tool_call"] is not None
+    assert parsed["tool_call"]["name"] == "set_expression"
+    assert parsed["tool_call"]["arguments"] == {"expression_id": "focused"}
+
+
+def test_parse_llm_json_tool_call_without_name_returns_none() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    raw = json.dumps({
+        "expression_id": "neutral",
+        "reply": "ok",
+        "tool_call": {"arguments": {"x": 1}},
+    })
+    parsed = llm.parse_llm_json(raw)
+
+    assert parsed["tool_call"] is None
+
+
+def test_parse_llm_json_raises_on_no_json() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    try:
+        llm.parse_llm_json("Claro! Posso te ajudar com isso.")
+        assert False, "deveria ter levantado ValueError"
+    except ValueError:
+        pass
+
+
+def test_parse_llm_json_extracts_from_markdown_fence() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    raw = '```json\n{"expression_id":"curious","reply":"Interessante!","tool_call":null}\n```'
+    parsed = llm.parse_llm_json(raw)
+
+    assert parsed["expression_id"] == "curious"
+    assert parsed["reply"] == "Interessante!"
+
+
+def test_parse_llm_json_extracts_embedded_object() -> None:
+    """Texto antes/depois do JSON ainda deve ser extraído."""
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    raw = 'Claro! {"expression_id":"happy","reply":"Oi!","tool_call":null} tchau'
+    parsed = llm.parse_llm_json(raw)
+
+    assert parsed["expression_id"] == "happy"
+
+
+def test_translate_expression_id_all_values() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+    expected = {
+        "neutral": 0, "happy": 1, "curious": 2, "sleepy": 3, "focused": 4,
+        "suspicious": 5, "surprised": 6, "sad": 7, "alarmed": 8, "angry": 9,
+    }
+
+    for expr, expected_int in expected.items():
+        assert llm.translate_expression_id(expr) == expected_int, f"'{expr}' deve mapear para {expected_int}"
+
+
+def test_translate_expression_id_unknown_returns_none() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    assert llm.translate_expression_id("energized") is None
+    assert llm.translate_expression_id("xyz") is None
+
+
+def test_translate_expression_id_none_passthrough() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    assert llm.translate_expression_id(None) is None
+
+
+def test_translate_expression_id_case_insensitive() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    assert llm.translate_expression_id("HAPPY") == 1
+    assert llm.translate_expression_id("Curious") == 2
+
+
+def test_llm_system_prompt_has_unified_envelope() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    assert "expression_id" in llm._SYSTEM_PROMPT
+    assert "tool_call" in llm._SYSTEM_PROMPT
+    assert "reply" in llm._SYSTEM_PROMPT
+
+
+def test_llm_system_prompt_lists_expression_strings() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    for expr in ("neutral", "happy", "curious", "alarmed", "angry"):
+        assert expr in llm._SYSTEM_PROMPT, f"'{expr}' deve estar no _SYSTEM_PROMPT"
+
+
+def test_llm_system_prompt_has_few_shot_examples() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    # Deve conter pelo menos dois objetos JSON de exemplo
+    examples = llm._SYSTEM_PROMPT.count('"tool_call"')
+    assert examples >= 2, "prompt deve ter pelo menos dois exemplos com tool_call"
+
+
+def test_llm_system_prompt_no_raw_ints_as_expression() -> None:
+    """Prompt não deve ensinar o modelo a emitir ints crus como expression_id."""
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    assert "expression_id:<int>" not in llm._SYSTEM_PROMPT
+    assert "expression_id:0" not in llm._SYSTEM_PROMPT
+
+
+def test_ollama_provider_default_temperature_is_low() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+    import inspect
+
+    sig = inspect.signature(llm.OllamaProvider.__init__)
+    default_temp = sig.parameters["temperature"].default
+
+    assert default_temp <= 0.3, f"temperatura padrao do Ollama deve ser <= 0.3, era {default_temp}"
+
+
+def test_build_correction_messages_returns_system_and_user() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    messages = llm.build_correction_messages('{"expression_id":1}')
+
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
+    assert "JSON" in messages[1]["content"]
+    assert '{"expression_id":1}' in messages[1]["content"]
+
+
+def test_build_correction_messages_truncates_long_bad_raw() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    long_raw = "x" * 1000
+    messages = llm.build_correction_messages(long_raw)
+
+    assert len(messages[1]["content"]) < 800
+
+
+def test_gemma4_12b_and_qwen35_9b_in_ollama_catalog() -> None:
+    """Rollback para qwen3.5:9b deve permanecer disponível."""
+    config_ops = importlib.import_module("noisebot_server.internal.ops.config")
+
+    assert "gemma4:12b" in config_ops.PROVIDER_CATALOG["ollama"]
+    assert "qwen3.5:9b" in config_ops.PROVIDER_CATALOG["ollama"]
+
+
+# ---------------------------------------------------------------------------
+# Fase 3 — Tradução de Emoção / VAA
+# ---------------------------------------------------------------------------
+
+def test_mood_happy_energetic() -> None:
+    mood = importlib.import_module("noisebot_server.internal.agent.mood")
+
+    result = mood.describe_mood(valence=0.8, activation=0.8)
+
+    assert "animado" in result
+
+
+def test_mood_calm_happy() -> None:
+    mood = importlib.import_module("noisebot_server.internal.agent.mood")
+
+    result = mood.describe_mood(valence=0.7, activation=0.2)
+
+    assert "calmo" in result
+
+
+def test_mood_angry_alarmed() -> None:
+    mood = importlib.import_module("noisebot_server.internal.agent.mood")
+
+    result = mood.describe_mood(valence=-0.6, activation=0.8)
+
+    assert "irritado" in result or "alarmado" in result
+
+
+def test_mood_sad_withdrawn() -> None:
+    mood = importlib.import_module("noisebot_server.internal.agent.mood")
+
+    result = mood.describe_mood(valence=-0.5, activation=0.2)
+
+    assert "triste" in result or "retraído" in result
+
+
+def test_mood_neutral() -> None:
+    mood = importlib.import_module("noisebot_server.internal.agent.mood")
+
+    result = mood.describe_mood(valence=0.1, activation=0.3)
+
+    assert "neutro" in result
+
+
+def test_mood_focused_modifier() -> None:
+    mood = importlib.import_module("noisebot_server.internal.agent.mood")
+
+    result = mood.describe_mood(valence=0.1, activation=0.3, attention=0.9)
+
+    assert "focado" in result
+
+
+def test_mood_familiar_modifier() -> None:
+    mood = importlib.import_module("noisebot_server.internal.agent.mood")
+
+    result = mood.describe_mood(valence=0.1, activation=0.3, trust=0.9)
+
+    assert "familiaridade" in result
+
+
+def test_mood_combined_modifiers() -> None:
+    mood = importlib.import_module("noisebot_server.internal.agent.mood")
+
+    result = mood.describe_mood(valence=0.6, activation=0.6, attention=0.8, trust=0.8)
+
+    assert "animado" in result
+    assert "focado" in result
+    assert "familiaridade" in result
+
+
+def test_mood_returns_string_never_float() -> None:
+    mood = importlib.import_module("noisebot_server.internal.agent.mood")
+
+    result = mood.describe_mood(valence=0.42, activation=0.17, attention=0.55, trust=0.33)
+
+    assert isinstance(result, str)
+    assert "0.42" not in result
+    assert "0.17" not in result
+
+
+def test_mood_boundary_valence_above_threshold() -> None:
+    mood = importlib.import_module("noisebot_server.internal.agent.mood")
+
+    # Exatamente no limiar de -0.4: não é negativo forte
+    result = mood.describe_mood(valence=-0.4, activation=0.2)
+
+    assert "neutro" in result
+
+
+# ---------------------------------------------------------------------------
+# Fase 2 — Multi-Turn Payload Builder
+# ---------------------------------------------------------------------------
+
+def test_payload_contains_turn_info() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    payload = pb.build_turn_payload(text="oi noise", turn_id=42)
+
+    assert payload["turn"]["id"] == 42
+    assert payload["turn"]["user_text"] == "oi noise"
+    assert "timestamp_iso" in payload["turn"]
+
+
+def test_payload_mood_is_text_not_float() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    payload = pb.build_turn_payload(
+        text="teste",
+        turn_id=1,
+        last_status={"valence": 0.8, "activation": 0.7, "attention": 0.5, "trust": 0.3},
+    )
+
+    assert isinstance(payload["mood"], str)
+    assert "0.8" not in payload["mood"]
+    assert "0.7" not in payload["mood"]
+
+
+def test_payload_contains_user_profile() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    payload = pb.build_turn_payload(
+        text="oi",
+        turn_id=1,
+        user_profile={
+            "display_name": "Tadeu",
+            "relationship": "owner",
+            "language": "pt-BR",
+            "robot_nickname": "Noise",
+            "persona_mode": "companion",
+            "interaction_style": "direct_warm",
+        },
+    )
+
+    assert "user" in payload
+    assert payload["user"]["display_name"] == "Tadeu"
+    assert payload["user"]["robot_nickname"] == "Noise"
+
+
+def test_payload_no_user_section_when_profile_empty() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    payload = pb.build_turn_payload(text="oi", turn_id=1, user_profile=None)
+
+    assert "user" not in payload
+
+
+def test_payload_hardware_reflects_availability() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    payload = pb.build_turn_payload(
+        text="teste",
+        turn_id=1,
+        tts_available=True,
+        vision_available=False,
+        servos_enabled=False,
+    )
+
+    assert payload.get("hardware", {}).get("tts_available") is True
+    assert "vision_available" not in payload.get("hardware", {})
+    assert "servos_enabled" not in payload.get("hardware", {})
+
+
+def test_payload_no_hardware_section_when_all_off() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    payload = pb.build_turn_payload(
+        text="teste",
+        turn_id=1,
+        tts_available=False,
+        vision_available=False,
+        servos_enabled=False,
+    )
+
+    assert "hardware" not in payload
+
+
+def test_payload_firmware_online_in_robot_section() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    payload_on = pb.build_turn_payload(text="t", turn_id=1, firmware_online=True)
+    payload_off = pb.build_turn_payload(text="t", turn_id=1, firmware_online=False)
+
+    assert payload_on["robot"]["firmware_online"] is True
+    assert payload_off["robot"]["firmware_online"] is False
+
+
+def test_payload_conversation_history_bounded_to_3() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    many = [f"msg {i}" for i in range(10)]
+    payload = pb.build_turn_payload(
+        text="atual",
+        turn_id=1,
+        recent_user_texts=many,
+        recent_robot_replies=many,
+    )
+
+    assert len(payload["conversation"]["recent_user"]) == 3
+    assert len(payload["conversation"]["recent_robot"]) == 3
+    # Deve conter as 3 mais recentes
+    assert payload["conversation"]["recent_user"][-1] == "msg 9"
+
+
+def test_payload_no_conversation_section_when_empty() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    payload = pb.build_turn_payload(text="oi", turn_id=1)
+
+    assert "conversation" not in payload
+
+
+def test_payload_tools_empty_omits_tools_key() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    payload = pb.build_turn_payload(text="oi", turn_id=1, allowed_tools=None)
+
+    assert "tools" not in payload
+
+
+def test_payload_tools_present_when_provided() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    payload = pb.build_turn_payload(
+        text="oi", turn_id=1, allowed_tools=["set_expression", "set_led"]
+    )
+
+    assert payload["tools"] == ["set_expression", "set_led"]
+
+
+def test_payload_user_text_truncated_at_300() -> None:
+    pb = importlib.import_module("noisebot_server.internal.agent.payload_builder")
+
+    long_text = "a" * 500
+    payload = pb.build_turn_payload(text=long_text, turn_id=1)
+
+    assert len(payload["turn"]["user_text"]) == 300
+
+
+def test_build_messages_uses_turn_payload_when_present() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    payload = {
+        "turn": {"id": 1, "user_text": "oi", "timestamp_iso": "2026-06-09T00:00:00+00:00"},
+        "robot": {"state": "IDLE", "firmware_online": True, "pipeline_mode": "normal"},
+        "mood": "calmo e contente",
+        "user": {"display_name": "Tadeu", "persona_mode": "companion"},
+    }
+    messages = llm.build_messages("oi noise", {"turn_payload": payload})
+
+    system = messages[0]["content"]
+    assert "Contexto do turno atual:" in system
+    assert "Humor do robo: calmo e contente" in system
+    assert "firmware: conectado" in system
+
+
+def test_build_messages_legacy_path_unchanged() -> None:
+    """Contexto legado sem turn_payload ainda funciona normalmente."""
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    messages = llm.build_messages(
+        "Como estou?",
+        {
+            "user_profile": {
+                "display_name": "Tadeu",
+                "relationship": "owner",
+                "language": "pt-BR",
+                "robot_nickname": "Noise",
+                "persona_mode": "companion",
+                "interaction_style": "direct_warm",
+            }
+        },
+    )
+
+    system = messages[0]["content"]
+    assert "Perfil do usuario atual" in system
+    assert "Nome do usuario: Tadeu" in system
+
+
+def test_build_messages_recent_replies_guard_on_payload_path() -> None:
+
+    """Anti-repetição deve ser injetada também no caminho do payload estruturado."""
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    payload = {
+        "turn": {"id": 1, "user_text": "piada", "timestamp_iso": "2026-06-09T00:00:00+00:00"},
+        "robot": {"state": "IDLE", "firmware_online": False, "pipeline_mode": "normal"},
+        "mood": "neutro",
+    }
+    messages = llm.build_messages(
+        "Me conta uma piada.",
+        {
+            "turn_payload": payload,
+            "recent_replies": ["Por que o livro foi ao médico? Tinha problemas de capa."],
+        },
+    )
+
+    system = messages[0]["content"]
+    assert "Respostas recentes a evitar repetir" in system
+    assert "livro foi ao médico" in system
+
+
+# ---------------------------------------------------------------------------
+# Fase 4 — Catálogo de Tools Seguras
+# ---------------------------------------------------------------------------
+
+def test_tool_catalog_all_required_fields() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+
+    for name, spec in catalog.CATALOG.items():
+        assert spec.name == name, f"{name}: spec.name deve bater com a chave"
+        assert spec.description, f"{name}: description nao pode ser vazia"
+        assert isinstance(spec.arguments_schema, dict), f"{name}: arguments_schema deve ser dict"
+        assert spec.risk_level in ("low", "confirmation_required", "blocked"), (
+            f"{name}: risk_level invalido: {spec.risk_level}"
+        )
+
+
+def test_tool_catalog_expected_tools_present() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    expected = {
+        "set_expression", "set_led", "create_timer",
+        "create_reminder", "analyze_vision", "request_confirmation",
+    }
+
+    assert expected.issubset(set(catalog.CATALOG.keys()))
+
+
+def test_tool_catalog_all_have_executors() -> None:
+    tools = importlib.import_module("noisebot_server.internal.agent.tools")
+
+    for name in tools.CATALOG:
+        assert name in tools.EXECUTOR_MAP, f"'{name}' sem executor em EXECUTOR_MAP"
+
+
+def test_tool_catalog_blocked_tools_absent() -> None:
+    """Tools de risco alto não devem estar no catálogo."""
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    blocked = {
+        "move_servo", "factory_reset", "delete_memory",
+        "change_wifi", "restart", "reboot",
+    }
+
+    for name in blocked:
+        assert name not in catalog.CATALOG, f"'{name}' nao deve estar no catalogo"
+
+
+def test_validate_arguments_set_expression_valid() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["set_expression"]
+
+    errors = catalog.validate_arguments(spec, {"expression_id": "happy"})
+
+    assert errors == []
+
+
+def test_validate_arguments_set_expression_unknown_value() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["set_expression"]
+
+    errors = catalog.validate_arguments(spec, {"expression_id": "energized"})
+
+    assert any("energized" in e for e in errors)
+
+
+def test_validate_arguments_set_expression_missing_required() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["set_expression"]
+
+    errors = catalog.validate_arguments(spec, {})
+
+    assert any("expression_id" in e for e in errors)
+
+
+def test_validate_arguments_set_led_valid_with_brightness() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["set_led"]
+
+    errors = catalog.validate_arguments(spec, {"color": "#FF0000", "brightness": 80})
+
+    assert errors == []
+
+
+def test_validate_arguments_set_led_brightness_above_max() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["set_led"]
+
+    errors = catalog.validate_arguments(spec, {"color": "red", "brightness": 150})
+
+    assert any("brightness" in e for e in errors)
+    assert any("100" in e for e in errors)
+
+
+def test_validate_arguments_set_led_brightness_below_min() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["set_led"]
+
+    errors = catalog.validate_arguments(spec, {"color": "red", "brightness": -1})
+
+    assert any("brightness" in e for e in errors)
+
+
+def test_validate_arguments_set_led_brightness_wrong_type() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["set_led"]
+
+    errors = catalog.validate_arguments(spec, {"color": "red", "brightness": "high"})
+
+    assert any("brightness" in e for e in errors)
+    assert any("inteiro" in e for e in errors)
+
+
+def test_validate_arguments_create_timer_valid() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["create_timer"]
+
+    errors = catalog.validate_arguments(spec, {"duration_s": 300, "label": "macarrao"})
+
+    assert errors == []
+
+
+def test_validate_arguments_create_timer_too_long() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["create_timer"]
+
+    errors = catalog.validate_arguments(spec, {"duration_s": 100000})
+
+    assert any("duration_s" in e for e in errors)
+    assert any("86400" in e for e in errors)
+
+
+def test_validate_arguments_create_timer_zero_duration() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["create_timer"]
+
+    errors = catalog.validate_arguments(spec, {"duration_s": 0})
+
+    assert any("duration_s" in e for e in errors)
+
+
+def test_validate_arguments_create_reminder_missing_text() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["create_reminder"]
+
+    errors = catalog.validate_arguments(spec, {"trigger_iso": "2026-06-09T15:00:00"})
+
+    assert any("text" in e for e in errors)
+
+
+def test_validate_arguments_analyze_vision_no_required_args() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["analyze_vision"]
+
+    errors = catalog.validate_arguments(spec, {})
+
+    assert errors == []
+
+
+def test_validate_arguments_unknown_field_is_error() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["set_expression"]
+
+    errors = catalog.validate_arguments(
+        spec, {"expression_id": "happy", "unknown_field": "xyz"}
+    )
+
+    assert any("desconhecido" in e or "unknown_field" in e for e in errors)
+
+
+def test_request_confirmation_is_confirmation_required() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    spec = catalog.CATALOG["request_confirmation"]
+
+    assert spec.risk_level == "confirmation_required"
+
+
+def test_all_other_tools_are_low_risk() -> None:
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    low_risk = {"set_expression", "set_led", "create_timer", "create_reminder", "analyze_vision"}
+
+    for name in low_risk:
+        assert catalog.CATALOG[name].risk_level == "low", f"'{name}' deveria ser low risk"
+
+
+def test_executor_set_expression_returns_expression_id() -> None:
+    executors = importlib.import_module("noisebot_server.internal.agent.tools.executors")
+
+    result = executors.execute_set_expression(
+        {"expression_id": "happy"}, {"adapter": None, "turn_id": 1}
+    )
+
+    assert result["expression_id"] == "happy"
+    assert result["sent"] is False  # sem adapter
+
+
+def test_executor_set_led_defaults_brightness_to_100() -> None:
+    executors = importlib.import_module("noisebot_server.internal.agent.tools.executors")
+
+    result = executors.execute_set_led(
+        {"color": "blue"}, {"adapter": None, "turn_id": 1}
+    )
+
+    assert result["color"] == "blue"
+    assert result["brightness"] == 100
+
+
+def test_executor_analyze_vision_without_client_returns_error() -> None:
+    executors = importlib.import_module("noisebot_server.internal.agent.tools.executors")
+
+    result = executors.execute_analyze_vision({}, {"vision_client": None, "turn_id": 1})
+
+    assert "error" in result
+    assert "indisponivel" in result["error"]
+
+
+def test_executor_create_timer_without_app_state_returns_partial() -> None:
+    executors = importlib.import_module("noisebot_server.internal.agent.tools.executors")
+
+    result = executors.execute_create_timer(
+        {"duration_s": 120}, {"app_state": None, "turn_id": 1}
+    )
+
+    assert result["duration_s"] == 120
+    assert result.get("persisted") is False
+
+
+def test_executor_request_confirmation_returns_pending() -> None:
+    executors = importlib.import_module("noisebot_server.internal.agent.tools.executors")
+
+    result = executors.execute_request_confirmation(
+        {"question": "Pode deletar?", "action_description": "apagar arquivo"},
+        {"turn_id": 1},
+    )
+
+    assert result["pending"] is True
+    assert result["question"] == "Pode deletar?"
+
+
+# ---------------------------------------------------------------------------
+# Fase 5 — Tool Gateway
+# ---------------------------------------------------------------------------
+
+def test_gateway_unknown_tool_vetoed() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call({"name": "launch_missile", "arguments": {}})
+
+    assert result.vetoed is True
+    assert result.success is False
+    assert result.error is not None
+    assert "launch_missile" in result.error
+
+
+def test_gateway_empty_name_vetoed() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call({"name": "", "arguments": {}})
+
+    assert result.vetoed is True
+
+
+def test_gateway_invalid_arguments_vetoed_before_executor() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call(
+        {"name": "set_expression", "arguments": {"expression_id": "nonexistent_expr"}}
+    )
+
+    assert result.vetoed is True
+    assert result.success is False
+    assert "argumentos invalidos" in (result.error or "")
+
+
+def test_gateway_missing_required_arg_vetoed() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call({"name": "set_expression", "arguments": {}})
+
+    assert result.vetoed is True
+    assert "expression_id" in (result.error or "")
+
+
+def test_gateway_set_expression_executes_successfully() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call(
+        {"name": "set_expression", "arguments": {"expression_id": "happy"}},
+        adapter=None,
+        turn_id=42,
+    )
+
+    assert result.success is True
+    assert result.vetoed is False
+    assert result.result is not None
+    assert result.result["expression_id"] == "happy"
+
+
+def test_gateway_set_led_executes_with_valid_args() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call(
+        {"name": "set_led", "arguments": {"color": "blue", "brightness": 50}},
+        turn_id=1,
+    )
+
+    assert result.success is True
+    assert result.result["color"] == "blue"
+    assert result.result["brightness"] == 50
+
+
+def test_gateway_analyze_vision_vetoed_when_unavailable() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call(
+        {"name": "analyze_vision", "arguments": {}},
+        vision_available=False,
+        turn_id=1,
+    )
+
+    assert result.vetoed is True
+    assert "visao" in (result.error or "").lower()
+
+
+def test_gateway_analyze_vision_executes_when_available() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call(
+        {"name": "analyze_vision", "arguments": {}},
+        vision_available=True,
+        vision_client=None,  # sem cliente real: executor retorna error dict, mas gateway não veta
+        turn_id=1,
+    )
+
+    # Gateway não veta — executor roda e devolve erro interno
+    assert result.vetoed is False
+    assert result.success is True  # executor retornou dict com "error" mas não levantou
+    assert "error" in result.result
+
+
+def test_gateway_confirmation_required_returns_pending() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call(
+        {"name": "request_confirmation", "arguments": {"question": "Tem certeza?"}},
+        turn_id=1,
+    )
+
+    assert result.requires_confirmation is True
+    assert result.success is False
+    assert result.vetoed is False
+    assert result.error is None
+
+
+def test_gateway_state_policy_vetoes_restricted_state() -> None:
+    """Tool com allowed_states definido deve ser vetada em estado incompatível."""
+    catalog = importlib.import_module("noisebot_server.internal.agent.tools.catalog")
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    # Criar spec temporária com allowed_states restrito
+    spec = catalog.ToolSpec(
+        name="test_restricted",
+        description="test",
+        arguments_schema={"type": "object", "properties": {}, "required": []},
+        risk_level="low",
+        allowed_states=frozenset({"IDLE"}),
+    )
+    # Injetar temporariamente no catálogo
+    catalog.CATALOG["test_restricted"] = spec
+    from noisebot_server.internal.agent.tools.executors import EXECUTOR_MAP
+    EXECUTOR_MAP["test_restricted"] = lambda args, ctx: {"ok": True}
+
+    try:
+        result = gateway.execute_tool_call(
+            {"name": "test_restricted", "arguments": {}},
+            current_state="THINKING",
+            turn_id=1,
+        )
+        assert result.vetoed is True
+        assert "THINKING" in (result.error or "")
+
+        result_allowed = gateway.execute_tool_call(
+            {"name": "test_restricted", "arguments": {}},
+            current_state="IDLE",
+            turn_id=1,
+        )
+        assert result_allowed.success is True
+    finally:
+        catalog.CATALOG.pop("test_restricted", None)
+        EXECUTOR_MAP.pop("test_restricted", None)
+
+
+def test_gateway_audit_log_always_present() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    # Caso vetado
+    r1 = gateway.execute_tool_call({"name": "unknown_xyz", "arguments": {}})
+    assert isinstance(r1.audit_log, dict)
+    assert r1.audit_log.get("outcome") == "vetoed"
+    assert "timestamp_iso" in r1.audit_log
+
+    # Caso sucesso
+    r2 = gateway.execute_tool_call(
+        {"name": "set_expression", "arguments": {"expression_id": "neutral"}},
+        turn_id=5,
+    )
+    assert isinstance(r2.audit_log, dict)
+    assert r2.audit_log.get("outcome") == "success"
+    assert r2.audit_log.get("turn_id") == 5
+
+    # Caso confirmation_pending
+    r3 = gateway.execute_tool_call(
+        {"name": "request_confirmation", "arguments": {"question": "ok?"}},
+        turn_id=6,
+    )
+    assert r3.audit_log.get("outcome") == "confirmation_pending"
+
+
+def test_gateway_brightness_boundary_values() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    r0 = gateway.execute_tool_call(
+        {"name": "set_led", "arguments": {"color": "red", "brightness": 0}}
+    )
+    assert r0.success is True
+
+    r100 = gateway.execute_tool_call(
+        {"name": "set_led", "arguments": {"color": "red", "brightness": 100}}
+    )
+    assert r100.success is True
+
+    r_over = gateway.execute_tool_call(
+        {"name": "set_led", "arguments": {"color": "red", "brightness": 101}}
+    )
+    assert r_over.vetoed is True
+
+
+def test_gateway_create_timer_valid_range() -> None:
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call(
+        {"name": "create_timer", "arguments": {"duration_s": 60}},
+        app_state=None,
+        turn_id=1,
+    )
+
+    assert result.success is True
+    assert result.result["duration_s"] == 60
+
+
+def test_gateway_tool_result_has_no_raw_floats_in_audit() -> None:
+    """audit_log não deve vazar floats de telemetria."""
+    gateway = importlib.import_module("noisebot_server.internal.agent.tools.gateway")
+
+    result = gateway.execute_tool_call(
+        {"name": "set_expression", "arguments": {"expression_id": "sad"}},
+        turn_id=7,
+    )
+
+    audit_str = str(result.audit_log)
+    # Verificar que não há valores float típicos de VAA
+    for forbidden in ("valence", "activation", "attention"):
+        assert forbidden not in audit_str
+
+
+# ---------------------------------------------------------------------------
+# Fase 6 — Visão no Multi-Turn Payload
+# ---------------------------------------------------------------------------
+
+def test_payload_vision_field_present_when_snapshot_provided() -> None:
+    """build_turn_payload inclui 'vision' quando vision_snapshot é fornecido."""
+    payload_builder = importlib.import_module(
+        "noisebot_server.internal.agent.payload_builder"
+    )
+
+    snapshot = {
+        "available": True,
+        "fresh": True,
+        "scene": "usuario na mesa",
+        "brightness": "média",
+        "motion": "baixo",
+    }
+    payload = payload_builder.build_turn_payload(
+        text="olá",
+        turn_id=1,
+        vision_snapshot=snapshot,
+    )
+
+    assert "vision" in payload
+    assert payload["vision"]["scene"] == "usuario na mesa"
+    assert payload["vision"]["brightness"] == "média"
+    assert payload["vision"]["motion"] == "baixo"
+
+
+def test_payload_vision_absent_when_snapshot_none() -> None:
+    """build_turn_payload não inclui 'vision' quando vision_snapshot é None."""
+    payload_builder = importlib.import_module(
+        "noisebot_server.internal.agent.payload_builder"
+    )
+
+    payload = payload_builder.build_turn_payload(
+        text="olá",
+        turn_id=1,
+        vision_snapshot=None,
+    )
+
+    assert "vision" not in payload
+
+
+def test_payload_vision_strips_bytes_values() -> None:
+    """vision_snapshot não pode vazar bytes/bytearray no payload."""
+    payload_builder = importlib.import_module(
+        "noisebot_server.internal.agent.payload_builder"
+    )
+
+    snapshot = {
+        "available": True,
+        "scene": "sala",
+        "jpeg_raw": b"\xff\xd8\xff",
+        "frame_data": bytearray(b"\x00\x01"),
+        "brightness": "alta",
+    }
+    payload = payload_builder.build_turn_payload(
+        text="o que você está vendo?",
+        turn_id=2,
+        vision_snapshot=snapshot,
+    )
+
+    vision = payload.get("vision", {})
+    assert "jpeg_raw" not in vision
+    assert "frame_data" not in vision
+    assert vision.get("brightness") == "alta"
+    assert vision.get("scene") == "sala"
+
+
+def test_payload_vision_has_text_fields_not_ints() -> None:
+    """brightness e motion devem ser strings textuais, não inteiros."""
+    payload_builder = importlib.import_module(
+        "noisebot_server.internal.agent.payload_builder"
+    )
+
+    snapshot = {
+        "available": True,
+        "scene": "quarto escuro",
+        "brightness": "baixa",
+        "motion": "moderado",
+    }
+    payload = payload_builder.build_turn_payload(
+        text="test",
+        turn_id=3,
+        vision_snapshot=snapshot,
+    )
+
+    vision = payload["vision"]
+    assert isinstance(vision["brightness"], str)
+    assert isinstance(vision["motion"], str)
+    assert vision["brightness"] in ("baixa", "média", "alta")
+    assert vision["motion"] in ("baixo", "moderado", "alto")
+
+
+def test_vision_client_has_get_lightweight_snapshot() -> None:
+    """VisionClient deve ter o método get_lightweight_snapshot."""
+    vision_module = importlib.import_module(
+        "noisebot_server.internal.vision.client"
+    )
+    client = vision_module.VisionClient("http://localhost:8080")
+    assert callable(getattr(client, "get_lightweight_snapshot", None))
+
+
+def test_vision_lightweight_snapshot_returns_none_on_error() -> None:
+    """get_lightweight_snapshot retorna None (nunca levanta) quando observe() falha."""
+    vision_module = importlib.import_module(
+        "noisebot_server.internal.vision.client"
+    )
+    client = vision_module.VisionClient("http://127.0.0.1:1", timeout_s=0.01)
+
+    result = client.get_lightweight_snapshot()
+
+    assert result is None
+
+
+def test_vision_lightweight_snapshot_structure() -> None:
+    """get_lightweight_snapshot retorna dict com campos obrigatórios quando observe() ok."""
+    import unittest.mock as mock
+
+    vision_module = importlib.import_module(
+        "noisebot_server.internal.vision.client"
+    )
+    client = vision_module.VisionClient("http://localhost:8080")
+
+    fake_obs = vision_module.VisionObservation(
+        valid=True,
+        scene="frente do usuario",
+        timestamp_ms=12345,
+        width=320,
+        height=240,
+        jpeg_bytes=0,
+        capture_ms=10,
+        luma_avg=80,
+        luma_min=30,
+        luma_max=200,
+        contrast=50,
+        motion_score=5,
+    )
+
+    with mock.patch.object(client, "observe", return_value=fake_obs):
+        result = client.get_lightweight_snapshot()
+
+    assert result is not None
+    assert result["available"] is True
+    assert result["fresh"] is True
+    assert result["scene"] == "frente do usuario"
+    assert result["brightness"] == "média"   # luma_avg=80 → 60-150 range
+    assert result["motion"] == "baixo"       # motion_score=5 < 10
+
+
+def test_format_turn_payload_includes_vision_section() -> None:
+    """_format_turn_payload_block deve incluir linha de visão quando presente."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    payload = {
+        "turn": {"id": 1, "user_text": "test", "timestamp_iso": "2026-01-01T00:00:00+00:00"},
+        "robot": {"state": "IDLE", "firmware_online": False, "pipeline_mode": "normal"},
+        "mood": "neutro",
+        "vision": {
+            "available": True,
+            "fresh": True,
+            "scene": "mesa de trabalho",
+            "brightness": "alta",
+            "motion": "baixo",
+        },
+    }
+
+    block = llm_module._format_turn_payload_block(payload)
+
+    assert "Visao:" in block or "Visao" in block
+    assert "mesa de trabalho" in block
+    assert "alta" in block
+
+
+def test_format_turn_payload_no_vision_section_when_absent() -> None:
+    """_format_turn_payload_block não deve incluir linha Visao quando ausente."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    payload = {
+        "turn": {"id": 1, "user_text": "test", "timestamp_iso": "2026-01-01T00:00:00+00:00"},
+        "robot": {"state": "IDLE", "firmware_online": False, "pipeline_mode": "normal"},
+        "mood": "neutro",
+    }
+
+    block = llm_module._format_turn_payload_block(payload)
+
+    assert "Visao" not in block
+
+
+def test_vision_client_luma_to_text_thresholds() -> None:
+    """_luma_to_text mapeia corretamente os limites de brilho."""
+    vision_module = importlib.import_module(
+        "noisebot_server.internal.vision.client"
+    )
+    _luma_to_text = vision_module._luma_to_text
+
+    assert _luma_to_text(0) == "baixa"
+    assert _luma_to_text(59) == "baixa"
+    assert _luma_to_text(60) == "média"
+    assert _luma_to_text(149) == "média"
+    assert _luma_to_text(150) == "alta"
+    assert _luma_to_text(255) == "alta"
+
+
+def test_vision_client_motion_to_text_thresholds() -> None:
+    """_motion_to_text mapeia corretamente os limites de movimento."""
+    vision_module = importlib.import_module(
+        "noisebot_server.internal.vision.client"
+    )
+    _motion_to_text = vision_module._motion_to_text
+
+    assert _motion_to_text(0) == "baixo"
+    assert _motion_to_text(9) == "baixo"
+    assert _motion_to_text(10) == "moderado"
+    assert _motion_to_text(49) == "moderado"
+    assert _motion_to_text(50) == "alto"
+    assert _motion_to_text(100) == "alto"
+
+
+# ---------------------------------------------------------------------------
+# Fase 7 — Two-Step Tool Loop
+# ---------------------------------------------------------------------------
+
+def test_format_tool_result_injection_success() -> None:
+    """_format_tool_result_injection descreve sucesso em linguagem natural."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    msg = llm_module._format_tool_result_injection({
+        "tool_name": "create_timer",
+        "success": True,
+        "vetoed": False,
+        "result": {"timer_id": "abc", "duration_s": 300, "label": "Estudos"},
+        "error": None,
+        "veto_reason": None,
+    })
+
+    assert "create_timer" in msg
+    assert "sucesso" in msg
+    assert "duration_s=300" in msg or "timer_id=abc" in msg
+    assert "tool_call" in msg  # instrução para não usar tool_call
+
+
+def test_format_tool_result_injection_vetoed() -> None:
+    """_format_tool_result_injection descreve veto em linguagem natural."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    msg = llm_module._format_tool_result_injection({
+        "tool_name": "set_led",
+        "success": False,
+        "vetoed": True,
+        "result": None,
+        "error": "led bloqueado",
+        "veto_reason": "estado incompativel",
+    })
+
+    assert "set_led" in msg
+    assert "bloqueada" in msg
+    assert "estado incompativel" in msg
+    assert "tool_call" in msg
+
+
+def test_format_tool_result_injection_error() -> None:
+    """_format_tool_result_injection descreve falha em linguagem natural."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    msg = llm_module._format_tool_result_injection({
+        "tool_name": "analyze_vision",
+        "success": False,
+        "vetoed": False,
+        "result": None,
+        "error": "timeout na camera",
+        "veto_reason": None,
+    })
+
+    assert "analyze_vision" in msg
+    assert "falhou" in msg
+    assert "timeout na camera" in msg
+
+
+def test_build_messages_second_step_has_extra_messages() -> None:
+    """build_messages retorna 4 mensagens quando tool_call_result está presente."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    ctx = {
+        "tool_call_result": {
+            "tool_name": "create_timer",
+            "success": True,
+            "vetoed": False,
+            "result": {"duration_s": 60},
+            "error": None,
+            "veto_reason": None,
+        },
+        "first_assistant_json": '{"expression_id":"happy","reply":"Ok!","tool_call":{"name":"create_timer","arguments":{}}}',
+    }
+    msgs = llm_module.build_messages("crie um timer de 1 minuto", ctx)
+
+    assert len(msgs) == 4
+    roles = [m["role"] for m in msgs]
+    assert roles == ["system", "user", "assistant", "user"]
+
+
+def test_build_messages_second_step_without_first_json_has_three_messages() -> None:
+    """Sem first_assistant_json, segundo passo tem 3 mensagens (sem assistant)."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    ctx = {
+        "tool_call_result": {
+            "tool_name": "set_expression",
+            "success": True,
+            "vetoed": False,
+            "result": {"expression_id": "happy"},
+            "error": None,
+            "veto_reason": None,
+        },
+        "first_assistant_json": "",  # vazio → sem assistant message
+    }
+    msgs = llm_module.build_messages("mostre expressão feliz", ctx)
+
+    assert len(msgs) == 3
+    roles = [m["role"] for m in msgs]
+    assert roles == ["system", "user", "user"]
+
+
+def test_build_messages_second_step_injection_in_last_user_message() -> None:
+    """A última mensagem de usuário contém o resultado da ferramenta."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    ctx = {
+        "tool_call_result": {
+            "tool_name": "create_reminder",
+            "success": True,
+            "vetoed": False,
+            "result": {"reminder_id": "r42"},
+            "error": None,
+            "veto_reason": None,
+        },
+        "first_assistant_json": '{"expression_id":"neutral","reply":"Vou criar.","tool_call":null}',
+    }
+    msgs = llm_module.build_messages("lembre-me às 9h", ctx)
+
+    last_content = msgs[-1]["content"]
+    assert "create_reminder" in last_content
+    assert "sucesso" in last_content
+    assert "tool_call" in last_content  # instrução anti-loop
+
+
+def test_build_messages_normal_turn_not_affected() -> None:
+    """Turnos sem tool_call_result continuam retornando 2 mensagens."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    msgs = llm_module.build_messages("oi tudo bem?", {})
+
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "system"
+    assert msgs[1]["role"] == "user"
+
+
+def test_build_messages_second_step_vetoed_describes_block() -> None:
+    """Mensagem de injeção menciona bloqueio quando tool foi vetada."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    ctx = {
+        "tool_call_result": {
+            "tool_name": "move_servo",
+            "success": False,
+            "vetoed": True,
+            "result": None,
+            "error": "motion_safety nao liberada",
+            "veto_reason": "motion_safety nao liberada",
+        },
+        "first_assistant_json": "",
+    }
+    msgs = llm_module.build_messages("vire para mim", ctx)
+
+    last_content = msgs[-1]["content"]
+    assert "bloqueada" in last_content
+    assert "motion_safety" in last_content
+
+
+def test_format_tool_result_injection_strips_complex_result_values() -> None:
+    """Dicts e listas aninhados no result não aparecem crus na injeção."""
+    llm_module = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    msg = llm_module._format_tool_result_injection({
+        "tool_name": "analyze_vision",
+        "success": True,
+        "vetoed": False,
+        "result": {
+            "scene": "sala",
+            "nested": {"raw": [1, 2, 3]},  # deve ser ignorado
+            "brightness": "alta",
+        },
+        "error": None,
+        "veto_reason": None,
+    })
+
+    assert "scene=sala" in msg or "brightness=alta" in msg
+    # nested dict não deve aparecer cru
+    assert "[1, 2, 3]" not in msg

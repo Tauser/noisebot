@@ -1,0 +1,221 @@
+"""Executor functions for Phase 4 tools.
+
+Each executor receives (arguments, context) and returns a result dict.
+The gateway (Phase 5) is responsible for:
+  - calling the right executor
+  - checking risk level and state policy
+  - building ToolResult with audit log
+  - deciding whether to execute, simulate, or block
+
+Expected context keys:
+  adapter       FirmwareAdapter | None — active firmware connection
+  app_state     AppStateStore | None   — persistent app state
+  vision_client VisionClient | None    — camera/vision access
+  turn_id       int                    — current turn for logging
+
+Executor contract:
+  - Returns a dict on success (may be partial).
+  - Raises nothing — errors are returned as {"error": "..."}.
+  - Never accesses HAL directly. Only goes through adapter or app_state.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from datetime import datetime, timezone
+from typing import Any
+
+log = logging.getLogger(__name__)
+
+_EXPRESSION_ID_MAP: dict[str, int] = {
+    "neutral": 0, "happy": 1, "curious": 2, "sleepy": 3, "focused": 4,
+    "suspicious": 5, "surprised": 6, "sad": 7, "alarmed": 8, "angry": 9,
+}
+
+
+def execute_set_expression(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    expression_id = str(arguments["expression_id"]).lower()
+    adapter = context.get("adapter")
+    turn_id = context.get("turn_id", 0)
+    log.info("tool set_expression turn_id=%d expression=%s", turn_id, expression_id)
+
+    expr_int = _EXPRESSION_ID_MAP.get(expression_id)
+    if expr_int is None:
+        return {"error": f"expressao desconhecida: '{expression_id}'"}
+
+    if adapter is None:
+        return {"expression_id": expression_id, "expression_int": expr_int, "sent": False}
+
+    try:
+        asyncio.get_running_loop().create_task(
+            adapter.send_expr(expr_int),
+            name=f"nb_tool_expr_{turn_id}",
+        )
+        return {"expression_id": expression_id, "expression_int": expr_int, "sent": True}
+    except RuntimeError:
+        return {"expression_id": expression_id, "expression_int": expr_int, "sent": False}
+
+
+def execute_set_led(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    color = arguments["color"]
+    brightness = int(arguments.get("brightness", 100))
+    adapter = context.get("adapter")
+    turn_id = context.get("turn_id", 0)
+    log.info(
+        "tool set_led turn_id=%d color=%s brightness=%d", turn_id, color, brightness
+    )
+    # send_led requires MSG_LED firmware support (not yet released)
+    return {"color": color, "brightness": brightness, "sent": False, "note": "MSG_LED pendente"}
+
+
+def execute_create_timer(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    duration_s = int(arguments["duration_s"])
+    label = str(arguments.get("label", "Timer"))
+    app_state = context.get("app_state")
+    turn_id = context.get("turn_id", 0)
+    log.info(
+        "tool create_timer turn_id=%d duration_s=%d label=%r", turn_id, duration_s, label
+    )
+    if app_state is not None:
+        try:
+            duration_min = max(1, round(duration_s / 60))
+            item = app_state.create_agenda_item(
+                "timer",
+                {"title": label, "duration_min": duration_min},
+            )
+            return {
+                "timer_id": item.get("id"),
+                "duration_s": duration_s,
+                "label": label,
+            }
+        except Exception as exc:
+            log.warning("create_timer: app_state falhou: %s", exc)
+            return {"error": str(exc)}
+    return {"duration_s": duration_s, "label": label, "persisted": False}
+
+
+def execute_create_reminder(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    text = str(arguments["text"])
+    trigger_iso = str(arguments["trigger_iso"])
+    app_state = context.get("app_state")
+    turn_id = context.get("turn_id", 0)
+    log.info(
+        "tool create_reminder turn_id=%d trigger=%s text=%r", turn_id, trigger_iso, text
+    )
+    if app_state is not None:
+        try:
+            delay_min = _iso_to_delay_min(trigger_iso)
+            item = app_state.create_agenda_item(
+                "reminder",
+                {"title": text, "duration_min": delay_min},
+            )
+            return {
+                "reminder_id": item.get("id"),
+                "text": text,
+                "trigger_iso": trigger_iso,
+            }
+        except Exception as exc:
+            log.warning("create_reminder: app_state falhou: %s", exc)
+            return {"error": str(exc)}
+    return {"text": text, "trigger_iso": trigger_iso, "persisted": False}
+
+
+def execute_analyze_vision(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    vision_client = context.get("vision_client")
+    turn_id = context.get("turn_id", 0)
+    log.info("tool analyze_vision turn_id=%d", turn_id)
+    if vision_client is None:
+        return {"error": "visao indisponivel"}
+    try:
+        analysis = vision_client.analyze()
+        obs = analysis.observation
+        brightness = _luma_to_text(obs.luma_avg)
+        motion = _motion_to_text(obs.motion_score)
+        return {
+            "scene": obs.scene,
+            "face_detected": analysis.face_detected,
+            "face_count": analysis.face_count,
+            "brightness": brightness,
+            "motion": motion,
+        }
+    except Exception as exc:
+        log.warning("analyze_vision falhou: %s", exc)
+        return {"error": str(exc)}
+
+
+def execute_request_confirmation(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    question = str(arguments["question"])
+    action_description = str(arguments.get("action_description", ""))
+    turn_id = context.get("turn_id", 0)
+    log.info(
+        "tool request_confirmation turn_id=%d question=%r", turn_id, question
+    )
+    # The gateway handles the confirmation flow — this executor just records intent.
+    return {
+        "question": question,
+        "action_description": action_description,
+        "pending": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _iso_to_delay_min(trigger_iso: str) -> int:
+    """Convert an ISO 8601 datetime string to minutes from now (minimum 1)."""
+    try:
+        trigger = datetime.fromisoformat(trigger_iso)
+        if trigger.tzinfo is None:
+            trigger = trigger.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta_s = (trigger - now).total_seconds()
+        return max(1, round(delta_s / 60))
+    except (ValueError, TypeError):
+        return 1
+
+
+def _luma_to_text(luma: int) -> str:
+    if luma < 60:
+        return "baixa"
+    if luma < 150:
+        return "média"
+    return "alta"
+
+
+def _motion_to_text(motion_score: int) -> str:
+    if motion_score < 10:
+        return "baixo"
+    if motion_score < 50:
+        return "moderado"
+    return "alto"
+
+
+EXECUTOR_MAP: dict[str, Any] = {
+    "set_expression": execute_set_expression,
+    "set_led": execute_set_led,
+    "create_timer": execute_create_timer,
+    "create_reminder": execute_create_reminder,
+    "analyze_vision": execute_analyze_vision,
+    "request_confirmation": execute_request_confirmation,
+}
+
+__all__ = ["EXECUTOR_MAP"]

@@ -43,7 +43,7 @@ PROVIDER_CATALOG: dict[str, list[str]] = {
 
 VALID_MODES = {"normal", "local_only", "degraded", "realtime"}
 
-MUTABLE_FIELDS = {"provider", "model", "max_tokens", "mode"}
+MUTABLE_FIELDS = {"provider", "model", "max_tokens", "mode", "followup_enabled"}
 
 
 class ConfigController:
@@ -107,6 +107,11 @@ class ConfigController:
         if mode is not None and mode not in VALID_MODES:
             errors.append(f"mode '{mode}' inválido; válidos: {sorted(VALID_MODES)}")
 
+        # Follow-up
+        followup_enabled = data.get("followup_enabled")
+        if followup_enabled is not None and not isinstance(followup_enabled, bool):
+            errors.append("followup_enabled deve ser booleano")
+
         return errors
 
     # -- Aplicação -------------------------------------------------------------
@@ -147,13 +152,35 @@ class ConfigController:
             changes["mode"] = {"old": old_mode, "new": new_mode}
             log.info("Config aplicada: pipeline_mode %s → %s", old_mode, new_mode)
 
+        # Follow-up
+        new_followup_enabled = data.get("followup_enabled")
+        if new_followup_enabled is not None:
+            import os
+            old_followup_enabled = config.conversation.followup_enabled
+            if new_followup_enabled != old_followup_enabled:
+                os.environ["NOISEBOT_FOLLOWUP_ENABLED"] = "true" if new_followup_enabled else "false"
+                changes["followup_enabled"] = {"old": old_followup_enabled, "new": new_followup_enabled}
+                log.info(
+                    "Config aplicada: followup_enabled %s → %s",
+                    old_followup_enabled, new_followup_enabled,
+                )
+
         if changes:
             self._refresh_app_config(
                 provider=new_provider,
                 model=new_model,
                 max_tokens=new_max_tokens,
                 mode=new_mode,
+                followup_enabled=new_followup_enabled
+                if "followup_enabled" in changes else None,
             )
+
+        if "followup_enabled" in changes:
+            try:
+                app._orchestrator.set_followup_enabled(new_followup_enabled)
+            except Exception as exc:
+                log.error("Falha ao aplicar followup_enabled no orchestrator: %s", exc)
+                raise RuntimeError(f"Falha ao aplicar config: {exc}") from exc
 
         if any(key in changes for key in ("provider", "model", "max_tokens", "mode")):
             # Rebuild provider e injeta no orchestrator usando o snapshot atualizado.
@@ -196,6 +223,7 @@ class ConfigController:
         model: str | None,
         max_tokens: int | None,
         mode: str | None,
+        followup_enabled: bool | None = None,
     ) -> None:
         """Atualiza o snapshot tipado usado pelos builders da Application."""
         config = self._app._config
@@ -217,5 +245,11 @@ class ConfigController:
 
         if mode is not None:
             next_config = replace(next_config, pipeline_mode=PipelineMode(mode))
+
+        if followup_enabled is not None:
+            next_config = replace(
+                next_config,
+                conversation=replace(next_config.conversation, followup_enabled=followup_enabled),
+            )
 
         self._app._config = next_config

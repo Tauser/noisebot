@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any
@@ -19,25 +20,90 @@ log = logging.getLogger(__name__)
 
 _DEFAULT_TEMPERATURE = 0.7
 _DEFAULT_MAX_TOKENS = 256
+_DEEP_THOUGHT_MAX_TOKENS = 1100
+
+_VALID_EXPRESSION_IDS = frozenset(
+    "neutral happy curious sleepy focused suspicious surprised sad alarmed angry".split()
+)
+_EXPRESSION_ID_MAP: dict[str, int] = {
+    "neutral": 0, "happy": 1, "curious": 2, "sleepy": 3, "focused": 4,
+    "suspicious": 5, "surprised": 6, "sad": 7, "alarmed": 8, "angry": 9,
+}
+_EXPRESSION_ID_REVERSE: dict[int, str] = {v: k for k, v in _EXPRESSION_ID_MAP.items()}
 
 _SYSTEM_PROMPT = (
     "Voce e NoiseBot, um companion robot expressivo de mesa.\n"
-    "Personalidade: caloroso, curioso, expressivo, respostas < 10s de fala.\n"
+    "Personalidade: caloroso, curioso, expressivo, fala em voz alta para o usuario.\n"
     "\n"
-    "Responda SEMPRE em JSON valido, sem markdown, neste formato exato:\n"
-    '{"reply":"<texto falado>","expression_id":<int>,"action":<int>,"emot_event":<int>}\n'
+    "Responda SEMPRE com um unico objeto JSON valido, sem texto fora do JSON, sem markdown:\n"
+    '{"expression_id":"<expressao>","reply":"<texto>","tool_call":null}\n'
     "\n"
-    "expression_id: 0=neutro 1=feliz 2=curioso 3=sonolento 4=focado "
-    "5=desconfiado 6=surpreso 7=triste 8=alarmado 9=bravo\n"
-    "action: 0=greet 1=nod 2=shake 3=look_up 4=look_down\n"
-    "emot_event: 2=voice_start 3=audio_started\n"
+    "expression_id deve ser exatamente uma destas strings (minusculo, sem numeros):\n"
+    "neutral  happy  curious  sleepy  focused  suspicious  surprised  sad  alarmed  angry\n"
     "\n"
-    '"reply" deve ser natural, conciso, maximo 2-3 frases curtas.\n'
+    "tool_call deve ser null na maioria das respostas. Use somente quando uma ferramenta "
+    'for necessaria, no formato: {"name":"nome","arguments":{}}\n'
+    "\n"
+    "Exemplos corretos:\n"
+    '{"expression_id":"happy","reply":"Oi! Como posso te ajudar?","tool_call":null}\n'
+    '{"expression_id":"curious","reply":"Claro, vou verificar.","tool_call":{"name":"set_expression","arguments":{"expression_id":"focused"}}}\n'
+    "\n"
+    '"reply" deve soar natural quando falado em voz alta. Para perguntas '
+    "basicas, cumprimentos e pedidos curtos, responda em 2-3 frases curtas e "
+    "diretas. Para perguntas reflexivas, filosoficas ou que pedem opiniao "
+    "elaborada, pode se estender mais (ate 5-6 frases), desenvolvendo o "
+    "raciocinio com calma, sem soar como leitura de texto.\n"
     '"reply" deve ser SEMPRE em portugues do Brasil. Nao use chines, japones, '
     "coreano, ingles, espanhol ou mistura de idiomas.\n"
     "Se o usuario pedir piada, varie tema, estrutura e punchline; nunca repita "
     "uma piada ou resposta recente."
 )
+
+_REFLECTIVE_TERMS = (
+    "o que voce acha",
+    "o que voce pensa",
+    "na sua opiniao",
+    "voce acredita",
+    "voce acha que",
+    "voce tem consciencia",
+    "voce sente",
+    "qual o sentido",
+    "sentido da vida",
+    "sentido de existir",
+    "sentido de viver",
+    "o que e a felicidade",
+    "o que e o amor",
+    "o que e a consciencia",
+    "o que e a alma",
+    "o que e a morte",
+    "o que significa",
+    "filosof",
+    "refletir sobre",
+    "reflexao sobre",
+    "por que existimos",
+    "por que estamos aqui",
+    "qual a diferenca entre",
+    "existe deus",
+    "tem um proposito",
+    "qual o seu proposito",
+    "qual e o seu proposito",
+)
+
+
+def _normalize_for_match(text: str) -> str:
+    normalized = unicodedata.normalize("NFD", text or "")
+    without_accents = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    return without_accents.lower()
+
+
+def wants_deep_reflection(text: str) -> bool:
+    """Detect prompts that invite philosophical/reflective elaboration.
+
+    Casual or factual turns stay on the fast path (no "thinking", short
+    replies); reflective ones get more room and the model's "thinking" pass.
+    """
+    normalized = _normalize_for_match(text)
+    return any(term in normalized for term in _REFLECTIVE_TERMS)
 
 _FOREIGN_SCRIPT_RE = re.compile(
     r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]"
@@ -84,15 +150,24 @@ def build_messages(
     system_content: str = cfg.get("system_prompt", _SYSTEM_PROMPT)
 
     extra: list[str] = []
-    if ctx.get("robot_state"):
-        extra.append(f"Estado do robo: {ctx['robot_state']}")
-    if ctx.get("emotion_state"):
-        extra.append(f"Estado emocional: {ctx['emotion_state']}")
-    user_profile = ctx.get("user_profile")
-    if isinstance(user_profile, dict):
-        lines = _user_profile_prompt_lines(user_profile)
-        if lines:
-            extra.append("Perfil do usuario atual:\n" + "\n".join(lines))
+
+    turn_payload = ctx.get("turn_payload")
+    if isinstance(turn_payload, dict):
+        # New path: structured multi-turn payload
+        extra.append(_format_turn_payload_block(turn_payload))
+    else:
+        # Legacy path: individual context keys (kept for compat and tests)
+        if ctx.get("robot_state"):
+            extra.append(f"Estado do robo: {ctx['robot_state']}")
+        if ctx.get("emotion_state"):
+            extra.append(f"Estado emocional: {ctx['emotion_state']}")
+        user_profile = ctx.get("user_profile")
+        if isinstance(user_profile, dict):
+            lines = _user_profile_prompt_lines(user_profile)
+            if lines:
+                extra.append("Perfil do usuario atual:\n" + "\n".join(lines))
+
+    # Anti-repetition guard and deep-thought injection apply to both paths
     recent_replies = ctx.get("recent_replies") or []
     if recent_replies:
         joined = "\n".join(f"- {str(reply)[:180]}" for reply in recent_replies[-5:])
@@ -100,17 +175,167 @@ def build_messages(
             "Respostas recentes a evitar repetir literalmente ou em variação próxima:\n"
             f"{joined}"
         )
+    if ctx.get("deep_thought"):
+        extra.append(
+            "Esta pergunta parece pedir reflexao genuina: pense com calma antes "
+            "de responder e elabore um pouco mais, mantendo tom de fala natural."
+        )
 
     if extra:
         system_content = system_content.rstrip() + "\n\n" + "\n".join(extra)
 
-    return [
+    base_messages = [
         {"role": "system", "content": system_content},
         {"role": "user", "content": text},
     ]
 
+    # Second-step tool loop: inject tool result and request natural reply
+    tool_call_result = ctx.get("tool_call_result")
+    if isinstance(tool_call_result, dict):
+        first_json = ctx.get("first_assistant_json", "")
+        injection = _format_tool_result_injection(tool_call_result)
+        messages: list[dict[str, str]] = list(base_messages)
+        if first_json:
+            messages.append({"role": "assistant", "content": first_json})
+        messages.append({"role": "user", "content": injection})
+        return messages
+
+    return base_messages
+
+
+def _format_turn_payload_block(payload: dict[str, Any]) -> str:
+    """Format a structured turn payload as a compact text block for the system prompt."""
+    lines: list[str] = ["Contexto do turno atual:"]
+
+    user = payload.get("user", {})
+    if user:
+        name = user.get("display_name", "")
+        rel = user.get("relationship", "")
+        lang = user.get("language", "")
+        nick = user.get("robot_nickname", "")
+        parts: list[str] = []
+        if name:
+            label = f"{name} ({rel})" if rel and rel.lower() != "owner" else name
+            parts.append(f"usuario: {label}")
+        if lang:
+            parts.append(f"idioma: {lang}")
+        if nick:
+            parts.append(f"chama o robo de: {nick}")
+        if parts:
+            lines.append("- " + " | ".join(parts))
+        persona_mode = user.get("persona_mode", "")
+        interaction_style = user.get("interaction_style", "")
+        pm_parts = [s for s in (
+            f"persona: {persona_mode}" if persona_mode else "",
+            f"estilo: {interaction_style}" if interaction_style else "",
+        ) if s]
+        if pm_parts:
+            lines.append("- " + " | ".join(pm_parts))
+
+    mood = payload.get("mood", "")
+    if mood:
+        lines.append(f"- Humor do robo: {mood}")
+
+    robot = payload.get("robot", {})
+    if robot:
+        state = robot.get("state", "")
+        fw = "conectado" if robot.get("firmware_online") else "desconectado"
+        pm = robot.get("pipeline_mode", "")
+        state_parts = [s for s in (
+            f"estado: {state}" if state else "",
+            f"firmware: {fw}",
+            f"pipeline: {pm}" if pm else "",
+        ) if s]
+        lines.append("- " + " | ".join(state_parts))
+
+    hardware = payload.get("hardware", {})
+    if hardware:
+        hw_parts: list[str] = []
+        if hardware.get("vision_available"):
+            hw_parts.append("visao disponivel")
+        if hardware.get("tts_available"):
+            hw_parts.append("TTS disponivel")
+        if hardware.get("servos_enabled"):
+            hw_parts.append("servos habilitados")
+        if hw_parts:
+            lines.append("- Hardware: " + ", ".join(hw_parts))
+
+    conv = payload.get("conversation", {})
+    if conv:
+        recent_user = conv.get("recent_user", [])
+        recent_robot = conv.get("recent_robot", [])
+        history: list[str] = []
+        for u, r in zip(recent_user, recent_robot):
+            history.append(f"  [usuario] {u}")
+            history.append(f"  [robo] {r}")
+        for u in recent_user[len(recent_robot):]:
+            history.append(f"  [usuario] {u}")
+        if history:
+            lines.append("- Historico recente:")
+            lines.extend(history)
+
+    tools = payload.get("tools", [])
+    if tools:
+        lines.append("- Tools disponiveis: " + ", ".join(tools))
+
+    vision = payload.get("vision", {})
+    if isinstance(vision, dict) and vision:
+        v_parts: list[str] = []
+        if vision.get("scene"):
+            v_parts.append(f"cena: {vision['scene']}")
+        if vision.get("face_detected"):
+            count = vision.get("face_count", 1)
+            v_parts.append(f"rosto detectado ({count})")
+        if vision.get("brightness"):
+            v_parts.append(f"brilho: {vision['brightness']}")
+        if vision.get("motion"):
+            v_parts.append(f"movimento: {vision['motion']}")
+        if v_parts:
+            lines.append("- Visao: " + " | ".join(v_parts))
+
+    return "\n".join(lines)
+
+
+def _format_tool_result_injection(tcr: dict[str, Any]) -> str:
+    """Build the user-role message injected before the second LLM step.
+
+    Describes the tool outcome in natural language so the model can respond
+    to the user without knowledge of raw structs.
+    tool_call MUST be null in the second step — the instruction is repeated here.
+    """
+    tool_name = str(tcr.get("tool_name") or "desconhecida")
+    if tcr.get("vetoed"):
+        reason = str(tcr.get("veto_reason") or "razao desconhecida")
+        outcome = f"foi bloqueada por politica de seguranca: {reason}"
+    elif tcr.get("success"):
+        result = tcr.get("result") or {}
+        if isinstance(result, dict):
+            parts = [
+                f"{k}={v}" for k, v in result.items()
+                if not isinstance(v, (dict, list, bytes, bytearray))
+            ]
+            summary = ", ".join(parts[:4]) if parts else "concluido"
+        else:
+            summary = str(result)[:80]
+        outcome = f"foi executada com sucesso ({summary})"
+    else:
+        err = str(tcr.get("error") or "erro desconhecido")
+        outcome = f"falhou: {err}"
+    return (
+        f"Ferramenta '{tool_name}' {outcome}. "
+        "Agora responda ao usuario em linguagem natural informando o resultado. "
+        'Retorne JSON valido sem tool_call: '
+        '{"expression_id":"<expr>","reply":"<texto>","tool_call":null}'
+    )
+
 
 def parse_llm_json(raw: str) -> dict[str, Any]:
+    """Parse LLM JSON output into the unified envelope.
+
+    Returns: {"reply": str, "expression_id": str|None, "tool_call": dict|None}
+    expression_id is a validated semantic string ("happy", "neutral", etc.).
+    tool_call is {"name": str, "arguments": dict} or None.
+    """
     cleaned = raw.strip()
     md = re.search(r"```(?:json)?\s*([\s\S]*?)```", cleaned)
     if md:
@@ -124,11 +349,33 @@ def parse_llm_json(raw: str) -> dict[str, Any]:
             raise ValueError(f"Sem JSON valido em: {raw!r}") from None
         data = json.loads(obj.group(0))
 
+    reply = str(data.get("reply", ""))
+
+    expr_raw = data.get("expression_id")
+    expression_id: str | None
+    if isinstance(expr_raw, str) and expr_raw.lower() in _VALID_EXPRESSION_IDS:
+        expression_id = expr_raw.lower()
+    elif isinstance(expr_raw, int):
+        # Fallback: model still outputs legacy ints
+        expression_id = _EXPRESSION_ID_REVERSE.get(expr_raw)
+    else:
+        expression_id = None
+
+    tool_call: dict | None = None
+    tool_call_raw = data.get("tool_call")
+    if isinstance(tool_call_raw, dict):
+        name = tool_call_raw.get("name")
+        arguments = tool_call_raw.get("arguments", {})
+        if isinstance(name, str) and name:
+            tool_call = {
+                "name": name,
+                "arguments": arguments if isinstance(arguments, dict) else {},
+            }
+
     return {
-        "reply": str(data.get("reply", "")),
-        "expression_id": _int_or_none(data.get("expression_id")),
-        "action": _int_or_none(data.get("action")),
-        "emot_event": _int_or_none(data.get("emot_event") or data.get("emot_event_id")),
+        "reply": reply,
+        "expression_id": expression_id,
+        "tool_call": tool_call,
     }
 
 
@@ -226,6 +473,28 @@ def _decode_json_string_fragment(value: str) -> str:
         )
 
 
+def translate_expression_id(expr: str | None) -> int | None:
+    """Map semantic expression string to firmware int. None passthrough."""
+    if expr is None:
+        return None
+    return _EXPRESSION_ID_MAP.get(str(expr).lower())
+
+
+def build_correction_messages(bad_raw: str) -> list[dict[str, str]]:
+    """Build a corrective prompt asking the model to fix a broken JSON response."""
+    return [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                "Sua resposta anterior nao era um JSON valido no formato exigido. "
+                "Retorne SOMENTE o objeto JSON corrigido, sem texto adicional:\n"
+                + bad_raw[:400]
+            ),
+        },
+    ]
+
+
 class OllamaProvider(StreamingLLMProvider):
     _provider_name = "ollama"
 
@@ -233,7 +502,7 @@ class OllamaProvider(StreamingLLMProvider):
         self,
         model: str = "gemma4:12b",
         base_url: str = "http://127.0.0.1:11434",
-        temperature: float = _DEFAULT_TEMPERATURE,
+        temperature: float = 0.2,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
         think: bool = False,
         failure_threshold: int = 3,
@@ -264,36 +533,56 @@ class OllamaProvider(StreamingLLMProvider):
         except ImportError as exc:
             raise RuntimeError("aiohttp nao instalado: pip install aiohttp") from exc
 
-        payload = {
-            "model": self._model,
-            "messages": build_messages(text, context),
-            "stream": True,
-            "think": self._think,
-            "options": {
-                "temperature": self._temperature,
-                "num_predict": self._max_tokens,
-            },
-        }
+        deep_thought = self._think and bool(context.get("deep_thought"))
+        # Em modo deep-thought, o "thinking" às vezes consome todo o budget de
+        # tokens e não sobra nada para o "content" (done_reason="length", reply
+        # vazia). Se isso acontecer, refaz a chamada sem "thinking" para sempre
+        # entregar uma resposta ao usuário.
+        attempts: list[tuple[bool, int]] = [
+            (deep_thought, _DEEP_THOUGHT_MAX_TOKENS if deep_thought else self._max_tokens),
+        ]
+        if deep_thought:
+            attempts.append((False, self._max_tokens))
 
         try:
             timeout = aiohttp.ClientTimeout(total=None, sock_connect=5, sock_read=60)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(f"{self._base_url}/api/chat", json=payload) as resp:
-                    if resp.status >= 400:
-                        body = await resp.text()
-                        raise RuntimeError(f"Ollama HTTP {resp.status}: {body[:240]}")
+                for attempt_index, (think, num_predict) in enumerate(attempts):
+                    payload = {
+                        "model": self._model,
+                        "messages": build_messages(text, context),
+                        "stream": True,
+                        "think": think,
+                        "options": {
+                            "temperature": self._temperature,
+                            "num_predict": num_predict,
+                        },
+                    }
+                    produced = False
+                    async with session.post(f"{self._base_url}/api/chat", json=payload) as resp:
+                        if resp.status >= 400:
+                            body = await resp.text()
+                            raise RuntimeError(f"Ollama HTTP {resp.status}: {body[:240]}")
 
-                    async for raw_line in resp.content:
-                        line = raw_line.strip()
-                        if not line:
-                            continue
-                        data = json.loads(line)
-                        msg = data.get("message") or {}
-                        token = msg.get("content") or ""
-                        if token:
-                            yield token
-                        if data.get("done"):
-                            break
+                        async for raw_line in resp.content:
+                            line = raw_line.strip()
+                            if not line:
+                                continue
+                            data = json.loads(line)
+                            msg = data.get("message") or {}
+                            token = msg.get("content") or ""
+                            if token:
+                                produced = True
+                                yield token
+                            if data.get("done"):
+                                break
+
+                    if produced or attempt_index == len(attempts) - 1:
+                        break
+                    log.warning(
+                        "Ollama: 'thinking' consumiu o budget de tokens sem gerar "
+                        "resposta; tentando novamente sem 'thinking'."
+                    )
 
             self._cb.record_success()
         except Exception:
@@ -352,9 +641,9 @@ class OpenAIStreamingProvider(StreamingLLMProvider):
             return LlmReplyComplete(
                 turn_id=turn_id,
                 reply=parsed["reply"],
-                expression_id=parsed.get("expression_id"),
-                action_id=parsed.get("action"),
-                emot_event_id=parsed.get("emot_event"),
+                expression_id=translate_expression_id(parsed.get("expression_id")),
+                action_id=None,
+                emot_event_id=None,
                 input_tokens=usage.prompt_tokens if usage else 0,
                 output_tokens=usage.completion_tokens if usage else 0,
                 provider=self._provider_name,
@@ -484,8 +773,10 @@ __all__ = [
     "OllamaProvider",
     "OpenAIStreamingProvider",
     "StreamingLLMProvider",
+    "build_correction_messages",
     "build_messages",
     "enforce_pt_br_reply",
     "parse_llm_json",
     "recover_llm_reply_text",
+    "translate_expression_id",
 ]

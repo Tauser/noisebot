@@ -121,6 +121,24 @@ class VisionClient:
             body["interval_ms"] = interval_ms
         self._post_json("/api/vision/poll/start", body)
 
+    def get_lightweight_snapshot(self) -> "dict | None":
+        """Return a compact vision dict for the LLM payload.
+
+        Uses /api/vision/observe only — no JPEG capture, no face detection.
+        Returns None silently on any failure so vision never blocks the pipeline.
+        """
+        try:
+            obs = self.observe()
+        except Exception:
+            return None
+        return {
+            "available": True,
+            "fresh": True,
+            "scene": obs.scene,
+            "brightness": _luma_to_text(obs.luma_avg),
+            "motion": _motion_to_text(obs.motion_score),
+        }
+
     def analyze(self) -> VisionAnalysis:
         observation = self.observe()
         jpeg = self.snapshot()
@@ -162,6 +180,22 @@ class VisionClient:
                 response.read()
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             raise VisionError(str(exc)) from exc
+
+
+def _luma_to_text(luma: int) -> str:
+    if luma < 60:
+        return "baixa"
+    if luma < 150:
+        return "média"
+    return "alta"
+
+
+def _motion_to_text(motion_score: int) -> str:
+    if motion_score < 10:
+        return "baixo"
+    if motion_score < 50:
+        return "moderado"
+    return "alto"
 
 
 def _env_float(key: str, default: float) -> float:

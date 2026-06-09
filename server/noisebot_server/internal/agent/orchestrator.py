@@ -29,6 +29,7 @@ import json
 import logging
 import time
 from collections import deque
+from dataclasses import replace
 from typing import Any, Callable
 
 from .intents import LocalIntentProvider
@@ -192,6 +193,8 @@ class Orchestrator:
         self._firmware_persona = FirmwareDiagClient.from_config(config) if config is not None else None
         self._user_profile_cache: dict[str, Any] | None = None
         self._user_profile_cache_at = 0.0
+        self._vision_snapshot_cache: dict | None = None
+        self._vision_snapshot_cache_at = 0.0
 
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
@@ -200,6 +203,7 @@ class Orchestrator:
         self._misunderstood_prompt_pending = False
         self._last_completed_speech_at: float | None = None
         self._recent_llm_replies: deque[str] = deque(maxlen=6)
+        self._recent_user_texts: deque[str] = deque(maxlen=6)
 
         # Queue de eventos: o Orchestrator assina todos
         self._events = bus.subscribe(maxsize=-1)  # ilimitado para o maestro
@@ -216,6 +220,20 @@ class Orchestrator:
     def set_llm_provider(self, provider: Any | None) -> None:
         """Atualiza o provider LLM em runtime (usado pelo ConfigController)."""
         self._llm = provider
+
+    def set_followup_enabled(self, enabled: bool) -> None:
+        """Atualiza em runtime se o follow-up automático pode ser armado.
+
+        Usado pelo ConfigController; o snapshot do Orchestrator é independente
+        do `app._config`, então mudanças via dashboard precisam deste setter
+        para que `_should_arm_followup` reflita o novo valor imediatamente.
+        """
+        if self._config is None:
+            return
+        self._config = replace(
+            self._config,
+            conversation=replace(self._config.conversation, followup_enabled=enabled),
+        )
 
     def set_tts_provider(self, provider: Any | None) -> None:
         """Atualiza o provider TTS em runtime.
@@ -837,13 +855,46 @@ class Orchestrator:
         t_llm_start = time.monotonic()
         first_token_recorded = False
         raw_tokens: list[str] = []
+        _debug: dict[str, Any] = {"turn_id": turn_id, "ts": time.time(), "transcript": text[:300]}
 
         try:
+            from .llm import wants_deep_reflection
+            from .payload_builder import build_turn_payload
+
+            user_profile = await self._current_user_profile()
+            vision_snapshot = await self._get_vision_snapshot()
+            turn_payload = build_turn_payload(
+                text=text,
+                turn_id=turn_id,
+                last_status=dict(self._last_status),
+                user_profile=user_profile,
+                recent_user_texts=list(self._recent_user_texts),
+                recent_robot_replies=list(self._recent_llm_replies),
+                pipeline_mode=getattr(
+                    getattr(self._config, "pipeline_mode", None), "value", "normal"
+                ),
+                firmware_online=bool(
+                    getattr(self._store, "firmware_connected", False)
+                    if self._store else False
+                ),
+                tts_available=self._tts is not None,
+                vision_available=self._intent._vision is not None,
+                servos_enabled=False,  # motion_safety não liberada
+                allowed_tools=[],      # Fase 4 popula este campo
+                vision_snapshot=vision_snapshot,
+            )
+            _debug["turn_payload_summary"] = {
+                "mood": turn_payload.get("mood", ""),
+                "robot_state": turn_payload.get("robot", {}).get("state", ""),
+                "vision_present": "vision" in turn_payload,
+                "tools_available": list(turn_payload.get("tools", [])),
+            }
+
             context: dict = {
                 "turn_id": turn_id,
-                "robot_state": session.intent_name or "",
-                "user_profile": await self._current_user_profile(),
+                "turn_payload": turn_payload,
                 "recent_replies": list(self._recent_llm_replies),
+                "deep_thought": wants_deep_reflection(text),
             }
 
             stream = self._llm.generate_stream(text, context)
@@ -864,20 +915,163 @@ class Orchestrator:
             session.mark("llm_complete")
 
             # ── Parseia JSON de resposta ───────────────────────────────────
-            from .llm import enforce_pt_br_reply, parse_llm_json, recover_llm_reply_text
+            from .llm import (
+                enforce_pt_br_reply, parse_llm_json,
+                recover_llm_reply_text, translate_expression_id,
+            )
+            _retry_count = 0
             try:
                 parsed = parse_llm_json(raw_response)
             except (ValueError, Exception) as exc:
                 log.warning(
-                    "Turno %d: falha ao parsear JSON LLM (%s). Usando raw como reply.",
+                    "Turno %d: falha ao parsear JSON LLM (%s) — tentando correcao",
                     turn_id, exc,
                 )
-                parsed = {
-                    "reply": recover_llm_reply_text(raw_response),
-                    "expression_id": None,
-                    "action": None,
-                    "emot_event": None,
+                _retry_count = 1
+                parsed = await self._try_corrective_json_retry(raw_response, turn_id)
+                if parsed is None:
+                    parsed = {
+                        "reply": recover_llm_reply_text(raw_response),
+                        "expression_id": None,
+                        "tool_call": None,
+                    }
+            _debug["step1"] = {
+                "raw_response": raw_response[:600],
+                "expression_id": parsed.get("expression_id"),
+                "reply": (parsed.get("reply") or "")[:400],
+                "has_tool_call": bool(parsed.get("tool_call")),
+                "tool_name": (parsed.get("tool_call") or {}).get("name"),
+                "latency_ms": round(llm_total_ms, 1),
+            }
+            _debug["retry_count"] = _retry_count
+
+            tool_call = parsed.get("tool_call")
+            tool_result = None
+            if tool_call:
+                from .tools.gateway import execute_tool_call
+                tool_result = execute_tool_call(
+                    tool_call,
+                    current_state=str(self._last_status.get("state", "")),
+                    vision_available=self._intent._vision is not None,
+                    adapter=self.adapter,
+                    app_state=self._app_state,
+                    vision_client=self._intent._vision,
+                    turn_id=turn_id,
+                    sandbox=bool(getattr(self._store, "tool_sandbox_enabled", False)),
+                )
+                if tool_result.vetoed:
+                    log.warning(
+                        "Turno %d: tool_call '%s' vetada: %s",
+                        turn_id,
+                        tool_call.get("name"),
+                        tool_result.veto_reason,
+                    )
+                elif tool_result.requires_confirmation:
+                    log.info(
+                        "Turno %d: tool_call '%s' aguarda confirmacao do usuario",
+                        turn_id,
+                        tool_call.get("name"),
+                    )
+                elif tool_result.success:
+                    log.info(
+                        "Turno %d: tool_call '%s' executada result=%s",
+                        turn_id,
+                        tool_call.get("name"),
+                        tool_result.result,
+                    )
+                else:
+                    log.warning(
+                        "Turno %d: tool_call '%s' falhou: %s",
+                        turn_id,
+                        tool_call.get("name"),
+                        tool_result.error,
+                    )
+            if tool_result is not None:
+                def _result_summary(r: dict | None) -> str:
+                    if not isinstance(r, dict):
+                        return ""
+                    parts = [f"{k}={v}" for k, v in r.items()
+                             if not isinstance(v, (dict, list, bytes, bytearray))]
+                    return ", ".join(parts[:4])
+
+                if tool_result.vetoed:
+                    _outcome = "vetoed"
+                elif tool_result.requires_confirmation:
+                    _outcome = "confirmation_required"
+                elif tool_result.success:
+                    _outcome = "success"
+                else:
+                    _outcome = "error"
+                _debug["tool"] = {
+                    "name": tool_result.tool_name,
+                    "arguments": {k: str(v)[:80] for k, v in
+                                  ((parsed.get("tool_call") or {}).get("arguments") or {}).items()},
+                    "outcome": _outcome,
+                    "veto_reason": tool_result.veto_reason,
+                    "result_summary": _result_summary(tool_result.result),
+                    "sandboxed": tool_result.sandbox,
                 }
+            else:
+                _debug["tool"] = None
+
+            _debug["step2"] = None
+            # ── Segundo passo LLM: usa resultado da tool como contexto ───────
+            if tool_result is not None and not tool_result.requires_confirmation:
+                try:
+                    second_context: dict = {
+                        "turn_id": turn_id,
+                        "turn_payload": turn_payload,
+                        "recent_replies": list(self._recent_llm_replies),
+                        "deep_thought": False,
+                        "tool_call_result": {
+                            "tool_name": tool_result.tool_name,
+                            "success": tool_result.success,
+                            "vetoed": tool_result.vetoed,
+                            "veto_reason": tool_result.veto_reason,
+                            "result": tool_result.result,
+                            "error": tool_result.error,
+                        },
+                        "first_assistant_json": raw_response,
+                    }
+                    second_raw_tokens: list[str] = []
+                    second_stream = self._llm.generate_stream(text, second_context)
+                    async for s_token in second_stream:
+                        second_raw_tokens.append(s_token)
+                    t_step2_end = time.monotonic()
+                    second_raw = "".join(second_raw_tokens)
+                    second_parsed = parse_llm_json(second_raw)
+                    second_reply = second_parsed.get("reply") or ""
+                    _debug["step2"] = {
+                        "raw_response": second_raw[:600],
+                        "expression_id": second_parsed.get("expression_id"),
+                        "reply": second_reply[:400],
+                        "latency_ms": round((t_step2_end - t_llm_end) * 1000, 1),
+                    }
+                    if second_reply:
+                        parsed = {
+                            "reply": second_reply,
+                            "expression_id": (
+                                second_parsed.get("expression_id")
+                                or parsed.get("expression_id")
+                            ),
+                            "tool_call": None,
+                        }
+                        log.info(
+                            "Turno %d: segundo passo LLM completo (tool=%s)",
+                            turn_id, tool_result.tool_name,
+                        )
+                    else:
+                        log.warning(
+                            "Turno %d: segundo passo LLM retornou reply vazio, "
+                            "mantendo primeiro passo",
+                            turn_id,
+                        )
+                except Exception as exc:
+                    log.warning(
+                        "Turno %d: segundo passo LLM falhou (%s), "
+                        "usando reply do primeiro passo",
+                        turn_id, exc,
+                    )
 
             reply_text, language_replaced = enforce_pt_br_reply(parsed["reply"], text)
             if language_replaced:
@@ -887,6 +1081,7 @@ class Orchestrator:
                 )
             if reply_text:
                 self._recent_llm_replies.append(reply_text)
+            self._recent_user_texts.append(text)
 
             # ── Sentencizer → SentenceReady ────────────────────────────────
             sentences = _sentences_for_tts(reply_text)
@@ -900,9 +1095,9 @@ class Orchestrator:
             complete = LlmReplyComplete(
                 turn_id=turn_id,
                 reply=reply_text,
-                expression_id=parsed.get("expression_id"),
-                action_id=parsed.get("action"),
-                emot_event_id=parsed.get("emot_event"),
+                expression_id=translate_expression_id(parsed.get("expression_id")),
+                action_id=None,
+                emot_event_id=None,
                 provider=getattr(self._llm, "_provider_name", "unknown"),
                 model=getattr(self._llm, "_model", ""),
             )
@@ -932,6 +1127,10 @@ class Orchestrator:
                     reply=reply_text,
                     route="llm",
                 )
+                _debug["final_reply"] = reply_text[:400]
+                _debug["final_expression_id"] = complete.expression_id
+                _debug["total_latency_ms"] = round((time.monotonic() - t_llm_start) * 1000, 1)
+                self._store.record_llm_turn_debug(_debug)
 
             # THINKING → SPEAKING + reação visual imediata (< 300 ms)
             self._fsm.transition(TurnState.SPEAKING, turn_id=turn_id)
@@ -1004,6 +1203,34 @@ class Orchestrator:
         self._user_profile_cache = _clean_user_profile(user)
         self._user_profile_cache_at = now
         return dict(self._user_profile_cache)
+
+    _VISION_SNAPSHOT_TTL_S = 5.0
+
+    async def _get_vision_snapshot(self) -> dict | None:
+        """Return a cached lightweight vision snapshot, refreshing when stale.
+
+        Returns None silently if VisionClient is absent or the HTTP call fails.
+        Stale cache is returned on failure to avoid losing context on transient errors.
+        """
+        if self._intent._vision is None:
+            return None
+        now = time.monotonic()
+        if (
+            self._vision_snapshot_cache is not None
+            and now - self._vision_snapshot_cache_at < self._VISION_SNAPSHOT_TTL_S
+        ):
+            return self._vision_snapshot_cache
+        try:
+            snapshot = await asyncio.to_thread(
+                self._intent._vision.get_lightweight_snapshot
+            )
+        except Exception as exc:
+            log.debug("Vision snapshot falhou: %s", exc)
+            return self._vision_snapshot_cache
+        if snapshot is not None:
+            self._vision_snapshot_cache = snapshot
+            self._vision_snapshot_cache_at = now
+        return snapshot
 
     async def _emit_llm_fallback(
         self,
@@ -1452,6 +1679,30 @@ class Orchestrator:
         await self._robot.reset_baseline(self.adapter, session.turn_id)
         self._fsm.try_transition(TurnState.IDLE)
         await self._finish_turn()
+
+    async def _try_corrective_json_retry(
+        self, bad_raw: str, turn_id: int
+    ) -> dict | None:
+        """Make one corrective LLM call to recover a broken JSON response."""
+        if self._llm is None:
+            return None
+        from .llm import parse_llm_json
+        correction_text = (
+            "Sua resposta anterior nao era um JSON valido no formato exigido. "
+            "Retorne SOMENTE o objeto JSON corrigido, sem texto adicional:\n"
+            + bad_raw[:400]
+        )
+        try:
+            raw_tokens: list[str] = []
+            stream = self._llm.generate_stream(correction_text, {})
+            async for token in stream:
+                raw_tokens.append(token)
+            result = parse_llm_json("".join(raw_tokens))
+            log.info("Turno %d: correcao JSON bem-sucedida", turn_id)
+            return result
+        except Exception as exc:
+            log.warning("Turno %d: correcao JSON falhou: %s", turn_id, exc)
+            return None
 
     async def _cancel_current_turn(self, reason: str = "") -> None:
         """Cancela a Task de turno atual se existir."""

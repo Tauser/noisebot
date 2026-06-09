@@ -106,6 +106,9 @@ class OpsHttpServer:
         wa.router.add_get("/ai/metrics",      self._get_ai_metrics)
         wa.router.add_get("/ai/errors",       self._get_ai_errors)
         wa.router.add_get("/ai/config",       self._get_ai_config)
+        wa.router.add_get("/ai/llm/debug",    self._get_ai_llm_debug)
+        wa.router.add_get("/ai/sandbox",      self._get_ai_sandbox)
+        wa.router.add_post("/ai/sandbox",     self._post_ai_sandbox)
         wa.router.add_post("/ai/config",      self._post_ai_config)
         wa.router.add_post("/ai/mode",        self._post_ai_mode)
         wa.router.add_post("/ai/restart",     self._post_ai_restart)
@@ -300,6 +303,27 @@ class OpsHttpServer:
             "logs": self._log_buffer.recent(limit),
             "total": self._log_buffer.count,
         })
+
+    async def _get_ai_llm_debug(self, request: web.Request) -> web.Response:
+        turns = self._store.llm_debug_turns
+        return _json({"turns": turns, "total": len(turns)})
+
+    async def _get_ai_sandbox(self, request: web.Request) -> web.Response:
+        return _json({"enabled": self._store.tool_sandbox_enabled})
+
+    async def _post_ai_sandbox(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        try:
+            data = await request.json()
+        except Exception:
+            return _json({"error": "body JSON invalido"}, status=400)
+        enabled = data.get("enabled")
+        if not isinstance(enabled, bool):
+            return _json({"error": "'enabled' deve ser booleano"}, status=400)
+        self._store.set_sandbox_mode(enabled)
+        log.info("Tool sandbox %s via ops API", "ativado" if enabled else "desativado")
+        return _json({"enabled": self._store.tool_sandbox_enabled})
+
 
     async def _get_ai_config(self, request: web.Request) -> web.Response:
         return _json(self._ctrl.current_config_safe())
