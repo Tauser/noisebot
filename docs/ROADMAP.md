@@ -39,7 +39,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 
 | Ordem | Etapa | Resultado esperado | Criterio de saida |
 | --- | --- | --- | --- |
-| 1 | 2.2A - Touch: sensibilidade e confiabilidade | Touch deixa de disparar ou falhar de forma imprevisivel | Calibracao reproduzivel, debounce estavel e evento confiavel no firmware |
+| ~~1~~ | ~~2.2A - Touch: sensibilidade e confiabilidade~~ | ~~Touch deixa de disparar ou falhar de forma imprevisivel~~ | `FEITO` |
 | 2 | 13.1 - Presence detection via camera | Captura leve e observavel, sem prometer visao avancada | Servico roda sem engasgar, publica estado e expoe evidencias de captura |
 | 3 | 14.1 - Agenda local | Timers, alarmes e lembretes basicos funcionam de verdade | Criar, listar, disparar e cancelar itens locais |
 | 4 | 16.2 - Status rail invisivel e status rapido | Icones persistentes organizados pelo overlay, sem disputa com a face | Mic e camera simultaneos aparecem alinhados; status rapido exibe WiFi/hora/energia sob demanda |
@@ -86,6 +86,8 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | Camera inicial | `FEITO` como infraestrutura parcial; ainda falta presence real | `components/services/camera_service/` |
 | Perfil local de usuario/persona | `FEITO` como base offline-first com tela de setup no dashboard; cadastro declarativo, sem biometria | `components/persona/persona_service/`, `app/src/App.tsx`, `server/noisebot_server/internal/ops/http.py` |
 | Organizacao documental inicial | `EM ANDAMENTO` | `docs/README.md`, `docs/PROJECT_CLEANUP_AUDIT.md` |
+| Touch sensibilidade e confiabilidade (2.2A) | `FEITO` — threshold corrigido (5%→1%), startle threshold ajustado (0.3→0.15), migration cobre legados 10 e 25 | `components/services/touch_service/`, `components/infra/nb_config_keys.h` |
+| LLM tools pipeline (Fases 9–15) | `FEITO` — two-step loop, gateway, sandbox, tools (set_expression, show_message, list_agenda, create_timer, create_reminder, analyze_vision, remember_fact, forget_fact, recall_user_preferences), memória longa persistida | `server/noisebot_server/internal/agent/tools/` |
 
 ## Etapas Ativas
 
