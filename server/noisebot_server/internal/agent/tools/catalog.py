@@ -145,6 +145,37 @@ CATALOG: dict[str, ToolSpec] = {
         },
         risk_level="low",
     ),
+    "show_message": ToolSpec(
+        name="show_message",
+        description=(
+            "Exibe um texto curto no display do robô via scroll. "
+            "Use para confirmar ações, mostrar resultados ou destacar informação visual."
+        ),
+        arguments_schema={
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "Texto a exibir (máximo 80 caracteres).",
+                },
+            },
+            "required": ["text"],
+        },
+        risk_level="low",
+    ),
+    "list_agenda": ToolSpec(
+        name="list_agenda",
+        description=(
+            "Lista os timers, lembretes e alarmes ativos no momento. "
+            "Use quando o usuário perguntar o que está agendado ou antes de criar item duplicado."
+        ),
+        arguments_schema={
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        risk_level="low",
+    ),
     "request_confirmation": ToolSpec(
         name="request_confirmation",
         description=(

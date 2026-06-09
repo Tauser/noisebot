@@ -53,9 +53,12 @@ class MockAppState:
         self.items: list[dict] = []
 
     def create_agenda_item(self, kind: str, payload: dict) -> dict:
-        item: dict = {"id": f"{kind}_{len(self.items) + 1}", **payload}
+        item: dict = {"id": f"{kind}_{len(self.items) + 1}", "kind": kind, **payload}
         self.items.append(item)
         return item
+
+    def list_agenda(self) -> dict:
+        return {"items": list(self.items), "summary": f"{len(self.items)} item(s)"}
 
 
 async def _do_turn(
@@ -462,3 +465,42 @@ def test_requires_confirmation_skips_second_step() -> None:
     assert llm._call_index == 1, (
         f"Segundo passo foi chamado indevidamente (call_index={llm._call_index})"
     )
+
+
+# ---------------------------------------------------------------------------
+# Scenario 8 — show_message and list_agenda tools
+# ---------------------------------------------------------------------------
+
+def test_show_message_tool_second_step_confirms_display() -> None:
+    """show_message executa (sem adapter) e segundo passo confirma via reply."""
+    llm = MockLLMProvider(
+        '{"expression_id":"neutral","reply":"Mostrando.","tool_call":{"name":"show_message","arguments":{"text":"Olá mundo!"}}}',
+        '{"expression_id":"happy","reply":"Mensagem exibida no display!","tool_call":null}',
+    )
+
+    events = asyncio.run(_do_turn(llm, "escreve algo no seu display"))
+
+    assert llm._call_index >= 2
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    complete = _first(events, runtime.LlmReplyComplete)
+    assert complete is not None
+    assert "display" in complete.reply or "exibida" in complete.reply or "Mensagem" in complete.reply
+
+
+def test_list_agenda_tool_returns_items_in_context() -> None:
+    """list_agenda com app_state populado injeta itens no contexto do step 2."""
+    llm = MockLLMProvider(
+        '{"expression_id":"curious","reply":"Consultando.","tool_call":{"name":"list_agenda","arguments":{}}}',
+        '{"expression_id":"neutral","reply":"Você tem 1 timer ativo.","tool_call":null}',
+    )
+    app_state = MockAppState()
+    app_state.create_agenda_item("timer", {"title": "café", "duration_min": 5})
+
+    asyncio.run(_do_turn(llm, "quais itens você está monitorando?", app_state=app_state))
+
+    assert llm._call_index >= 2
+    second_context = llm.call_contexts[1] if len(llm.call_contexts) > 1 else {}
+    tcr = second_context.get("tool_call_result", {})
+    assert tcr.get("success") is True
+    result = tcr.get("result", {})
+    assert result.get("count", 0) >= 1

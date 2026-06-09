@@ -132,6 +132,52 @@ def execute_create_reminder(
     return {"text": text, "trigger_iso": trigger_iso, "persisted": False}
 
 
+def execute_show_message(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    text = str(arguments["text"])[:80]
+    adapter = context.get("adapter")
+    turn_id = context.get("turn_id", 0)
+    log.info("tool show_message turn_id=%d len=%d", turn_id, len(text))
+
+    if adapter is None:
+        return {"text": text, "sent": False}
+
+    try:
+        asyncio.get_running_loop().create_task(
+            adapter.send_text_scroll(text),
+            name=f"nb_tool_msg_{turn_id}",
+        )
+        return {"text": text, "sent": True}
+    except RuntimeError:
+        return {"text": text, "sent": False}
+
+
+def execute_list_agenda(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    app_state = context.get("app_state")
+    turn_id = context.get("turn_id", 0)
+    log.info("tool list_agenda turn_id=%d", turn_id)
+
+    if app_state is None:
+        return {"items": [], "summary": "agenda indisponível"}
+
+    try:
+        data = app_state.list_agenda()
+        items = data.get("items", [])
+        compact = [
+            {k: v for k, v in item.items() if k in ("id", "kind", "title", "status", "due_at")}
+            for item in items
+        ]
+        return {"items": compact, "count": len(compact), "summary": data.get("summary", "")}
+    except Exception as exc:
+        log.warning("list_agenda falhou: %s", exc)
+        return {"error": str(exc)}
+
+
 def execute_analyze_vision(
     arguments: dict[str, Any],
     context: dict[str, Any],
@@ -212,6 +258,8 @@ def _motion_to_text(motion_score: int) -> str:
 EXECUTOR_MAP: dict[str, Any] = {
     "set_expression": execute_set_expression,
     "set_led": execute_set_led,
+    "show_message": execute_show_message,
+    "list_agenda": execute_list_agenda,
     "create_timer": execute_create_timer,
     "create_reminder": execute_create_reminder,
     "analyze_vision": execute_analyze_vision,
