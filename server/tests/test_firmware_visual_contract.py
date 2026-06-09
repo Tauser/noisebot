@@ -166,24 +166,24 @@ def test_speaking_mouth_uses_viseme_poses_from_closed_base():
     assert "MOUTH_BASE_H         = 6" in src
     assert "MOUTH_TOP_Y          = MOUTH_CENTER_Y + MOUTH_REF_OFF_Y - (MOUTH_BASE_H / 2)" in src
     assert "MOUTH_CORNER_RADIUS  = 3" in src
-    assert "MOUTH_TALK_INTERVAL_US = 118000LL" in src
-    assert "MOUTH_TALK_EASE_US     = 72000LL" in src
+    assert "MOUTH_TALK_INTERVAL_US = 115000LL" in src
+    assert "MOUTH_TALK_EASE_US     = 68000LL" in src
     assert "typedef struct {" in src
     assert "nb_mouth_pose_t" in src
     assert "static constexpr nb_mouth_pose_t MOUTH_POSES[] = {" in src
-    assert "{90,  6}" in src
-    assert "{56, 22}" in src
-    assert "{48, 18}" in src
+    assert "{90,  6, 1.0f}" in src   # closed — 3-field struct (w, h, hold)
+    assert "{54, 24, 1.5f}" in src   # open (vogal tônica)
+    assert "{49, 19, 1.1f}" in src   # arredond (O/U)
     assert "MOUTH_CLOSED_POSE = 0" in src
-    assert "static constexpr uint8_t MOUTH_TALK_SEQUENCE[] = {" in src
-    assert "0, 1, 2, 1, 3, 1, 5, 1, 2, 1, 4, 1" in src
+    assert "static constexpr nb_mouth_phrase_t MOUTH_PHRASES[] = {" in src
+    assert "MOUTH_PHRASE_COUNT = 4" in src
     assert "float y_l = clamp_abs(face.y_l + gy + dy_l_ovl, GAZE_Y_MAX);" in src
     assert "float y_r = clamp_abs(face.y_r + gy + dy_r_ovl, GAZE_Y_MAX);" in src
     assert "s_speaking_mouth_from_pose = s_speaking_mouth_to_pose;" in src
-    assert "s_speaking_mouth_to_pose = MOUTH_TALK_SEQUENCE[seq_idx];" in src
+    assert "s_speaking_mouth_to_pose = next;" in src
     assert "esp_random() % (MOUTH_POSE_COUNT - 1U)" not in src
     assert "nb_mouth_pose_t from = MOUTH_POSES[s_speaking_mouth_from_pose];" in src
-    assert "nb_mouth_pose_t to = MOUTH_POSES[s_speaking_mouth_to_pose];" in src
+    assert "nb_mouth_pose_t to   = MOUTH_POSES[s_speaking_mouth_to_pose];" in src
     assert "int16_t mouth_y = MOUTH_TOP_Y;" in src
     assert "mouth_offset_y" not in src
     assert "edge_color" not in src

@@ -276,7 +276,7 @@ def _format_turn_payload_block(payload: dict[str, Any]) -> str:
 
     tools = payload.get("tools", [])
     if tools:
-        lines.append("- Tools disponiveis: " + ", ".join(tools))
+        lines.append(_format_tools_for_prompt(tools))
 
     vision = payload.get("vision", {})
     if isinstance(vision, dict) and vision:
@@ -450,6 +450,46 @@ def _clean_prompt_value(value: Any, limit: int) -> str:
     if value is None:
         return ""
     return " ".join(str(value).split())[:limit]
+
+
+def _format_tools_for_prompt(tool_names: list[str]) -> str:
+    """Format available tools as compact text for the LLM system prompt.
+
+    Each line: name(arg: type, ...) — first sentence of description.
+    Enum values are listed inline; optional args marked with ?.
+    set_led excluded until MSG_LED firmware support ships.
+    """
+    from .tools.catalog import CATALOG
+
+    header = (
+        "- Tools disponíveis (use tool_call APENAS quando a ação for "
+        "explicitamente pedida ou claramente necessária; null na maioria):"
+    )
+    tool_lines: list[str] = [header]
+    for name in tool_names:
+        spec = CATALOG.get(name)
+        if spec is None:
+            continue
+        props: dict = spec.arguments_schema.get("properties", {})
+        required: set = set(spec.arguments_schema.get("required", []))
+        args: list[str] = []
+        for arg_name, arg_spec in props.items():
+            if "enum" in arg_spec:
+                choices = " | ".join(f'"{v}"' for v in arg_spec["enum"])
+                args.append(f'{arg_name}: {choices}')
+            else:
+                t = arg_spec.get("type", "any")
+                suffix = "" if arg_name in required else "?"
+                extra = ""
+                mn = arg_spec.get("minimum")
+                mx = arg_spec.get("maximum")
+                if mn is not None and mx is not None:
+                    extra = f" [{mn}–{mx}]"
+                args.append(f"{arg_name}{suffix}: {t}{extra}")
+        sig = f"{name}({', '.join(args)})" if args else f"{name}()"
+        desc = spec.description.split(".")[0].strip()
+        tool_lines.append(f"  {sig} — {desc}")
+    return "\n".join(tool_lines)
 
 
 def _int_or_none(value: Any) -> int | None:

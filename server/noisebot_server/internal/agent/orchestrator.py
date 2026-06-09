@@ -880,7 +880,10 @@ class Orchestrator:
                 tts_available=self._tts is not None,
                 vision_available=self._intent._vision is not None,
                 servos_enabled=False,  # motion_safety não liberada
-                allowed_tools=[],      # Fase 4 popula este campo
+                allowed_tools=_allowed_tools(
+                    vision_available=self._intent._vision is not None,
+                    sandbox=bool(getattr(self._store, "tool_sandbox_enabled", False)),
+                ),
                 vision_snapshot=vision_snapshot,
             )
             _debug["turn_payload_summary"] = {
@@ -1832,6 +1835,31 @@ class Orchestrator:
         }
         self._store.record_voice_session(voice_session)
         _log_voice_session_final(voice_session)
+
+
+def _allowed_tools(*, vision_available: bool, sandbox: bool = False) -> list[str]:
+    """Return the tool names to advertise to the LLM for this turn.
+
+    Rules:
+    - Blocked tools and set_led (stub, firmware not ready) are never offered.
+    - analyze_vision only when a VisionClient is active.
+    - In sandbox mode all otherwise-eligible tools are included (the gateway
+      will simulate execution instead of calling the firmware).
+    """
+    from .tools.catalog import CATALOG
+
+    _FIRMWARE_NOT_READY = {"set_led"}
+
+    tools: list[str] = []
+    for name, spec in CATALOG.items():
+        if spec.risk_level == "blocked":
+            continue
+        if name in _FIRMWARE_NOT_READY:
+            continue
+        if name == "analyze_vision" and not vision_available:
+            continue
+        tools.append(name)
+    return tools
 
 
 def _clean_user_profile(user: dict[str, Any]) -> dict[str, Any]:
