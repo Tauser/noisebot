@@ -27,6 +27,7 @@ def build_turn_payload(
     servos_enabled: bool = False,
     allowed_tools: list[str] | None = None,
     vision_snapshot: dict[str, Any] | None = None,
+    memory_facts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a compact, structured context payload for the LLM.
 
@@ -104,6 +105,12 @@ def build_turn_payload(
             k: v for k, v in vision_snapshot.items()
             if not isinstance(v, (bytes, bytearray))
         }
+
+    if memory_facts:
+        payload["memory"] = [
+            {"id": f.get("id", ""), "text": str(f.get("text", ""))[:120]}
+            for f in memory_facts[:10]  # max 10 fatos no contexto
+        ]
 
     return payload
 

@@ -51,6 +51,7 @@ class MockLLMProvider:
 class MockAppState:
     def __init__(self) -> None:
         self.items: list[dict] = []
+        self.facts: list[dict] = []
 
     def create_agenda_item(self, kind: str, payload: dict) -> dict:
         item: dict = {"id": f"{kind}_{len(self.items) + 1}", "kind": kind, **payload}
@@ -59,6 +60,19 @@ class MockAppState:
 
     def list_agenda(self) -> dict:
         return {"items": list(self.items), "summary": f"{len(self.items)} item(s)"}
+
+    def add_fact(self, text: str) -> dict:
+        fact: dict = {"id": f"fact_{len(self.facts) + 1}", "text": text, "created_at": "2026-06-09T00:00:00"}
+        self.facts.append(fact)
+        return fact
+
+    def remove_fact(self, fact_id: str) -> bool:
+        original = len(self.facts)
+        self.facts = [f for f in self.facts if f["id"] != fact_id]
+        return len(self.facts) != original
+
+    def list_facts(self) -> list:
+        return list(self.facts)
 
 
 async def _do_turn(
@@ -504,3 +518,74 @@ def test_list_agenda_tool_returns_items_in_context() -> None:
     assert tcr.get("success") is True
     result = tcr.get("result", {})
     assert result.get("count", 0) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Scenario 9 — Phase 15: long-term memory tools
+# ---------------------------------------------------------------------------
+
+def test_remember_fact_persists_to_app_state() -> None:
+    """remember_fact armazena fato em app_state e step 2 confirma."""
+    llm = MockLLMProvider(
+        '{"expression_id":"happy","reply":"Vou lembrar.","tool_call":{"name":"remember_fact","arguments":{"text":"usuário prefere respostas curtas"}}}',
+        '{"expression_id":"happy","reply":"Memorizado: você prefere respostas curtas!","tool_call":null}',
+    )
+    app_state = MockAppState()
+
+    asyncio.run(_do_turn(llm, "pode guardar que gosto de respostas curtas?", app_state=app_state))
+
+    assert llm._call_index >= 2
+    assert len(app_state.facts) == 1
+    assert "curtas" in app_state.facts[0]["text"]
+
+
+def test_forget_fact_removes_from_app_state() -> None:
+    """forget_fact remove fato existente e step 2 confirma remoção."""
+    llm = MockLLMProvider(
+        '{"expression_id":"neutral","reply":"Vou esquecer.","tool_call":{"name":"forget_fact","arguments":{"fact_id":"fact_1"}}}',
+        '{"expression_id":"neutral","reply":"Fato removido da memória.","tool_call":null}',
+    )
+    app_state = MockAppState()
+    app_state.add_fact("usuário prefere café")
+
+    asyncio.run(_do_turn(llm, "esquece o que guardou sobre mim", app_state=app_state))
+
+    assert llm._call_index >= 2
+    assert len(app_state.facts) == 0
+
+
+def test_recall_user_preferences_returns_facts() -> None:
+    """recall_user_preferences injeta lista de fatos no contexto do step 2."""
+    llm = MockLLMProvider(
+        '{"expression_id":"curious","reply":"Consultando.","tool_call":{"name":"recall_user_preferences","arguments":{}}}',
+        '{"expression_id":"happy","reply":"Lembro que você prefere café.","tool_call":null}',
+    )
+    app_state = MockAppState()
+    app_state.add_fact("usuário prefere café")
+    app_state.add_fact("usuário acorda cedo")
+
+    asyncio.run(_do_turn(llm, "o que você sabe sobre mim?", app_state=app_state))
+
+    assert llm._call_index >= 2
+    second_context = llm.call_contexts[1] if len(llm.call_contexts) > 1 else {}
+    tcr = second_context.get("tool_call_result", {})
+    assert tcr.get("success") is True
+    result = tcr.get("result", {})
+    assert result.get("count", 0) == 2
+
+
+def test_memory_facts_appear_in_turn_payload() -> None:
+    """Fatos memorados aparecem em turn_payload.memory para o LLM."""
+    llm = MockLLMProvider(
+        '{"expression_id":"neutral","reply":"Ok.","tool_call":null}'
+    )
+    app_state = MockAppState()
+    app_state.add_fact("usuário prefere jazz")
+
+    asyncio.run(_do_turn(llm, "me fale algo sobre música", app_state=app_state))
+
+    ctx = llm.call_contexts[0] if llm.call_contexts else {}
+    tp = ctx.get("turn_payload", {})
+    memory = tp.get("memory", [])
+    assert len(memory) >= 1
+    assert any("jazz" in f.get("text", "") for f in memory)

@@ -176,6 +176,55 @@ CATALOG: dict[str, ToolSpec] = {
         },
         risk_level="low",
     ),
+    "remember_fact": ToolSpec(
+        name="remember_fact",
+        description=(
+            "Memoriza um fato sobre o usuário ou contexto de forma persistente. "
+            "SEMPRE chame request_confirmation antes para que o usuário aprove o que será memorizado."
+        ),
+        arguments_schema={
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "Fato a memorizar, em linguagem natural (ex: 'usuário prefere respostas curtas').",
+                },
+            },
+            "required": ["text"],
+        },
+        risk_level="low",
+    ),
+    "forget_fact": ToolSpec(
+        name="forget_fact",
+        description=(
+            "Remove um fato memorizado. "
+            "SEMPRE chame request_confirmation antes — exclusão é irreversível."
+        ),
+        arguments_schema={
+            "type": "object",
+            "properties": {
+                "fact_id": {
+                    "type": "string",
+                    "description": "ID do fato a remover (obtido via recall_user_preferences).",
+                },
+            },
+            "required": ["fact_id"],
+        },
+        risk_level="low",
+    ),
+    "recall_user_preferences": ToolSpec(
+        name="recall_user_preferences",
+        description=(
+            "Recupera todos os fatos memorizados sobre o usuário. "
+            "Use para personalizar respostas ou verificar o que já está registrado."
+        ),
+        arguments_schema={
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+        risk_level="low",
+    ),
     "request_confirmation": ToolSpec(
         name="request_confirmation",
         description=(

@@ -885,6 +885,11 @@ class Orchestrator:
                     sandbox=bool(getattr(self._store, "tool_sandbox_enabled", False)),
                 ),
                 vision_snapshot=vision_snapshot,
+                memory_facts=(
+                    self._app_state.list_facts()
+                    if self._app_state is not None and hasattr(self._app_state, "list_facts")
+                    else None
+                ),
             )
             _debug["turn_payload_summary"] = {
                 "mood": turn_payload.get("mood", ""),

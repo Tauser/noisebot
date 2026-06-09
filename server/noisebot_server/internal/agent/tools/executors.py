@@ -204,6 +204,65 @@ def execute_analyze_vision(
         return {"error": str(exc)}
 
 
+def execute_remember_fact(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    text = str(arguments["text"])
+    app_state = context.get("app_state")
+    turn_id = context.get("turn_id", 0)
+    log.info("tool remember_fact turn_id=%d len=%d", turn_id, len(text))
+
+    if app_state is None:
+        return {"text": text, "persisted": False}
+
+    try:
+        fact = app_state.add_fact(text)
+        return {"fact_id": fact["id"], "text": fact["text"], "persisted": True}
+    except Exception as exc:
+        log.warning("remember_fact falhou: %s", exc)
+        return {"error": str(exc)}
+
+
+def execute_forget_fact(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    fact_id = str(arguments["fact_id"])
+    app_state = context.get("app_state")
+    turn_id = context.get("turn_id", 0)
+    log.info("tool forget_fact turn_id=%d fact_id=%s", turn_id, fact_id)
+
+    if app_state is None:
+        return {"fact_id": fact_id, "removed": False}
+
+    try:
+        removed = app_state.remove_fact(fact_id)
+        return {"fact_id": fact_id, "removed": removed}
+    except Exception as exc:
+        log.warning("forget_fact falhou: %s", exc)
+        return {"error": str(exc)}
+
+
+def execute_recall_user_preferences(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    app_state = context.get("app_state")
+    turn_id = context.get("turn_id", 0)
+    log.info("tool recall_user_preferences turn_id=%d", turn_id)
+
+    if app_state is None:
+        return {"facts": [], "count": 0}
+
+    try:
+        facts = app_state.list_facts()
+        return {"facts": facts, "count": len(facts)}
+    except Exception as exc:
+        log.warning("recall_user_preferences falhou: %s", exc)
+        return {"error": str(exc)}
+
+
 def execute_request_confirmation(
     arguments: dict[str, Any],
     context: dict[str, Any],
@@ -263,6 +322,9 @@ EXECUTOR_MAP: dict[str, Any] = {
     "create_timer": execute_create_timer,
     "create_reminder": execute_create_reminder,
     "analyze_vision": execute_analyze_vision,
+    "remember_fact": execute_remember_fact,
+    "forget_fact": execute_forget_fact,
+    "recall_user_preferences": execute_recall_user_preferences,
     "request_confirmation": execute_request_confirmation,
 }
 

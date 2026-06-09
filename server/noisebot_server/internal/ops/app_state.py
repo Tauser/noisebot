@@ -145,6 +145,41 @@ class AppStateStore:
             self._save_locked()
         return item
 
+    # -- Memory (Phase 15) -----------------------------------------------------
+
+    def list_facts(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return list(self._state["memory"]["facts"])
+
+    def add_fact(self, text: str) -> dict[str, Any]:
+        with self._lock:
+            facts = self._state["memory"]["facts"]
+            fact_id = f"fact_{len(facts) + 1}"
+            # ensure unique id even after deletions
+            existing_ids = {f["id"] for f in facts}
+            counter = len(facts) + 1
+            while fact_id in existing_ids:
+                counter += 1
+                fact_id = f"fact_{counter}"
+            fact: dict[str, Any] = {
+                "id": fact_id,
+                "text": str(text)[:300],
+                "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            }
+            facts.append(fact)
+            self._save_locked()
+        return fact
+
+    def remove_fact(self, fact_id: str) -> bool:
+        with self._lock:
+            facts = self._state["memory"]["facts"]
+            original_len = len(facts)
+            self._state["memory"]["facts"] = [f for f in facts if f["id"] != fact_id]
+            changed = len(self._state["memory"]["facts"]) != original_len
+            if changed:
+                self._save_locked()
+        return changed
+
     def apply_agenda_command(self, command: dict[str, Any]) -> dict[str, Any] | None:
         if command.get("event") != "AGENDA_COMMAND":
             return None
@@ -377,11 +412,15 @@ class AppStateStore:
         advanced = settings.get("advanced") if isinstance(settings, dict) else None
         profile = raw.get("profile") if isinstance(raw, dict) else None
         device_persona = raw.get("device_persona") if isinstance(raw, dict) else None
+        memory = raw.get("memory") if isinstance(raw, dict) else None
 
         return {
             "version": 1,
             "agenda": {
                 "items": _normalize_items(agenda.get("items") if isinstance(agenda, dict) else []),
+            },
+            "memory": {
+                "facts": _normalize_facts(memory.get("facts") if isinstance(memory, dict) else []),
             },
             "profile": _normalize_profile(profile if isinstance(profile, dict) else {}),
             "device_persona": _normalize_device_persona(
@@ -453,6 +492,25 @@ def _agenda_item_from_payload(kind: str, payload: dict[str, Any]) -> dict[str, A
 
     item["status"] = _status_for_item(item)
     return item
+
+
+def _normalize_facts(raw_facts: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_facts, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for raw in raw_facts:
+        if not isinstance(raw, dict):
+            continue
+        fact_id = str(raw.get("id", "")).strip()
+        text = str(raw.get("text", "")).strip()
+        if not fact_id or not text:
+            continue
+        result.append({
+            "id": fact_id,
+            "text": text,
+            "created_at": str(raw.get("created_at", "")),
+        })
+    return result
 
 
 def _normalize_items(raw_items: Any) -> list[dict[str, Any]]:
