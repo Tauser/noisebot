@@ -10,13 +10,13 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 
 | Campo | Decisao |
 | --- | --- |
-| Foco do ciclo | Limpar direcao do projeto e fechar itens pequenos que melhoram uso real |
-| Trabalho principal agora | Touch, presence/camera, agenda local, status rail e organizacao de docs |
-| Hardware que nao deve guiar trabalho agora | Servos, IMU, bateria e camera como produto final |
+| Foco do ciclo | Agenda local, status rail e organizacao de docs |
+| Trabalho principal agora | Agenda local (14.1), status rail (16.2) e limpeza documental (D.1) |
+| Hardware que nao deve guiar trabalho agora | Servos, IMU, bateria |
 | Servos | Nao conectados; qualquer movimento continua bloqueado por `motion_safety` |
-| Camera | Pinos DVP preservados; uso atual deve ser leve, observavel e sem travar firmware |
+| Camera | Pinos DVP preservados; preview e reconhecimento de face implementados via server |
 | Voice | Stack de voz/bridge esta funcional como base; proximas melhorias devem ser pontuais |
-| Perfil/persona local | Contexto offline-first de usuario atual e estilo de interacao ficam em NVS e possuem tela de setup no dashboard; sem reconhecimento de voz/face nesta fase |
+| Perfil/persona local | Ativo com reconhecimento de rosto via Ollama; enrollment por captura de camera |
 | Wake word customizada | Fora do ciclo atual |
 | TTS HTTP no firmware | Removido do roadmap ativo; duplicava o server/bridge atual |
 | Knowledge OS externo | Nao atualizar por enquanto, por decisao do usuario |
@@ -40,7 +40,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | Ordem | Etapa | Resultado esperado | Criterio de saida |
 | --- | --- | --- | --- |
 | ~~1~~ | ~~2.2A - Touch: sensibilidade e confiabilidade~~ | ~~Touch deixa de disparar ou falhar de forma imprevisivel~~ | `FEITO` |
-| 2 | 13.1 - Presence detection via camera | Captura leve e observavel, sem prometer visao avancada | Servico roda sem engasgar, publica estado e expoe evidencias de captura |
+| ~~2~~ | ~~13.1 - Presence detection + face recognition~~ | ~~Camera como sensor de presenca, preview no display, reconhecimento de usuario~~ | `FEITO` |
 | 3 | 14.1 - Agenda local | Timers, alarmes e lembretes basicos funcionam de verdade | Criar, listar, disparar e cancelar itens locais |
 | 4 | 16.2 - Status rail invisivel e status rapido | Icones persistentes organizados pelo overlay, sem disputa com a face | Mic e camera simultaneos aparecem alinhados; status rapido exibe WiFi/hora/energia sob demanda |
 | 5 | D.1 - Limpeza de documentacao | Roadmap e docs centrais ficam legiveis e sem duplicacao obsoleta | Arquivos ativos apontam para fontes certas; historicos ficam fora do git |
@@ -83,8 +83,8 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | Event bus e camadas | `FEITO` como diretriz estrutural | `docs/ARCHITECTURE.md` |
 | Voice/bridge base | `FEITO` como base funcional | `bridge/`, `server/`, `docs/PROJECT.md` |
 | Feedback visual de voice/bridge | `FEITO` como base de produto | `components/services/ui_overlay_service/` |
-| Camera inicial | `FEITO` como infraestrutura parcial; ainda falta presence real | `components/services/camera_service/` |
-| Perfil local de usuario/persona | `FEITO` como base offline-first com tela de setup no dashboard; cadastro declarativo, sem biometria | `components/persona/persona_service/`, `app/src/App.tsx`, `server/noisebot_server/internal/ops/http.py` |
+| Camera + presence + face recognition | `FEITO` — preview no display a 5 FPS, gaze tracking, enrollment e reconhecimento via Ollama, away detection | `components/services/vision_preview_service/`, `server/noisebot_server/internal/vision/` |
+| Perfil local de usuario/persona | `FEITO` — cadastro declarativo + reconhecimento biometrico via camera; ativa perfil automaticamente ao identificar usuario | `components/persona/persona_service/`, `server/noisebot_server/internal/vision/face_service.py` |
 | Organizacao documental inicial | `EM ANDAMENTO` | `docs/README.md`, `docs/PROJECT_CLEANUP_AUDIT.md` |
 | Touch sensibilidade e confiabilidade (2.2A) | `FEITO` — default 100 (20% threshold) calibrado com log real: proximidade fraw ~6%, toque real 130–200% acima do baseline; TAP_HOLD_MIN_MS=100ms como backup; legados 5/8/10/15/25 migrados; toque não silencia áudio | `components/services/touch_service/`, `components/infra/nb_config_keys.h` |
 | LLM tools pipeline (Fases 9–15) | `FEITO` — two-step loop, gateway, sandbox, tools (set_expression, show_message, list_agenda, create_timer, create_reminder, analyze_vision, remember_fact, forget_fact, recall_user_preferences), memória longa persistida | `server/noisebot_server/internal/agent/tools/` |
@@ -130,33 +130,30 @@ Extensao futura planejada:
 - Novo driver/servico deve publicar press, release e swipe sem substituir o
   baseline de `IDLE`; enquanto isso, o touch GPIO 2 segue como fallback.
 
-### Etapa 13.1 - Presence Detection Via Camera
+### Etapa 13.1 - Presence Detection + Face Recognition
 
-Status: `AGORA`
+Status: `FEITO`
 
-Objetivo: usar a camera como sensor leve de presenca, com resolucao baixa o
-bastante para o firmware ler sem engasgos.
+Objetivo: usar a camera como sensor de presenca e reconhecimento de usuario,
+com preview no display e gaze tracking em tempo real.
 
-Escopo:
+O que foi implementado:
 
-- Manter a implementacao coerente com referencias StackChan/Xiao quando houver
-  ganho real.
-- Usar captura reduzida para processos sem preview para o usuario.
-- Publicar estado por servico/evento, sem outros modulos desenharem direto.
-- Separar claramente "camera ativa" de "presenca detectada".
-
-Criterios de aceite:
-
-- Firmware compila sem warnings.
-- Captura roda em baixa resolucao sem travar render, audio ou event bus.
-- Camera ativa aparece no status rail quando aplicavel.
-- Falha de camera gera estado observavel e nao derruba o robo.
-
-Nao entra:
-
-- Reconhecimento facial.
-- Streaming continuo de alta resolucao.
-- Dependencia de cloud.
+- `vision_preview_service` (firmware, C++): render layer z=90 que exibe JPEG da
+  camera a 5 FPS no display ST7789 com retangulo de detecao sobreposTo.
+- `MSG_FACE_BOX = 0x30`: novo protocolo bridge para enviar bbox de rosto do
+  server ao firmware; handler em `bridge_service.c`; evento `NB_EVT_BRIDGE_FACE_BOX`.
+- `face_store.py`: armazenamento de fotos de referencia por usuario em
+  `~/.noisebot-server/faces/`.
+- `face_service.py`: enrollment (Haar Cascade + salva JPEG) e identification
+  (Haar Cascade como pre-filtro + Ollama vision gemma4:12b compara imagens).
+- `face_loop.py`: loop async a 2s — snapshot -> deteccao -> identificacao ->
+  `MSG_GAZE` (olhos seguem o rosto) + `MSG_FACE_BOX` (overlay no display) +
+  ativa perfil de usuario ao reconhecer.
+- Away detection: ausencia > 60s -> `EMOT_ENTERING_SLEEP`; rosto retorna ->
+  `EMOT_WAKING_UP`.
+- HTTP endpoints: `GET /api/vision/faces`, `POST /api/vision/faces/enroll`,
+  `DELETE /api/vision/faces/{user_id}`.
 
 ### Etapa 14.1 - Agenda Local: Timers, Lembretes e Alarmes
 
