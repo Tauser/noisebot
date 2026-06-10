@@ -1162,13 +1162,10 @@ static esp_err_t phase_services(void)
                   esp_err_to_name(err));
     }
 
-    /* vision_preview_service: desabilitado por padrão. Liga via API do servidor
-     * (enrollment, debug). A task de captura sobe mas não consome câmera. */
+    /* vision_preview_service: desabilitado por padrão. A task de captura só
+     * sobe quando habilitado via API — poupa 6KB de SRAM interna para o bridge. */
     err = vision_preview_service_init();
-    if (err == ESP_OK) {
-        vision_preview_service_set_enabled(false);
-        vision_preview_service_start();
-    } else {
+    if (err != ESP_OK) {
         NB_LOGW(TAG, "vision_preview_service_init falhou: %s — preview desabilitado",
                 esp_err_to_name(err));
     }

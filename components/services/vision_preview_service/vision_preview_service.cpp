@@ -236,7 +236,10 @@ void vision_preview_service_stop(void)
 void vision_preview_service_set_enabled(bool enabled)
 {
     s_enabled = enabled;
-    if (!enabled && s_mutex) {
+    if (enabled && !s_running) {
+        /* task ainda não subiu — inicia agora (lazy start) */
+        vision_preview_service_start();
+    } else if (!enabled && s_mutex) {
         if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(10)) == pdTRUE) {
             s_jpeg_len = 0;
             xSemaphoreGive(s_mutex);
