@@ -118,20 +118,19 @@ def test_touch_boot_uses_persisted_sensitivity():
 def test_touch_default_is_calibrated_for_copper_pad():
     src = NB_CONFIG_KEYS.read_text(encoding="utf-8")
 
-    # Default 8 → factor 0.016 → 1,6% acima do baseline:
-    #   compromisso entre rejeição de proximidade (fio como antena, ~1% EMA)
-    #   e detecção de contato real (~1,5% EMA em 60ms).
-    assert "#define NB_CFG_DEFAULT_TOUCH_SENS         8" in src
+    # Default 15 → factor 0.030 → 3% acima do baseline:
+    #   dedo em cobre gera variação bruta >8%; após EMA+TAP_HOLD_MIN_MS (160ms)
+    #   chega bem acima de 3%. Proximidade (fio/fita como antena) não sustenta o hold.
+    assert "#define NB_CFG_DEFAULT_TOUCH_SENS        15" in src
     assert "antena" in src
-    assert "passos de 0,2%" in src
 
 
 def test_touch_legacy_defaults_migrate_to_calibrated_threshold():
     src = (ROOT / "components" / "infra" / "config_manager.c").read_text(encoding="utf-8")
 
     assert "restore_touch_sensitivity_if_legacy()" in src
-    # Migra legados 10, 25 e 5 (todos problemáticos por motivos diferentes)
-    assert "touch_sens != 10U && touch_sens != 25U && touch_sens != 5U" in src
+    # Migra legados 10, 25, 5 e 8 (todos problemáticos por motivos diferentes)
+    assert "touch_sens != 10U && touch_sens != 25U && touch_sens != 5U && touch_sens != 8U" in src
     assert "NB_CFG_DEFAULT_TOUCH_SENS" in src
 
 
@@ -143,7 +142,8 @@ def test_touch_current_pad_uses_stable_press_timing():
     assert "#define LONG_PRESS_MS        1500U" in src
     assert "#define DEBOUNCE_ON_COUNT      3U" in src
     assert "#define DEBOUNCE_OFF_COUNT     3U" in src
-    assert "controladores capacitivos dedicados" in src
+    assert "#define TAP_HOLD_MIN_MS      100U" in src
+    assert "TAP_HOLD_MIN_MS" in src
 
 
 def test_touch_long_press_is_affection_not_startle_by_default():

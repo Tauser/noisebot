@@ -143,14 +143,15 @@ static esp_err_t restore_touch_sensitivity_if_legacy(void)
 
     /*
      * Histórico de defaults:
-     *   10 → primeiro default (2% de threshold) — muito alto para copper strip
-     *   25 → segundo default  (5% de threshold) — ainda alto demais
-     *    5 → terceiro default (1% de threshold) — baixo demais: fio longo dispara por proximidade
-     *    8 → default atual    (1,6% de threshold) — compromisso antena/contato
+     *   10 → primeiro default  (2%   threshold) — alto demais para copper strip
+     *   25 → segundo default   (5%   threshold) — idem
+     *    5 → terceiro default  (1%   threshold) — baixo demais; fio dispara por proximidade
+     *    8 → quarto default    (1,6% threshold) — baixo demais; fita+fio disparam por proximidade
+     *   15 → default atual     (3%   threshold) — combinado com TAP_HOLD_MIN_MS rejeita proximidade
      *
      * Migrar qualquer dispositivo que ainda tenha um dos valores legados.
      */
-    if (touch_sens != 10U && touch_sens != 25U && touch_sens != 5U) {
+    if (touch_sens != 10U && touch_sens != 25U && touch_sens != 5U && touch_sens != 8U) {
         return ESP_OK;
     }
 

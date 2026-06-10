@@ -85,9 +85,12 @@
 #define NB_CFG_DEFAULT_V2_ACT_DEC         1     /* on por padrao: Activity v2 decide com rollback */
 #define NB_CFG_DEFAULT_V2_ACT_MIG         0     /* off ate aplicar a migracao one-shot */
 #define NB_CFG_DEFAULT_BRIGHTNESS       180     /* ~70% — confortável em ambiente escuro */
-#define NB_CFG_DEFAULT_TOUCH_SENS         8     /* 1,6% acima do baseline — compromisso entre rejeição de
-                                                 * proximidade (fio longo age como antena; ~1% EMA) e
-                                                 * detecção de toque (contato real → ~1,5% EMA em 60ms) */
+#define NB_CFG_DEFAULT_TOUCH_SENS        15     /* 3% acima do baseline: dedo em cobre gera variação
+                                                 * bruta >8%; após EMA+TAP_HOLD_MIN_MS (160ms total)
+                                                 * alcança bem acima de 3%. Proximidade (fio/fita como
+                                                 * antena) não sustenta o hold → sem disparo.
+                                                 * Valores 5 e 8 eram baixos demais; toque silencioso
+                                                 * removido (TAP não silencia mais áudio ativo). */
 #define NB_CFG_DEFAULT_IDLE_TIMEOUT_S   3600    /* 60 minutos */
 
 #define NB_SVC_DEFAULT_EMOTION            0     /* NEUTRAL */

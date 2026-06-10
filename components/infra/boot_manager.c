@@ -532,9 +532,6 @@ static void on_touch_event(nb_touch_event_t evt)
     switch (evt) {
         case NB_TOUCH_EVT_TAP:
             s_silence_ms = 0;
-            if (synth_is_active()) {
-                silence_active_alert("touch");
-            }
             led_effect_touch();           /* feedback LED imediato — não é comportamento */
             state_machine_on_touch_tap();
             touch_semantic_on_tap();      /* delega publicação ao serviço semântico */

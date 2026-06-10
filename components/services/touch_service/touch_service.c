@@ -82,12 +82,17 @@ static const char *TAG = "nb_touch_svc";
 
 /*
  * DEBOUNCE_ON_COUNT = 3: exige 3 amostras consecutivas (60ms a 50Hz) acima de
- * threshold_on para confirmar toque. Isso aproxima o filtro temporal de
- * controladores capacitivos dedicados com polling de 50ms e reduz disparos por fio ou
- * aproximação sem tornar o toque humano lento.
+ * threshold_on para confirmar toque.
+ *
+ * TAP_HOLD_MIN_MS: após o debounce confirmar a entrada em TOUCHING, o TAP/WAKE
+ * só dispara se o sinal permanecer acima do threshold por mais este tempo.
+ * Isso rejeita proximidade (campo capacitivo do fio/fita que excede o threshold
+ * mas cai antes do hold mínimo) sem sacrificar latência de LONG_PRESS/SUSTAINED.
+ * Latência real de TAP = DEBOUNCE_ON_COUNT×20ms + TAP_HOLD_MIN_MS ≈ 160ms.
  */
-#define DEBOUNCE_ON_COUNT      3U      /* amostras para confirmar toque (ver nota acima) */
+#define DEBOUNCE_ON_COUNT      3U      /* amostras para confirmar entrada em TOUCHING   */
 #define DEBOUNCE_OFF_COUNT     3U      /* amostras consecutivas para confirmar release  */
+#define TAP_HOLD_MIN_MS      100U      /* ms em TOUCHING antes de disparar TAP/WAKE     */
 
 #define SIGNAL_EMA_ALPHA       0.20f   /* suavização do sinal (α=0.2 → τ≈4 ticks)     */
 
@@ -287,17 +292,23 @@ static void service_tick(uint32_t dt_ms)
             s_svc.press_ms     = 0;
             s_svc.debounce_off = 0;
             s_svc.debounce_on  = 0;
-            /* TAP/WAKE: latência = DEBOUNCE_ON_COUNT × dt_ms (≈60ms). */
-            queue_event(s_svc.sleeping ? NB_TOUCH_EVT_WAKE : NB_TOUCH_EVT_TAP);
+            /* TAP/WAKE não dispara aqui — aguarda TAP_HOLD_MIN_MS em TOUCHING
+             * para rejeitar proximidade (fio/fita como antena). */
         }
         break;
 
     case NB_TOUCH_STATE_TOUCHING:
         if (confirmed_release) {
+            /* Release antes do hold mínimo: foi proximidade, nenhum evento. */
             s_svc.state    = NB_TOUCH_STATE_IDLE;
             s_svc.press_ms = 0;
         } else {
-            s_svc.press_ms += dt_ms;
+            uint32_t prev_ms = s_svc.press_ms;
+            s_svc.press_ms  += dt_ms;
+            /* Dispara TAP/WAKE na primeira vez que press_ms cruza TAP_HOLD_MIN_MS. */
+            if (prev_ms < TAP_HOLD_MIN_MS && s_svc.press_ms >= TAP_HOLD_MIN_MS) {
+                queue_event(s_svc.sleeping ? NB_TOUCH_EVT_WAKE : NB_TOUCH_EVT_TAP);
+            }
             if (s_svc.press_ms >= LONG_PRESS_MS) {
                 s_svc.state = NB_TOUCH_STATE_LONG_PRESSING;
                 queue_event(NB_TOUCH_EVT_LONG_PRESS);
