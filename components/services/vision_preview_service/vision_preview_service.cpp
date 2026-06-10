@@ -9,11 +9,13 @@
 
 #include "vision_preview_service.h"
 
+extern "C" {
 #include "bridge_service.h"
 #include "camera_service.h"
 #include "event_bus.h"
 #include "nb_events.h"
 #include "render_service.h"
+}
 
 #include <LovyanGFX.hpp>
 
