@@ -225,6 +225,42 @@ CATALOG: dict[str, ToolSpec] = {
         },
         risk_level="low",
     ),
+    "web_search": ToolSpec(
+        name="web_search",
+        description=(
+            "Pesquisa informacao atual na web e retorna os melhores resultados. "
+            "Use quando o usuario perguntar sobre fatos recentes, noticias, precos, "
+            "horarios, resultados ou qualquer coisa que voce nao saiba com confianca. "
+            "NAO use para conversa casual ou conhecimento geral estavel."
+        ),
+        arguments_schema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Termos de busca, claros e especificos.",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["auto", "general", "factual", "news", "technical"],
+                    "description": (
+                        "Tipo de busca: 'news' para noticias recentes; "
+                        "'factual' para datas/precos/versoes/fatos; "
+                        "'technical' para documentacao/APIs/releases; "
+                        "'general' ou 'auto' (padrao) para o resto."
+                    ),
+                },
+                "max_results": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8,
+                    "description": "Quantidade de resultados a retornar (padrao 4).",
+                },
+            },
+            "required": ["query"],
+        },
+        risk_level="low",
+    ),
     "request_confirmation": ToolSpec(
         name="request_confirmation",
         description=(

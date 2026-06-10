@@ -84,6 +84,17 @@ class RobotOutputProvider:
                 intent.turn_id,
             )
 
+        # Fontes da busca: publicadas no bus para app/dashboard consumir.
+        # NAO ha branch de adapter para 'sources' em _emit -> nada vai ao
+        # firmware (protocolo do ESP32 nao tem essa mensagem; firmware intocado).
+        if intent.sources:
+            await self._emit(
+                adapter,
+                "sources",
+                {"sources": list(intent.sources)},
+                intent.turn_id,
+            )
+
     async def reset_baseline(self, adapter: Any, turn_id: int = 0) -> None:
         await self._emit(
             adapter,

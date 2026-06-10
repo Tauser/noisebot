@@ -196,6 +196,9 @@ class IntentResolved:
     emot_event_id: int | None = None
     device_command: dict[str, Any] | None = None
     resolution_reason: str | None = None
+    # Fontes citadas (title/source/url) — preenchidas deterministicamente quando
+    # a resposta veio de uma tool de busca. Entregues no bus, nao ao firmware.
+    sources: list[dict] = field(default_factory=list)
     t: float = field(default_factory=_now)
 
     @property
@@ -221,6 +224,9 @@ class LlmReplyComplete:
     output_tokens: int = 0
     provider: str = ""
     model: str = ""
+    # Fontes citadas (preenchidas deterministicamente a partir dos results de
+    # uma tool de busca, ex.: web_search). Cada item: {"title","source","url"}.
+    sources: list[dict] = field(default_factory=list)
     t: float = field(default_factory=_now)
 
 

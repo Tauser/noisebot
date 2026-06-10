@@ -930,19 +930,6 @@ class LocalIntentProvider:
                 device_command=_status_command(),
             )
 
-        # -- Preco do Bitcoin --------------------------------------------------
-        if _has(norm, "bitcoin", "btc", "preco do bitcoin", "valor do bitcoin",
-                "quanto vale", "criptomoeda"):
-            # Sem fetch de rede -- reply placeholder
-            return IntentResolved(
-                turn_id=turn_id,
-                intent_name="local_market_btc_price",
-                reply_text="Preco do Bitcoin indisponivel no momento.",
-                expression_id=_EXPR_CURIOUS,
-                action_id=_ACTION_NONE,
-                emot_event_id=_EMOT_CURIOUS,
-            )
-
         # -- Curiosidade local ------------------------------------------------
         if _has(norm, "curiosidade") and _has(
             norm,

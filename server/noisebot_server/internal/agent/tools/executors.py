@@ -281,6 +281,48 @@ def execute_request_confirmation(
     }
 
 
+def execute_web_search(
+    arguments: dict[str, Any],
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    from ..web_search import fetch_web_search, format_search_results_for_llm
+
+    query = str(arguments["query"])
+    max_results = int(arguments.get("max_results", 4))
+    mode = str(arguments.get("mode", "auto"))
+    turn_id = context.get("turn_id", 0)
+    log.info(
+        "tool web_search turn_id=%d mode=%s query=%r max=%d",
+        turn_id, mode, query, max_results,
+    )
+
+    resp = fetch_web_search(query, max_results=max_results, mode=mode)
+    summary = format_search_results_for_llm(resp)
+    if resp.error and not resp.results:
+        return {
+            "query": query, "results": [], "error": resp.error,
+            "source": resp.source, "provider": resp.provider,
+            "mode": resp.mode, "summary": summary,
+        }
+
+    return {
+        "query": resp.query,
+        "source": resp.source,
+        "provider": resp.provider,
+        "mode": resp.mode,
+        "cached": resp.cached,
+        "answer": resp.answer,
+        "results": [
+            {
+                "title": h.title, "snippet": h.snippet, "url": h.url,
+                "published": h.published, "source": h.source, "score": h.score,
+            }
+            for h in resp.results
+        ],
+        "summary": summary,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -326,6 +368,7 @@ EXECUTOR_MAP: dict[str, Any] = {
     "forget_fact": execute_forget_fact,
     "recall_user_preferences": execute_recall_user_preferences,
     "request_confirmation": execute_request_confirmation,
+    "web_search": execute_web_search,
 }
 
 __all__ = ["EXECUTOR_MAP"]

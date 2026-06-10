@@ -44,6 +44,13 @@ _SYSTEM_PROMPT = (
     "tool_call deve ser null na maioria das respostas. Use somente quando uma ferramenta "
     'for necessaria, no formato: {"name":"nome","arguments":{}}\n'
     "\n"
+    "REGRA web_search: para perguntas sobre informacao ATUAL ou factual que muda "
+    "com o tempo — datas, horarios, jogos, placares, resultados, precos, cotacao, "
+    "clima, noticias, eventos, lancamentos, ou qualquer 'quando/quanto/quais os jogos' "
+    "— voce NAO sabe de cabeca e DEVE chamar web_search, nunca responder de memoria. "
+    "Na duvida sobre algo recente, busque. Prefira buscar a arriscar uma data ou numero errado. "
+    "Exemplo: {\"expression_id\":\"focused\",\"reply\":\"Deixa eu checar isso!\",\"tool_call\":{\"name\":\"web_search\",\"arguments\":{\"query\":\"calendario jogos selecao brasileira 2026\"}}}\n"
+    "\n"
     "Exemplos corretos:\n"
     '{"expression_id":"happy","reply":"Oi! Como posso te ajudar?","tool_call":null}\n'
     '{"expression_id":"curious","reply":"Claro, vou verificar.","tool_call":{"name":"set_expression","arguments":{"expression_id":"focused"}}}\n'
@@ -309,7 +316,12 @@ def _format_tool_result_injection(tcr: dict[str, Any]) -> str:
         outcome = f"foi bloqueada por politica de seguranca: {reason}"
     elif tcr.get("success"):
         result = tcr.get("result") or {}
-        if isinstance(result, dict):
+        # Tools que produzem contexto rico (ex.: web_search) trazem um campo
+        # 'summary' ja formatado e seguro — use-o inteiro, nao a versao truncada
+        # por campos escalares.
+        if isinstance(result, dict) and isinstance(result.get("summary"), str) and result["summary"].strip():
+            summary = result["summary"].strip()
+        elif isinstance(result, dict):
             parts = [
                 f"{k}={v}" for k, v in result.items()
                 if not isinstance(v, (dict, list, bytes, bytearray))
@@ -323,7 +335,11 @@ def _format_tool_result_injection(tcr: dict[str, Any]) -> str:
         outcome = f"falhou: {err}"
     return (
         f"Ferramenta '{tool_name}' {outcome}. "
-        "Agora responda ao usuario em linguagem natural informando o resultado. "
+        "Agora responda ao usuario em portugues, natural para ser falado em voz alta. "
+        "VA DIRETO AO PONTO: comece pela informacao em si (datas, fatos, numeros). "
+        "NAO use preambulos como 'Encontrei as informacoes', 'Consegui os dados' ou "
+        "'Aqui esta o que achei'. Resuma o essencial em 2-3 frases curtas; se a pergunta "
+        "for ambigua ou o resultado for de outro assunto, diga isso brevemente. "
         'Retorne JSON valido sem tool_call: '
         '{"expression_id":"<expr>","reply":"<texto>","tool_call":null}'
     )

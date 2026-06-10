@@ -957,8 +957,7 @@ class Orchestrator:
             tool_result = None
             if tool_call:
                 from .tools.gateway import execute_tool_call
-                tool_result = execute_tool_call(
-                    tool_call,
+                _exec_kwargs = dict(
                     current_state=str(self._last_status.get("state", "")),
                     vision_available=self._intent._vision is not None,
                     adapter=self.adapter,
@@ -967,6 +966,14 @@ class Orchestrator:
                     turn_id=turn_id,
                     sandbox=bool(getattr(self._store, "tool_sandbox_enabled", False)),
                 )
+                if str(tool_call.get("name")) == "web_search":
+                    # Busca web e bloqueante (urllib) — roda fora do event loop
+                    # para nao travar o servidor durante a consulta ao provider.
+                    tool_result = await asyncio.to_thread(
+                        execute_tool_call, tool_call, **_exec_kwargs
+                    )
+                else:
+                    tool_result = execute_tool_call(tool_call, **_exec_kwargs)
                 if tool_result.vetoed:
                     log.warning(
                         "Turno %d: tool_call '%s' vetada: %s",
@@ -1100,6 +1107,7 @@ class Orchestrator:
                 )
 
             # ── LlmReplyComplete ───────────────────────────────────────────
+            turn_sources = _extract_sources(tool_result)
             complete = LlmReplyComplete(
                 turn_id=turn_id,
                 reply=reply_text,
@@ -1108,6 +1116,7 @@ class Orchestrator:
                 emot_event_id=None,
                 provider=getattr(self._llm, "_provider_name", "unknown"),
                 model=getattr(self._llm, "_model", ""),
+                sources=turn_sources,
             )
             await self._bus.publish(complete)
 
@@ -1125,6 +1134,7 @@ class Orchestrator:
                 expression_id=complete.expression_id,
                 action_id=complete.action_id,
                 emot_event_id=complete.emot_event_id,
+                sources=turn_sources,
             )
             session.intent_name = "llm_reply"
             session.reply_text = reply_text
@@ -1136,6 +1146,7 @@ class Orchestrator:
                     route="llm",
                 )
                 _debug["final_reply"] = reply_text[:400]
+                _debug["sources"] = turn_sources
                 _debug["final_expression_id"] = complete.expression_id
                 _debug["total_latency_ms"] = round((time.monotonic() - t_llm_start) * 1000, 1)
                 self._store.record_llm_turn_debug(_debug)
@@ -1840,6 +1851,38 @@ class Orchestrator:
         }
         self._store.record_voice_session(voice_session)
         _log_voice_session_final(voice_session)
+
+
+def _extract_sources(tool_result: Any | None, *, limit: int = 5) -> list[dict]:
+    """Constroi a lista de fontes (title/source/url) a partir do resultado de
+    uma tool de busca, de forma DETERMINISTICA — sem depender de o LLM copiar
+    URLs (modelo local erra/inventa). Generico: qualquer tool cujo result tenha
+    'results' com itens {url,title,source}. Deduplica por URL e limita."""
+    if tool_result is None or not getattr(tool_result, "success", False):
+        return []
+    result = getattr(tool_result, "result", None)
+    if not isinstance(result, dict):
+        return []
+    raw = result.get("results")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url", "") or "").strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        out.append({
+            "title": str(item.get("title", "") or ""),
+            "source": str(item.get("source", "") or ""),
+            "url": url,
+        })
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _allowed_tools(*, vision_available: bool, sandbox: bool = False) -> list[str]:
