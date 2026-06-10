@@ -33,7 +33,8 @@ typedef struct {
  * encoder quality tradeoff for short camera captures.
  */
 typedef enum {
-    NB_CAMERA_QUALITY_SNAPSHOT = 0, /**< High detail — on-demand snapshot/analyze. */
+    NB_CAMERA_QUALITY_SNAPSHOT = 0, /**< Standard quality — preview e análise. */
+    NB_CAMERA_QUALITY_HIGH     = 1, /**< Qualidade máxima — enrollment facial. */
 } nb_camera_quality_t;
 
 typedef struct {

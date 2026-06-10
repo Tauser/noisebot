@@ -462,8 +462,15 @@ static esp_err_t handle_api_camera_snapshot(httpd_req_t *req)
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"audio_busy\"}");
     }
+    char query[32] = "";
+    httpd_req_get_url_query_str(req, query, sizeof(query));
+    char hq_val[4] = "";
+    bool use_hq = (httpd_query_key_value(query, "hq", hq_val, sizeof(hq_val)) == ESP_OK
+                   && hq_val[0] == '1');
+
     nb_camera_snapshot_t snap;
-    esp_err_t err = camera_service_capture_snapshot(&snap, NB_CAMERA_QUALITY_SNAPSHOT);
+    nb_camera_quality_t q = use_hq ? NB_CAMERA_QUALITY_HIGH : NB_CAMERA_QUALITY_SNAPSHOT;
+    esp_err_t err = camera_service_capture_snapshot(&snap, q);
     if (err != ESP_OK) {
         char buf[96];
         snprintf(buf, sizeof(buf), "{\"ok\":false,\"error\":\"%s\"}", esp_err_to_name(err));

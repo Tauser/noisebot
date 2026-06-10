@@ -909,7 +909,7 @@ class OpsHttpServer:
         if self._vision_client is None:
             return _json(error_response("câmera não configurada"), status=503)
         try:
-            jpeg = await asyncio.to_thread(self._vision_client.snapshot_and_close)
+            jpeg = await asyncio.to_thread(self._vision_client.snapshot_hq_and_close)
         except VisionError as exc:
             return _json(error_response(f"captura falhou: {exc}"), status=503)
         try:

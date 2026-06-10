@@ -105,6 +105,15 @@ class VisionClient:
             pass
         return jpeg
 
+    def snapshot_hq_and_close(self) -> bytes:
+        """Capture a JPEG at maximum quality (enrollment) and release the session."""
+        jpeg = self._get_bytes("/api/camera/snapshot?hq=1")
+        try:
+            self._post_json("/api/camera/session/close", {})
+        except VisionError:
+            pass
+        return jpeg
+
     def session_close(self) -> None:
         """Release the firmware camera session (allow it to power down)."""
         try:

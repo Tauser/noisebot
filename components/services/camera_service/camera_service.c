@@ -569,8 +569,8 @@ esp_err_t camera_service_observe_scene(nb_camera_observation_t *out)
 esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out,
                                           nb_camera_quality_t quality)
 {
-    (void)quality;
-    int jpeg_quality = CAMERA_SVC_SNAPSHOT_JPEG_QUALITY;
+    int jpeg_quality = (quality == NB_CAMERA_QUALITY_HIGH) ? 95
+                                                            : CAMERA_SVC_SNAPSHOT_JPEG_QUALITY;
 
     if (!out) {
         return camera_service_fail(ESP_ERR_INVALID_ARG, "arg");

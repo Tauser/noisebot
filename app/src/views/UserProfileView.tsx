@@ -20,25 +20,48 @@ function FaceEnrollmentCard({
   const [previewing, setPreviewing] = useState(false);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevBlobRef = useRef<string | null>(null);
+  const fetchingRef = useRef(false);
 
   const load = () => listFaces().then(setFaces).catch(() => {});
   useEffect(() => { load(); }, []);
 
+  const fetchFrame = async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    try {
+      const res = await fetch(visionSnapshotUrl(), { cache: "no-store" });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
+      prevBlobRef.current = url;
+      setImgUrl(url);
+    } catch {
+      /* câmera indisponível — mantém frame anterior */
+    } finally {
+      fetchingRef.current = false;
+    }
+  };
+
   const startPreview = () => {
     setPreviewing(true);
-    setImgUrl(visionSnapshotUrl());
-    intervalRef.current = setInterval(() => setImgUrl(visionSnapshotUrl()), 2000);
+    setStatus("");
+    void fetchFrame();
+    intervalRef.current = setInterval(() => { void fetchFrame(); }, 1000);
   };
 
   const stopPreview = () => {
     setPreviewing(false);
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    if (prevBlobRef.current) { URL.revokeObjectURL(prevBlobRef.current); prevBlobRef.current = null; }
     setImgUrl(null);
     setStatus("");
   };
 
   useEffect(() => () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
+    if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
   }, []);
 
   const enroll = async () => {
