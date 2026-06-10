@@ -231,6 +231,7 @@ static decode_result_t frame_decode(const uint8_t *buf, uint16_t buf_len,
 
 static nb_bridge_say_chunk_t  s_say_buf;
 static nb_bridge_expr_cmd_t   s_expr_buf;
+static nb_bridge_face_box_t   s_face_box_buf;
 static char                   s_text_buf[NB_BRIDGE_TEXT_MAX_LEN + 1u];
 static char                   s_session_buf[257u];
 static StaticQueue_t          s_tx_queue_static;
@@ -406,6 +407,18 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
                      | ((uint32_t)data[3] << 24u);
         NB_LOGI(TAG, "SPEECH_CANCEL recebido turn_id=%lu",
                 (unsigned long)evt.data.u32);
+        nb_event_publish(&evt);
+        break;
+
+    case NB_BRIDGE_MSG_FACE_BOX:
+        if (data_len < 9u) break;
+        s_face_box_buf.x          = (uint16_t)data[0] | ((uint16_t)data[1] << 8u);
+        s_face_box_buf.y          = (uint16_t)data[2] | ((uint16_t)data[3] << 8u);
+        s_face_box_buf.width      = (uint16_t)data[4] | ((uint16_t)data[5] << 8u);
+        s_face_box_buf.height     = (uint16_t)data[6] | ((uint16_t)data[7] << 8u);
+        s_face_box_buf.confidence = data[8];
+        evt.type     = NB_EVT_BRIDGE_FACE_BOX;
+        evt.data.ptr = &s_face_box_buf;
         nb_event_publish(&evt);
         break;
 

@@ -110,6 +110,7 @@ typedef enum {
     NB_EVT_BRIDGE_SESSION,          /* evento de sessão v2; data.ptr = JSON string estática  */
     NB_EVT_BRIDGE_SPEECH_CANCEL,    /* cancela fala atual; data.u32 = turn_id                */
     NB_EVT_BRIDGE_RESPONSE_TIMEOUT, /* bridge não respondeu em 8s após VOICE_END             */
+    NB_EVT_BRIDGE_FACE_BOX,         /* face bbox do servidor; data.ptr = nb_bridge_face_box_t* (estática) */
 
     /* Persona (Layer 7) */
     NB_EVT_PERSONA_REFRESHED,       /* dimensões recalculadas; sem payload      */

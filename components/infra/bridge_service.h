@@ -100,6 +100,7 @@ typedef enum {
     NB_BRIDGE_MSG_TEXT_SCROLL  = 0x15,   /* string UTF-8, máx 128 bytes       */
     NB_BRIDGE_MSG_VOLUME       = 0x16,   /* volume 0..100                     */
     NB_BRIDGE_MSG_SPEECH_CANCEL = 0x20,  /* cancela fala atual; uint32 turn_id */
+    NB_BRIDGE_MSG_FACE_BOX      = 0x30,  /* face bbox: u16 x,y,w,h + u8 conf  */
     /* Handshake */
     NB_BRIDGE_MSG_HELLO        = 0x00,   /* handshake hello (ambas direções)  */
 } nb_bridge_msg_type_t;
@@ -136,6 +137,15 @@ typedef struct {
     uint8_t  expression_id;   /* mapeado para nb_expression_t */
     uint32_t duration_ms;
 } nb_bridge_expr_cmd_t;
+
+/** Payload de NB_EVT_BRIDGE_FACE_BOX — ponteiro válido apenas durante handler síncrono. */
+typedef struct {
+    uint16_t x;           /* pixel, origem top-left */
+    uint16_t y;
+    uint16_t width;
+    uint16_t height;
+    uint8_t  confidence;  /* 0–255 */
+} nb_bridge_face_box_t;
 
 /* ── Status enviado ao bridge ─────────────────────────────────────────────── */
 

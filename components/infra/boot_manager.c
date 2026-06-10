@@ -64,6 +64,7 @@
 #include "agenda_service.h"
 #include "camera_service.h"
 #include "vision_service.h"
+#include "vision_preview_service.h"
 #include "esp_ota_ops.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
@@ -1159,6 +1160,16 @@ static esp_err_t phase_services(void)
         err = render_service_start();
         NB_ASSERT(err == ESP_OK, TAG, "render_service_start falhou: %s",
                   esp_err_to_name(err));
+    }
+
+    /* vision_preview_service: preview da câmera + overlay de face no display. */
+    err = vision_preview_service_init();
+    if (err == ESP_OK) {
+        vision_preview_service_set_enabled(true);
+        vision_preview_service_start();
+    } else {
+        NB_LOGW(TAG, "vision_preview_service_init falhou: %s — preview desabilitado",
+                esp_err_to_name(err));
     }
 
     /* expression_service (Etapa 1.3): face procedural + blink */
