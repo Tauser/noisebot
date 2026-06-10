@@ -150,6 +150,19 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
 .age{font-size:11px;color:var(--muted);margin-left:4px}
 .age-stale{color:var(--warn)}
 
+/* Command reference */
+.cmd-table{display:flex;flex-direction:column;gap:6px}
+.cmd-group{display:grid;grid-template-columns:110px 1fr;gap:6px;align-items:baseline;
+  padding:5px 8px;background:#f8fafc;border:1px solid var(--border);border-radius:var(--r)}
+.cmd-cat{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--accent)}
+.cmd-examples{font-size:11px;color:var(--text);line-height:1.5}
+.tool-entry{padding:7px 10px;background:#f8fafc;border:1px solid var(--border);
+  border-radius:var(--r);margin-bottom:6px;display:flex;flex-direction:column;gap:2px}
+.tool-name{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent)}
+.tool-desc{font-size:12px;color:var(--text)}
+.tool-args{font-size:11px;color:var(--muted)}
+
 /* Overlay for confirmations */
 .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);
   display:flex;align-items:center;justify-content:center;z-index:100}
@@ -379,6 +392,154 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
       </button>
     </div>
   </div>
+</div>
+
+<!-- Command Reference -->
+<div class="card">
+  <details id="cmd-ref-details">
+    <summary>▶ Referência de Comandos</summary>
+    <div style="margin-top:14px">
+      <div class="grid2">
+
+        <!-- Intents Locais -->
+        <div>
+          <h2>Intents Locais (sem LLM)</h2>
+          <div class="cmd-table">
+            <div class="cmd-group">
+              <div class="cmd-cat">Controle</div>
+              <div class="cmd-examples">"pare" · "cancela" · "silêncio" · "fica quieto" · "para de falar"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Alertas</div>
+              <div class="cmd-examples">"silencia o alarme" · "para de tocar" · "desliga o alarme"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Timers</div>
+              <div class="cmd-examples">"timer de 5 minutos" · "timer chamado X de 10 min" · "cancela o timer"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Lembretes</div>
+              <div class="cmd-examples">"me lembre de beber água daqui a 10 minutos" · "cancela o lembrete"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Alarmes</div>
+              <div class="cmd-examples">"alarme às 7h" · "alarme às 8 e meia" · "quais alarmes ativos" · "desativa o alarme"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Hora / Data</div>
+              <div class="cmd-examples">"que horas são" · "que dia é hoje"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Clima</div>
+              <div class="cmd-examples">"temperatura agora" · "como está o tempo hoje"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Volume</div>
+              <div class="cmd-examples">"volume 50%" · "mais alto" · "mais baixo" · "fala mais alto"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">LEDs</div>
+              <div class="cmd-examples">"luz azul" · "led vermelho" · "brilho do led 80%" · "luz normal"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Visão</div>
+              <div class="cmd-examples">"o que você está vendo" · "está me vendo" · "como está a luz" · "tem movimento"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Expressões</div>
+              <div class="cmd-examples">"fique feliz" · "fique curioso" · "fique focado"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Olhar</div>
+              <div class="cmd-examples">"olha pra cima" · "olha pra baixo" · "olha pra esquerda" · "olha pra direita"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Humor</div>
+              <div class="cmd-examples">"como você está" · "tudo bem" · "está feliz"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Status / Rede</div>
+              <div class="cmd-examples">"seu status" · "barra de status" · "está conectado" · "tem internet"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Curiosidade</div>
+              <div class="cmd-examples">"me conte uma curiosidade" · "fale uma curiosidade"</div>
+            </div>
+            <div class="cmd-group">
+              <div class="cmd-cat">Saudações</div>
+              <div class="cmd-examples">"oi" · "bom dia" · "boa tarde" · "boa noite" · "tchau" · "até logo"</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Function Calling -->
+        <div>
+          <h2>Function Calling (LLM → robô)</h2>
+          <div class="tool-entry">
+            <span class="tool-name">set_expression</span>
+            <span class="tool-desc">Expressão facial imediata.</span>
+            <span class="tool-args">expression_id*: neutral · happy · curious · sleepy · focused · suspicious · surprised · sad · alarmed · angry</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">set_led</span>
+            <span class="tool-desc">Cor e brilho dos LEDs WS2812.</span>
+            <span class="tool-args">color* (#RRGGBB ou nome: red, green, blue, white, yellow, off) · brightness 0–100</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">create_timer</span>
+            <span class="tool-desc">Cria temporizador com aviso ao expirar.</span>
+            <span class="tool-args">duration_s* 1–86400 · label (opcional)</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">create_reminder</span>
+            <span class="tool-desc">Lembrete falado no horário definido.</span>
+            <span class="tool-args">text* · trigger_iso* ex: "2026-06-10T15:30:00"</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">analyze_vision</span>
+            <span class="tool-desc">Captura e analisa o que a câmera vê agora.</span>
+            <span class="tool-args">sem argumentos</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">show_message</span>
+            <span class="tool-desc">Exibe texto curto no display via scroll.</span>
+            <span class="tool-args">text* (máx 80 chars)</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">list_agenda</span>
+            <span class="tool-desc">Lista timers, lembretes e alarmes ativos.</span>
+            <span class="tool-args">sem argumentos</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">remember_fact</span>
+            <span class="tool-desc">Memoriza fato persistente sobre o usuário.</span>
+            <span class="tool-args">text* · chamar request_confirmation antes</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">forget_fact</span>
+            <span class="tool-desc">Remove fato memorizado (irreversível).</span>
+            <span class="tool-args">fact_id* · chamar request_confirmation antes</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">recall_user_preferences</span>
+            <span class="tool-desc">Recupera todos os fatos memorizados do usuário.</span>
+            <span class="tool-args">sem argumentos</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">web_search</span>
+            <span class="tool-desc">Pesquisa atual na web.</span>
+            <span class="tool-args">query* · mode: auto | general | factual | news | technical · max_results 1–8</span>
+          </div>
+          <div class="tool-entry">
+            <span class="tool-name">request_confirmation</span>
+            <span class="tool-desc">Solicita confirmação explícita antes de ação sensível.</span>
+            <span class="tool-args">question* · action_description</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </details>
 </div>
 
 <!-- Raw JSON diagnostic -->
