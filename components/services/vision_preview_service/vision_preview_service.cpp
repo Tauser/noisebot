@@ -47,6 +47,13 @@ static uint32_t s_box_ts_ms = 0;   /* esp_timer_get_time() / 1000 */
 static const int kDispW = 320;
 static const int kDispH = 240;
 
+/* Câmera configurada como 240×240 (YUV422 quadrado via Kconfig).
+ * Centralizar horizontalmente no display 320×240. */
+static const int kCamW  = 240;
+static const int kCamH  = 240;
+static const int kCamX  = (kDispW - kCamW) / 2;  /* = 40 */
+static const int kCamY  = 0;
+
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
 static inline LGFX_Sprite *canvas_to_sprite(nb_display_sprite_t h)
@@ -111,7 +118,8 @@ static void preview_layer(nb_display_sprite_t canvas, void * /*ctx*/)
     }
 
     if (snap_buf && snap_len > 0) {
-        sp->drawJpg(snap_buf, snap_len, 0, 0, kDispW, kDispH);
+        sp->fillRect(0, 0, kDispW, kDispH, TFT_BLACK);
+        sp->drawJpg(snap_buf, snap_len, kCamX, kCamY, kCamW, kCamH);
         render_service_mark_dirty(0, 0, kDispW, kDispH);
     }
     if (snap_buf) {
@@ -119,8 +127,10 @@ static void preview_layer(nb_display_sprite_t canvas, void * /*ctx*/)
     }
 
     if (box_valid) {
-        sp->drawRect(bx, by, bw, bh, NB_VISION_PREVIEW_BOX_COLOR);
-        render_service_mark_dirty(bx, by, bw, bh);
+        int rx = (int)bx + kCamX;
+        int ry = (int)by + kCamY;
+        sp->drawRect(rx, ry, bw, bh, NB_VISION_PREVIEW_BOX_COLOR);
+        render_service_mark_dirty(rx, ry, bw, bh);
     }
 }
 

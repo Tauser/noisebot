@@ -53,6 +53,7 @@
 #include "agenda_service.h"
 #include "camera_service.h"
 #include "vision_service.h"
+#include "vision_preview_service.h"
 #include "synth_service.h"
 #include "sd_hal.h"
 #include "nb_hw_config.h"
@@ -923,6 +924,27 @@ static esp_err_t handle_api_vision_poll_stop(httpd_req_t *req)
         return httpd_resp_sendstr(req, err_buf);
     }
     return handle_api_vision_poll_status(req);
+}
+
+static esp_err_t handle_api_vision_preview(httpd_req_t *req)
+{
+    char body[64];
+    if (!recv_body(req, body, sizeof(body), NULL)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+        return ESP_OK;
+    }
+    cJSON *root = cJSON_ParseWithLength(body, strlen(body));
+    bool enabled = false;
+    if (root) {
+        cJSON *v = cJSON_GetObjectItemCaseSensitive(root, "enabled");
+        enabled = cJSON_IsTrue(v);
+        cJSON_Delete(root);
+    }
+    vision_preview_service_set_enabled(enabled);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req,
+        enabled ? "{\"ok\":true,\"preview\":\"on\"}"
+                : "{\"ok\":true,\"preview\":\"off\"}");
 }
 
 static esp_err_t handle_api_config_post(httpd_req_t *req)
@@ -4713,7 +4735,8 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/vision/presence/reset", .method = HTTP_POST, .handler = handle_api_vision_presence_reset },
     { .uri = "/api/vision/poll/status", .method = HTTP_GET, .handler = handle_api_vision_poll_status },
     { .uri = "/api/vision/poll/start", .method = HTTP_POST, .handler = handle_api_vision_poll_start },
-    { .uri = "/api/vision/poll/stop", .method = HTTP_POST, .handler = handle_api_vision_poll_stop },
+    { .uri = "/api/vision/poll/stop",    .method = HTTP_POST, .handler = handle_api_vision_poll_stop },
+    { .uri = "/api/vision/preview",      .method = HTTP_POST, .handler = handle_api_vision_preview },
     { .uri = "/api/config",  .method = HTTP_GET,  .handler = handle_api_config_get },
     { .uri = "/api/config",  .method = HTTP_POST, .handler = handle_api_config_post },
     { .uri = "/api/command",        .method = HTTP_POST,   .handler = handle_api_command },

@@ -1162,10 +1162,11 @@ static esp_err_t phase_services(void)
                   esp_err_to_name(err));
     }
 
-    /* vision_preview_service: preview da câmera + overlay de face no display. */
+    /* vision_preview_service: desabilitado por padrão. Liga via API do servidor
+     * (enrollment, debug). A task de captura sobe mas não consome câmera. */
     err = vision_preview_service_init();
     if (err == ESP_OK) {
-        vision_preview_service_set_enabled(true);
+        vision_preview_service_set_enabled(false);
         vision_preview_service_start();
     } else {
         NB_LOGW(TAG, "vision_preview_service_init falhou: %s — preview desabilitado",
