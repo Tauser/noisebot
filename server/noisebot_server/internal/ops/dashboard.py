@@ -163,6 +163,16 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
 .tool-desc{font-size:12px;color:var(--text)}
 .tool-args{font-size:11px;color:var(--muted)}
 
+/* Face enrollment */
+.face-list{display:flex;flex-direction:column;gap:6px;margin-bottom:4px}
+.face-item{display:flex;align-items:center;gap:8px;padding:7px 10px;
+  background:#f8fafc;border:1px solid var(--border);border-radius:var(--r)}
+.face-avatar{width:32px;height:32px;border-radius:50%;background:#e2e8f0;
+  display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.face-info{flex:1;min-width:0}
+.face-name{font-weight:600;font-size:12px}
+.face-meta{font-size:11px;color:var(--muted);font-family:var(--mono)}
+
 /* Overlay for confirmations */
 .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);
   display:flex;align-items:center;justify-content:center;z-index:100}
@@ -392,6 +402,33 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
       </button>
     </div>
   </div>
+</div>
+
+<!-- Face Enrollment -->
+<div class="card">
+  <h2>Reconhecimento Facial</h2>
+  <div id="face-list-root">
+    <p class="empty-state">Carregando usuários…</p>
+  </div>
+  <hr style="margin:10px 0;border:none;border-top:1px solid var(--border)">
+  <h3 style="margin-bottom:8px">Cadastrar novo usuário</h3>
+  <div class="form-row">
+    <label>User ID</label>
+    <input type="text" id="face-uid" placeholder="ex: tauser" style="width:140px" maxlength="40">
+  </div>
+  <div class="form-row">
+    <label>Nome</label>
+    <input type="text" id="face-name-input" placeholder="ex: Tauser" style="width:200px" maxlength="80">
+  </div>
+  <div class="btn-row" style="margin-top:6px">
+    <button class="btn btn-primary" onclick="enrollFace()" id="btn-enroll">
+      📷 Capturar e Cadastrar
+    </button>
+    <span id="enroll-result" style="font-size:11px;color:var(--muted)"></span>
+  </div>
+  <p style="margin-top:6px;font-size:11px;color:var(--muted)">
+    Posicione o usuário na frente da câmera antes de clicar. O servidor captura um frame ao vivo.
+  </p>
 </div>
 
 <!-- Command Reference -->
@@ -633,6 +670,7 @@ async function doRefresh() {
     rawSnapshot = { health, status, metrics, errors };  // config omitido (pode ter info)
     lastFetch = Date.now();
     render();
+    loadFaces();
   } catch (e) {
     renderOffline(e.message);
   }
@@ -993,6 +1031,80 @@ function copyDiagnostic() {
   );
 }
 
+// ── Face Enrollment ───────────────────────────────────────────────────────
+async function loadFaces() {
+  try {
+    const data = await api('/api/vision/faces');
+    renderFaces(data.faces || []);
+  } catch (_) {
+    document.getElementById('face-list-root').innerHTML =
+      '<p class="empty-state" style="color:var(--muted)">Reconhecimento facial não disponível.</p>';
+  }
+}
+
+function renderFaces(faces) {
+  const root = document.getElementById('face-list-root');
+  if (!faces.length) {
+    root.innerHTML = '<p class="empty-state">Nenhum usuário cadastrado ainda.</p>';
+    return;
+  }
+  root.innerHTML = '<div class="face-list">' + faces.map(f => {
+    const enrolled = f.enrolled_at
+      ? new Date(f.enrolled_at * 1000).toLocaleDateString('pt-BR')
+      : '—';
+    const uid  = safeStr(f.user_id);
+    const name = safeStr(f.display_name || f.user_id);
+    return '<div class="face-item">' +
+      '<div class="face-avatar">👤</div>' +
+      '<div class="face-info">' +
+        '<div class="face-name">' + name + '</div>' +
+        '<div class="face-meta">' + uid + ' · ' + enrolled + '</div>' +
+      '</div>' +
+      '<button class="btn btn-danger" onclick="deleteFace(' +
+        JSON.stringify(f.user_id) + ',' + JSON.stringify(f.display_name || f.user_id) +
+        ')">Remover</button>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+async function enrollFace() {
+  const uid  = document.getElementById('face-uid').value.trim();
+  const name = document.getElementById('face-name-input').value.trim() || uid;
+  const result = document.getElementById('enroll-result');
+  if (!uid) { showToast('Preencha o User ID.', true); return; }
+  const btn = document.getElementById('btn-enroll');
+  btn.disabled = true;
+  result.style.color = 'var(--muted)';
+  result.textContent = 'Capturando…';
+  try {
+    const params = new URLSearchParams({ user_id: uid, display_name: name });
+    await api('/api/vision/faces/enroll?' + params.toString(), { method: 'POST' });
+    result.style.color = 'var(--ok)';
+    result.textContent = '✓ ' + safeStr(name) + ' cadastrado.';
+    document.getElementById('face-uid').value = '';
+    document.getElementById('face-name-input').value = '';
+    showToast('✓ ' + safeStr(name) + ' cadastrado com sucesso.');
+    loadFaces();
+  } catch (e) {
+    result.style.color = 'var(--err)';
+    result.textContent = '✗ ' + safeStr(e.body?.error || e.message);
+    showToast('✗ ' + safeStr(e.body?.error || e.message), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteFace(userId, displayName) {
+  if (!confirm('Remover "' + displayName + '" do reconhecimento facial?')) return;
+  try {
+    await api('/api/vision/faces/' + encodeURIComponent(userId), { method: 'DELETE' });
+    showToast('Usuário removido: ' + displayName);
+    loadFaces();
+  } catch (e) {
+    showToast('✗ ' + safeStr(e.body?.error || e.message), true);
+  }
+}
+
 function renderReleaseCheck(data) {
   const gates = Array.isArray(data.gates) ? data.gates : [];
   const level = data.ok ? '' : 'error';
@@ -1127,6 +1239,7 @@ updateTokenStatus();
 populateModels('openai', null);
 doRefresh();
 scheduleRefresh();
+loadFaces();
 </script>
 </body>
 </html>"""
