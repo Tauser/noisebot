@@ -118,10 +118,10 @@ def test_touch_boot_uses_persisted_sensitivity():
 def test_touch_default_is_calibrated_for_copper_pad():
     src = NB_CONFIG_KEYS.read_text(encoding="utf-8")
 
-    # Default 15 → factor 0.030 → 3% acima do baseline:
-    #   dedo em cobre gera variação bruta >8%; após EMA+TAP_HOLD_MIN_MS (160ms)
-    #   chega bem acima de 3%. Proximidade (fio/fita como antena) não sustenta o hold.
-    assert "#define NB_CFG_DEFAULT_TOUCH_SENS        15" in src
+    # Default 100 → factor 0.20 → 20% acima do baseline.
+    # Medido em hardware: proximidade (fio/fita como antena) → fraw ~6% acima do baseline;
+    # toque real (dedo em cobre) → fraw 130–200% acima do baseline no primeiro tick de EMA.
+    assert "#define NB_CFG_DEFAULT_TOUCH_SENS       100" in src
     assert "antena" in src
 
 
@@ -129,8 +129,9 @@ def test_touch_legacy_defaults_migrate_to_calibrated_threshold():
     src = (ROOT / "components" / "infra" / "config_manager.c").read_text(encoding="utf-8")
 
     assert "restore_touch_sensitivity_if_legacy()" in src
-    # Migra legados 10, 25, 5 e 8 (todos problemáticos por motivos diferentes)
-    assert "touch_sens != 10U && touch_sens != 25U && touch_sens != 5U && touch_sens != 8U" in src
+    # Migra legados 5, 8, 10, 15 e 25
+    assert "touch_sens != 10U && touch_sens != 25U && touch_sens != 5U" in src
+    assert "touch_sens != 8U && touch_sens != 15U" in src
     assert "NB_CFG_DEFAULT_TOUCH_SENS" in src
 
 

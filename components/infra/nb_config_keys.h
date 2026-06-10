@@ -85,12 +85,12 @@
 #define NB_CFG_DEFAULT_V2_ACT_DEC         1     /* on por padrao: Activity v2 decide com rollback */
 #define NB_CFG_DEFAULT_V2_ACT_MIG         0     /* off ate aplicar a migracao one-shot */
 #define NB_CFG_DEFAULT_BRIGHTNESS       180     /* ~70% — confortável em ambiente escuro */
-#define NB_CFG_DEFAULT_TOUCH_SENS        15     /* 3% acima do baseline: dedo em cobre gera variação
-                                                 * bruta >8%; após EMA+TAP_HOLD_MIN_MS (160ms total)
-                                                 * alcança bem acima de 3%. Proximidade (fio/fita como
-                                                 * antena) não sustenta o hold → sem disparo.
-                                                 * Valores 5 e 8 eram baixos demais; toque silencioso
-                                                 * removido (TAP não silencia mais áudio ativo). */
+#define NB_CFG_DEFAULT_TOUCH_SENS       100     /* 20% acima do baseline. Medido em hardware:
+                                                 * proximidade (fio/fita como antena) → fraw converge
+                                                 * a ~6% acima do baseline; toque real (dedo no cobre)
+                                                 * → fraw chega a 130–200% acima do baseline já no
+                                                 * primeiro tick de EMA. Gap enorme; 20% separa com
+                                                 * margem confortável. Valores 5, 8 e 15 eram baixos. */
 #define NB_CFG_DEFAULT_IDLE_TIMEOUT_S   3600    /* 60 minutos */
 
 #define NB_SVC_DEFAULT_EMOTION            0     /* NEUTRAL */
