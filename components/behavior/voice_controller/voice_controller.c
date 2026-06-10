@@ -46,8 +46,7 @@ static bool first_contact_wake_is_too_weak(void)
     }
 
     bool weak = stats.raw_rms < FIRST_CONTACT_MIN_RAW_RMS
-             && stats.raw_peak < FIRST_CONTACT_MIN_RAW_PEAK
-             && stats.post_peak < FIRST_CONTACT_MIN_POST_PEAK;
+             || stats.raw_peak < FIRST_CONTACT_MIN_RAW_PEAK;
     if (weak) {
         ESP_LOGW(TAG,
                  "wake word rejeitada em IDLE — energia baixa raw_rms=%lu raw_peak=%u gain=%u..%u post_peak=%u",

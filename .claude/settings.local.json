@@ -57,7 +57,27 @@
       "Bash(where clangd *)",
       "Bash(where clang *)",
       "Bash(clangd --version)",
-      "Bash(./node_modules/.bin/tsc -b)"
+      "Bash(./node_modules/.bin/tsc -b)",
+      "Bash(grep -rln \"noisebot_bridge\\\\|bridge\\\\\\\\\\\\\\\\bridge\\\\.py\\\\|bridge/bridge\\\\.py\\\\|bridge\\\\\\\\\\\\\\\\noisebot_bridge\" --include=\"*.py\" --include=\"*.md\" --include=\"*.ps1\" -r .)",
+      "Bash(grep -v \"^--$\")",
+      "Bash(curl -s --max-time 3 http://192.168.1.30/api/persona)",
+      "Bash(echo \"--- exit: $? ---\")",
+      "Bash(\"/c/Users/Tauser/AppData/Local/Python/pythoncore-3.14-64/python.exe\" -m pip show noisebot-server)",
+      "Bash(\"/c/Users/Tauser/AppData/Local/Python/pythoncore-3.14-64/python.exe\" -c \"import sys; [print\\(p\\) for p in sys.path]\")",
+      "Bash(\"/c/Users/Tauser/AppData/Local/Python/pythoncore-3.14-64/python.exe\" -m pip list)",
+      "Bash(curl -s http://127.0.0.1:11434/api/tags)",
+      "Bash(curl -s http://127.0.0.1:8765/ai/status)",
+      "Read(//c/Users/Tauser/.noisebot-server/**)",
+      "Bash(curl -s http://127.0.0.1:8765/ai/llm/debug)",
+      "Bash(curl -s http://127.0.0.1:8765/ai/metrics)",
+      "Bash(grep -n \"MOUTH_TALK_INTERVAL\\\\|MOUTH_TALK_EASE\\\\|MOUTH_TALK_SEQUENCE\\\\|nb_mouth_pose_t\\\\|hold\\\\|float.*hold\\\\|{90,\\\\|{56,\\\\|{48,\\\\|{72,\\\\|MOUTH_CLOSED_POSE\\\\|esp_random\\\\|MOUTH_POSE_COUNT\" \"D:/Projetos/Noisebot/components/services/expression_service/expression_service.cpp\")",
+      "Bash(grep -n \"MOUTH_POSES\\\\|MOUTH_TALK_SEQUENCE\\\\|MOUTH_PHRASE\\\\|seq_idx\\\\|to_pose =\\\\|from_pose =\\\\|{90,\\\\|{56,\\\\|{48,\\\\|nb_mouth_pose_t\" \"D:/Projetos/Noisebot/components/services/expression_service/expression_service.cpp\")",
+      "Bash(grep *)",
+      "Bash(curl -s http://localhost:8765/status)",
+      "Bash(curl -s http://localhost:8765/)",
+      "Bash(curl -s http://localhost:8765/ai/sandbox)",
+      "Bash(curl -s http://localhost:8765/ai/llm/debug)",
+      "Bash(curl *)"
     ]
   }
 }

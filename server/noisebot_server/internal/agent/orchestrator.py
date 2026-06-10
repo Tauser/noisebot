@@ -966,9 +966,10 @@ class Orchestrator:
                     turn_id=turn_id,
                     sandbox=bool(getattr(self._store, "tool_sandbox_enabled", False)),
                 )
-                if str(tool_call.get("name")) == "web_search":
-                    # Busca web e bloqueante (urllib) — roda fora do event loop
-                    # para nao travar o servidor durante a consulta ao provider.
+                _blocking_tools = {"web_search", "analyze_vision"}
+                if str(tool_call.get("name")) in _blocking_tools:
+                    # Ferramentas bloqueantes (I/O de rede) — rodam fora do event
+                    # loop para nao travar o servidor.
                     tool_result = await asyncio.to_thread(
                         execute_tool_call, tool_call, **_exec_kwargs
                     )

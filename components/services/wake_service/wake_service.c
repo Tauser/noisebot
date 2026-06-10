@@ -82,9 +82,11 @@ static uint16_t abs_i16(int16_t v)
 
 static bool wake_detection_too_weak(void)
 {
-    return s.last_raw_rms < WAKE_MIN_DETECT_RAW_RMS &&
-           s.last_raw_peak < WAKE_MIN_DETECT_RAW_PEAK &&
-           s.last_post_peak < WAKE_MIN_DETECT_POST_PEAK;
+    /* post_peak excluído: é medido pós-ganho (até 16x) e ultrapassa o limiar
+     * mesmo com sons ambientes fracos, tornando o AND ineficaz contra falsos
+     * positivos. raw_rms e raw_peak medem energia real do microfone. */
+    return s.last_raw_rms < WAKE_MIN_DETECT_RAW_RMS ||
+           s.last_raw_peak < WAKE_MIN_DETECT_RAW_PEAK;
 }
 
 static void wake_service_set_suspended(bool suspended, bool latch_detection)
@@ -144,15 +146,14 @@ static void wake_task(void *arg)
             }
             if (wake_detection_too_weak()) {
                 ESP_LOGW(TAG,
-                         "wake word rejeitada — energia baixa thr=%.2f raw_rms=%lu raw_peak=%u gain=%u..%u post_peak=%u saturated=%u/%d",
-                         (double)WAKE_WAKENET_THRESHOLD,
+                         "wake word rejeitada — raw_rms=%lu (min=%u) raw_peak=%u (min=%u) gain=%u..%u post_peak=%u",
                          (unsigned long)s.last_raw_rms,
+                         (unsigned)WAKE_MIN_DETECT_RAW_RMS,
                          (unsigned)s.last_raw_peak,
+                         (unsigned)WAKE_MIN_DETECT_RAW_PEAK,
                          (unsigned)s.last_gain_min,
                          (unsigned)s.last_gain_max,
-                         (unsigned)s.last_post_peak,
-                         (unsigned)s.last_saturated,
-                         s.feed_chunksize);
+                         (unsigned)s.last_post_peak);
                 if (s.handle->reset_buffer) {
                     s.handle->reset_buffer(s.data);
                 }

@@ -182,23 +182,42 @@ def execute_analyze_vision(
     arguments: dict[str, Any],
     context: dict[str, Any],
 ) -> dict[str, Any]:
+    import os
+
+    from ...vision.analysis import describe_with_vision_api
+
     vision_client = context.get("vision_client")
     turn_id = context.get("turn_id", 0)
     log.info("tool analyze_vision turn_id=%d", turn_id)
     if vision_client is None:
         return {"error": "visao indisponivel"}
     try:
-        analysis = vision_client.analyze()
+        from ...vision.analysis import analyze_jpeg
+        observation = vision_client.observe()
+        jpeg = vision_client.snapshot()
+        vision_client.session_close()
+        analysis = analyze_jpeg(jpeg, observation)
         obs = analysis.observation
         brightness = _luma_to_text(obs.luma_avg)
         motion = _motion_to_text(obs.motion_score)
-        return {
+
+        result: dict[str, Any] = {
             "scene": obs.scene,
             "face_detected": analysis.face_detected,
             "face_count": analysis.face_count,
             "brightness": brightness,
             "motion": motion,
         }
+
+        description = describe_with_vision_api(
+            jpeg,
+            api_key=os.environ.get("OPENAI_API_KEY", ""),
+        )
+        if description:
+            result["description"] = description
+            log.info("analyze_vision turn_id=%d description=%r", turn_id, description[:80])
+
+        return result
     except Exception as exc:
         log.warning("analyze_vision falhou: %s", exc)
         return {"error": str(exc)}

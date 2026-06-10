@@ -134,9 +134,9 @@ CATALOG: dict[str, ToolSpec] = {
     "analyze_vision": ToolSpec(
         name="analyze_vision",
         description=(
-            "Captura e analisa o que a câmera está vendo agora. "
-            "Use apenas quando o usuário perguntar explicitamente o que o robô está vendo "
-            "ou quando a cena for diretamente relevante para a resposta."
+            "Captura uma imagem da câmera e descreve o que está vendo: pessoas, ambiente, objetos. "
+            "Use quando o usuário perguntar o que o robô está vendo, quem está na frente, "
+            "como está o ambiente, ou qualquer pergunta sobre o que está acontecendo fisicamente."
         ),
         arguments_schema={
             "type": "object",
