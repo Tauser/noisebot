@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
@@ -58,6 +59,7 @@ class VisionClient:
     def __init__(self, base_url: str, timeout_s: float = 3.0) -> None:
         self.base_url = base_url.rstrip("/") + "/"
         self.timeout_s = timeout_s
+        self._lock = threading.Lock()
 
     @classmethod
     def from_config(cls, config) -> "VisionClient | None":
@@ -157,11 +159,12 @@ class VisionClient:
     def _get_bytes(self, path: str) -> bytes:
         url = urljoin(self.base_url, path.lstrip("/"))
         request = Request(url, headers={"User-Agent": "NoiseBot-Server/0.1"})
-        try:
-            with urlopen(request, timeout=self.timeout_s) as response:
-                return response.read()
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
-            raise VisionError(str(exc)) from exc
+        with self._lock:
+            try:
+                with urlopen(request, timeout=self.timeout_s) as response:
+                    return response.read()
+            except (HTTPError, URLError, TimeoutError, OSError) as exc:
+                raise VisionError(str(exc)) from exc
 
     def _post_json(self, path: str, body: dict) -> None:
         url = urljoin(self.base_url, path.lstrip("/"))
@@ -175,11 +178,12 @@ class VisionClient:
                 "User-Agent": "NoiseBot-Server/0.1",
             },
         )
-        try:
-            with urlopen(req, timeout=self.timeout_s) as response:
-                response.read()
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
-            raise VisionError(str(exc)) from exc
+        with self._lock:
+            try:
+                with urlopen(req, timeout=self.timeout_s) as response:
+                    response.read()
+            except (HTTPError, URLError, TimeoutError, OSError) as exc:
+                raise VisionError(str(exc)) from exc
 
 
 def _luma_to_text(luma: int) -> str:

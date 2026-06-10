@@ -888,7 +888,7 @@ class OpsHttpServer:
         if self._vision_client is None:
             return _json(error_response("visão não configurada"), status=503)
         try:
-            jpeg = await asyncio.to_thread(self._vision_client.snapshot_and_close)
+            jpeg = await asyncio.to_thread(self._vision_client.snapshot)
         except VisionError as exc:
             return _json(error_response(str(exc)), status=503)
         return web.Response(
