@@ -1,9 +1,122 @@
-import { CheckCircle2 } from "lucide-react";
-import type { DevicePersona } from "../api";
-import { cardClass, primaryButtonClass, inputClass } from "../lib/classes";
+import { CheckCircle2, Camera, Trash2, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { DevicePersona, EnrolledFace } from "../api";
+import { listFaces, enrollFace, deleteFace } from "../api";
+import { cardClass, primaryButtonClass, secondaryButtonClass, inputClass, mutedTextClass } from "../lib/classes";
 import { ratioLabel } from "../lib/format";
 import { InfoRow } from "../components/InfoRow";
 import { LabeledField } from "../components/LabeledField";
+
+function FaceEnrollmentCard({ token }: { token: string }) {
+  const [faces, setFaces] = useState<EnrolledFace[]>([]);
+  const [uid, setUid] = useState("");
+  const [name, setName] = useState("");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = () => listFaces().then(setFaces).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const enroll = async () => {
+    if (!uid.trim()) return;
+    setBusy(true);
+    setStatus("Capturando…");
+    try {
+      await enrollFace(uid.trim(), name.trim() || uid.trim(), token);
+      setStatus("✓ Cadastrado com sucesso.");
+      setUid(""); setName("");
+      load();
+    } catch (e) {
+      setStatus(`✗ ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (userId: string, displayName: string) => {
+    if (!confirm(`Remover "${displayName}" do reconhecimento facial?`)) return;
+    try {
+      await deleteFace(userId, token);
+      load();
+    } catch (e) {
+      setStatus(`✗ ${(e as Error).message}`);
+    }
+  };
+
+  return (
+    <section className={cardClass}>
+      <h2 className="mb-1 text-lg font-semibold">Reconhecimento Facial</h2>
+      <p className={`${mutedTextClass} mb-4`}>
+        Cadastre rostos para o robô te reconhecer pela câmera.
+      </p>
+
+      {/* Lista de cadastrados */}
+      {faces.length === 0 ? (
+        <p className={`${mutedTextClass} mb-4`}>Nenhum usuário cadastrado.</p>
+      ) : (
+        <ul className="mb-4 flex flex-col gap-2">
+          {faces.map((f) => (
+            <li key={f.user_id}
+              className="flex items-center gap-3 rounded-lg bg-black/20 px-3 py-2">
+              <UserRound size={20} className="shrink-0 text-slate-400" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium">{f.display_name || f.user_id}</div>
+                <div className="truncate text-xs text-slate-500">
+                  {f.user_id}
+                  {f.enrolled_at
+                    ? ` · ${new Date(f.enrolled_at * 1000).toLocaleDateString("pt-BR")}`
+                    : ""}
+                </div>
+              </div>
+              <button
+                className="shrink-0 text-slate-500 transition hover:text-red-400"
+                onClick={() => remove(f.user_id, f.display_name || f.user_id)}
+                type="button"
+              >
+                <Trash2 size={16} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Formulário de cadastro */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <input
+          className={inputClass}
+          placeholder="User ID (ex: tauser)"
+          maxLength={40}
+          value={uid}
+          onChange={(e) => setUid(e.target.value)}
+        />
+        <input
+          className={inputClass}
+          placeholder="Nome de exibição (ex: Tauser)"
+          maxLength={80}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          className={primaryButtonClass}
+          disabled={busy || !uid.trim()}
+          onClick={enroll}
+          type="button"
+        >
+          <Camera size={16} />
+          Capturar e Cadastrar
+        </button>
+        {status && (
+          <span className="text-sm text-slate-400">{status}</span>
+        )}
+      </div>
+      <p className={`mt-2 ${mutedTextClass}`}>
+        Posicione o usuário na frente da câmera antes de clicar.
+      </p>
+    </section>
+  );
+}
 
 export function UserProfileView({
   onChange,
@@ -11,12 +124,14 @@ export function UserProfileView({
   persona,
   profile,
   status,
+  token,
 }: {
   onChange: (value: DevicePersona["user"]) => void;
   onSave: () => void;
   persona: DevicePersona;
   profile: DevicePersona["user"];
   status: string;
+  token: string;
 }) {
   const update = (key: keyof DevicePersona["user"], value: string) => {
     onChange({ ...profile, [key]: value });
@@ -131,6 +246,10 @@ export function UserProfileView({
           <InfoRow label="Robô" value={profile.robot_nickname || "--"} />
         </section>
       </aside>
+
+      <div className="lg:col-span-2">
+        <FaceEnrollmentCard token={token} />
+      </div>
     </div>
   );
 }

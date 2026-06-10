@@ -278,6 +278,7 @@ export function App() {
                   onChange={setProfileDraft}
                   onSave={saveUserProfile}
                   status={profileStatus}
+                  token={opsToken}
                 />
               )}
               {mode === "user" && userSection === "routine" && (
