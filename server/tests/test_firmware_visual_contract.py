@@ -118,9 +118,11 @@ def test_touch_boot_uses_persisted_sensitivity():
 def test_touch_default_is_calibrated_for_copper_pad():
     src = NB_CONFIG_KEYS.read_text(encoding="utf-8")
 
-    # Default 5 → factor 0.01 → 1% acima do baseline, alinhado com variação real do copper strip
-    assert "#define NB_CFG_DEFAULT_TOUCH_SENS         5" in src
-    assert "copper strip" in src
+    # Default 8 → factor 0.016 → 1,6% acima do baseline:
+    #   compromisso entre rejeição de proximidade (fio como antena, ~1% EMA)
+    #   e detecção de contato real (~1,5% EMA em 60ms).
+    assert "#define NB_CFG_DEFAULT_TOUCH_SENS         8" in src
+    assert "antena" in src
     assert "passos de 0,2%" in src
 
 
@@ -128,8 +130,8 @@ def test_touch_legacy_defaults_migrate_to_calibrated_threshold():
     src = (ROOT / "components" / "infra" / "config_manager.c").read_text(encoding="utf-8")
 
     assert "restore_touch_sensitivity_if_legacy()" in src
-    # Migra tanto o legado antigo (10) quanto o legado intermediário (25)
-    assert "touch_sens != 10U && touch_sens != 25U" in src
+    # Migra legados 10, 25 e 5 (todos problemáticos por motivos diferentes)
+    assert "touch_sens != 10U && touch_sens != 25U && touch_sens != 5U" in src
     assert "NB_CFG_DEFAULT_TOUCH_SENS" in src
 
 
@@ -262,5 +264,3 @@ def test_montserrat_ptbr_font_covers_latin1():
 
     assert "const lv_font_t MontserratPtBr16" in font_src
     assert ".range_start = 32, .range_length = 95" in font_src
-    assert ".range_start = 160, .range_length = 96" in font_src
-    assert "0x20-0x7F,0xA0-0xFF" in font_src

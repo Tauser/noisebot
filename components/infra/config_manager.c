@@ -145,11 +145,12 @@ static esp_err_t restore_touch_sensitivity_if_legacy(void)
      * Histórico de defaults:
      *   10 → primeiro default (2% de threshold) — muito alto para copper strip
      *   25 → segundo default  (5% de threshold) — ainda alto demais
-     *    5 → default atual    (1% de threshold) — alinhado com variação real do pad
+     *    5 → terceiro default (1% de threshold) — baixo demais: fio longo dispara por proximidade
+     *    8 → default atual    (1,6% de threshold) — compromisso antena/contato
      *
-     * Migrar qualquer dispositivo que ainda tenha os valores legados.
+     * Migrar qualquer dispositivo que ainda tenha um dos valores legados.
      */
-    if (touch_sens != 10U && touch_sens != 25U) {
+    if (touch_sens != 10U && touch_sens != 25U && touch_sens != 5U) {
         return ESP_OK;
     }
 
