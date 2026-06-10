@@ -37,6 +37,8 @@ MSG_SPEECH_CANCEL: int = 0x20
 MSG_SAY_BEGIN: int = 0x21
 MSG_SAY_END: int = 0x22
 
+MSG_FACE_BOX: int = 0x30
+
 NB_EVT_VOICE_ACTIVITY_START: int = 9
 NB_EVT_VOICE_ACTIVITY_END: int = 10
 
@@ -219,6 +221,11 @@ def encode_emot_event(event_id: int) -> bytes:
 
 def encode_gaze(x: float, y: float) -> bytes:
     return struct.pack("<ff", x, y)
+
+
+def encode_face_box(x: int, y: int, w: int, h: int, confidence: int = 255) -> bytes:
+    """Encode face bounding box: x u16, y u16, w u16, h u16, confidence u8 (0-255)."""
+    return struct.pack("<HHHHb", x & 0xFFFF, y & 0xFFFF, w & 0xFFFF, h & 0xFFFF, confidence & 0xFF)
 
 
 def encode_text_scroll(text: str) -> bytes:

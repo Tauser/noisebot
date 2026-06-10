@@ -25,6 +25,7 @@ from .protocol import (
     MSG_EMOT_EVENT,
     MSG_EVENT,
     MSG_EXPR,
+    MSG_FACE_BOX,
     MSG_GAZE,
     MSG_HELLO,
     MSG_SAY,
@@ -46,6 +47,7 @@ from .protocol import (
     encode_action,
     encode_emot_event,
     encode_expr,
+    encode_face_box,
     encode_frame,
     encode_gaze,
     encode_hello,
@@ -377,6 +379,9 @@ class FirmwareAdapter:
 
     async def send_gaze(self, x: float, y: float) -> None:
         await self._enqueue(encode_frame(MSG_GAZE, encode_gaze(x, y)))
+
+    async def send_face_box(self, x: int, y: int, w: int, h: int, confidence: int = 255) -> None:
+        await self._enqueue(encode_frame(MSG_FACE_BOX, encode_face_box(x, y, w, h, confidence)))
 
     async def send_text_scroll(self, text: str) -> None:
         await self._enqueue(encode_frame(MSG_TEXT_SCROLL, encode_text_scroll(text)))

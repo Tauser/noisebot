@@ -25,6 +25,9 @@ from .internal.ops.app_state import AppStateStore
 from .internal.ops.firmware_diag import FirmwareDiagClient
 from .internal.service import healthcheck_loop
 from .internal.transport import ConnectionSupervisor, create_transport_factory
+from .internal.vision.client import VisionClient
+from .internal.vision.face_service import FaceService
+from .internal.vision.face_loop import FaceLoop
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +73,8 @@ class NoiseBotServer:
         transport = config.transport
         if not config.dry_run and (transport.use_tcp or transport.uart):
             self._supervisor = self._build_supervisor()
+
+        self._face_loop = self._build_face_loop()
 
     def _get_adapter(self) -> Any | None:
         if self._supervisor is None:
@@ -154,6 +159,31 @@ class NoiseBotServer:
             port=self._config.ops.port,
         )
 
+    def _build_face_loop(self) -> FaceLoop | None:
+        vision_client = VisionClient.from_config(self._config)
+        if vision_client is None:
+            log.info("FaceLoop: sem URL de firmware, desabilitado.")
+            return None
+        face_svc = FaceService(
+            ollama_base_url=self._config.llm.ollama_base_url,
+            ollama_model=self._config.llm.model,
+        )
+
+        def _on_user_identified(user_id: str, display_name: str) -> None:
+            try:
+                self._app_state_store.update_device_persona({
+                    "user": {"id": user_id, "display_name": display_name}
+                })
+                log.info("FaceLoop: persona atualizada → user_id=%s name=%s", user_id, display_name)
+            except Exception as exc:
+                log.debug("FaceLoop: update_device_persona falhou: %s", exc)
+
+        return FaceLoop(
+            face_service=face_svc,
+            vision_client=vision_client,
+            on_user_identified=_on_user_identified,
+        )
+
     def _build_supervisor(self) -> ConnectionSupervisor:
         return ConnectionSupervisor(
             transport_factory=create_transport_factory(self._config),
@@ -190,6 +220,14 @@ class NoiseBotServer:
                 name="nb_audio_codec_default",
             )
         )
+        if self._face_loop is not None:
+            self._face_loop.start()
+            self._tasks.append(
+                asyncio.create_task(
+                    self._wire_face_loop_adapter_on_connect(),
+                    name="nb_face_loop_adapter",
+                )
+            )
 
         try:
             await self._ops_server.start()
@@ -218,6 +256,9 @@ class NoiseBotServer:
         self._running = False
         log.info("NoiseBotServer: encerrando...")
 
+        if self._face_loop is not None:
+            self._face_loop.stop()
+
         await self._ops_server.stop()
 
         if self._supervisor is not None:
@@ -238,6 +279,18 @@ class NoiseBotServer:
         try:
             async for _event in EventBus.iter_queue(events):
                 await self._apply_default_audio_codec()
+        finally:
+            self._bus.unsubscribe(events)
+
+    async def _wire_face_loop_adapter_on_connect(self) -> None:
+        """Inject the FirmwareAdapter into FaceLoop each time firmware connects."""
+        events = self._bus.subscribe(FirmwareConnected, maxsize=4)
+        try:
+            async for _event in EventBus.iter_queue(events):
+                adapter = self._get_adapter()
+                if adapter is not None and self._face_loop is not None:
+                    self._face_loop.set_adapter(adapter)
+                    log.info("FaceLoop: adapter injetado apos conexao.")
         finally:
             self._bus.unsubscribe(events)
 

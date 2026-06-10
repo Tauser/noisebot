@@ -49,6 +49,8 @@ from ..agent.playback import (
     SAY_STARTUP_INTERVAL_S,
 )
 from ..vision import VisionClient, VisionError
+from ..vision.face_service import FaceService
+from ..vision.face_store import FaceStore
 from ..agent.runtime import (
     AudioChunkIn,
     FinalTranscript,
@@ -94,6 +96,12 @@ class OpsHttpServer:
         self._agenda_client = FirmwareAgendaClient.from_config(app._config)
         self._firmware_diag_client = FirmwareDiagClient.from_config(app._config)
         self._vision_client = VisionClient.from_config(app._config)
+        self._face_store = FaceStore()
+        self._face_service = FaceService(
+            store=self._face_store,
+            ollama_base_url=app._config.llm.ollama_base_url,
+            ollama_model=app._config.llm.model,
+        )
         self._t_start = time.monotonic()
         self._runner: web.AppRunner | None = None
         self._web_app = self._build_app()
@@ -181,6 +189,9 @@ class OpsHttpServer:
         wa.router.add_get("/api/vision/observe", self._get_vision_observe)
         wa.router.add_get("/api/vision/analyze", self._get_vision_analyze)
         wa.router.add_get("/api/vision/snapshot", self._get_vision_snapshot)
+        wa.router.add_get("/api/vision/faces", self._get_vision_faces)
+        wa.router.add_post("/api/vision/faces/enroll", self._post_vision_faces_enroll)
+        wa.router.add_delete("/api/vision/faces/{user_id}", self._delete_vision_face)
         return wa
 
     # -- Lifecycle -------------------------------------------------------------
@@ -885,6 +896,36 @@ class OpsHttpServer:
             content_type="image/jpeg",
             headers={"Cache-Control": "no-store"},
         )
+
+    async def _get_vision_faces(self, request: web.Request) -> web.Response:
+        users = await asyncio.to_thread(self._face_store.list_users)
+        return _json(ok_response("faces listadas", faces=users))
+
+    async def _post_vision_faces_enroll(self, request: web.Request) -> web.Response:
+        user_id = request.rel_url.query.get("user_id", "").strip()
+        display_name = request.rel_url.query.get("display_name", user_id).strip()
+        if not user_id:
+            return _json(error_response("user_id obrigatório"), status=400)
+        if self._vision_client is None:
+            return _json(error_response("câmera não configurada"), status=503)
+        try:
+            jpeg = await asyncio.to_thread(self._vision_client.snapshot_and_close)
+        except VisionError as exc:
+            return _json(error_response(f"captura falhou: {exc}"), status=503)
+        try:
+            await asyncio.to_thread(self._face_service.enroll, user_id, display_name, jpeg)
+        except ValueError as exc:
+            return _json(error_response(str(exc)), status=422)
+        return _json(ok_response("face cadastrada", user_id=user_id, display_name=display_name))
+
+    async def _delete_vision_face(self, request: web.Request) -> web.Response:
+        user_id = request.match_info.get("user_id", "").strip()
+        if not user_id:
+            return _json(error_response("user_id inválido"), status=400)
+        removed = await asyncio.to_thread(self._face_store.delete, user_id)
+        if not removed:
+            return _json(error_response("face não encontrada"), status=404)
+        return _json(ok_response("face removida", user_id=user_id))
 
     # -- POST handlers ---------------------------------------------------------
 
