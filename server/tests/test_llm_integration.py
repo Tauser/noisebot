@@ -102,13 +102,16 @@ async def _do_turn(
     ))
 
     collected: list[Any] = []
+
+    async def _collect() -> None:
+        while True:
+            ev = await sub.get()
+            collected.append(ev)
+            if isinstance(ev, bus_mod.SpeechDone):
+                break
+
     try:
-        async with asyncio.timeout(timeout):
-            while True:
-                ev = await sub.get()
-                collected.append(ev)
-                if isinstance(ev, bus_mod.SpeechDone):
-                    break
+        await asyncio.wait_for(_collect(), timeout=timeout)
     except asyncio.TimeoutError:
         pass
 
@@ -418,13 +421,15 @@ def test_two_sequential_turns() -> None:
             await bus.publish(bus_mod.FinalTranscript(
                 turn_id=turn_id, text=text, quality=bus_mod.TranscriptQuality.GOOD,
             ))
+            async def _collect(turn_id: int = turn_id) -> None:
+                while True:
+                    ev = await sub.get()
+                    all_events.append(ev)
+                    if isinstance(ev, bus_mod.SpeechDone) and ev.turn_id == turn_id:
+                        break
+
             try:
-                async with asyncio.timeout(4.0):
-                    while True:
-                        ev = await sub.get()
-                        all_events.append(ev)
-                        if isinstance(ev, bus_mod.SpeechDone) and ev.turn_id == turn_id:
-                            break
+                await asyncio.wait_for(_collect(), timeout=4.0)
             except asyncio.TimeoutError:
                 break
             # Brief pause so orchestrator returns to IDLE

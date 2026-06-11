@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import platform
+import re
 import subprocess
 import sys
 from abc import ABC, abstractmethod
@@ -10,6 +11,13 @@ from pathlib import Path
 
 TASK_NAME = "NoiseBot Server"
 SERVICE_NAME = "noisebot-server"
+
+# SF-09 (docs/ANALISE_SERVER_FINDINGS_2026-06-11.md): TASK_NAME e interpolado
+# em scripts PowerShell via f-string. Hoje e uma constante interna (risco
+# baixo), mas garantimos na borda que ele nunca contem aspas ou metacaracteres
+# de shell, caso um dia vire configuravel.
+_TASK_NAME_RE = re.compile(r"^[A-Za-z0-9 _-]+$")
+assert _TASK_NAME_RE.match(TASK_NAME), f"TASK_NAME invalido: {TASK_NAME!r}"
 
 
 class ServiceManager(ABC):

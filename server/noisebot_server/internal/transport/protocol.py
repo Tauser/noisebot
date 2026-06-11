@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import struct
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -202,6 +204,35 @@ class FrameDecoder:
         del buf[:i]
 
 
+_BRIDGE_TOKEN_FILE = Path.home() / ".noisebot-server" / "bridge_token"
+
+
+def load_bridge_token() -> str | None:
+    """Load the shared bridge token (SF-02), if configured.
+
+    O firmware gera/loga o token (NVS `nb_sys/api_token`) no primeiro boot.
+    O server e' somente-leitura: copie esse valor para
+    `NOISEBOT_BRIDGE_TOKEN` ou `~/.noisebot-server/bridge_token`.
+    Retorna `None` se nao configurado (handshake sem token, retrocompativel).
+    """
+    env_token = os.environ.get("NOISEBOT_BRIDGE_TOKEN", "").strip()
+    if env_token:
+        return env_token
+    if _BRIDGE_TOKEN_FILE.exists():
+        token = _BRIDGE_TOKEN_FILE.read_text(encoding="utf-8").strip()
+        if token:
+            return token
+    return None
+
+
+def server_hello_capabilities() -> dict[str, Any]:
+    """Return ``SERVER_HELLO_CAPABILITIES``, including ``token`` if configured."""
+    token = load_bridge_token()
+    if token is None:
+        return SERVER_HELLO_CAPABILITIES
+    return {**SERVER_HELLO_CAPABILITIES, "token": token}
+
+
 def encode_hello(capabilities: dict[str, Any] | None = None) -> bytes:
     caps = capabilities if capabilities is not None else SERVER_HELLO_CAPABILITIES
     return json.dumps(caps, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
@@ -225,7 +256,7 @@ def encode_gaze(x: float, y: float) -> bytes:
 
 def encode_face_box(x: int, y: int, w: int, h: int, confidence: int = 255) -> bytes:
     """Encode face bounding box: x u16, y u16, w u16, h u16, confidence u8 (0-255)."""
-    return struct.pack("<HHHHb", x & 0xFFFF, y & 0xFFFF, w & 0xFFFF, h & 0xFFFF, confidence & 0xFF)
+    return struct.pack("<HHHHB", x & 0xFFFF, y & 0xFFFF, w & 0xFFFF, h & 0xFFFF, confidence & 0xFF)
 
 
 def encode_text_scroll(text: str) -> bytes:
@@ -339,4 +370,6 @@ __all__ = [
     "encode_speech_cancel",
     "encode_text_scroll",
     "encode_volume",
+    "load_bridge_token",
+    "server_hello_capabilities",
 ]

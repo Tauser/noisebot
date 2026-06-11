@@ -78,9 +78,35 @@ def test_firmware_opus_contract_is_explicit_but_disabled():
     assert hello["codec_options"]["opus_bitrate"] == 32000
     assert "opus_tx" in hello["features"]
     assert "void bridge_service_set_opus_enabled(bool enabled)" in src
-    assert "bridge_service_opus_is_enabled() ? BRIDGE_HELLO_V2_OPUS : BRIDGE_HELLO_V2" in src
+    assert "bridge_service_opus_is_enabled() ? s_bridge_hello_v2_opus : s_bridge_hello_v2" in src
     assert "if (!bridge_service_opus_is_enabled()) return ESP_ERR_NOT_SUPPORTED;" in src
     assert "enqueue_frame(NB_BRIDGE_MSG_AUDIO_CHUNK, packet, len)" in src
+
+
+def test_firmware_bridge_hello_token_handshake_sf02():
+    """SF-02: HELLO traz token compartilhado; validação opt-in via bridge_req_tok."""
+    src = BRIDGE_SERVICE.read_text(encoding="utf-8")
+
+    # Reaproveita o mesmo token/namespace do api_token (web_service.c).
+    assert '#define NB_BRIDGE_TOKEN_NVS_NS   "nb_sys"' in src
+    assert '#define NB_BRIDGE_TOKEN_NVS_KEY  "api_token"' in src
+    assert '#define NB_BRIDGE_REQ_TOKEN_KEY  "bridge_req_tok"' in src
+
+    # Validação é opt-in (default off) e lida do NVS no boot.
+    assert "static bool s_bridge_token_required = false;" in src
+    assert "bridge_token_load_or_generate" in src
+    assert "NB_BRIDGE_REQ_TOKEN_KEY" in src
+
+    # HELLO dinâmico embute o token.
+    assert "bridge_hello_build" in src
+    assert '"token"' in src
+
+    # dispatch_incoming agora retorna bool e os loops TCP/UART tratam o caso
+    # de token inválido (sem resposta + desconexão TCP).
+    assert "static bool dispatch_incoming(" in src
+    assert "if (!dispatch_incoming(type, fdata, fdata_len)) {" in src
+    assert "goto tcp_disconnect;" in src
+    assert "(void)dispatch_incoming(type, fdata, fdata_len);" in src
 
 
 def test_firmware_opus_encoder_uses_live_quality_profile():

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 import os
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+
+from ..http_fetch import HttpFetchError, fetch_json
 
 
 @dataclass(frozen=True)
@@ -70,14 +69,12 @@ def fetch_weather_now(timeout_s: float = 3.0) -> WeatherNow:
             "timezone": "auto",
         }
     )
-    request = Request(
-        f"https://api.open-meteo.com/v1/forecast?{params}",
-        headers={"User-Agent": "NoiseBot-Server/0.1"},
-    )
     try:
-        with urlopen(request, timeout=timeout_s) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
+        payload = fetch_json(
+            f"https://api.open-meteo.com/v1/forecast?{params}",
+            timeout_s=timeout_s,
+        )
+    except HttpFetchError:
         return WeatherNow(location=location)
 
     current = payload.get("current", {})

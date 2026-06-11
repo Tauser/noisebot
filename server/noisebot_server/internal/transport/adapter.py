@@ -44,6 +44,7 @@ from .protocol import (
     decode_hello,
     decode_session,
     decode_status,
+    server_hello_capabilities,
     encode_action,
     encode_emot_event,
     encode_expr,
@@ -87,7 +88,7 @@ class FirmwareAdapter:
     ) -> None:
         self._transport = transport
         self._bus = bus
-        self._capabilities = capabilities or SERVER_HELLO_CAPABILITIES
+        self._capabilities = capabilities or server_hello_capabilities()
         self._peer_capabilities: dict[str, Any] = {}
         self._decoder = FrameDecoder()
         self._tx_queue: asyncio.Queue[_TxItem] = asyncio.Queue(maxsize=256)
