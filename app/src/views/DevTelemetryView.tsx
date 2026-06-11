@@ -54,9 +54,10 @@ export function DevTelemetryView({
   const diagErrors = Object.entries(firmware.errors ?? {});
 
   const [visionStatus, setVisionStatus] = useState<VisionPipelineStatus | null>(null);
-  const [visionFrameTs, setVisionFrameTs] = useState(0);
   const [visionFrameOk, setVisionFrameOk] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lastFaceBoxRef = useRef<VisionPipelineStatus["last_face_box"]>(null);
 
   const drawFaceBox = useCallback((fb: VisionPipelineStatus["last_face_box"]) => {
     const canvas = canvasRef.current;
@@ -77,8 +78,17 @@ export function DevTelemetryView({
         const s = await loadVisionPipelineStatus();
         if (!cancelled) {
           setVisionStatus(s);
-          drawFaceBox(s.last_face_box);
-          if (s.state !== "DISABLED") setVisionFrameTs(Date.now());
+          // preserve last known box — only clear when pipeline resets to IDLE/DISABLED
+          if (s.last_face_box) {
+            lastFaceBoxRef.current = s.last_face_box;
+          } else if (s.state === "IDLE" || s.state === "DISABLED") {
+            lastFaceBoxRef.current = null;
+          }
+          drawFaceBox(lastFaceBoxRef.current);
+          // update snapshot src imperatively — avoids key remount and black flash
+          if (s.state !== "DISABLED" && imgRef.current) {
+            imgRef.current.src = `${visionSnapshotUrl()}?t=${Date.now()}`;
+          }
         }
       } catch { /* server offline */ }
     };
@@ -229,18 +239,18 @@ export function DevTelemetryView({
         <div className="flex gap-4 flex-wrap items-start">
           {/* snapshot + face box */}
           <div className="relative shrink-0 rounded overflow-hidden bg-black" style={{ width: 240, height: 240 }}>
-            {visionFrameTs > 0 && visionStatus?.state !== "DISABLED" ? (
-              <img
-                key={visionFrameTs}
-                src={`${visionSnapshotUrl()}?t=${visionFrameTs}`}
-                alt="snapshot"
-                width={240}
-                height={240}
-                className="block object-contain w-full h-full"
-                onLoad={() => setVisionFrameOk(true)}
-                onError={() => setVisionFrameOk(false)}
-              />
-            ) : null}
+            {/* img persiste — src atualizado via ref para evitar flash preto */}
+            <img
+              ref={imgRef}
+              src=""
+              alt="snapshot"
+              width={240}
+              height={240}
+              className="block object-contain w-full h-full"
+              style={{ display: visionFrameOk && visionStatus?.state !== "DISABLED" ? "block" : "none" }}
+              onLoad={() => setVisionFrameOk(true)}
+              onError={() => setVisionFrameOk(false)}
+            />
             {(!visionFrameOk || visionStatus?.state === "DISABLED") && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-slate-500 text-xs text-center px-3">
                 <Camera className="w-8 h-8 mb-1 opacity-40" />
