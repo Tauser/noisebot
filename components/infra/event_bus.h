@@ -132,4 +132,14 @@ esp_err_t nb_event_publish_async(const nb_event_t *evt);
  */
 uint32_t nb_event_get_dropped_count(void);
 
+/**
+ * @brief Imprime via ESP_LOGE os últimos 64 eventos entregues pelo bus.
+ *
+ * Seguro para chamar de contexto de panic (sem mutexes, sem heap).
+ * Chamado automaticamente em shutdown via esp_register_shutdown_handler().
+ * Para cobertura de hard panics, pode ser chamado manualmente de um
+ * override de esp_panic_handler().
+ */
+void nb_event_bus_dump_ring(void);
+
 #endif /* NB_EVENT_BUS_H */

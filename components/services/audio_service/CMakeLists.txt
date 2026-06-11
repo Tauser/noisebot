@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "audio_service.c"
+        "nb_esp_sr_compat.c"
     INCLUDE_DIRS "."
     REQUIRES
         nb_hal

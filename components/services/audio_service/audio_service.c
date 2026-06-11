@@ -1,10 +1,17 @@
 /*
  * audio_service.c — Serviço de áudio do NoiseBot (Layer 4)
  *
- * Mantém ownership do HAL/I2S. Eventos são emitidos via callback
- * (nb_audio_event_cb_t) registrado pelo boot_manager, que faz a ponte para o
- * event bus. Integrações de infra ficam restritas aos contratos de bridge e
- * config já existentes, sem event_bus direto no caminho crítico.
+ * OWNERSHIP DE PERIFÉRICOS:
+ *   I2S0 (RX — INMP441 mic)  : audio_io_service_v2  (geração canônica)
+ *   I2S1 (TX — MAX98357A)    : audio_io_service_v2  (geração canônica)
+ *
+ * GERAÇÃO CANÔNICA: *_v2 (audio_playback_service_v2, voice_activity_service_v2,
+ *   audio_codec_service_v2, audio_io_service_v2, voice_capture_session_v2).
+ *   Este arquivo é a facade de compatibilidade que inicializa e orquestra os
+ *   componentes v2. Os caminhos v1 internos são legado; não adicionar novos.
+ *
+ * Eventos são emitidos via callback (nb_audio_event_cb_t) registrado pelo
+ * boot_manager, que faz a ponte para o event bus.
  *
  * Loop da task (~16ms por iteração):
  *   1. Preparar e escrever chunk TX (áudio WAV ou silêncio) — manter DMA alimentado.
@@ -42,15 +49,9 @@
 
 #define TAG "audio_svc"
 
-/* ESP-SR VAD: declaracoes minimas para evitar conflito de nomes com o VAD
- * heuristico local (esp_vad.h tambem define VAD_SILENCE/vad_state_t). */
-typedef void *nb_esp_vad_handle_t;
-extern nb_esp_vad_handle_t vad_create_with_param(
-    int vad_mode, int sample_rate, int one_frame_ms, int min_speech_ms, int min_noise_ms);
-extern int vad_process(nb_esp_vad_handle_t handle, int16_t *data,
-                       int sample_rate_hz, int one_frame_ms);
-extern void vad_reset_trigger(nb_esp_vad_handle_t handle);
-extern void vad_destroy(nb_esp_vad_handle_t handle);
+/* nb_esp_sr_compat.h encapsula esp_vad.h em TU isolada, evitando conflito
+ * com os tipos locais vad_state_t / VAD_SILENCE definidos abaixo. */
+#include "nb_esp_sr_compat.h"
 
 #define ESP_SR_VAD_MODE             3   /* VAD_MODE_3: agressivo, estilo always-on */
 #define ESP_SR_VAD_FRAME_MS        10
@@ -738,7 +739,7 @@ static void esp_vad_reset(void)
     s.esp_vad_pos = 0;
     s.esp_vad_last_state = 0;
     if (s.esp_vad_enabled && s.esp_vad) {
-        vad_reset_trigger(s.esp_vad);
+        nb_esp_vad_reset_trigger(s.esp_vad);
     }
 }
 
@@ -759,8 +760,8 @@ static int esp_vad_update(const int16_t *pcm, size_t n, bool muted)
         off += to_copy;
 
         if (s.esp_vad_pos >= ESP_SR_VAD_FRAME_SAMPLES) {
-            s.esp_vad_last_state = vad_process(s.esp_vad, s.esp_vad_frame,
-                                                16000, ESP_SR_VAD_FRAME_MS);
+            s.esp_vad_last_state = nb_esp_vad_process(s.esp_vad, s.esp_vad_frame,
+                                                      16000, ESP_SR_VAD_FRAME_MS);
             s.esp_vad_pos = 0;
         }
     }
@@ -1643,10 +1644,10 @@ esp_err_t audio_service_init(void)
     s.vad_noise_ema  = (float)NB_AUDIO_VAD_THRESHOLD_DEFAULT;
     s.vad_state      = VAD_SILENCE;
     s.vad_settle_ms  = NB_AUDIO_VAD_SETTLE_MS;
-    s.esp_vad = vad_create_with_param(ESP_SR_VAD_MODE, 16000,
-                                      ESP_SR_VAD_FRAME_MS,
-                                      ESP_SR_VAD_MIN_SPEECH_MS,
-                                      ESP_SR_VAD_MIN_NOISE_MS);
+    s.esp_vad = nb_esp_vad_create(ESP_SR_VAD_MODE, 16000,
+                                  ESP_SR_VAD_FRAME_MS,
+                                  ESP_SR_VAD_MIN_SPEECH_MS,
+                                  ESP_SR_VAD_MIN_NOISE_MS);
     s.esp_vad_enabled = (s.esp_vad != NULL);
     s.esp_vad_pos = 0;
     s.esp_vad_last_state = 0;
@@ -1683,7 +1684,7 @@ esp_err_t audio_service_init(void)
     if (rc != pdPASS) {
         ESP_LOGE(TAG, "xTaskCreatePinnedToCore audio_task falhou");
         if (s.esp_vad) {
-            vad_destroy(s.esp_vad);
+            nb_esp_vad_destroy(s.esp_vad);
             s.esp_vad = NULL;
             s.esp_vad_enabled = false;
         }

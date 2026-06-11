@@ -12,7 +12,8 @@
  *
  * Monitoramento contínuo (nb_servo_safety_task, 20Hz):
  *   Load  : WARN >40%, DISABLE >70% por >100ms (stall detection)
- *   Temp  : WARN ≥55°C, DISABLE ≥70°C
+ *   Temp  : WARN ≥55°C, FAULT ≥70°C
+ *   Volt  : WARN <4.7V, FAULT <4.3V (registrado pelo servo em décimos de V)
  *   Heartbeat: timeout de 600ms sem chamada a motion_safety_heartbeat()
  *
  * Brownout: subscreve NB_EVT_POWER_BROWNOUT_WARN — disable imediato.
@@ -55,6 +56,11 @@ typedef enum {
 /* Limiares de temperatura (°C) */
 #define NB_MOTION_TEMP_WARN_C                 55u
 #define NB_MOTION_TEMP_FAULT_C                70u
+
+/* Limiares de tensão (décimos de V, conforme reg 0x3E do SCS0009).
+ * SCS0009 opera em 4.5–14V. Abaixo de 4.3V o torque colapsa. */
+#define NB_MOTION_VOLT_WARN                   47u  /* <4.7V → log W   */
+#define NB_MOTION_VOLT_FAULT                  43u  /* <4.3V → fault   */
 
 /* Heartbeat */
 #define NB_MOTION_HEARTBEAT_FEED_MS          200u  /* intervalo esperado */

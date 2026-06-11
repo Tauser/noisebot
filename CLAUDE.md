@@ -127,7 +127,7 @@ components/
 
 ## Convenções de Código
 
-- Prefixo `nb_` para todos os tipos, funções e macros públicas do projeto.
+- Prefixo `nb_` para **tipos, eventos e macros globais** (ex: `nb_event_t`, `NB_EVT_*`, `NB_STATE_*`). Funções de serviço/componente seguem `<servico>_<operação>` sem prefixo obrigatório (ex: `conductor_play`, `audio_service_init`). Decisão registrada em F28 (2026-06-11).
 - Arquivos de header com include guard `#ifndef NB_<MODULO>_H`.
 - Erros retornam `esp_err_t`. Usar `ESP_ERROR_CHECK` apenas em init (não em runtime).
 - Tasks: nome descritivo (`"nb_render_task"`), stack e prioridade documentados no header.
@@ -153,6 +153,44 @@ components/
 
 **Pinos DVP da câmera estão fisicamente conectados na placa. Nunca realocar esses GPIOs.**
 Ver `docs/HARDWARE.md` para o mapa completo de pinos.
+
+---
+
+## Server (Python) — `server/`
+
+Esta seção cobre `server/` (companion app Python/aiohttp). As regras de firmware acima
+(C17, ESP-IDF, layers, motion safety, etc.) **não se aplicam** a este diretório.
+Este é o documento de autoridade também para o server (ver SF-12 em
+`docs/ANALISE_SERVER_FINDINGS_2026-06-11.md`); `AGENTS.md` aponta para cá.
+
+### Layout
+
+- O pacote real é `server/noisebot_server/` (`api/`, `internal/`, `tests/` em
+  `server/tests/`). Os diretórios `server/api/`, `server/internal/`,
+  `server/manifest/`, `server/resource/` na raiz de `server/` são scaffold
+  vazio (apenas `.gitkeep`/README) e **não devem ser usados nem referenciados**.
+- Piso de Python: `>=3.10` (declarado em `pyproject.toml`). Não usar
+  `asyncio.timeout` (3.11+) — usar `asyncio.wait_for`.
+- Comando de teste: `cd server && pip install -e .[dev] && pytest`.
+
+### Regras de I/O assíncrono
+
+- **Nunca** I/O bloqueante (rede, `urlopen`, `subprocess` síncrono) direto no
+  event loop. Envolver em `await asyncio.to_thread(...)`.
+- `LocalIntentProvider.match()` pode acionar handlers (weather, vision) que
+  fazem rede — o orchestrator chama `match()` via `asyncio.to_thread`.
+- Para HTTP de saída, preferir helper único (sync/async) em vez de `urlopen`
+  espalhado pelos módulos.
+- Subprocessos: usar `asyncio.create_subprocess_exec` (nunca `shell=True`).
+
+### Secrets, tokens e rede
+
+- Secrets (API keys de LLM etc.) só via variáveis de ambiente, lidas no ponto
+  de uso. `config.py` nunca expõe valores — só booleans `*_configured`.
+- Endpoints de ops: GET sem token por padrão (bind `127.0.0.1` + allowlist),
+  POST sempre exige `X-NB-Token` (comparação timing-safe, `secrets.token_hex`).
+- Offline-first: intents locais PT-BR respondem sem LLM; circuit breaker
+  degrada graciosamente quando o provider está fora.
 
 ---
 

@@ -22,6 +22,10 @@
 #include "state_machine.h"
 
 #include <string.h>
+#include <stdatomic.h>
+#if CONFIG_NB_SD_SCORES
+#include <stdio.h>
+#endif
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -248,6 +252,126 @@ static const int k_num_vars[NB_ACTION_COUNT] = {
     [NB_ACTION_CELEBRATE]     = 1,
 };
 
+/* ── Loader de partituras do SD (F45) ────────────────────────────────────── */
+/* Habilitado por CONFIG_NB_SD_SCORES (default n). Apenas para iteração de   */
+/* animações sem reflash. Suporta sobrescrever 1 ação por boot.              */
+
+#if CONFIG_NB_SD_SCORES
+
+#define SD_SCORE_MAX_STEPS   8u
+#define SD_SCORE_MAX_AUDIO   64u
+
+static score_step_t  s_dyn_steps[3][SD_SCORE_MAX_STEPS];
+static char          s_dyn_audio[3][SD_SCORE_MAX_STEPS][SD_SCORE_MAX_AUDIO];
+static nb_score_t    s_dyn_scores[3];
+static nb_action_t   s_dyn_action  = NB_ACTION_NONE;
+static bool          s_dyn_loaded  = false;
+
+static bool parse_score_line(const char *line, score_step_t *out, char *audio_out)
+{
+    if (line[0] == '#' || line[0] == '\n' || line[0] == '\r' || line[0] == '\0')
+        return false;
+
+    unsigned offset_u, motion_ms_u;
+    int expr, expr_play, motion;
+    float expr_ms, expr_dur;
+    char audio[SD_SCORE_MAX_AUDIO];
+
+    int n = sscanf(line, "%u %d %f %d %f %d %u %63s",
+                   &offset_u, &expr, &expr_ms, &expr_play,
+                   &expr_dur, &motion, &motion_ms_u, audio);
+    if (n < 8) return false;
+
+    out->offset_ms  = (uint32_t)offset_u;
+    out->expr       = (nb_expression_t)expr;
+    out->expr_ms    = expr_ms;
+    out->expr_play  = (bool)expr_play;
+    out->expr_dur   = expr_dur;
+    out->motion     = (cond_motion_t)motion;
+    out->motion_ms  = (uint32_t)motion_ms_u;
+
+    if (audio[0] == '-' && audio[1] == '\0') {
+        out->audio = NULL;
+    } else {
+        strncpy(audio_out, audio, SD_SCORE_MAX_AUDIO - 1u);
+        audio_out[SD_SCORE_MAX_AUDIO - 1u] = '\0';
+        out->audio = audio_out;
+    }
+    return true;
+}
+
+static int load_variant(nb_action_t action, int var)
+{
+    char path[48];
+    snprintf(path, sizeof(path), "/sdcard/scores/%d_%d.txt", (int)action, var);
+
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+
+    char line[128];
+    int count = 0;
+    while (fgets(line, sizeof(line), f) && (unsigned)count < SD_SCORE_MAX_STEPS) {
+        if (parse_score_line(line, &s_dyn_steps[var][count],
+                             s_dyn_audio[var][count])) {
+            count++;
+        }
+    }
+    fclose(f);
+    return count;
+}
+
+static void load_sd_scores(void)
+{
+    for (int action = 1; action < NB_ACTION_COUNT; action++) {
+        bool any = false;
+        for (int var = 0; var < 3; var++) {
+            int count = load_variant((nb_action_t)action, var);
+            if (count > 0) {
+                s_dyn_scores[var].steps = s_dyn_steps[var];
+                s_dyn_scores[var].count = count;
+                any = true;
+                ESP_LOGI(TAG, "SD score: action=%d var=%d steps=%d", action, var, count);
+            } else {
+                s_dyn_scores[var].steps = NULL;
+                s_dyn_scores[var].count = 0;
+            }
+        }
+        if (any) {
+            s_dyn_action = (nb_action_t)action;
+            s_dyn_loaded = true;
+            ESP_LOGI(TAG, "SD scores ativos para action=%d", action);
+            return;  /* apenas 1 ação por vez */
+        }
+    }
+}
+
+#endif /* CONFIG_NB_SD_SCORES */
+
+static const nb_score_t *get_score(nb_action_t action, int var)
+{
+#if CONFIG_NB_SD_SCORES
+    if (s_dyn_loaded && action == s_dyn_action &&
+        var < 3 && s_dyn_scores[var].steps != NULL) {
+        return &s_dyn_scores[var];
+    }
+#endif
+    return &k_scores[action][var];
+}
+
+static int get_num_vars(nb_action_t action)
+{
+#if CONFIG_NB_SD_SCORES
+    if (s_dyn_loaded && action == s_dyn_action) {
+        int n = 0;
+        for (int v = 0; v < 3; v++) {
+            if (s_dyn_scores[v].steps != NULL) n = v + 1;
+        }
+        if (n > 0) return n;
+    }
+#endif
+    return k_num_vars[action];
+}
+
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
 static SemaphoreHandle_t  s_trigger_sem     = NULL;
@@ -256,7 +380,7 @@ static volatile nb_action_t s_pending_action = NB_ACTION_NONE;
 static volatile nb_action_t s_current_action = NB_ACTION_NONE;
 static volatile bool        s_interrupt      = false;
 static bool                 s_initialized    = false;
-static volatile bool        s_paused         = false;
+static _Atomic uint32_t     s_pause_count    = 0;
 
 /* Anti-repeat: última variação jogada por ação (-1 = nunca jogou). */
 static int8_t s_last_var[NB_ACTION_COUNT];
@@ -315,7 +439,7 @@ static void conductor_task(void *arg)
         }
 
         /* Selecionar variação — sem repetir a última (anti-repeat) */
-        int nvars = k_num_vars[action];
+        int nvars = get_num_vars(action);
         int var;
         if (nvars <= 1) {
             var = 0;
@@ -326,7 +450,7 @@ static void conductor_task(void *arg)
             }
         }
         s_last_var[action] = (int8_t)var;
-        const nb_score_t *score = &k_scores[action][var];
+        const nb_score_t *score = get_score(action, var);
 
         if (!score->steps || score->count == 0) {
             taskENTER_CRITICAL(&s_mux);
@@ -422,18 +546,27 @@ esp_err_t conductor_init(void)
     }
 
     s_initialized = true;
+
+#if CONFIG_NB_SD_SCORES
+    load_sd_scores();
+#endif
+
     ESP_LOGI(TAG, "conductor inicializado (%d ações)", NB_ACTION_COUNT - 1);
     return ESP_OK;
 }
 
 void conductor_pause(bool pause)
 {
-    s_paused = pause;
+    if (pause) {
+        atomic_fetch_add(&s_pause_count, 1u);
+    } else if (atomic_load(&s_pause_count) > 0u) {
+        atomic_fetch_sub(&s_pause_count, 1u);
+    }
 }
 
 void conductor_play(nb_action_t action)
 {
-    if (!s_initialized || s_paused) return;
+    if (!s_initialized || atomic_load(&s_pause_count) > 0u) return;
     if ((int)action < 0 || action >= NB_ACTION_COUNT) {
         ESP_LOGE(TAG, "conductor_play: action=%d inválida", (int)action);
         return;

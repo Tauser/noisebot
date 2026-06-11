@@ -168,6 +168,51 @@ Este checklist deve ser executado com hardware real antes de qualquer feature de
 
 ---
 
+## Gate de Reintegração — Pré-condições para Conectar os Servos
+
+Este checklist deve estar **100% verde** antes de plugar qualquer servo na placa.
+Cada item tem campo de medição — preencher com evidência real antes de marcar.
+
+### Checklist (F44)
+
+**G1 — Races de arm() corrigidas (F03)**
+- [ ] `arm_cancel()` em todos os caminhos de erro de `motion_safety_arm()`
+- [ ] Guarda `s_state == INITIALIZING` antes de setar ARMED
+- [ ] Teste de concorrência host: fault/brownout em todos os pontos de interleaving → ARMED nunca sucede um fault
+- Evidência: _______________
+
+**G2 — Latência de emergência medida (F05)**
+- [ ] `park_and_disable()` sem `write_position` (só torque-off)
+- [ ] Medição com `esp_timer`: fault→último byte do torque-off no pior caso (safety_task no meio de retry)
+- [ ] p99 < 150 ms confirmado
+- Medição: _______________ ms (p99)
+
+**G3 — Veto de safety no choke point (F07)**
+- [ ] `servo_hal_write.h` presente; protótipos de escrita removidos de `servo_hal.h`
+- [ ] `grep -r "servo_hal_write.h" components/` retorna apenas `motion_service.c` e `motion_safety.c`
+- Evidência: _______________
+
+**G4 — EMI do bus mensurável (F08)**
+- [ ] Contadores `s_bus_timeouts`/`s_bus_errors` instrumentados no servo_hal
+- [ ] `diagnostics_dump_to_sd()` inclui bus stats
+- [ ] Taxa de erro com WiFi ativo + tráfego < 1% sustentada por 1 h
+- Medição: _______________ % erro (WiFi ativo, 1 h)
+
+**G5 — servo_test removido de main (F01)**
+- [ ] `servo_test.h` não incluído em `main/main.c`
+- [ ] Build limpo sem tráfego no UART1 no boot (log de TX vazio)
+- Evidência: _______________
+
+**G6 — Calibração HTTP protegida (F02)**
+- [ ] Handler de calibração HTTP atrás de `#if CONFIG_NB_CALIB_HTTP` (default n) ou retorna 403
+- [ ] POST de calibração sem servos conectados retorna 403/404
+- Evidência: _______________
+
+**Data de verificação:** _______________
+**Responsável:** _______________
+
+---
+
 ## Notas de Montagem Mecânica
 
 **Calibração de centro:**

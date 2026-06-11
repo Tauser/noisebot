@@ -256,6 +256,7 @@ static void _on_state_changed(const nb_event_t *evt, void *ctx)
     bool pause = (state == NB_STATE_SLEEPING)
               || (state == NB_STATE_MEDITATION)
               || (state == NB_STATE_SILENT_COMPANY)
+              || (state == NB_STATE_MAINTENANCE)
               || (state == NB_STATE_RESPONDING)
               || (state == NB_STATE_ERROR);
     boredom_service_set_paused(pause);

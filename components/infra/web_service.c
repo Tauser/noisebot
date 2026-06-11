@@ -25,8 +25,7 @@
 #include "wifi_service.h"
 #include "esp_http_server.h"
 #include "esp_http_client.h"
-#include "esp_ota_ops.h"
-#include "esp_app_format.h"
+#include "web_ota.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "led_service.h"
@@ -1173,102 +1172,6 @@ static esp_err_t handle_api_command(httpd_req_t *req)
 
 /* ── OTA (Etapa 15.2) ────────────────────────────────────────────────────── */
 
-typedef struct { char url[256]; } ota_task_arg_t;
-
-static void ota_task(void *arg)
-{
-    ota_task_arg_t *a = (ota_task_arg_t *)arg;
-    char url[256];
-    strlcpy(url, a->url, sizeof(url));
-    heap_caps_free(a);
-
-    NB_LOGI(TAG, "OTA: iniciando de %s", url);
-    led_base_set(NB_LED_BASE_SAFE_MODE, true);
-    ota_progress_note(0, "started", NULL);
-
-    const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
-    if (!part) {
-        NB_LOGE(TAG, "OTA: nenhuma partição OTA disponível");
-        ota_progress_note(0, "error", "no OTA partition");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    esp_http_client_config_t hcfg = {
-        .url        = url,
-        .timeout_ms = 30000,
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&hcfg);
-    if (!client || esp_http_client_open(client, 0) != ESP_OK) {
-        NB_LOGE(TAG, "OTA: http open falhou");
-        ota_progress_note(0, "error", "http open failed");
-        if (client) esp_http_client_cleanup(client);
-        vTaskDelete(NULL);
-        return;
-    }
-
-    int content_len = (int)esp_http_client_fetch_headers(client);
-
-    esp_ota_handle_t ota_handle;
-    if (esp_ota_begin(part, OTA_WITH_SEQUENTIAL_WRITES, &ota_handle) != ESP_OK) {
-        NB_LOGE(TAG, "OTA: ota_begin falhou");
-        ota_progress_note(0, "error", "ota begin failed");
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        vTaskDelete(NULL);
-        return;
-    }
-
-    uint8_t *buf = (uint8_t *)heap_caps_malloc(4096, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    if (!buf) {
-        esp_ota_abort(ota_handle);
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        ota_progress_note(0, "error", "no memory");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    int total = 0;
-    int last_pct = -1;
-    esp_err_t write_err = ESP_OK;
-
-    while (write_err == ESP_OK) {
-        int n = esp_http_client_read(client, (char *)buf, 4096);
-        if (n < 0) { write_err = ESP_FAIL; break; }
-        if (n == 0) break;
-        write_err = esp_ota_write(ota_handle, buf, (size_t)n);
-        total += n;
-        int pct = (content_len > 0) ? (total * 100 / content_len) : 50;
-        if (pct > 99) pct = 99;
-        if (pct != last_pct) { ota_progress_note(pct, "downloading", NULL); last_pct = pct; }
-    }
-
-    heap_caps_free(buf);
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
-
-    if (write_err != ESP_OK || total == 0) {
-        esp_ota_abort(ota_handle);
-        ota_progress_note(0, "error", "download failed");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    if (esp_ota_end(ota_handle) != ESP_OK ||
-        esp_ota_set_boot_partition(part) != ESP_OK) {
-        NB_LOGE(TAG, "OTA: finalização falhou");
-        ota_progress_note(0, "error", "finalization failed");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    NB_LOGI(TAG, "OTA: OK (%d bytes) — reiniciando em 3s", total);
-    ota_progress_note(100, "complete", NULL);
-    vTaskDelay(pdMS_TO_TICKS(3000));
-    esp_restart();
-}
-
 static esp_err_t handle_api_ota(httpd_req_t *req)
 {
     if (!api_require_token(req)) return ESP_OK;
@@ -1287,18 +1190,10 @@ static esp_err_t handle_api_ota(httpd_req_t *req)
         return ESP_OK;
     }
 
-    ota_task_arg_t *arg = (ota_task_arg_t *)heap_caps_malloc(sizeof(ota_task_arg_t),
-                                                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!arg) {
-        arg = (ota_task_arg_t *)heap_caps_malloc(sizeof(ota_task_arg_t),
-                                                 MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    }
-    if (arg) strlcpy(arg->url, url_j->valuestring, sizeof(arg->url));
+    esp_err_t err = web_ota_start(url_j->valuestring);
     cJSON_Delete(root);
 
-    BaseType_t ota_ok = arg ? xTaskCreate(ota_task, "nb_ota", 8192, arg, 5, NULL) : pdFAIL;
-    if (!arg || ota_ok != pdPASS) {
-        heap_caps_free(arg);
+    if (err != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "failed");
         return ESP_OK;
     }

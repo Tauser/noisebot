@@ -10,6 +10,7 @@ idf_component_register(
         "event_bus.c"
         "diagnostics_service.c"
         "wifi_service.c"
+        "web_ota.c"
         "web_service.c"
         "bridge_service.c"
         "boot_manager.c"

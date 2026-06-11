@@ -139,7 +139,7 @@ static void publish(nb_event_type_t type)
         .timestamp_ms = 0,
         .data.u32 = 0,
     };
-    nb_event_publish(&ev);
+    nb_event_publish_async(&ev);
 }
 
 /* ── API ─────────────────────────────────────────────────────────────────── */

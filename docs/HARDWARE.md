@@ -217,6 +217,55 @@ fios curtos entre módulo e eletrodos; o trecho mais longo fica no barramento I2
 
 ---
 
+## Instrumentação de Energia — ADC 5 V (F49)
+
+Para medir a tensão do barramento de 5 V (servos + LEDs) e servir à lógica de
+brownout em software (F04) e ao orçamento de energia documentado em `ENERGY.md`:
+
+### Especificação do divisor
+
+O ESP32-S3 ADC aceita no máximo **3.1 V** na entrada (com atenuação de 12 dB).
+Para medir até 6 V com margem:
+
+```
+Divisor resistivo: R1 = 68 kΩ (alta), R2 = 56 kΩ (baixa)
+V_adc = V_in × R2 / (R1 + R2) = V_in × 56/124 ≈ V_in × 0.452
+
+@ 5.0 V: V_adc ≈ 2.26 V  (dentro dos 3.1 V)
+@ 5.5 V: V_adc ≈ 2.49 V  (dentro dos 3.1 V)
+Tolerância dos resistores: 1% recomendado para ±50 mV de erro máximo.
+```
+
+Conectar ponto médio do divisor ao GPIO de ADC escolhido (abaixo).
+
+### Pino sugerido
+
+| GPIO | ADC   | Disponibilidade                                          |
+|------|-------|----------------------------------------------------------|
+| 35   | ADC1_CH4 | Inacessível no header (PSRAM octal) — **não usar** |
+| 36   | ADC1_CH5 | Inacessível — PSRAM octal                          |
+| —    | —     | **Não há GPIO ADC livre confirmado no header atual.**    |
+
+> ⚠ **Pendente de verificação física:** o header da Freenove N16R8 expõe
+> apenas os GPIOs listados no mapa de pinos. GPIOs 35–37 são internamente
+> conectados ao PSRAM. Antes de soldar o divisor, confirmar com multímetro
+> que o pino escolhido não mostra tensão PSRAM.
+>
+> **Alternativa:** medir 3.3 V regulado em vez de 5 V (mais simples, mas não
+> detecta brownout do barramento de servos antes do regulador). GPIO 2 (Touch T2)
+> pode ser compartilhado com ADC1_CH1 em modo single-shot durante idle, se o
+> touch não estiver ativo (mutuamente exclusivo por software).
+
+### Calibração
+
+`esp_adc_cal_characterize()` com `ESP_ADC_CAL_VAL_EFUSE_TP` para compensar
+offset de fábrica. Leitura em `adc1_get_raw()`, converter via coeficientes
+e multiplicar por `(R1+R2)/R2` para obter tensão real.
+
+Validação: leitura bate com multímetro ±5% (critério F49).
+
+---
+
 ## Hardware Adiado (Pinos Reservados)
 
 ### OV2640 — Câmera (DVP, ADIADA)

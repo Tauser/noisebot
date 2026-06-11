@@ -1,0 +1,19 @@
+menu "NoiseBot Conductor"
+
+config NB_SD_SCORES
+    bool "Carregar partituras do conductor do SD card"
+    default n
+    help
+        Ativa carregamento de partituras de /sdcard/scores/ no boot.
+        Apenas 1 ação por vez é sobrescrita (a primeira encontrada no SD).
+        Destina-se a iteração de animações sem reflash.
+
+        Formato de arquivo: /sdcard/scores/<action_idx>_<var>.txt
+        Uma linha por step; campos separados por espaço:
+          offset_ms expr_id expr_ms expr_play expr_dur motion_id motion_ms audio
+
+        audio: caminho completo (/sdcard/...) ou "-" para silêncio.
+        expr_id/motion_id: valores numéricos dos enums nb_expression_t/cond_motion_t.
+        Se nenhum arquivo for encontrado, as partituras da ROM são usadas.
+
+endmenu

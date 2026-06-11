@@ -331,6 +331,9 @@ static void apply_touch_feedback_for_event(nb_event_type_t event)
             expression_service_overlay_heart(1200U);
             break;
         case NB_EVT_TOUCH_LONG_PRESS:
+            /* F48: gesto universal de parada — interrompe ação e áudio em curso. */
+            conductor_play(NB_ACTION_NONE);
+            synth_stop();
             led_blink(1U);
             break;
         case NB_EVT_TOUCH_WARM_PULSE:

@@ -12,6 +12,7 @@
 
 #include "motion_service.h"
 #include "servo_hal.h"
+#include "servo_hal_write.h"
 #include "nb_hw_config.h"
 
 #include "esp_log.h"

@@ -10,13 +10,46 @@
 #include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_system.h"
 
 #include "logger.h"
 #include "error_policy.h"
 
 #include <string.h>
+#include <stdatomic.h>
 
 #define TAG "nb_bus"
+
+/* ── Ring buffer de auditoria (F47) ──────────────────────────────────────── */
+/* Últimos NB_EVENT_RING_SIZE eventos entregues — dump em shutdown/panic.     */
+
+#define NB_EVENT_RING_SIZE  64U
+
+static nb_event_t        s_ring[NB_EVENT_RING_SIZE];
+static _Atomic uint32_t  s_ring_head = 0;   /* próximo slot a escrever (wraps) */
+
+static void ring_record(const nb_event_t *evt)
+{
+    uint32_t idx = atomic_fetch_add(&s_ring_head, 1u) % NB_EVENT_RING_SIZE;
+    s_ring[idx] = *evt;
+}
+
+static void ring_dump_cb(void)
+{
+    uint32_t head = atomic_load(&s_ring_head);
+    uint32_t count = (head < NB_EVENT_RING_SIZE) ? head : NB_EVENT_RING_SIZE;
+    uint32_t start = (head < NB_EVENT_RING_SIZE) ? 0u : (head % NB_EVENT_RING_SIZE);
+
+    ESP_LOGE(TAG, "=== EVENT BUS RING DUMP (last %lu events) ===", (unsigned long)count);
+    for (uint32_t i = 0; i < count; i++) {
+        const nb_event_t *e = &s_ring[(start + i) % NB_EVENT_RING_SIZE];
+        ESP_LOGE(TAG, "  [%02lu] type=%u ts=%lums data.u32=%lu",
+                 (unsigned long)i, (unsigned)e->type,
+                 (unsigned long)e->timestamp_ms,
+                 (unsigned long)e->data.u32);
+    }
+    ESP_LOGE(TAG, "=== END RING DUMP ===");
+}
 
 /* ── Pool estático ───────────────────────────────────────────────────────── */
 
@@ -106,6 +139,7 @@ static void pool_free(nb_event_t *evt)
 static void deliver_event(const nb_event_t *evt)
 {
     if ((unsigned)evt->type >= NB_EVT_COUNT) return;
+    ring_record(evt);
 
     nb_sub_entry_t local[NB_EVENT_BUS_MAX_SUBS_PER_TYPE];
     xSemaphoreTake(s_subs_mutex, portMAX_DELAY);
@@ -198,6 +232,10 @@ esp_err_t nb_event_bus_init(void)
                                  NULL);
     NB_ASSERT_FATAL(ret == pdPASS, TAG, "falha ao criar nb_event_task");
 
+    /* Registrar dump do ring no shutdown (esp_restart), incluindo reinício por OTA.
+     * Hard panics (abort/watchdog) requerem extensão de esp_panic_handler(). */
+    esp_register_shutdown_handler(ring_dump_cb);
+
     s_initialized = true;
 
     NB_LOGI(TAG, "Event bus iniciado — pool=%u, fila=%u, safety=%u, subs=%u/tipo",
@@ -289,4 +327,9 @@ esp_err_t nb_event_publish_async(const nb_event_t *evt)
 uint32_t nb_event_get_dropped_count(void)
 {
     return s_dropped_total;
+}
+
+void nb_event_bus_dump_ring(void)
+{
+    ring_dump_cb();
 }

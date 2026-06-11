@@ -170,6 +170,7 @@ void voice_controller_on_state_changed(nb_robot_state_t new_state,
         case NB_STATE_SLEEPING:
         case NB_STATE_MEDITATION:
         case NB_STATE_SILENT_COMPANY:
+        case NB_STATE_MAINTENANCE:
             wake_service_suspend();
             s_pending_listen = VOICE_PENDING_NONE;
             break;

@@ -227,7 +227,9 @@ static decode_result_t frame_decode(const uint8_t *buf, uint16_t buf_len,
 }
 
 /* ── Buffers estáticos para eventos publicados ─────────────────────────────
- * Usados com nb_event_publish (síncrono): lifetime cobre a chamada. */
+ * publish_async copia o nb_event_t (incluindo o ponteiro .data.ptr), mas não
+ * o conteúdo apontado. Estes buffers são estáticos (não-stack) e sobrevivem
+ * ao dispatch. Risco de reentrância é baixo (SAY/SESSION são seriais). */
 
 static nb_bridge_say_chunk_t  s_say_buf;
 static nb_bridge_expr_cmd_t   s_expr_buf;
@@ -327,7 +329,7 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
             }
             evt.type     = NB_EVT_BRIDGE_SESSION;
             evt.data.ptr = s_session_buf;
-            nb_event_publish(&evt);
+            nb_event_publish_async(&evt);
         }
         break;
 
@@ -339,7 +341,7 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
         }
         evt.type    = NB_EVT_BRIDGE_SAY;
         evt.data.ptr = &s_say_buf;
-        nb_event_publish(&evt);
+        nb_event_publish_async(&evt);
         break;
 
     case NB_BRIDGE_MSG_EXPR:

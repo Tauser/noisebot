@@ -24,6 +24,9 @@
 /** Timer de inatividade em ATTENTIVE: sem sessão de escuta ativa → IDLE. */
 #define ATTENTIVE_IDLE_TIMEOUT_MS  8000U
 
+/** Auto-saída de MAINTENANCE por timeout. */
+#define MAINTENANCE_TIMEOUT_MS  (5U * 60U * 1000U)
+
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
 static nb_robot_state_t      s_state                  = NB_STATE_BOOT_UP;
@@ -31,6 +34,7 @@ static uint32_t              s_idle_elapsed_ms         = 0;
 static uint32_t              s_idle_timeout_ms         = 3600000U; /* default 60 min */
 static uint32_t              s_touch_elapsed_ms        = 0;
 static uint32_t              s_attentive_elapsed_ms    = 0;
+static uint32_t              s_maintenance_elapsed_ms  = 0;
 static nb_state_change_cb_t  s_change_cb               = NULL;
 static portMUX_TYPE          s_mux                     = portMUX_INITIALIZER_UNLOCKED;
 static bool                  s_initialized             = false;
@@ -50,6 +54,7 @@ const char *state_machine_state_name(nb_robot_state_t s)
         case NB_STATE_SAFE_MODE:      return "SAFE_MODE";
         case NB_STATE_MEDITATION:     return "MEDITATION";
         case NB_STATE_SILENT_COMPANY: return "SILENT_COMPANY";
+        case NB_STATE_MAINTENANCE:    return "MAINTENANCE";
         default:                      return "UNKNOWN";
     }
 }
@@ -165,6 +170,17 @@ void state_machine_update(uint32_t dt_ms)
     } else {
         s_attentive_elapsed_ms = 0;
     }
+
+    /* Auto-saída de MAINTENANCE por timeout. */
+    if (cur == NB_STATE_MAINTENANCE) {
+        s_maintenance_elapsed_ms += dt_ms;
+        if (s_maintenance_elapsed_ms >= MAINTENANCE_TIMEOUT_MS) {
+            s_maintenance_elapsed_ms = 0;
+            do_transition(NB_STATE_IDLE, "maintenance timeout");
+        }
+    } else {
+        s_maintenance_elapsed_ms = 0;
+    }
 }
 
 void state_machine_on_boot_complete(void)
@@ -245,7 +261,8 @@ void state_machine_on_touch_long_press(void)
     } else if (cur == NB_STATE_IDLE) {
         s_touch_elapsed_ms = 0;
         do_transition(NB_STATE_TOUCH_REACTING, "long press");
-    } else if (cur == NB_STATE_MEDITATION || cur == NB_STATE_SILENT_COMPANY) {
+    } else if (cur == NB_STATE_MEDITATION || cur == NB_STATE_SILENT_COMPANY ||
+               cur == NB_STATE_MAINTENANCE) {
         do_transition(NB_STATE_IDLE, "long press sai de modo especial");
     }
 }
@@ -325,5 +342,23 @@ void state_machine_on_silent_company_exit(void)
     if (!s_initialized) return;
     if (state_machine_get_state() == NB_STATE_SILENT_COMPANY) {
         do_transition(NB_STATE_IDLE, "interação retorna companhia");
+    }
+}
+
+void state_machine_on_maintenance_enter(void)
+{
+    if (!s_initialized) return;
+    if (state_machine_get_state() == NB_STATE_IDLE) {
+        s_maintenance_elapsed_ms = 0;
+        do_transition(NB_STATE_MAINTENANCE, "maintenance enter");
+    }
+}
+
+void state_machine_on_maintenance_exit(void)
+{
+    if (!s_initialized) return;
+    if (state_machine_get_state() == NB_STATE_MAINTENANCE) {
+        s_maintenance_elapsed_ms = 0;
+        do_transition(NB_STATE_IDLE, "maintenance exit");
     }
 }

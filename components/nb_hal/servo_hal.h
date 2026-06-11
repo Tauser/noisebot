@@ -117,32 +117,25 @@ esp_err_t servo_hal_read_temperature(uint8_t id, uint8_t *temp);
  */
 esp_err_t servo_hal_read_voltage(uint8_t id, uint8_t *voltage);
 
-/**
- * servo_hal_write_position() — Envia posição-alvo e tempo para o servo.
- *
- * Instrução WRITE nos registradores GOAL_POSITION_L (0x2A) e GOAL_TIME_L (0x2C).
- * Fire-and-forget: não aguarda resposta do servo (adequado para paths de safety).
- * Chamada bloqueada se servo_hal não estiver inicializado.
- *
- * @param id       ID do servo.
- * @param pos      Posição alvo em unidades brutas (0–1023).
- * @param time_ms  Tempo para atingir a posição em milissegundos (0 = máx velocidade).
- * @return         ESP_OK em sucesso, ESP_ERR_INVALID_STATE se não inicializado.
- */
-esp_err_t servo_hal_write_position(uint8_t id, uint16_t pos, uint16_t time_ms);
+/* Funções de escrita (write_position, enable/disable_torque) estão em
+ * servo_hal_write.h — header privado para motion_service e motion_safety. */
+
+/* ── Diagnóstico de bus (F08) ────────────────────────────────────────────── */
+
+typedef struct {
+    uint32_t timeouts;  /**< Timeouts aguardando resposta do servo (por tentativa). */
+    uint32_t errors;    /**< Erros de header/ID/checksum recebidos.                 */
+} servo_hal_bus_stats_t;
 
 /**
- * servo_hal_disable_torque() — Desabilita o torque do motor do servo.
+ * servo_hal_get_bus_stats() — Retorna contadores acumulados de erros do bus.
  *
- * Escreve 0 no registrador TORQUE_ENABLE (0x28).
- * Após este comando o servo é livre para ser movido manualmente.
- * Fire-and-forget: não aguarda resposta.
+ * Thread-safe (leitura atômica). Útil para medir impacto de EMI com WiFi ativo.
+ * Os contadores são cumulativos desde o init e nunca são zerados em runtime.
  *
- * @param id  ID do servo.
- * @return    ESP_OK em sucesso.
+ * @param out  Buffer de saída. Silenciosamente ignorado se NULL.
  */
-esp_err_t servo_hal_disable_torque(uint8_t id);
-esp_err_t servo_hal_enable_torque(uint8_t id);
+void servo_hal_get_bus_stats(servo_hal_bus_stats_t *out);
 
 /**
  * servo_hal_deinit() — Libera recursos UART.

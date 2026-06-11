@@ -29,6 +29,7 @@
 #include "hal/usb_serial_jtag_ll.h"
 
 #include <string.h>
+#include <stdatomic.h>
 
 /* ── Constantes internas ─────────────────────────────────────────────────── */
 
@@ -56,6 +57,11 @@
 
 static bool              s_initialized = false;
 static SemaphoreHandle_t s_bus_mutex   = NULL;
+
+/* Contadores de erros do bus — para diagnóstico de EMI (F08).
+ * Atômicos para leitura segura fora do mutex pelo diagnostics. */
+static _Atomic uint32_t s_bus_timeouts = 0;  /* recv_response: timeout aguardando resposta */
+static _Atomic uint32_t s_bus_errors   = 0;  /* checksum/header/id inválido */
 
 #define BUS_LOCK()   (xSemaphoreTake(s_bus_mutex, pdMS_TO_TICKS(BUS_MUTEX_TIMEOUT_MS)) == pdTRUE)
 #define BUS_UNLOCK() xSemaphoreGive(s_bus_mutex)
@@ -159,6 +165,7 @@ static esp_err_t recv_response(uint8_t expected_id,
         if (now >= deadline) {
             ESP_LOGW(TAG, "timeout lendo resposta do servo %u (recebidos %u/%u bytes)",
                     expected_id, received, total_expected);
+            atomic_fetch_add(&s_bus_timeouts, 1u);
             return ESP_ERR_TIMEOUT;
         }
 
@@ -194,12 +201,14 @@ static esp_err_t recv_response(uint8_t expected_id,
     /* Valida header */
     if (buf[0] != SCS_HEADER_BYTE || buf[1] != SCS_HEADER_BYTE) {
         ESP_LOGE(TAG, "header inválido: 0x%02X 0x%02X", buf[0], buf[1]);
+        atomic_fetch_add(&s_bus_errors, 1u);
         return ESP_ERR_INVALID_RESPONSE;
     }
 
     /* Valida ID */
     if (buf[2] != expected_id) {
         ESP_LOGE(TAG, "ID inesperado: esperado %u, recebido %u", expected_id, buf[2]);
+        atomic_fetch_add(&s_bus_errors, 1u);
         return ESP_ERR_INVALID_RESPONSE;
     }
 
@@ -209,6 +218,7 @@ static esp_err_t recv_response(uint8_t expected_id,
     if (chk_calc != chk_recv) {
         ESP_LOGE(TAG, "checksum inválido: calculado=0x%02X recebido=0x%02X",
                 chk_calc, chk_recv);
+        atomic_fetch_add(&s_bus_errors, 1u);
         return ESP_ERR_INVALID_RESPONSE;
     }
 
@@ -494,4 +504,11 @@ void servo_hal_deinit(void)
     }
     s_initialized = false;
     ESP_LOGI(TAG, "UART%d liberado", NB_SERVO_UART_PORT);
+}
+
+void servo_hal_get_bus_stats(servo_hal_bus_stats_t *out)
+{
+    if (out == NULL) return;
+    out->timeouts = atomic_load(&s_bus_timeouts);
+    out->errors   = atomic_load(&s_bus_errors);
 }

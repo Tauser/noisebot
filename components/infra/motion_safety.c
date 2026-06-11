@@ -13,6 +13,7 @@
 
 #include "motion_safety.h"
 #include "servo_hal.h"
+#include "servo_hal_write.h"
 #include "event_bus.h"
 #include "nb_events.h"
 #include "config_manager.h"
@@ -81,14 +82,8 @@ static const char *state_name(nb_motion_state_t st)
  */
 static void park_and_disable(void)
 {
-    uint16_t ctr_pan  = (uint16_t)config_get_servo_center(NB_SERVO_ID_PAN);
-    uint16_t ctr_tilt = (uint16_t)config_get_servo_center(NB_SERVO_ID_TILT);
-
-    /* Envia posição de parking (400ms) antes de soltar torque */
-    servo_hal_write_position(NB_SERVO_ID_PAN,  ctr_pan,  400u);
-    servo_hal_write_position(NB_SERVO_ID_TILT, ctr_tilt, 400u);
-
-    /* Desabilita torque imediatamente — servo é liberado */
+    /* Torque-off direto — sem write_position antes (que seria ignorada pois
+     * disable_torque vem imediatamente, quebrando o requisito <150ms). */
     servo_hal_disable_torque(NB_SERVO_ID_PAN);
     servo_hal_disable_torque(NB_SERVO_ID_TILT);
 }
@@ -139,6 +134,23 @@ static void on_brownout(const nb_event_t *evt, void *ctx)
     nb_event_publish_async(&dis_evt);
 }
 
+/* ── Helpers de arm() ────────────────────────────────────────────────────── */
+
+/*
+ * Transiciona de INITIALIZING para DISABLED de forma segura.
+ * Se do_fault() ou on_brownout() já mudou o estado durante a verificação de
+ * arm(), preserva o estado mais restritivo (FAULT/DISABLED) em vez de
+ * sobrescrevê-lo com DISABLED.
+ */
+static void arm_cancel(void)
+{
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    if (s_state == NB_MOTION_INITIALIZING) {
+        s_state = NB_MOTION_DISABLED;
+    }
+    xSemaphoreGive(s_mutex);
+}
+
 /* ── Safety task ─────────────────────────────────────────────────────────── */
 /*
  * Roda a 20Hz (50ms). Verifica load, temperatura e heartbeat de cada servo.
@@ -153,9 +165,11 @@ static void safety_task(void *arg)
     const TickType_t period = pdMS_TO_TICKS(SAFETY_TASK_PERIOD_MS);
     TickType_t last_wake = xTaskGetTickCount();
 
-    /* Para log de temperatura throttled (evita spam) */
+    /* Para log de temperatura e tensão throttled (evita spam) */
     static uint32_t temp_warn_log_count[2] = {0, 0};
+    static uint32_t volt_warn_log_count[2] = {0, 0};
     const uint32_t TEMP_LOG_EVERY = 20u;  /* log a cada 1s (20 × 50ms) */
+    const uint32_t VOLT_LOG_EVERY = 20u;
 
     while (1) {
         if (s_state == NB_MOTION_ARMED) {
@@ -215,6 +229,28 @@ static void safety_task(void *arg)
                         temp_warn_log_count[i] = 0;
                     }
                 }
+                /* ── Leitura de tensão ───────────────────────────────────── */
+                uint8_t volt = 0;
+                if (servo_hal_read_voltage(id, &volt) == ESP_OK) {
+                    if (volt < NB_MOTION_VOLT_FAULT) {
+                        char reason[56];
+                        snprintf(reason, sizeof(reason),
+                                 "servo %u subtensao critica (%u.%uV)", id,
+                                 volt / 10u, volt % 10u);
+                        do_fault(reason);
+                        break;
+                    } else if (volt < NB_MOTION_VOLT_WARN) {
+                        volt_warn_log_count[i]++;
+                        if (volt_warn_log_count[i] >= VOLT_LOG_EVERY) {
+                            volt_warn_log_count[i] = 0;
+                            NB_LOGW(TAG, "servo %u: tensao baixa (%u.%uV)",
+                                    id, volt / 10u, volt % 10u);
+                        }
+                    } else {
+                        volt_warn_log_count[i] = 0;
+                    }
+                }
+
             } /* for each servo */
 
             /* ── Heartbeat check ──────────────────────────────────────────── */
@@ -307,7 +343,7 @@ esp_err_t motion_safety_arm(void)
     if (ret != ESP_OK) {
         NB_LOGE(TAG, "arm(): servo PAN (ID=%d) não respondeu: %s",
                 NB_SERVO_ID_PAN, esp_err_to_name(ret));
-        s_state = NB_MOTION_DISABLED;
+        arm_cancel();
         return ESP_FAIL;
     }
 
@@ -315,7 +351,7 @@ esp_err_t motion_safety_arm(void)
     if (ret != ESP_OK) {
         NB_LOGE(TAG, "arm(): servo TILT (ID=%d) não respondeu: %s",
                 NB_SERVO_ID_TILT, esp_err_to_name(ret));
-        s_state = NB_MOTION_DISABLED;
+        arm_cancel();
         return ESP_FAIL;
     }
 
@@ -329,7 +365,7 @@ esp_err_t motion_safety_arm(void)
         if (ret != ESP_OK) {
             NB_LOGE(TAG, "arm(): falha ao ler posição servo %u: %s",
                     id, esp_err_to_name(ret));
-            s_state = NB_MOTION_DISABLED;
+            arm_cancel();
             return ESP_FAIL;
         }
 
@@ -352,7 +388,7 @@ esp_err_t motion_safety_arm(void)
             if (temp >= NB_MOTION_TEMP_FAULT_C) {
                 NB_LOGE(TAG, "arm(): servo %u temperatura crítica (%u°C) — abortando",
                         id, temp);
-                s_state = NB_MOTION_DISABLED;
+                arm_cancel();
                 return ESP_FAIL;
             }
             NB_LOGI(TAG, "arm(): servo %u temperatura=%u°C OK", id, temp);
@@ -369,6 +405,13 @@ esp_err_t motion_safety_arm(void)
     s_heartbeat_active = true;
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
+    if (s_state != NB_MOTION_INITIALIZING) {
+        /* do_fault() ou on_brownout() mudou o estado durante a verificação — abortar. */
+        nb_motion_state_t st = s_state;
+        xSemaphoreGive(s_mutex);
+        NB_LOGE(TAG, "arm(): estado mudou para %s durante init — abortando", state_name(st));
+        return ESP_FAIL;
+    }
     s_state = NB_MOTION_ARMED;
     xSemaphoreGive(s_mutex);
 

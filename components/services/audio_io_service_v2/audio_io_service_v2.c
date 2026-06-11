@@ -1,5 +1,8 @@
 /*
- * audio_io_service_v2.c - inactive Audio I/O v2 skeleton.
+ * audio_io_service_v2.c — I/O de áudio (Layer 4, geração canônica v2)
+ *
+ * DONO: I2S0 (RX — INMP441) e I2S1 (TX — MAX98357A).
+ * Nenhum outro componente deve inicializar esses barramentos I2S.
  */
 
 #include "audio_io_service_v2.h"

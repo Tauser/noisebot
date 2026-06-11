@@ -14,6 +14,7 @@
  *   SLEEPING       — Inativo. Toque ou voz → IDLE.
  *   ERROR          — Falha de safety. Requer reset para sair.
  *   SAFE_MODE      — Safe mode de boot. Sem motion.
+ *   MAINTENANCE    — Calibração/diagnóstico. Timeout 5 min ou long press → IDLE.
  *
  * Transições loggadas com timestamp e motivo em cada mudança.
  * Thread-safe via spinlock (seções críticas curtas).
@@ -39,7 +40,8 @@ typedef enum {
     NB_STATE_SAFE_MODE      = 7,
     NB_STATE_MEDITATION     = 8,  /**< Meditação — IDLE quieto, voz não interrompe  */
     NB_STATE_SILENT_COMPANY = 9,  /**< Companhia silenciosa — após 2h sem interação */
-    NB_STATE_COUNT          = 10,
+    NB_STATE_MAINTENANCE    = 10, /**< Calibração/diagnóstico — timeout 5 min       */
+    NB_STATE_COUNT          = 11,
 } nb_robot_state_t;
 
 /* ── Callback de transição ───────────────────────────────────────────────── */
@@ -135,5 +137,13 @@ void state_machine_on_silent_company_enter(void);
 
 /** Sai de SILENT_COMPANY, retorna a IDLE. */
 void state_machine_on_silent_company_exit(void);
+
+/* ── Modo MAINTENANCE (F40) ──────────────────────────────────────────────── */
+
+/** Entra em MAINTENANCE a partir de IDLE. Saída automática em 5 min ou long press. */
+void state_machine_on_maintenance_enter(void);
+
+/** Sai de MAINTENANCE imediatamente, retorna a IDLE. */
+void state_machine_on_maintenance_exit(void);
 
 #endif /* NB_STATE_MACHINE_H */
