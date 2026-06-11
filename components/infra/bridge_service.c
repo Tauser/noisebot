@@ -17,13 +17,17 @@
 #include "esp_err.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+#include "esp_random.h"
 #include "driver/usb_serial_jtag.h"
+#include "nvs_hal.h"
+#include "nvs.h"
 
 #include "lwip/sockets.h"
 #include "lwip/netdb.h"
 #include "lwip/err.h"
 #include "lwip/tcp.h"
 
+#include <inttypes.h>
 #include <string.h>
 #include <stdint.h>
 #include <errno.h>
@@ -136,9 +140,95 @@ static struct {
 static bool s_usb_cdc_enabled = false;
 static bool s_opus_enabled = false;
 
+/* ── Token compartilhado HELLO (SF-02, ANALISE_SERVER_FINDINGS_2026-06-11.md) ──
+ * Reutiliza o mesmo token de api_token (nb_sys/api_token, ver web_service.c):
+ * gerado no primeiro boot, logado no console. O server deve copiar esse valor
+ * para NOISEBOT_BRIDGE_TOKEN (ou ~/.noisebot-server/bridge_token) e o firmware
+ * passa a anunciar/validar "token" no HELLO.
+ *
+ * Validação do HELLO recebido é opt-in via NVS bool nb_sys/bridge_req_tok
+ * (default off — retrocompatível com bridges que ainda não enviam token). */
+
+#define NB_BRIDGE_TOKEN_NVS_NS   "nb_sys"
+#define NB_BRIDGE_TOKEN_NVS_KEY  "api_token"
+#define NB_BRIDGE_REQ_TOKEN_KEY  "bridge_req_tok"
+#define NB_BRIDGE_TOKEN_LEN      16u
+
+static char s_bridge_token[NB_BRIDGE_TOKEN_LEN + 1u];
+static bool s_bridge_token_required = false;
+
+static char s_bridge_hello_v2[sizeof(BRIDGE_HELLO_V2) + 32u];
+static char s_bridge_hello_v2_opus[sizeof(BRIDGE_HELLO_V2_OPUS) + 32u];
+
+/* Carrega (ou gera, no primeiro boot) o token compartilhado e a flag
+ * bridge_req_tok do NVS namespace nb_sys (mesmo usado por web_service.c). */
+static void bridge_token_load_or_generate(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NB_BRIDGE_TOKEN_NVS_NS, NVS_READWRITE, &h) != ESP_OK) {
+        NB_LOGW(TAG, "bridge token: NVS indisponivel — HELLO sem token");
+        return;
+    }
+
+    size_t len = sizeof(s_bridge_token);
+    if (nvs_get_str(h, NB_BRIDGE_TOKEN_NVS_KEY, s_bridge_token, &len) != ESP_OK) {
+        uint32_t r[2];
+        esp_fill_random(r, sizeof(r));
+        snprintf(s_bridge_token, sizeof(s_bridge_token),
+                 "%08" PRIx32 "%08" PRIx32, r[0], r[1]);
+        nvs_set_str(h, NB_BRIDGE_TOKEN_NVS_KEY, s_bridge_token);
+    }
+
+    s_bridge_token_required = nvs_hal_get_u8(h, NB_BRIDGE_REQ_TOKEN_KEY, 0u) != 0u;
+
+    nvs_commit(h);
+    nvs_close(h);
+
+    NB_LOGI(TAG, "bridge token pronto (bridge_req_tok=%d)",
+            s_bridge_token_required ? 1 : 0);
+}
+
+/* Monta os payloads HELLO (pcm16/opus) com o campo "token" embutido. */
+static void bridge_hello_build(void)
+{
+    size_t base_len = sizeof(BRIDGE_HELLO_V2) - 1u; /* sem '\0', com '}' final */
+    snprintf(s_bridge_hello_v2, sizeof(s_bridge_hello_v2),
+             "%.*s,\"token\":\"%s\"}",
+             (int)(base_len - 1u), BRIDGE_HELLO_V2, s_bridge_token);
+
+    base_len = sizeof(BRIDGE_HELLO_V2_OPUS) - 1u;
+    snprintf(s_bridge_hello_v2_opus, sizeof(s_bridge_hello_v2_opus),
+             "%.*s,\"token\":\"%s\"}",
+             (int)(base_len - 1u), BRIDGE_HELLO_V2_OPUS, s_bridge_token);
+}
+
 static const char *bridge_hello_payload(void)
 {
-    return bridge_service_opus_is_enabled() ? BRIDGE_HELLO_V2_OPUS : BRIDGE_HELLO_V2;
+    return bridge_service_opus_is_enabled() ? s_bridge_hello_v2_opus : s_bridge_hello_v2;
+}
+
+/* Verifica o campo "token" de um HELLO recebido contra o token local.
+ * Retorna true se bridge_req_tok=0 (validação desabilitada) ou se o token
+ * bate exatamente. */
+static bool bridge_hello_token_ok(const uint8_t *data, uint16_t data_len)
+{
+    if (!s_bridge_token_required) {
+        return true;
+    }
+
+    char buf[640];
+    uint16_t copy_len = (data_len < sizeof(buf) - 1u) ? data_len : (uint16_t)(sizeof(buf) - 1u);
+    memcpy(buf, data, copy_len);
+    buf[copy_len] = '\0';
+
+    const char *needle = "\"token\":\"";
+    const char *tok = strstr(buf, needle);
+    if (!tok) {
+        return false;
+    }
+    tok += strlen(needle);
+    return strncmp(tok, s_bridge_token, NB_BRIDGE_TOKEN_LEN) == 0
+           && tok[NB_BRIDGE_TOKEN_LEN] == '"';
 }
 
 /* ── CRC-8/SMBUS (poly 0x07, init 0x00) ──────────────────────────────────── */
@@ -265,7 +355,10 @@ static esp_err_t enqueue_frame(nb_bridge_msg_type_t type,
 
 /* ── Dispatch mensagem recebida do bridge ─────────────────────────────────── */
 
-static void dispatch_incoming(nb_bridge_msg_type_t type,
+/* Retorna false apenas quando um HELLO com token inválido foi recebido em
+ * uma transport TCP com bridge_req_tok=1 — sinal para o chamador encerrar
+ * a conexão sem responder. Em todos os outros casos retorna true. */
+static bool dispatch_incoming(nb_bridge_msg_type_t type,
                                const uint8_t *data, uint16_t data_len)
 {
     int64_t now_us = esp_timer_get_time();
@@ -279,6 +372,11 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
 
     case NB_BRIDGE_MSG_HELLO:
         if (data_len > 0u) {
+            if (s.transport == NB_BRIDGE_TRANSPORT_TCP
+                && !bridge_hello_token_ok(data, data_len)) {
+                NB_LOGW(TAG, "HELLO com token invalido — encerrando conexao");
+                return false;
+            }
             /* Detecta versão anunciada pelo bridge no payload JSON. */
             if (data_len >= 2u) {
                 const char *ver = (const char *)data;
@@ -428,6 +526,8 @@ static void dispatch_incoming(nb_bridge_msg_type_t type,
         NB_LOGW(TAG, "msg type 0x%02X desconhecida (len=%u)", (unsigned)type, data_len);
         break;
     }
+
+    return true;
 }
 
 /* ── Envio genérico via TX queue ──────────────────────────────────────────── */
@@ -858,7 +958,9 @@ static void tcp_io_loop(void)
             uint16_t fdata_len;
             decode_result_t res = frame_decode(p, total, &type, &fdata, &fdata_len);
             if (res == DECODE_OK) {
-                dispatch_incoming(type, fdata, fdata_len);
+                if (!dispatch_incoming(type, fdata, fdata_len)) {
+                    goto tcp_disconnect;
+                }
             } else if (res == DECODE_CRC_ERR) {
                 NB_LOGW(TAG, "CRC error (type=0x%02X len=%u) — frame descartado",
                         (unsigned)p[FRAME_TYPE_OFF], data_len);
@@ -950,7 +1052,7 @@ static void uart_io_loop(void)
             uint16_t fdata_len;
             decode_result_t res = frame_decode(p, total, &type, &fdata, &fdata_len);
             if (res == DECODE_OK) {
-                dispatch_incoming(type, fdata, fdata_len);
+                (void)dispatch_incoming(type, fdata, fdata_len);
             } else if (res == DECODE_CRC_ERR) {
                 NB_LOGW(TAG, "UART CRC error — frame descartado");
             }
@@ -1112,6 +1214,9 @@ esp_err_t bridge_service_init(void)
     s.transport  = NB_BRIDGE_TRANSPORT_OFFLINE;
     s.state      = BS_STATE_INIT;
     s.uart_installed = false;
+
+    bridge_token_load_or_generate();
+    bridge_hello_build();
 
     /* Stack interna: o bridge publica eventos síncronos; handlers podem tocar
      * NVS/flash (ex.: last_emotion). Flash desabilita cache/PSRAM. */

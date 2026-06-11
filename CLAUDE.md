@@ -95,6 +95,14 @@ Layer 8: Futuro     (camera, imu, battery)
 - O produto é **offline-first**: funciona 100% sem WiFi. Conectividade é conveniência, nunca dependência.
 - Sem TLS/HTTPS no firmware: mbedTLS ~250 KB SRAM — inviável. HTTP local apenas.
 - Endpoints mutadores (OTA, restart, config POST) exigem header `X-NB-Token` — token gerado no primeiro boot e logado no console (NVS, chave `api_token`).
+- **Bridge firmware↔server (SF-02):** o HELLO do bridge (porta TCP 9000) pode
+  carregar o mesmo `api_token` (NVS `nb_sys/api_token`) no campo `"token"`.
+  Validação no firmware é opt-in via flag NVS `nb_sys/bridge_req_tok` (default
+  `0` = desabilitada, retrocompatível). Quando habilitada, HELLO sem token ou
+  com token incorreto faz o firmware encerrar a conexão TCP sem responder.
+  No server, o token é somente-leitura: copiar o valor logado pelo firmware
+  para `NOISEBOT_BRIDGE_TOKEN` ou `~/.noisebot-server/bridge_token`
+  (`protocol.load_bridge_token()` / `server_hello_capabilities()`).
 
 ---
 
@@ -179,6 +187,8 @@ Este é o documento de autoridade também para o server (ver SF-12 em
 - Piso de Python: `>=3.10` (declarado em `pyproject.toml`). Não usar
   `asyncio.timeout` (3.11+) — usar `asyncio.wait_for`.
 - Comando de teste: `cd server && pip install -e .[dev] && pytest`.
+- CI: `.github/workflows/server-tests.yml` roda `pytest` em Python 3.10 e 3.11
+  a cada push/PR que toque `server/` (SF-10).
 
 ### Regras de I/O assíncrono
 

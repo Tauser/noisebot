@@ -10,6 +10,7 @@
 #include "esp_log.h"
 
 #include "boot_manager.h"
+#include "watchdog_service.h"
 
 static const char *TAG = "nb_main";
 
@@ -30,7 +31,13 @@ void app_main(void)
      */
     ESP_LOGI(TAG, "app_main entrando em loop de manutencao");
 
+    bool feed_warning_logged = false;
     while (1) {
+        err = nb_watchdog_feed();
+        if (err != ESP_OK && !feed_warning_logged) {
+            ESP_LOGW(TAG, "feed do watchdog falhou: %s", esp_err_to_name(err));
+            feed_warning_logged = true;
+        }
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
