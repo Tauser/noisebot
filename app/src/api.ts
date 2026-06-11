@@ -543,6 +543,7 @@ export async function saveAdvancedSettings(
 
 export type VisionPipelineStatus = {
   state: "IDLE" | "ACQUIRE" | "TRACK" | "LOST" | "DISABLED";
+  running: boolean;
   detector_available: boolean;
   adapter_connected: boolean;
   detections: number;
@@ -553,6 +554,14 @@ export type VisionPipelineStatus = {
 
 export async function loadVisionPipelineStatus(): Promise<VisionPipelineStatus> {
   return getJson<VisionPipelineStatus>("/api/vision/pipeline/status");
+}
+
+export async function startVisionPipeline(): Promise<void> {
+  await fetch(`${SERVER_URL}/api/vision/pipeline/start`, { method: "POST", cache: "no-store" });
+}
+
+export async function stopVisionPipeline(): Promise<void> {
+  await fetch(`${SERVER_URL}/api/vision/pipeline/stop`, { method: "POST", cache: "no-store" });
 }
 
 export function visionSnapshotUrl(): string {

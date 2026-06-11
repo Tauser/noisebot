@@ -125,6 +125,7 @@ class VisionPipeline:
         fb = self._last_face
         return {
             "state": self._state.value,
+            "running": self._running,
             "detector_available": is_detector_available(),
             "adapter_connected": self.is_adapter_connected(),
             "last_detection_ts": c.last_detection_ts,

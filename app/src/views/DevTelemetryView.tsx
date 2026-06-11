@@ -3,7 +3,7 @@ import {
   Activity, Camera, Clock3, Cpu, Database, HardDrive, Mic, Terminal, Thermometer, Wifi,
 } from "lucide-react";
 import type { AudioSampleFile, DevData, DashboardSnapshot, VisionPipelineStatus } from "../api";
-import { loadAudioSampleFiles, loadVisionPipelineStatus, visionSnapshotUrl } from "../api";
+import { loadAudioSampleFiles, loadVisionPipelineStatus, startVisionPipeline, stopVisionPipeline, visionSnapshotUrl } from "../api";
 import { cardClass } from "../lib/classes";
 import {
   asRecord, boolValue, bytesValue, formatLatency, formatSeconds,
@@ -85,13 +85,15 @@ export function DevTelemetryView({
         const s = await loadVisionPipelineStatus();
         if (!cancelled) {
           setVisionStatus(s);
+          // sync button state with actual pipeline running flag
+          if (!s.running) setVisionActive(false);
           if (s.last_face_box) {
             lastFaceBoxRef.current = s.last_face_box;
           } else if (s.state === "IDLE" || s.state === "DISABLED") {
             lastFaceBoxRef.current = null;
           }
           drawFaceBox(lastFaceBoxRef.current);
-          if (s.state !== "DISABLED" && imgRef.current) {
+          if (s.state !== "DISABLED" && s.running && imgRef.current) {
             imgRef.current.src = `${visionSnapshotUrl()}?t=${Date.now()}`;
           }
         }
@@ -243,7 +245,15 @@ export function DevTelemetryView({
       <DiagnosticCard icon={Camera} title="Visão (server)">
         <div className="flex items-center gap-3 mb-3">
           <button
-            onClick={() => setVisionActive(v => !v)}
+            onClick={async () => {
+              if (visionActive) {
+                await stopVisionPipeline();
+                setVisionActive(false);
+              } else {
+                await startVisionPipeline();
+                setVisionActive(true);
+              }
+            }}
             className={`px-3 py-1 rounded text-xs font-semibold transition-colors ${
               visionActive
                 ? "bg-blue-600 hover:bg-blue-700 text-white"

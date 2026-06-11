@@ -179,6 +179,8 @@ class OpsHttpServer:
         wa.router.add_post("/api/device/audio/codec-v2/overflow-test", self._post_device_audio_codec_v2_overflow_test)
         wa.router.add_get("/api/vision/status", self._get_vision_status)
         wa.router.add_get("/api/vision/pipeline/status", self._get_vision_pipeline_status)
+        wa.router.add_post("/api/vision/pipeline/start", self._post_vision_pipeline_start)
+        wa.router.add_post("/api/vision/pipeline/stop", self._post_vision_pipeline_stop)
         wa.router.add_get("/api/vision/observe", self._get_vision_observe)
         wa.router.add_get("/api/vision/analyze", self._get_vision_analyze)
         wa.router.add_get("/api/vision/snapshot", self._get_vision_snapshot)
@@ -885,9 +887,26 @@ class OpsHttpServer:
     async def _get_vision_pipeline_status(self, request: web.Request) -> web.Response:
         pipeline = getattr(self._app, "_vision_pipeline", None)
         if pipeline is None:
-            return _json({"state": "DISABLED", "detector_available": False,
-                          "adapter_connected": False})
+            return _json({"state": "DISABLED", "running": False,
+                          "detector_available": False, "adapter_connected": False})
         return _json(pipeline.status_dict())
+
+    async def _post_vision_pipeline_start(self, request: web.Request) -> web.Response:
+        from ..vision.analysis import is_detector_available
+        pipeline = getattr(self._app, "_vision_pipeline", None)
+        if pipeline is None:
+            return _json(error_response("pipeline não configurado — sem firmware HTTP"), status=503)
+        if not is_detector_available():
+            return _json(error_response("detector indisponível — NOISEBOT_VISION=1 necessário"), status=503)
+        pipeline.start()
+        return _json({"ok": True, "running": True})
+
+    async def _post_vision_pipeline_stop(self, request: web.Request) -> web.Response:
+        pipeline = getattr(self._app, "_vision_pipeline", None)
+        if pipeline is None:
+            return _json({"ok": True, "running": False})
+        pipeline.stop()
+        return _json({"ok": True, "running": False})
 
     async def _get_vision_faces(self, request: web.Request) -> web.Response:
         return _json({"faces": []})
