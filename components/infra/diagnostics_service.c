@@ -24,6 +24,7 @@
 #include "event_bus.h"
 #include "nb_events.h"
 #include "logger.h"
+#include "servo_hal.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -236,11 +237,17 @@ void diagnostics_dump_to_sd(void)
     for (int i = 0; i < K_NTASKS; i++) tasks[i] = s_state.tasks[i];
     taskEXIT_CRITICAL(&s_mux);
 
+    servo_hal_bus_stats_t bus_stats = {0};
+    servo_hal_get_bus_stats(&bus_stats);
+
     fprintf(f, "NoiseBot Diagnostics — uptime=%lus\n", (unsigned long)uptime_s);
     fprintf(f, "  health_score : %u/100\n", (unsigned)score);
     fprintf(f, "  PSRAM free   : %lu KB\n", (unsigned long)psram_kb);
     fprintf(f, "  SRAM  free   : %lu KB\n", (unsigned long)sram_kb);
     fprintf(f, "  FPS          : %.1f\n",   fps);
+    fprintf(f, "\nServo bus stats (EMI):\n");
+    fprintf(f, "  rx_timeouts  : %lu\n", (unsigned long)bus_stats.timeouts);
+    fprintf(f, "  rx_errors    : %lu\n", (unsigned long)bus_stats.errors);
     fprintf(f, "\nTask stack watermarks:\n");
     for (int i = 0; i < K_NTASKS; i++) {
         if (tasks[i].watermark_words == 0U) continue;
