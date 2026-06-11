@@ -63,6 +63,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "esp_app_desc.h"
 #include "esp_random.h"
 
 #define TAG              "nb_web"
@@ -373,14 +374,6 @@ static void build_status_json(char *buf, size_t size)
         "\"attention\":%.2f,\"health\":%u,\"uptime_s\":%lu,\"fps\":%.1f}",
         state_name(st), expr_name(ex), (double)att,
         (unsigned)hlt, (unsigned long)upt, (double)fps);
-}
-
-static void ota_progress_note(int pct, const char *status, const char *msg)
-{
-    (void)pct;
-    (void)status;
-    (void)msg;
-    /* UI/WS removidos do firmware: progresso de OTA fica apenas no log. */
 }
 
 /* ── Handlers HTTP ───────────────────────────────────────────────────────── */
