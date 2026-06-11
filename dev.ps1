@@ -156,12 +156,12 @@ if (Get-Command pnpm -ErrorAction SilentlyContinue) {
 
 function Stop-ListeningPids([int]$Port, [string]$Label) {
     $pids = @(Get-ListeningPids -Port $Port)
-    foreach ($pid in $pids) {
+    foreach ($p in $pids) {
         try {
-            Stop-Process -Id $pid -Force -ErrorAction Stop
-            Write-Host "$Label : PID $pid encerrado." -ForegroundColor DarkYellow
+            Stop-Process -Id $p -Force -ErrorAction Stop
+            Write-Host "$Label : PID $p encerrado." -ForegroundColor DarkYellow
         } catch {
-            Write-Host "$Label : nao foi possivel encerrar PID $pid — $_" -ForegroundColor Red
+            Write-Host "$Label : nao foi possivel encerrar PID $p — $_" -ForegroundColor Red
         }
     }
     if ($pids.Count -gt 0) {
