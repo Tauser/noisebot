@@ -541,6 +541,24 @@ export async function saveAdvancedSettings(
   return body.advanced;
 }
 
+export type VisionPipelineStatus = {
+  state: "IDLE" | "ACQUIRE" | "TRACK" | "LOST" | "DISABLED";
+  detector_available: boolean;
+  adapter_connected: boolean;
+  detections: number;
+  gaze_sends: number;
+  capture_errors: number;
+  last_face_box: { x: number; y: number; w: number; h: number } | null;
+};
+
+export async function loadVisionPipelineStatus(): Promise<VisionPipelineStatus> {
+  return getJson<VisionPipelineStatus>("/api/vision/pipeline/status");
+}
+
+export function visionSnapshotUrl(): string {
+  return `${SERVER_URL}/api/vision/snapshot`;
+}
+
 export async function observeVision(): Promise<VisionObservation> {
   const body = await getJson<{ observation: VisionObservation }>("/api/vision/observe");
   return body.observation;

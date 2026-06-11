@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Activity, Camera, Clock3, Cpu, Database, HardDrive, Mic, Terminal, Thermometer, Wifi,
 } from "lucide-react";
-import type { AudioSampleFile, DevData, DashboardSnapshot } from "../api";
-import { loadAudioSampleFiles } from "../api";
+import type { AudioSampleFile, DevData, DashboardSnapshot, VisionPipelineStatus } from "../api";
+import { loadAudioSampleFiles, loadVisionPipelineStatus, visionSnapshotUrl } from "../api";
 import { cardClass } from "../lib/classes";
 import {
   asRecord, boolValue, bytesValue, formatLatency, formatSeconds,
@@ -52,6 +52,40 @@ export function DevTelemetryView({
   const voiceSummary = summarizeVoiceSession(voice);
   const latencyBottleneck = voiceLatencyBottleneck(voice);
   const diagErrors = Object.entries(firmware.errors ?? {});
+
+  const [visionStatus, setVisionStatus] = useState<VisionPipelineStatus | null>(null);
+  const [visionFrameTs, setVisionFrameTs] = useState(0);
+  const [visionFrameOk, setVisionFrameOk] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const drawFaceBox = useCallback((fb: VisionPipelineStatus["last_face_box"]) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 240, 240);
+    if (!fb || !fb.w) return;
+    ctx.strokeStyle = "#3b82f6";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(fb.x, fb.y, fb.w, fb.h);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const s = await loadVisionPipelineStatus();
+        if (!cancelled) {
+          setVisionStatus(s);
+          drawFaceBox(s.last_face_box);
+          if (s.state !== "DISABLED") setVisionFrameTs(Date.now());
+        }
+      } catch { /* server offline */ }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 1000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [drawFaceBox]);
 
   const refreshAudioFiles = async () => {
     setAudioFilesLoading(true);
@@ -187,6 +221,68 @@ export function DevTelemetryView({
           <Metric label="Falhas" value={numberValue(camera.fail_count, "")} />
           <Metric label="Erro câmera" value={textValue(camera.last_error_name)} />
           <Metric label="DMA câmera" value={bytesValue(camera.heap_dma_free)} />
+        </div>
+      </DiagnosticCard>
+
+      {/* Visão — pipeline do server */}
+      <DiagnosticCard icon={Camera} title="Visão (server)">
+        <div className="flex gap-4 flex-wrap items-start">
+          {/* snapshot + face box */}
+          <div className="relative shrink-0 rounded overflow-hidden bg-black" style={{ width: 240, height: 240 }}>
+            {visionFrameTs > 0 && visionStatus?.state !== "DISABLED" ? (
+              <img
+                key={visionFrameTs}
+                src={`${visionSnapshotUrl()}?t=${visionFrameTs}`}
+                alt="snapshot"
+                width={240}
+                height={240}
+                className="block object-contain w-full h-full"
+                onLoad={() => setVisionFrameOk(true)}
+                onError={() => setVisionFrameOk(false)}
+              />
+            ) : null}
+            {(!visionFrameOk || visionStatus?.state === "DISABLED") && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-slate-500 text-xs text-center px-3">
+                <Camera className="w-8 h-8 mb-1 opacity-40" />
+                <span>
+                  {!visionStatus
+                    ? "carregando..."
+                    : visionStatus.state === "DISABLED"
+                    ? "pipeline desabilitado"
+                    : !visionStatus.detector_available
+                    ? "detector indisponível"
+                    : "sem sinal"}
+                </span>
+              </div>
+            )}
+            <canvas
+              ref={canvasRef}
+              width={240}
+              height={240}
+              className="absolute inset-0 pointer-events-none"
+            />
+          </div>
+          {/* métricas */}
+          <div className="grid gap-3 md:grid-cols-2 flex-1 min-w-40">
+            <Metric
+              label="Pipeline"
+              value={
+                <span className={
+                  visionStatus?.state === "TRACK" ? "text-green-400"
+                  : visionStatus?.state === "ACQUIRE" ? "text-yellow-400"
+                  : visionStatus?.state === "LOST" ? "text-red-400"
+                  : "text-slate-400"
+                }>
+                  {visionStatus?.state ?? "—"}
+                </span>
+              }
+            />
+            <Metric label="Detector" value={boolValue(visionStatus?.detector_available)} />
+            <Metric label="Firmware" value={boolValue(visionStatus?.adapter_connected)} />
+            <Metric label="Detecções" value={numberValue(visionStatus?.detections, "")} />
+            <Metric label="Gaze env." value={numberValue(visionStatus?.gaze_sends, "")} />
+            <Metric label="Erros cap." value={numberValue(visionStatus?.capture_errors, "")} />
+          </div>
         </div>
       </DiagnosticCard>
 
