@@ -55,6 +55,7 @@ export function DevTelemetryView({
 
   const [visionStatus, setVisionStatus] = useState<VisionPipelineStatus | null>(null);
   const [visionFrameOk, setVisionFrameOk] = useState(false);
+  const [visionActive, setVisionActive] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastFaceBoxRef = useRef<VisionPipelineStatus["last_face_box"]>(null);
@@ -72,20 +73,24 @@ export function DevTelemetryView({
   }, []);
 
   useEffect(() => {
+    if (!visionActive) {
+      setVisionFrameOk(false);
+      drawFaceBox(null);
+      if (imgRef.current) imgRef.current.src = "";
+      return;
+    }
     let cancelled = false;
     const tick = async () => {
       try {
         const s = await loadVisionPipelineStatus();
         if (!cancelled) {
           setVisionStatus(s);
-          // preserve last known box — only clear when pipeline resets to IDLE/DISABLED
           if (s.last_face_box) {
             lastFaceBoxRef.current = s.last_face_box;
           } else if (s.state === "IDLE" || s.state === "DISABLED") {
             lastFaceBoxRef.current = null;
           }
           drawFaceBox(lastFaceBoxRef.current);
-          // update snapshot src imperatively — avoids key remount and black flash
           if (s.state !== "DISABLED" && imgRef.current) {
             imgRef.current.src = `${visionSnapshotUrl()}?t=${Date.now()}`;
           }
@@ -95,7 +100,7 @@ export function DevTelemetryView({
     void tick();
     const id = window.setInterval(() => void tick(), 1000);
     return () => { cancelled = true; window.clearInterval(id); };
-  }, [drawFaceBox]);
+  }, [visionActive, drawFaceBox]);
 
   const refreshAudioFiles = async () => {
     setAudioFilesLoading(true);
@@ -236,6 +241,21 @@ export function DevTelemetryView({
 
       {/* Visão — pipeline do server */}
       <DiagnosticCard icon={Camera} title="Visão (server)">
+        <div className="flex items-center gap-3 mb-3">
+          <button
+            onClick={() => setVisionActive(v => !v)}
+            className={`px-3 py-1 rounded text-xs font-semibold transition-colors ${
+              visionActive
+                ? "bg-blue-600 hover:bg-blue-700 text-white"
+                : "bg-slate-700 hover:bg-slate-600 text-slate-200"
+            }`}
+          >
+            {visionActive ? "⏹ Parar" : "▶ Iniciar"}
+          </button>
+          {visionActive && (
+            <span className="text-xs text-slate-400">polling 1 Hz</span>
+          )}
+        </div>
         <div className="flex gap-4 flex-wrap items-start">
           {/* snapshot + face box */}
           <div className="relative shrink-0 rounded overflow-hidden bg-black" style={{ width: 240, height: 240 }}>
@@ -251,11 +271,13 @@ export function DevTelemetryView({
               onLoad={() => setVisionFrameOk(true)}
               onError={() => setVisionFrameOk(false)}
             />
-            {(!visionFrameOk || visionStatus?.state === "DISABLED") && (
+            {(!visionFrameOk || visionStatus?.state === "DISABLED" || !visionActive) && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-slate-500 text-xs text-center px-3">
                 <Camera className="w-8 h-8 mb-1 opacity-40" />
                 <span>
-                  {!visionStatus
+                  {!visionActive
+                    ? "inativo"
+                    : !visionStatus
                     ? "carregando..."
                     : visionStatus.state === "DISABLED"
                     ? "pipeline desabilitado"
