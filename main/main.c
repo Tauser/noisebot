@@ -10,7 +10,6 @@
 #include "esp_log.h"
 
 #include "boot_manager.h"
-#include "watchdog_service.h"
 
 static const char *TAG = "nb_main";
 
@@ -32,7 +31,6 @@ void app_main(void)
     ESP_LOGI(TAG, "app_main entrando em loop de manutencao");
 
     while (1) {
-        nb_watchdog_feed();
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }

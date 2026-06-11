@@ -23,6 +23,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+#include "esp_task_wdt.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -30,17 +31,9 @@
 
 #include <string.h>
 
+#include "nb_task_config.h"
+
 #define TAG "nb_render"
-
-/* ── Parâmetros de task ──────────────────────────────────────────────────── */
-
-#define RENDER_TASK_STACK_BYTES   4096
-#define RENDER_TASK_PRIORITY      7
-#define RENDER_TASK_CORE          1
-
-#define PUSH_TASK_STACK_BYTES     3072
-#define PUSH_TASK_PRIORITY        7
-#define PUSH_TASK_CORE            1   /* Core 1: busy-wait SPI não afeta main/TWDT */
 
 #define METRICS_LOG_PERIOD_S      5
 
@@ -174,6 +167,7 @@ static void push_task(void *arg)
     ESP_LOGI(TAG, "push_task iniciada — Core %d", xPortGetCoreID());
 
     while (s_running) {
+        esp_task_wdt_reset();
         if (xSemaphoreTake(s_frame_ready, pdMS_TO_TICKS(100)) != pdTRUE) continue;
 
         int fi = s_front_idx;
@@ -231,6 +225,8 @@ static void render_task(void *arg)
     int64_t total_layer_us   = 0;
 
     while (s_running) {
+
+        esp_task_wdt_reset();
 
         int bi = s_back_idx;
 
@@ -409,32 +405,35 @@ esp_err_t render_service_start(void)
     BaseType_t ret;
 
     ret = xTaskCreatePinnedToCore(push_task, "nb_push_task",
-                                  PUSH_TASK_STACK_BYTES, NULL,
-                                  PUSH_TASK_PRIORITY, &s_push_handle,
-                                  PUSH_TASK_CORE);
+                                  NB_TASK_PUSH_STACK, NULL,
+                                  NB_TASK_PUSH_PRIORITY, &s_push_handle,
+                                  NB_TASK_PUSH_CORE);
     if (ret != pdPASS) {
         s_running = false;
         vSemaphoreDelete(s_swap_ok); vSemaphoreDelete(s_frame_ready);
         s_swap_ok = s_frame_ready = NULL;
         return ESP_FAIL;
     }
+    esp_task_wdt_add(s_push_handle);
 
     ret = xTaskCreatePinnedToCore(render_task, "nb_render_task",
-                                  RENDER_TASK_STACK_BYTES, NULL,
-                                  RENDER_TASK_PRIORITY, &s_render_handle,
-                                  RENDER_TASK_CORE);
+                                  NB_TASK_RENDER_STACK, NULL,
+                                  NB_TASK_RENDER_PRIORITY, &s_render_handle,
+                                  NB_TASK_RENDER_CORE);
     if (ret != pdPASS) {
         s_running = false;
         xSemaphoreGive(s_frame_ready);
         vTaskDelay(pdMS_TO_TICKS(200));
         vSemaphoreDelete(s_swap_ok); vSemaphoreDelete(s_frame_ready);
         s_swap_ok = s_frame_ready = NULL;
+        esp_task_wdt_delete(s_push_handle);
         s_push_handle = NULL;
         return ESP_FAIL;
     }
+    esp_task_wdt_add(s_render_handle);
 
-    ESP_LOGI(TAG, "pipeline iniciado — render+push Core%d prio%d  threshold=%d%%",
-             RENDER_TASK_CORE, RENDER_TASK_PRIORITY, FULL_PUSH_THRESHOLD_PCT);
+    ESP_LOGI(TAG, "pipeline iniciado — render+push Core%d prio%u  threshold=%d%%",
+             NB_TASK_RENDER_CORE, NB_TASK_RENDER_PRIORITY, FULL_PUSH_THRESHOLD_PCT);
     return ESP_OK;
 }
 

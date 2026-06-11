@@ -7,13 +7,12 @@
 #include "esp_task_wdt.h"
 
 #include "watchdog_service.h"
+#include "nb_task_config.h"
 #include "logger.h"
 #include "error_policy.h"
 
 #define TAG "nb_wdog"
 
-#define NB_WDOG_TASK_STACK_BYTES  2048
-#define NB_WDOG_TASK_PRIORITY     24
 #define NB_WDOG_FEED_INTERVAL_MS  1000   /* alimenta TWDT a cada 1s */
 
 static TaskHandle_t s_wdog_task_handle = NULL;
@@ -34,8 +33,8 @@ static void wdog_task(void *arg)
         esp_restart();
     }
 
-    NB_LOGD(TAG, "wdog_task rodando (Core %d, prio %d)",
-            xPortGetCoreID(), NB_WDOG_TASK_PRIORITY);
+    NB_LOGD(TAG, "wdog_task rodando (Core %d, prio %u)",
+            xPortGetCoreID(), NB_TASK_WDOG_PRIORITY);
 
     while (1) {
         esp_task_wdt_reset();
@@ -66,11 +65,11 @@ esp_err_t nb_watchdog_init(void)
     BaseType_t created = xTaskCreatePinnedToCore(
         wdog_task,
         "wdog_task",
-        NB_WDOG_TASK_STACK_BYTES,
+        NB_TASK_WDOG_STACK,
         NULL,
-        NB_WDOG_TASK_PRIORITY,
+        NB_TASK_WDOG_PRIORITY,
         &s_wdog_task_handle,
-        0  /* Core 0 */
+        NB_TASK_WDOG_CORE
     );
 
     if (created != pdPASS) {

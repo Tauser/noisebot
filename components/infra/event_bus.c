@@ -63,11 +63,20 @@ static bool is_safety_event(nb_event_type_t type)
             type == NB_EVT_MOTION_DISABLED);
 }
 
-/* Adquire slot do pool. Retorna NULL se pool cheio. */
-static nb_event_t *pool_acquire(void)
+/* Slots reservados exclusivamente para eventos de safety. */
+#define NB_EVENT_BUS_SAFETY_RESERVED  4U
+
+/* Adquire slot do pool.
+ * Eventos normais só podem usar os primeiros (POOL_SIZE - SAFETY_RESERVED) slots,
+ * garantindo headroom para eventos de safety mesmo sob backpressure. */
+static nb_event_t *pool_acquire(bool safety)
 {
+    const unsigned limit = safety
+        ? NB_EVENT_BUS_POOL_SIZE
+        : (NB_EVENT_BUS_POOL_SIZE - NB_EVENT_BUS_SAFETY_RESERVED);
+
     xSemaphoreTake(s_pool_mutex, portMAX_DELAY);
-    for (unsigned i = 0; i < NB_EVENT_BUS_POOL_SIZE; i++) {
+    for (unsigned i = 0; i < limit; i++) {
         if (!(s_pool_used & (1u << i))) {
             s_pool_used |= (1u << i);
             xSemaphoreGive(s_pool_mutex);
@@ -256,7 +265,8 @@ esp_err_t nb_event_publish_async(const nb_event_t *evt)
 {
     if (!evt || (unsigned)evt->type >= NB_EVT_COUNT) return ESP_ERR_INVALID_ARG;
 
-    nb_event_t *slot = pool_acquire();
+    bool is_safety = is_safety_event(evt->type);
+    nb_event_t *slot = pool_acquire(is_safety);
     if (!slot) {
         s_dropped_total++;
         s_dropped_window++;

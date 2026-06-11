@@ -25,3 +25,5 @@ idf_component_register(
         synth_service
         attention_service
 )
+
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)

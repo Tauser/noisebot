@@ -6,12 +6,10 @@
 CONFIG_IDF_TARGET="esp32s3"
 
 # ── Compilador ───────────────────────────────────────────────────────────────
-# GCC ICE em esp_lcd_panel_rgb.c com -O2 no IDF 5.5. -Og resolve sem custo
-# perceptível no S3 @ 240MHz.
-CONFIG_COMPILER_OPTIMIZATION_DEBUG=y
-# StackChan usa size optimization para reduzir pressão geral de código/IRAM.
-# Mantemos -Og por causa do ICE documentado acima; revisar quando o toolchain
-# ou IDF forem atualizados.
+# -O2 (PERF). O ICE do GCC em esp_lcd_panel_rgb.c é contornado por -fno-ipa-sra
+# no CMakeLists.txt raiz, que desabilita a otimização IPA SRA causadora do crash
+# sem impactar o restante do código.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
 # ── CPU ───────────────────────────────────────────────────────────────────────
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
@@ -179,7 +177,9 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
 CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
 
 # ── Coredump (diagnóstico em crash) ──────────────────────────────────────────
-CONFIG_ESP_COREDUMP_ENABLE_TO_UART=y
+# Flash coredump: partição "coredump" em partitions.csv (64KB). Recuperável via
+# espcoredump.py no boot seguinte. UART seria perdido em produto headless.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 
 # ── ESP-SR (Etapa 12.6) ──────────────────────────────────────────────────────

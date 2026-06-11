@@ -72,3 +72,5 @@ idf_component_register(
         vision_service
         vision_preview_service
 )
+
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)

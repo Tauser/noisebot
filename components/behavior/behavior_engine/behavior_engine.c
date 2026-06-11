@@ -564,6 +564,13 @@ static void bridge_on_event(const nb_event_t *evt)
         break;
     }
 
+    case NB_EVT_BRIDGE_FACE_BOX: {
+        const nb_bridge_face_box_t *box = (const nb_bridge_face_box_t *)evt->data.ptr;
+        bool face_present = box && box->width > 0 && box->height > 0;
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_USER_IDENTIFYING, face_present);
+        break;
+    }
+
     case NB_EVT_BRIDGE_VOLUME: {
         uint8_t level = (evt->data.u32 > 100U) ? 100U : (uint8_t)evt->data.u32;
         audio_set_volume(level);

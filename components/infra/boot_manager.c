@@ -75,6 +75,17 @@
 
 #define TAG "nb_boot"
 
+/* Macro de subscribe com verificação de erro — falha em init é fatal silenciosa
+ * sem isso, pois nb_event_subscribe retorna ESP_ERR_NO_MEM sem assert. */
+#define BOOT_SUBSCRIBE(type, handler, ctx) \
+    do { \
+        esp_err_t _sub_err = nb_event_subscribe((type), (handler), (ctx), NULL); \
+        if (_sub_err != ESP_OK) { \
+            NB_LOGE(TAG, "subscribe(%d) falhou: %s — handler '%s' inativo", \
+                    (int)(type), esp_err_to_name(_sub_err), #handler); \
+        } \
+    } while (0)
+
 /* ── Chaves NVS (namespace nb_sys) ──────────────────────────────────────── */
 
 #define NVS_NS_SYS              "nb_sys"
@@ -1216,9 +1227,9 @@ static esp_err_t phase_services(void)
     err = vad_semantic_init();
     NB_ASSERT(err == ESP_OK, TAG, "vad_semantic_init falhou: %s",
               esp_err_to_name(err));
-    nb_event_subscribe(NB_EVT_VOICE_FOLLOWUP_TIMEOUT, on_voice_followup_timeout,      NULL, NULL);
-    nb_event_subscribe(NB_EVT_VOICE_SOFT,             on_voice_soft,                  NULL, NULL);
-    nb_event_subscribe(NB_EVT_TOUCH_DEEP,             on_touch_deep_for_meditation,   NULL, NULL);
+    BOOT_SUBSCRIBE(NB_EVT_VOICE_FOLLOWUP_TIMEOUT, on_voice_followup_timeout,    NULL);
+    BOOT_SUBSCRIBE(NB_EVT_VOICE_SOFT,             on_voice_soft,                NULL);
+    BOOT_SUBSCRIBE(NB_EVT_TOUCH_DEEP,             on_touch_deep_for_meditation, NULL);
 
     /* touch_semantic_service (Etapa 10.4): double-tap, DEEP, CARESS, WARM_PULSE */
     err = touch_semantic_init();
@@ -1307,7 +1318,7 @@ static esp_err_t phase_services(void)
     err = circadian_service_init();
     NB_ASSERT(err == ESP_OK, TAG, "circadian_service_init falhou: %s",
               esp_err_to_name(err));
-    nb_event_subscribe(NB_EVT_CIRCADIAN_PHASE_CHANGED, on_circadian_phase, NULL, NULL);
+    BOOT_SUBSCRIBE(NB_EVT_CIRCADIAN_PHASE_CHANGED, on_circadian_phase, NULL);
     apply_idle_modifiers(circadian_get_phase());   /* aplica DAWN no boot */
 
     /* behavior_engine (Etapa 9.3): tabela de regras — subscreve ao event bus */
@@ -1317,7 +1328,7 @@ static esp_err_t phase_services(void)
 
     /* motion_safety fault → SM: subscriber direto (não via behavior_engine,
      * pois state_machine_on_motion_fault é SM input, não comportamento). */
-    nb_event_subscribe(NB_EVT_MOTION_FAULT, on_motion_fault_event, NULL, NULL);
+    BOOT_SUBSCRIBE(NB_EVT_MOTION_FAULT, on_motion_fault_event, NULL);
 
     /* schedule_service (Etapa 9.2): timers one-shot e recorrentes sem task */
     err = schedule_service_init();
@@ -1336,12 +1347,12 @@ static esp_err_t phase_services(void)
         NB_LOGW(TAG, "agenda_service_init falhou: %s — agenda desativada",
                 esp_err_to_name(err));
     } else {
-        nb_event_subscribe(NB_EVT_TIMER_STARTED,   on_agenda_timer_changed, NULL, NULL);
-        nb_event_subscribe(NB_EVT_TIMER_UPDATED,   on_agenda_timer_changed, NULL, NULL);
-        nb_event_subscribe(NB_EVT_TIMER_CANCELLED, on_agenda_timer_changed, NULL, NULL);
-        nb_event_subscribe(NB_EVT_TIMER_DONE,      on_agenda_timer_done,    NULL, NULL);
-        nb_event_subscribe(NB_EVT_REMINDER_DUE,    on_agenda_reminder_due,  NULL, NULL);
-        nb_event_subscribe(NB_EVT_ALARM_DUE,       on_agenda_alarm_due,     NULL, NULL);
+        BOOT_SUBSCRIBE(NB_EVT_TIMER_STARTED,   on_agenda_timer_changed, NULL);
+        BOOT_SUBSCRIBE(NB_EVT_TIMER_UPDATED,   on_agenda_timer_changed, NULL);
+        BOOT_SUBSCRIBE(NB_EVT_TIMER_CANCELLED, on_agenda_timer_changed, NULL);
+        BOOT_SUBSCRIBE(NB_EVT_TIMER_DONE,      on_agenda_timer_done,    NULL);
+        BOOT_SUBSCRIBE(NB_EVT_REMINDER_DUE,    on_agenda_reminder_due,  NULL);
+        BOOT_SUBSCRIBE(NB_EVT_ALARM_DUE,       on_agenda_alarm_due,     NULL);
         update_timer_badge();
     }
 
@@ -1351,9 +1362,9 @@ static esp_err_t phase_services(void)
      * demanda. */
     camera_service_set_event_cb(on_camera_event);
 
-    nb_event_subscribe(NB_EVT_BRIDGE_SESSION, on_bridge_alert_command, NULL, NULL);
-    nb_event_subscribe(NB_EVT_BRIDGE_CONNECTED, on_bridge_status_event, NULL, NULL);
-    nb_event_subscribe(NB_EVT_BRIDGE_DISCONNECTED, on_bridge_status_event, NULL, NULL);
+    BOOT_SUBSCRIBE(NB_EVT_BRIDGE_SESSION,      on_bridge_alert_command, NULL);
+    BOOT_SUBSCRIBE(NB_EVT_BRIDGE_CONNECTED,    on_bridge_status_event,  NULL);
+    BOOT_SUBSCRIBE(NB_EVT_BRIDGE_DISCONNECTED, on_bridge_status_event,  NULL);
 
     /* diagnostics_service (Etapa 9.1): observabilidade e health score */
     {
@@ -1386,7 +1397,7 @@ static esp_err_t phase_services(void)
         NB_LOGW(TAG, "wake_service_init falhou: %s — wake word desativado",
                 esp_err_to_name(err));
     } else {
-        nb_event_subscribe(NB_EVT_WAKE_WORD_DETECTED, on_wake_word_detected, NULL, NULL);
+        BOOT_SUBSCRIBE(NB_EVT_WAKE_WORD_DETECTED, on_wake_word_detected, NULL);
     }
 
     /* audio_processor_service (Voice Pipeline Fase 5): probe AFE_TYPE_VC

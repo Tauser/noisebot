@@ -9,4 +9,7 @@ idf_component_register(
         freertos
         nb_hal
         LovyanGFX
+        infra
 )
+
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)

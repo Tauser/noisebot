@@ -39,6 +39,24 @@ static const servo_keys_t *servo_keys_for(uint8_t servo_id)
     return &s_servo_keys[servo_id - 1];
 }
 
+/* ── Cache RAM dos limites de servo ──────────────────────────────────────── */
+/* Carregado uma vez no init; evita leituras de flash no caminho crítico.     */
+
+typedef struct { int16_t min; int16_t max; int16_t ctr; } servo_cache_t;
+
+static servo_cache_t s_servo_cache[2];  /* índice 0 = servo 1 (pan), 1 = servo 2 (tilt) */
+
+static void servo_cache_load(void)
+{
+    for (uint8_t id = 1; id <= 2; id++) {
+        const servo_keys_t *k = servo_keys_for(id);
+        if (!k) continue;
+        s_servo_cache[id - 1].min = nvs_hal_get_i16(s_h_cfg, k->key_min, (int16_t)NB_CFG_DEFAULT_SRV_MIN);
+        s_servo_cache[id - 1].max = nvs_hal_get_i16(s_h_cfg, k->key_max, (int16_t)NB_CFG_DEFAULT_SRV_MAX);
+        s_servo_cache[id - 1].ctr = nvs_hal_get_i16(s_h_cfg, k->key_ctr, (int16_t)NB_CFG_DEFAULT_SRV_CTR);
+    }
+}
+
 /* ── Aplicação de defaults ───────────────────────────────────────────────── */
 
 /*
@@ -288,6 +306,7 @@ esp_err_t config_manager_init(void)
         return err;
     }
 
+    servo_cache_load();
     s_ready = true;
     return ESP_OK;
 }
@@ -301,23 +320,20 @@ bool config_manager_is_ready(void)
 
 int16_t config_get_servo_limit_min(uint8_t servo_id)
 {
-    const servo_keys_t *k = servo_keys_for(servo_id);
-    if (!k) return (int16_t)NB_CFG_DEFAULT_SRV_MIN;
-    return nvs_hal_get_i16(s_h_cfg, k->key_min, (int16_t)NB_CFG_DEFAULT_SRV_MIN);
+    if (servo_id < 1 || servo_id > 2) return (int16_t)NB_CFG_DEFAULT_SRV_MIN;
+    return s_servo_cache[servo_id - 1].min;
 }
 
 int16_t config_get_servo_limit_max(uint8_t servo_id)
 {
-    const servo_keys_t *k = servo_keys_for(servo_id);
-    if (!k) return (int16_t)NB_CFG_DEFAULT_SRV_MAX;
-    return nvs_hal_get_i16(s_h_cfg, k->key_max, (int16_t)NB_CFG_DEFAULT_SRV_MAX);
+    if (servo_id < 1 || servo_id > 2) return (int16_t)NB_CFG_DEFAULT_SRV_MAX;
+    return s_servo_cache[servo_id - 1].max;
 }
 
 int16_t config_get_servo_center(uint8_t servo_id)
 {
-    const servo_keys_t *k = servo_keys_for(servo_id);
-    if (!k) return (int16_t)NB_CFG_DEFAULT_SRV_CTR;
-    return nvs_hal_get_i16(s_h_cfg, k->key_ctr, (int16_t)NB_CFG_DEFAULT_SRV_CTR);
+    if (servo_id < 1 || servo_id > 2) return (int16_t)NB_CFG_DEFAULT_SRV_CTR;
+    return s_servo_cache[servo_id - 1].ctr;
 }
 
 esp_err_t config_set_servo_limit_min(uint8_t servo_id, int16_t val)
@@ -326,7 +342,7 @@ esp_err_t config_set_servo_limit_min(uint8_t servo_id, int16_t val)
     if (!k) return ESP_ERR_INVALID_ARG;
     if (val < NB_CFG_SRV_POS_ABS_MIN || val > NB_CFG_SRV_POS_ABS_MAX) return ESP_ERR_INVALID_ARG;
     esp_err_t err = nvs_hal_set_i16(s_h_cfg, k->key_min, val);
-    if (err == ESP_OK) nvs_hal_commit(s_h_cfg);
+    if (err == ESP_OK) { nvs_hal_commit(s_h_cfg); s_servo_cache[servo_id - 1].min = val; }
     return err;
 }
 
@@ -336,7 +352,7 @@ esp_err_t config_set_servo_limit_max(uint8_t servo_id, int16_t val)
     if (!k) return ESP_ERR_INVALID_ARG;
     if (val < NB_CFG_SRV_POS_ABS_MIN || val > NB_CFG_SRV_POS_ABS_MAX) return ESP_ERR_INVALID_ARG;
     esp_err_t err = nvs_hal_set_i16(s_h_cfg, k->key_max, val);
-    if (err == ESP_OK) nvs_hal_commit(s_h_cfg);
+    if (err == ESP_OK) { nvs_hal_commit(s_h_cfg); s_servo_cache[servo_id - 1].max = val; }
     return err;
 }
 
@@ -346,7 +362,7 @@ esp_err_t config_set_servo_center(uint8_t servo_id, int16_t val)
     if (!k) return ESP_ERR_INVALID_ARG;
     if (val < NB_CFG_SRV_POS_ABS_MIN || val > NB_CFG_SRV_POS_ABS_MAX) return ESP_ERR_INVALID_ARG;
     esp_err_t err = nvs_hal_set_i16(s_h_cfg, k->key_ctr, val);
-    if (err == ESP_OK) nvs_hal_commit(s_h_cfg);
+    if (err == ESP_OK) { nvs_hal_commit(s_h_cfg); s_servo_cache[servo_id - 1].ctr = val; }
     return err;
 }
 
