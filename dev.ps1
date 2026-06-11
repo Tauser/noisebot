@@ -154,20 +154,26 @@ if (Get-Command pnpm -ErrorAction SilentlyContinue) {
 }
 "@
 
+function Stop-ListeningPids([int]$Port, [string]$Label) {
+    $pids = @(Get-ListeningPids -Port $Port)
+    foreach ($pid in $pids) {
+        try {
+            Stop-Process -Id $pid -Force -ErrorAction Stop
+            Write-Host "$Label : PID $pid encerrado." -ForegroundColor DarkYellow
+        } catch {
+            Write-Host "$Label : nao foi possivel encerrar PID $pid — $_" -ForegroundColor Red
+        }
+    }
+    if ($pids.Count -gt 0) {
+        Start-Sleep -Milliseconds 600
+    }
+}
+
 Write-Host "Subindo NoiseBot server e dashboard..." -ForegroundColor Cyan
-if ($ServerPids.Count -gt 0) {
-    Write-Host "Server:    http://127.0.0.1:8765 ja esta em uso (PID: $($ServerPids -join ', '))" -ForegroundColor Yellow
-} else {
-    Write-Host "Server:    http://127.0.0.1:8765"
-}
-if ($AppPids.Count -gt 0) {
-    Write-Host "Dashboard: http://127.0.0.1:5173 ja esta em uso (PID: $($AppPids -join ', '))" -ForegroundColor Yellow
-} else {
-    Write-Host "Dashboard: http://127.0.0.1:5173"
-}
-if ($ServerPids.Count -gt 1 -or $AppPids.Count -gt 1) {
-    Write-Host "Aviso: ha processos duplicados em portas de desenvolvimento. Feche as janelas antigas antes de reiniciar tudo." -ForegroundColor Yellow
-}
+
+Stop-ListeningPids -Port 8765 -Label "Server   "
+Stop-ListeningPids -Port 5173 -Label "Dashboard"
+
 if (-not [string]::IsNullOrWhiteSpace($LanAddress)) {
     Write-Host "Celular:   http://$LanAddress`:5173"
 }
@@ -178,16 +184,8 @@ if (-not [string]::IsNullOrWhiteSpace($HostName)) {
 Write-Host "Robo TCP:  $RobotHost`:$RobotPort"
 Write-Host "Robo HTTP: $RobotHttpUrl"
 
-if ($ServerPids.Count -eq 0) {
-    Start-Process -FilePath $ShellExe -ArgumentList @("-NoExit", "-Command", $ServerCommand) -WorkingDirectory $ServerDir
-} else {
-    Write-Host "Server nao iniciado: porta 8765 ja ocupada." -ForegroundColor Yellow
-}
-if ($AppPids.Count -eq 0) {
-    Start-Process -FilePath $ShellExe -ArgumentList @("-NoExit", "-Command", $AppCommand) -WorkingDirectory $AppDir
-} else {
-    Write-Host "Dashboard nao iniciado: porta 5173 ja ocupada." -ForegroundColor Yellow
-}
+Start-Process -FilePath $ShellExe -ArgumentList @("-NoExit", "-Command", $ServerCommand) -WorkingDirectory $ServerDir
+Start-Process -FilePath $ShellExe -ArgumentList @("-NoExit", "-Command", $AppCommand) -WorkingDirectory $AppDir
 
 if (-not $NoBrowser) {
     Start-Sleep -Seconds 2
