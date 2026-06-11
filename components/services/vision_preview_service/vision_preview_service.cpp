@@ -47,12 +47,14 @@ static uint32_t s_box_ts_ms = 0;   /* esp_timer_get_time() / 1000 */
 static const int kDispW = 320;
 static const int kDispH = 240;
 
-/* Câmera configurada como 240×240 (YUV422 quadrado via Kconfig).
+/* Câmera configurada como 240×240 YUV422 (único modo funcional no DVP desta placa).
  * Centralizar horizontalmente no display 320×240. */
-static const int kCamW  = 240;
-static const int kCamH  = 240;
-static const int kCamX  = (kDispW - kCamW) / 2;  /* = 40 */
-static const int kCamY  = 0;
+static const int kCamSrcW = 240;
+static const int kCamSrcH = 240;
+static const int kCamW    = 240;
+static const int kCamH    = 240;
+static const int kCamX    = (kDispW - kCamW) / 2;  /* = 40 */
+static const int kCamY    = 0;
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -127,10 +129,15 @@ static void preview_layer(nb_display_sprite_t canvas, void * /*ctx*/)
     }
 
     if (box_valid) {
-        int rx = (int)bx + kCamX;
-        int ry = (int)by + kCamY;
-        sp->drawRect(rx, ry, bw, bh, NB_VISION_PREVIEW_BOX_COLOR);
-        render_service_mark_dirty(rx, ry, bw, bh);
+        /* bbox vem em coordenadas da câmera (640×480) → escalar para display (320×240) */
+        float sx = (float)kCamW / (float)kCamSrcW;
+        float sy = (float)kCamH / (float)kCamSrcH;
+        int rx = kCamX + (int)((float)bx * sx);
+        int ry = kCamY + (int)((float)by * sy);
+        int rw = (int)((float)bw * sx);
+        int rh = (int)((float)bh * sy);
+        sp->drawRect(rx, ry, rw, rh, NB_VISION_PREVIEW_BOX_COLOR);
+        render_service_mark_dirty(rx, ry, rw, rh);
     }
 }
 
