@@ -416,8 +416,15 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
   <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
     <div>
       <div class="vision-frame">
-        <img id="vision-snapshot" src="" alt="câmera" onerror="this.style.opacity='.3'">
+        <img id="vision-snapshot" src="" alt="câmera" style="display:none"
+             onerror="this.style.display='none';document.getElementById('vision-ph').style.display='flex'">
         <canvas id="vision-canvas" width="240" height="240"></canvas>
+        <div id="vision-ph" style="display:flex;position:absolute;top:0;left:0;width:240px;height:240px;
+             align-items:center;justify-content:center;flex-direction:column;gap:6px;
+             background:#111;color:#64748b;font-size:11px;text-align:center;padding:8px">
+          <span style="font-size:22px">📷</span>
+          <span id="vision-ph-msg">sem sinal</span>
+        </div>
       </div>
       <div id="vision-frame-age" class="age" style="margin-top:4px;text-align:center">—</div>
     </div>
@@ -1293,12 +1300,41 @@ let _visionLastFrame = 0;
 let _visionTimer = null;
 let _lastFaceBox = null;
 
+let _visionPipelineState = null;
+
+function _showVisionPlaceholder(msg) {
+  const img = document.getElementById('vision-snapshot');
+  const ph  = document.getElementById('vision-ph');
+  const phm = document.getElementById('vision-ph-msg');
+  if (img) img.style.display = 'none';
+  if (ph)  ph.style.display  = 'flex';
+  if (phm) phm.textContent = msg || 'sem sinal';
+}
+
+function _hideVisionPlaceholder() {
+  const img = document.getElementById('vision-snapshot');
+  const ph  = document.getElementById('vision-ph');
+  if (img) img.style.display = 'block';
+  if (ph)  ph.style.display  = 'none';
+}
+
 function updateVisionCard() {
   const img = document.getElementById('vision-snapshot');
-  if (img) {
+  const disabled = _visionPipelineState === 'DISABLED';
+  if (img && !disabled) {
     _visionFrameTs = Date.now();
-    img.onload = () => { _visionLastFrame = Date.now(); drawFaceBox(); };
+    img.onload = () => {
+      _visionLastFrame = Date.now();
+      _hideVisionPlaceholder();
+      drawFaceBox();
+    };
+    img.onerror = () => {
+      img.style.display = 'none';
+      _showVisionPlaceholder('firmware sem câmera ou desconectado');
+    };
     img.src = '/api/vision/snapshot?t=' + _visionFrameTs;
+  } else if (disabled) {
+    _showVisionPlaceholder('pipeline desabilitado — sem firmware HTTP');
   }
   fetch('/api/vision/pipeline/status')
     .then(r => r.ok ? r.json() : null)
@@ -1307,6 +1343,12 @@ function updateVisionCard() {
 }
 
 function renderVisionStatus(d) {
+  _visionPipelineState = d.state || null;
+  if (d.state === 'DISABLED') {
+    _showVisionPlaceholder('pipeline desabilitado — sem firmware HTTP');
+  } else if (!d.detector_available && d.state === 'IDLE') {
+    _showVisionPlaceholder('detector indisponível\nNOISEBOT_VISION=1\npip install -e .[vision]');
+  }
   const stateMap = {IDLE:'pill-off', ACQUIRE:'pill-warn', TRACK:'pill-ok', LOST:'pill-err', DISABLED:'pill-off'};
   const stEl = document.getElementById('vision-state');
   if (stEl) {

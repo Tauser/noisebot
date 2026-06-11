@@ -162,8 +162,8 @@ class VisionPipeline:
         self._counters.ticks_idle += 1
         obs = await asyncio.to_thread(self._safe_observe)
         if obs is not None:
-            # motion or lit ambient → try to acquire
-            if obs.motion_score > 10 or obs.luma_avg > 40:
+            # only motion triggers acquisition; luma alone is not enough
+            if obs.motion_score > 10:
                 self._cached_obs = obs
                 self._consecutive_hits = 0
                 self._acquire_start_ts = time.monotonic()

@@ -25,7 +25,7 @@ from .internal.ops.app_state import AppStateStore
 from .internal.ops.firmware_diag import FirmwareDiagClient
 from .internal.service import healthcheck_loop
 from .internal.transport import ConnectionSupervisor, create_transport_factory
-from .internal.vision.analysis import init_analyzer
+from .internal.vision.analysis import init_analyzer, is_detector_available
 from .internal.vision.client import VisionClient
 from .internal.vision.vision_pipeline import VisionPipeline
 
@@ -209,8 +209,11 @@ class NoiseBotServer:
             except RuntimeError as exc:
                 log.error("Vision: inicialização falhou — %s", exc)
 
-        if self._vision_pipeline is not None:
+        if self._vision_pipeline is not None and is_detector_available():
             self._vision_pipeline.start()
+        elif self._vision_pipeline is not None:
+            log.info("VisionPipeline: detector indisponível — pipeline suspenso. "
+                     "Defina NOISEBOT_VISION=1 e instale pip install -e .[vision].")
 
         try:
             await self._ops_server.start()
