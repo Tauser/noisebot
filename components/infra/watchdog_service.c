@@ -57,12 +57,10 @@ esp_err_t nb_watchdog_init(void)
     }
 
     /*
-     * O TWDT é inicializado pelo ESP-IDF via sdkconfig (CONFIG_ESP_TASK_WDT_INIT=y,
-     * CONFIG_ESP_TASK_WDT_TIMEOUT_S=5, CONFIG_ESP_TASK_WDT_PANIC=y).
+     * O TWDT é inicializado pelo ESP-IDF via sdkconfig
+     * (CONFIG_ESP_TASK_WDT_INIT=y, CONFIG_ESP_TASK_WDT_PANIC=y).
+     * O timeout efetivo está em sdkconfig — não duplicar aqui.
      * Não fazemos reinit aqui — confiamos na config do sdkconfig.
-     *
-     * Se futuramente precisarmos de timeout diferente no boot vs. runtime,
-     * usar esp_task_wdt_reconfigure() após PHASE_COMPLETE.
      */
 
     BaseType_t created = xTaskCreatePinnedToCore(

@@ -19,7 +19,6 @@
 #include "idle_service.h"
 #include "motion_service.h"
 #include "render_service.h"
-#include "servo_hal.h"
 #include "conductor.h"
 #include "rhythm_service.h"
 #include "sound_analysis_service.h"
@@ -58,12 +57,14 @@
 #include "sd_hal.h"
 #include "nb_hw_config.h"
 #include <dirent.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "esp_random.h"
 
 #define TAG              "nb_web"
 #define MAX_BODY_LEN     512
@@ -108,8 +109,58 @@ static int log_hook_vprintf(const char *fmt, va_list args)
 static httpd_handle_t     s_server     = NULL;
 static portMUX_TYPE       s_mux        = portMUX_INITIALIZER_UNLOCKED;
 static esp_timer_handle_t s_http_health_tmr = NULL;
-static esp_timer_handle_t s_servo_calib_tmr = NULL;  /* auto-resume conductor após calibração */
 static nb_event_type_t    s_last_touch_event = NB_EVT_NONE;
+
+/* ── Token de API ─────────────────────────────────────────────────────────── */
+/* Token gerado no primeiro boot, armazenado em NVS. Obrigatório em endpoints
+ * mutadores de alta criticidade (OTA, restart, config). */
+
+#define NB_API_TOKEN_NVS_NS  "nb_sys"
+#define NB_API_TOKEN_NVS_KEY "api_token"
+#define NB_API_TOKEN_LEN     16u   /* 8 bytes → 16 hex chars */
+
+static char s_api_token[NB_API_TOKEN_LEN + 1u];
+
+static void api_token_load_or_generate(void)
+{
+    nvs_handle_t h;
+    size_t       len = sizeof(s_api_token);
+
+    if (nvs_open(NB_API_TOKEN_NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        if (nvs_get_str(h, NB_API_TOKEN_NVS_KEY, s_api_token, &len) == ESP_OK) {
+            nvs_close(h);
+            NB_LOGW(TAG, "API token: %s  (header: X-NB-Token)", s_api_token);
+            return;
+        }
+        /* Primeiro boot: gerar e persistir */
+        uint32_t r[2];
+        esp_fill_random(r, sizeof(r));
+        snprintf(s_api_token, sizeof(s_api_token), "%08" PRIx32 "%08" PRIx32, r[0], r[1]);
+        nvs_set_str(h, NB_API_TOKEN_NVS_KEY, s_api_token);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    NB_LOGW(TAG, "API token gerado: %s  (header: X-NB-Token)", s_api_token);
+}
+
+/* Retorna true se o token está presente e correto. Envia 401/403 caso contrário. */
+static bool api_require_token(httpd_req_t *req)
+{
+    char buf[NB_API_TOKEN_LEN + 1u];
+    if (httpd_req_get_hdr_value_str(req, "X-NB-Token", buf, sizeof(buf)) != ESP_OK) {
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"missing X-NB-Token header\"}");
+        return false;
+    }
+    if (strcmp(buf, s_api_token) != 0) {
+        httpd_resp_set_status(req, "403 Forbidden");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"invalid token\"}");
+        return false;
+    }
+    return true;
+}
 static int64_t            s_last_touch_us    = 0;
 static volatile bool      s_http_restart_pending = false;
 
@@ -956,6 +1007,7 @@ static esp_err_t handle_api_vision_preview(httpd_req_t *req)
 
 static esp_err_t handle_api_config_post(httpd_req_t *req)
 {
+    if (!api_require_token(req)) return ESP_OK;
     char body[MAX_BODY_LEN];
     if (!recv_body(req, body, sizeof(body), NULL)) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
@@ -1055,82 +1107,14 @@ static nb_action_t action_from_str(const char *s)
     return NB_ACTION_NONE;
 }
 
-/* Callback do timer: retoma o conductor após 10s sem comandos de calibração */
-static void servo_calib_resume_cb(void *arg)
-{
-    (void)arg;
-    conductor_pause(false);
-    NB_LOGI(TAG, "calibracao servo: conductor retomado (timeout)");
-}
-
-/* POST /api/servo — move servo para posição imediata (calibração ao vivo).
- * Body: {"servo": 1, "pos": 512}   servo 1 ou 2, pos em steps [0, 1023]
- *       {"servo": 0, "pos": 0}     servo=0 → park_all (ignora pos)
- * Pausa o conductor automaticamente e retoma após 10s de inatividade.  */
+/* POST /api/servo — calibração de servo.
+ * Desabilitado até que o modo MAINTENANCE (F40) e motion_safety estejam
+ * implementados. Toda escrita de posição deve passar por motion_safety_check_position(). */
 static esp_err_t handle_api_servo_post(httpd_req_t *req)
 {
-    char body[128];
-    if (!recv_body(req, body, sizeof(body), NULL)) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
-        return ESP_OK;
-    }
-    cJSON *root = cJSON_ParseWithLength(body, strlen(body));
-    if (!root) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid JSON");
-        return ESP_OK;
-    }
-
-    const cJSON *servo_j = cJSON_GetObjectItemCaseSensitive(root, "servo");
-    const cJSON *pos_j   = cJSON_GetObjectItemCaseSensitive(root, "pos");
-
-    esp_err_t ret = ESP_ERR_INVALID_ARG;
-    if (cJSON_IsNumber(servo_j) && cJSON_IsNumber(pos_j)) {
-        int servo = (int)servo_j->valuedouble;
-        int pos   = (int)pos_j->valuedouble;
-
-        /* Pausa conductor para evitar override durante calibração */
-        conductor_pause(true);
-        if (s_servo_calib_tmr) {
-            esp_timer_stop(s_servo_calib_tmr);
-            esp_timer_start_once(s_servo_calib_tmr, 10000000LL); /* 10s */
-        }
-
-        /* Usa servo_hal diretamente — bypass de safety intencional para calibração.
-         * GPIO 20 (TX) sofre ~20-30% perda de pacotes com WiFi ativo (USB D- RF).
-         * Comandos fire-and-forget: logamos envio, não confirmação do servo.
-         * Enviamos cada comando N vezes com gap para garantir entrega estatística.
-         * A 30% de perda, P(todas 8 falharem) < 0.001%. */
-        #define CAL_SEND(fn, id, ...)  do { \
-            for (int _t = 0; _t < 8; _t++) { \
-                fn((id), ##__VA_ARGS__); \
-                vTaskDelay(pdMS_TO_TICKS(15)); \
-            } \
-        } while (0)
-
-        if (servo == 0) {
-            int16_t c1 = config_get_servo_center(1);
-            int16_t c2 = config_get_servo_center(2);
-            CAL_SEND(servo_hal_enable_torque,    1u);
-            CAL_SEND(servo_hal_enable_torque,    2u);
-            CAL_SEND(servo_hal_write_position,   1u, (uint16_t)c1, 600u);
-            CAL_SEND(servo_hal_write_position,   2u, (uint16_t)c2, 600u);
-            ret = ESP_OK;
-        } else if (servo >= 1 && servo <= 2 && pos >= 0 && pos <= 1023) {
-            CAL_SEND(servo_hal_enable_torque,    (uint8_t)servo);
-            CAL_SEND(servo_hal_write_position,   (uint8_t)servo, (uint16_t)pos, 400u);
-            ret = ESP_OK;
-        }
-        #undef CAL_SEND
-    }
-    cJSON_Delete(root);
-
+    httpd_resp_set_status(req, "403 Forbidden");
     httpd_resp_set_type(req, "application/json");
-    if (ret == ESP_OK) {
-        httpd_resp_sendstr(req, "{\"ok\":true}");
-    } else {
-        httpd_resp_set_status(req, "400 Bad Request");
-        httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"servo cmd failed\"}");
-    }
+    httpd_resp_sendstr(req, "{\"ok\":false,\"error\":\"servo calibration disabled — requires MAINTENANCE mode\"}");
     return ESP_OK;
 }
 
@@ -1287,6 +1271,7 @@ static void ota_task(void *arg)
 
 static esp_err_t handle_api_ota(httpd_req_t *req)
 {
+    if (!api_require_token(req)) return ESP_OK;
     char body[MAX_BODY_LEN];
     if (!recv_body(req, body, sizeof(body), NULL)) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
@@ -1461,6 +1446,7 @@ static esp_err_t handle_api_health(httpd_req_t *req)
 
 static esp_err_t handle_api_restart(httpd_req_t *req)
 {
+    if (!api_require_token(req)) return ESP_OK;
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"ok\":true,\"restarting\":true}");
     vTaskDelay(pdMS_TO_TICKS(300));
@@ -4993,14 +4979,7 @@ static void on_bridge_session_event(const nb_event_t *ev, void *ctx)
 
 esp_err_t web_service_init(void)
 {
-    /* Timer de auto-resume do conductor após calibração de servo */
-    if (!s_servo_calib_tmr) {
-        const esp_timer_create_args_t ta = {
-            .callback = servo_calib_resume_cb,
-            .name     = "srv_calib",
-        };
-        esp_timer_create(&ta, &s_servo_calib_tmr);
-    }
+    api_token_load_or_generate();
 
     if (!s_http_health_tmr) {
         const esp_timer_create_args_t th = {

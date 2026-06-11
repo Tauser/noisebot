@@ -112,15 +112,9 @@ static int send_packet(uint8_t id, uint8_t instr,
         return -1;
     }
 
-    /* Descarta eco (FE-TTLinker loopback) lendo-o explicitamente.
-     * uart_flush_input() tem race condition com a resposta do servo quando
-     * tasks de alta prioridade preemptam entre uart_wait_tx_done e o flush:
-     * echo + resposta chegam durante a preempção e flush joga os dois fora.
-     * uart_read_bytes() lê exatamente `total` bytes (o eco), deixando a
-     * resposta do servo no ring buffer para recv_response(). */
-    /* Aguarda TX e descarta eco com flush — mesma abordagem do servo_test.
-     * uart_read_bytes para eco deixa o ring buffer em estado que impede
-     * leituras subsequentes em recv_response; uart_flush_input funciona. */
+    /* Descarta eco (FE-TTLinker loopback) com flush após aguardar TX.
+     * uart_flush_input é seguro aqui: uart_wait_tx_done garante que TX
+     * completou antes do flush, evitando a race com a resposta do servo. */
     uart_wait_tx_done(NB_SERVO_UART_PORT, pdMS_TO_TICKS(10));
     uart_flush_input(NB_SERVO_UART_PORT);
 

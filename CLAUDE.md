@@ -11,11 +11,8 @@ Este arquivo tem autoridade máxima sobre qualquer instrução geral.
 
 ### Knowledge OS
 
-- O Personal Knowledge OS do projeto fica em `D:\base_conhecimento\projects\Noisebot`.
-- Ao fazer mudanças relevantes no projeto, atualizar também a base de conhecimento de forma ampla: `source/`, `wiki/`, `wiki/modules/`, `control/`, índices e logs afetados.
-- Não atualizar apenas a página diretamente relacionada; sincronizar overview, arquitetura, mapa de código, setup/operação, testes, dependências, integrações, riscos, glossário, status, decisões e auditoria quando forem impactados.
-- Toda atualização da base deve citar evidências do projeto original ou marcar claramente `Inferência da IA` / `Precisa de verificação`.
-- A política detalhada fica em `D:\base_conhecimento\projects\Noisebot\control\update-policy.md`.
+**Decisão ativa:** não atualizar o Knowledge OS externo por enquanto (decisão do usuário, 2026-06).
+O projeto usa este CLAUDE.md + `docs/ROADMAP.md` como fontes de verdade operacionais.
 
 ---
 
@@ -94,10 +91,10 @@ Layer 8: Futuro     (camera, imu, battery)
 
 ### WiFi e Conectividade
 
-- **WiFi desabilitado nos Blocos 0–8.** Ativado na Etapa 9.6 via `wifi_service` (boot-time, background, Layer 2).
+- **WiFi ativo em produção** via `wifi_service` (boot-time, background, Layer 2). A Etapa 9.6 formaliza o serviço, mas WiFi já está habilitado desde o ciclo atual.
 - O produto é **offline-first**: funciona 100% sem WiFi. Conectividade é conveniência, nunca dependência.
-- Não assumir IP disponível em decisões de design anteriores à Etapa 9.6.
 - Sem TLS/HTTPS no firmware: mbedTLS ~250 KB SRAM — inviável. HTTP local apenas.
+- Endpoints mutadores (OTA, restart, config POST) exigem header `X-NB-Token` — token gerado no primeiro boot e logado no console (NVS, chave `api_token`).
 
 ---
 
@@ -108,13 +105,20 @@ components/
 ├── infra/          # Layer 2+3: boot_manager, logger, event_bus,
 │                   #            config_manager, persistence_mgr,
 │                   #            watchdog_service, error_policy, nb_events.h,
-│                   #            motion_safety, power_monitor (Layer 3 físico)
+│                   #            motion_safety, power_monitor (Layer 3 físico),
+│                   #            web_service, bridge_service, wifi_service,
+│                   #            diagnostics_service
 ├── nb_hal/         # Layer 1: display_hal (.cpp + .h), servo_hal,
-│                   #          audio_hal, led_hal, touch_hal, sd_hal
+│                   #          audio_hal, led_hal, touch_hal, sd_hal,
+│                   #          camera_hal (preparado; DVP reservado)
 ├── services/       # Layer 4-5: render_service, motion_service,
-│                   #             audio_service, led_service, touch_service,
-│                   #             gaze_service, idle_service,
-│                   #             expression_service, conductor
+│                   #             audio_service (*_v2 canônico), led_service,
+│                   #             touch_service, gaze_service, idle_service,
+│                   #             expression_service, conductor,
+│                   #             vision_preview_service, ui_overlay_service,
+│                   #             agenda_service, circadian_service,
+│                   #             attention_service, rhythm_service,
+│                   #             time_service, wake_service
 ├── behavior/       # Layer 6: behavior_engine, state_machine, emotion_model
 └── persona/        # Layer 7: persona_service, long_term_memory
 ```
@@ -143,7 +147,7 @@ components/
 | SCS0009 × 2       | UART/FE-TTL | Ativo      |
 | Touch (cobre)     | Touch GPIO  | Ativo      |
 | microSD           | SPI3        | Ativo      |
-| OV2640 câmera     | DVP         | **Adiado** |
+| OV2640 câmera     | DVP         | **Adiado** (hardware); visão via server/bridge: **Feito** |
 | MPU-6050 IMU      | I2C0        | **Adiado** |
 | LiPo + circuito   | —           | **Adiado** |
 

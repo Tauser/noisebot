@@ -445,4 +445,7 @@ void motion_safety_emergency_stop(void)
     s_state            = NB_MOTION_FAULT;
     s_heartbeat_active = false;
     park_and_disable();
+
+    nb_event_t evt = { .type = NB_EVT_MOTION_FAULT };
+    nb_event_publish_async(&evt);
 }

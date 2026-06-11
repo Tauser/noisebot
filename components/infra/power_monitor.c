@@ -6,12 +6,15 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/portmacro.h"
 #include "esp_system.h"
 #include "esp_log.h"
 #include "nvs.h"
 
 #include "logger.h"
 #include "error_policy.h"
+#include "event_bus.h"
+#include "nb_events.h"
 
 #define TAG "nb_power"
 
@@ -24,6 +27,7 @@
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
 static nb_power_mode_t s_mode           = NB_POWER_NORMAL;
+static portMUX_TYPE    s_mode_mux       = portMUX_INITIALIZER_UNLOCKED;
 static bool            s_brownout_reset = false;
 static uint8_t         s_brownout_count = 0;
 static bool            s_initialized   = false;
@@ -116,17 +120,24 @@ nb_power_mode_t power_monitor_get_mode(void)
 
 void power_monitor_set_mode(nb_power_mode_t mode, const char *reason)
 {
-    if (s_mode == mode) return;
-
     static const char *const mode_names[] = {
         "NORMAL", "SD_DEGRADED", "SAFE_MODE", "EMERGENCY_STOP"
     };
 
-    const char *from = ((unsigned)s_mode < 4u) ? mode_names[s_mode] : "?";
-    const char *to   = ((unsigned)mode  < 4u) ? mode_names[mode]  : "?";
-
-    NB_LOGI(TAG, "Modo: %s → %s (%s)", from, to, reason ? reason : "sem motivo");
+    nb_power_mode_t prev;
+    taskENTER_CRITICAL(&s_mode_mux);
+    prev   = s_mode;
     s_mode = mode;
+    taskEXIT_CRITICAL(&s_mode_mux);
+
+    if (prev == mode) return;
+
+    const char *from = ((unsigned)prev < 4u) ? mode_names[prev] : "?";
+    const char *to   = ((unsigned)mode < 4u) ? mode_names[mode]  : "?";
+    NB_LOGI(TAG, "Modo: %s → %s (%s)", from, to, reason ? reason : "sem motivo");
+
+    nb_event_t evt = { .type = NB_EVT_POWER_MODE_CHANGED };
+    nb_event_publish_async(&evt);
 }
 
 bool power_monitor_is_brownout_reset(void)
