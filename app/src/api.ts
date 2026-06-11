@@ -616,46 +616,6 @@ export async function setFollowupEnabled(enabled: boolean, token: string): Promi
   });
 }
 
-export function visionSnapshotUrl(): string {
-  const separator = SERVER_URL.includes("?") ? "&" : "?";
-  return `${SERVER_URL}/api/vision/snapshot${separator}ts=${Date.now()}`;
-}
-
-// ── Face Enrollment ───────────────────────────────────────────────────────
-
-export type EnrolledFace = {
-  user_id: string;
-  display_name: string;
-  enrolled_at: number | null;
-};
-
-export async function listFaces(): Promise<EnrolledFace[]> {
-  const body = await getJson<{ faces: EnrolledFace[] }>("/api/vision/faces");
-  return Array.isArray(body.faces) ? body.faces : [];
-}
-
-export async function enrollFace(userId: string, displayName: string, token: string): Promise<void> {
-  const params = new URLSearchParams({ user_id: userId, display_name: displayName });
-  const response = await fetch(`${SERVER_URL}/api/vision/faces/enroll?${params}`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${token}` },
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `server ${response.status}`);
-  }
-}
-
-export async function deleteFace(userId: string, token: string): Promise<void> {
-  const response = await fetch(`${SERVER_URL}/api/vision/faces/${encodeURIComponent(userId)}`, {
-    method: "DELETE",
-    headers: { "Authorization": `Bearer ${token}` },
-  });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `server ${response.status}`);
-  }
-}
 
 export async function loadAudioSampleFiles(): Promise<AudioSampleFile[]> {
   const body = await getJson<{ files?: AudioSampleFile[] }>("/api/device/audio/files");

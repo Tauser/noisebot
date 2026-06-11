@@ -1,188 +1,9 @@
-import { CheckCircle2, Camera, Trash2, UserRound, VideoOff } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import type { DevicePersona, EnrolledFace } from "../api";
-import { listFaces, enrollFace, deleteFace, visionSnapshotUrl } from "../api";
-import { cardClass, primaryButtonClass, secondaryButtonClass, inputClass, mutedTextClass } from "../lib/classes";
+import { CheckCircle2 } from "lucide-react";
+import type { DevicePersona } from "../api";
+import { cardClass, primaryButtonClass, inputClass, mutedTextClass } from "../lib/classes";
 import { ratioLabel } from "../lib/format";
 import { InfoRow } from "../components/InfoRow";
 import { LabeledField } from "../components/LabeledField";
-
-function FaceEnrollmentCard({
-  token,
-  profile,
-}: {
-  token: string;
-  profile: DevicePersona["user"];
-}) {
-  const [faces, setFaces] = useState<EnrolledFace[]>([]);
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
-  const [imgUrl, setImgUrl] = useState<string | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const prevBlobRef = useRef<string | null>(null);
-  const fetchingRef = useRef(false);
-
-  const load = () => listFaces().then(setFaces).catch(() => {});
-  useEffect(() => { load(); }, []);
-
-  const fetchFrame = async () => {
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
-    try {
-      const res = await fetch(visionSnapshotUrl(), { cache: "no-store" });
-      if (!res.ok) return;
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
-      prevBlobRef.current = url;
-      setImgUrl(url);
-    } catch {
-      /* câmera indisponível — mantém frame anterior */
-    } finally {
-      fetchingRef.current = false;
-    }
-  };
-
-  const startPreview = () => {
-    setPreviewing(true);
-    setStatus("");
-    void fetchFrame();
-    intervalRef.current = setInterval(() => { void fetchFrame(); }, 1000);
-  };
-
-  const stopPreview = () => {
-    setPreviewing(false);
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-    if (prevBlobRef.current) { URL.revokeObjectURL(prevBlobRef.current); prevBlobRef.current = null; }
-    setImgUrl(null);
-    setStatus("");
-  };
-
-  useEffect(() => () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
-  }, []);
-
-  const enroll = async () => {
-    setBusy(true);
-    setStatus("Capturando…");
-    try {
-      await enrollFace(profile.id, profile.display_name || profile.id, token);
-      setStatus("✓ Rosto cadastrado.");
-      stopPreview();
-      load();
-    } catch (e) {
-      setStatus(`✗ ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async (userId: string, displayName: string) => {
-    if (!confirm(`Remover "${displayName}" do reconhecimento facial?`)) return;
-    try {
-      await deleteFace(userId, token);
-      load();
-    } catch (e) {
-      setStatus(`✗ ${(e as Error).message}`);
-    }
-  };
-
-  return (
-    <section className={cardClass}>
-      <h2 className="mb-1 text-lg font-semibold">Reconhecimento Facial</h2>
-      <p className={`${mutedTextClass} mb-4`}>
-        Cadastre seu rosto para o robô te reconhecer pela câmera.
-      </p>
-
-      {/* Lista de cadastrados */}
-      {faces.length === 0 ? (
-        <p className={`${mutedTextClass} mb-4`}>Nenhum rosto cadastrado.</p>
-      ) : (
-        <ul className="mb-4 flex flex-col gap-2">
-          {faces.map((f) => (
-            <li
-              key={f.user_id}
-              className="flex items-center gap-3 rounded-lg bg-black/20 px-3 py-2"
-            >
-              <UserRound size={20} className="shrink-0 text-slate-400" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{f.display_name || f.user_id}</div>
-                <div className="truncate text-xs text-slate-500">
-                  {f.user_id}
-                  {f.enrolled_at
-                    ? ` · ${new Date(f.enrolled_at * 1000).toLocaleDateString("pt-BR")}`
-                    : ""}
-                </div>
-              </div>
-              <button
-                className="shrink-0 text-slate-500 transition hover:text-red-400"
-                onClick={() => remove(f.user_id, f.display_name || f.user_id)}
-                type="button"
-              >
-                <Trash2 size={16} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* Preview da câmera */}
-      {previewing && (
-        <div className="mb-4">
-          {imgUrl ? (
-            <img
-              src={imgUrl}
-              alt="câmera"
-              className="w-full max-w-xs rounded-lg border border-slate-700 object-contain"
-              onError={() => setStatus("✗ Câmera indisponível.")}
-            />
-          ) : (
-            <div className="flex h-40 w-full max-w-xs items-center justify-center rounded-lg bg-black/30 text-slate-500">
-              <VideoOff size={32} />
-            </div>
-          )}
-          <p className={`mt-1 text-xs ${mutedTextClass}`}>
-            Posicione seu rosto e clique em Capturar.
-          </p>
-        </div>
-      )}
-
-      {/* Ações */}
-      <div className="flex flex-wrap items-center gap-3">
-        {!previewing ? (
-          <button className={primaryButtonClass} onClick={startPreview} type="button">
-            <Camera size={16} />
-            Abrir câmera
-          </button>
-        ) : (
-          <>
-            <button
-              className={primaryButtonClass}
-              disabled={busy}
-              onClick={enroll}
-              type="button"
-            >
-              <Camera size={16} />
-              Capturar e Salvar
-            </button>
-            <button className={secondaryButtonClass} onClick={stopPreview} type="button">
-              Cancelar
-            </button>
-          </>
-        )}
-        {status && <span className="text-sm text-slate-400">{status}</span>}
-      </div>
-
-      {previewing && (
-        <p className={`mt-2 text-xs ${mutedTextClass}`}>
-          Cadastrando como <strong className="text-slate-300">{profile.display_name || profile.id}</strong> ({profile.id})
-        </p>
-      )}
-    </section>
-  );
-}
 
 export function UserProfileView({
   onChange,
@@ -190,7 +11,6 @@ export function UserProfileView({
   persona,
   profile,
   status,
-  token,
 }: {
   onChange: (value: DevicePersona["user"]) => void;
   onSave: () => void;
@@ -312,10 +132,6 @@ export function UserProfileView({
           <InfoRow label="Robô" value={profile.robot_nickname || "--"} />
         </section>
       </aside>
-
-      <div className="lg:col-span-2">
-        <FaceEnrollmentCard token={token} profile={profile} />
-      </div>
     </div>
   );
 }

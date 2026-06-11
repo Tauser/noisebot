@@ -26,7 +26,6 @@ from .internal.ops.firmware_diag import FirmwareDiagClient
 from .internal.service import healthcheck_loop
 from .internal.transport import ConnectionSupervisor, create_transport_factory
 from .internal.vision.client import VisionClient
-from .internal.vision.face_service import FaceService
 from .internal.vision.face_loop import FaceLoop
 
 log = logging.getLogger(__name__)
@@ -164,25 +163,7 @@ class NoiseBotServer:
         if vision_client is None:
             log.info("FaceLoop: sem URL de firmware, desabilitado.")
             return None
-        face_svc = FaceService(
-            ollama_base_url=self._config.llm.ollama_base_url,
-            ollama_model=self._config.llm.model,
-        )
-
-        def _on_user_identified(user_id: str, display_name: str) -> None:
-            try:
-                self._app_state_store.update_device_persona({
-                    "user": {"id": user_id, "display_name": display_name}
-                })
-                log.info("FaceLoop: persona atualizada → user_id=%s name=%s", user_id, display_name)
-            except Exception as exc:
-                log.debug("FaceLoop: update_device_persona falhou: %s", exc)
-
-        return FaceLoop(
-            face_service=face_svc,
-            vision_client=vision_client,
-            on_user_identified=_on_user_identified,
-        )
+        return FaceLoop(vision_client=vision_client)
 
     def _build_supervisor(self) -> ConnectionSupervisor:
         return ConnectionSupervisor(
