@@ -56,6 +56,7 @@ typedef struct {
     bool            sd_degraded;     /**< SD não disponível */
     uint32_t        boot_count;      /**< Boots sem sucesso consecutivos */
     uint8_t         reset_reason;    /**< esp_reset_reason_t do último reset */
+    uint16_t        skipped_phases;  /**< Bitmask de fases puladas (1<<nb_boot_phase_t) */
 } nb_boot_status_t;
 
 /* ── API ─────────────────────────────────────────────────────────────────── */

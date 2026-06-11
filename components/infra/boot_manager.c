@@ -228,6 +228,7 @@ static void phase_ok(nb_boot_phase_t phase)
 
 static void phase_skip(nb_boot_phase_t phase, const char *reason)
 {
+    s_status.skipped_phases |= (uint16_t)(1u << (unsigned)phase);
     NB_LOGW(TAG, "FASE %s: PULADA (%s)", phase_name(phase), reason);
 }
 
@@ -1138,7 +1139,6 @@ static esp_err_t phase_safety(void)
     }
 
     phase_skip(NB_BOOT_PHASE_SAFETY, "motion desativado temporariamente");
-    phase_ok(NB_BOOT_PHASE_SAFETY);
     return ESP_OK;
 }
 
@@ -1432,6 +1432,16 @@ static esp_err_t phase_motion(void)
 static esp_err_t phase_complete(void)
 {
     phase_enter(NB_BOOT_PHASE_COMPLETE);
+
+    /* Resumo de fases puladas — visibilidade de capability degradada (F06). */
+    if (s_status.skipped_phases != 0u) {
+        NB_LOGW(TAG, "Fases puladas neste boot:");
+        for (int p = 0; p <= NB_BOOT_PHASE_COMPLETE; p++) {
+            if (s_status.skipped_phases & (uint16_t)(1u << (unsigned)p)) {
+                NB_LOGW(TAG, "  PULADA: %s", phase_name((nb_boot_phase_t)p));
+            }
+        }
+    }
 
     /* Definir modo de operação com base no estado do boot. */
     if (s_status.safe_mode) {

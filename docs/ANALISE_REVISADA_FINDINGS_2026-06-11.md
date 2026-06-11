@@ -310,3 +310,4 @@ As análises anteriores usaram o CLAUDE.md como referência implícita; esta rev
 | R2 | F08, F44, F40 | ✓ FEITO (sessão 2026-06-11) |
 | R3 | F09, F14, F18, F21, F46 | ✓ FEITO (sessão 2026-06-11) |
 | R4 | F43, F45, F47, F48, F49, F13, F20, F22, F28 | ✓ FEITO (sessão 2026-06-11) |
+| R5 | F06 | ✓ FEITO (sessão 2026-06-11) |
