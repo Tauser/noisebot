@@ -450,11 +450,9 @@ static void on_camera_event(nb_camera_event_t evt)
 {
     switch (evt) {
         case NB_CAMERA_EVT_SESSION_ACTIVE:
-            ui_overlay_camera_set(true);
             idle_service_set_camera_active(true);
             break;
         case NB_CAMERA_EVT_SESSION_INACTIVE:
-            ui_overlay_camera_set(false);
             idle_service_set_camera_active(false);
             break;
         default:
