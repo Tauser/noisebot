@@ -99,7 +99,7 @@ class OpsHttpServer:
         self._web_app = self._build_app()
 
     def _build_app(self) -> web.Application:
-        wa = web.Application(middlewares=[self._error_middleware])
+        wa = web.Application(middlewares=[self._error_middleware, self._get_token_middleware])
         wa.router.add_get("/",                self._get_root)
         wa.router.add_get("/health",          self._get_health)
         wa.router.add_get("/ai/status",       self._get_ai_status)
@@ -178,9 +178,13 @@ class OpsHttpServer:
         wa.router.add_post("/api/device/audio/codec-v2/transport/disable", self._post_device_audio_codec_v2_transport_disable)
         wa.router.add_post("/api/device/audio/codec-v2/overflow-test", self._post_device_audio_codec_v2_overflow_test)
         wa.router.add_get("/api/vision/status", self._get_vision_status)
+        wa.router.add_get("/api/vision/pipeline/status", self._get_vision_pipeline_status)
         wa.router.add_get("/api/vision/observe", self._get_vision_observe)
         wa.router.add_get("/api/vision/analyze", self._get_vision_analyze)
         wa.router.add_get("/api/vision/snapshot", self._get_vision_snapshot)
+        wa.router.add_get("/api/vision/faces", self._get_vision_faces)
+        wa.router.add_post("/api/vision/faces/enroll", self._post_vision_faces_enroll)
+        wa.router.add_delete("/api/vision/faces/{user_id}", self._delete_vision_face)
         return wa
 
     # -- Lifecycle -------------------------------------------------------------
@@ -212,6 +216,31 @@ class OpsHttpServer:
         except Exception as exc:
             log.exception("Ops API: erro não tratado em %s %s", request.method, request.path)
             return _json(error_response(str(exc), code=500), status=500)
+
+    # Paths sempre acessiveis sem token, mesmo com NOISEBOT_OPS_GET_TOKEN=1
+    # (monitoramento/health-check basico).
+    _GET_TOKEN_EXEMPT_PATHS = frozenset({"/", "/health"})
+
+    @web.middleware
+    async def _get_token_middleware(self, request: web.Request, handler) -> web.Response:
+        """SF-11: opcionalmente exige token tambem em GET.
+
+        Por padrao GET nao exige token (bind 127.0.0.1 + allowlist ja
+        protegem). Em ambientes com allowlist aberta para IPs externos,
+        defina NOISEBOT_OPS_GET_TOKEN=1 para exigir token tambem nos GETs
+        (exceto "/" e "/health").
+        """
+        if (
+            request.method == "GET"
+            and request.path not in self._GET_TOKEN_EXEMPT_PATHS
+            and os.environ.get("NOISEBOT_OPS_GET_TOKEN", "").strip() == "1"
+            and not check_token(request, self._token)
+        ):
+            raise web.HTTPUnauthorized(
+                text=json.dumps(error_response("token inválido ou ausente", 401)),
+                content_type="application/json",
+            )
+        return await handler(request)
 
     # -- Auth helper -----------------------------------------------------------
 
@@ -852,6 +881,22 @@ class OpsHttpServer:
             "available": self._vision_client is not None,
             "source": "firmware_http" if self._vision_client is not None else "unconfigured",
         })
+
+    async def _get_vision_pipeline_status(self, request: web.Request) -> web.Response:
+        pipeline = getattr(self._app, "_vision_pipeline", None)
+        if pipeline is None:
+            return _json({"state": "DISABLED", "detector_available": False,
+                          "adapter_connected": False})
+        return _json(pipeline.status_dict())
+
+    async def _get_vision_faces(self, request: web.Request) -> web.Response:
+        return _json({"faces": []})
+
+    async def _post_vision_faces_enroll(self, request: web.Request) -> web.Response:
+        return _json(error_response("reconhecimento facial ainda não implementado"), status=501)
+
+    async def _delete_vision_face(self, request: web.Request) -> web.Response:
+        return _json(error_response("reconhecimento facial ainda não implementado"), status=501)
 
     async def _get_vision_observe(self, request: web.Request) -> web.Response:
         if self._vision_client is None:

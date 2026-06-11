@@ -76,6 +76,7 @@ class FaceLoop:
         analysis = await asyncio.to_thread(analyze_jpeg, jpeg, observation)
 
         if not analysis.face_detected or analysis.primary_face is None:
+            await self._send_face_box(0, 0, 0, 0)
             return
 
         face = analysis.primary_face

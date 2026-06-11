@@ -1,7 +1,7 @@
-"""Local deterministic PT-BR intents for the NoiseBot server.
+"""Local PT-BR intents for the NoiseBot server.
 
-Intents locais sao deterministicos; clima usa consulta HTTP curta quando
-solicitado explicitamente.
+A maioria dos intents é determinística (sem I/O). Handlers de clima e visão
+fazem I/O bloqueante — o orchestrator os chama via asyncio.to_thread().
 """
 from __future__ import annotations
 
@@ -483,9 +483,13 @@ _STOP_AFTER_BARGE_TERMS = (
 
 
 class LocalIntentProvider:
-    """Provider de intents locais PT-BR, determinístico, sem I/O.
+    """Provider de intents locais PT-BR, determinístico.
 
     match() retorna IntentResolved com intent_name=None se nao houver intent local.
+
+    Aviso: alguns handlers (weather, vision) fazem I/O bloqueante (rede/HTTP).
+    O orchestrator chama match() via asyncio.to_thread() para nao bloquear o
+    event loop (ver SF-01 em docs/ANALISE_SERVER_FINDINGS_2026-06-11.md).
     """
 
     def __init__(self, vision_client: VisionClient | None = None) -> None:

@@ -25,8 +25,9 @@ from .internal.ops.app_state import AppStateStore
 from .internal.ops.firmware_diag import FirmwareDiagClient
 from .internal.service import healthcheck_loop
 from .internal.transport import ConnectionSupervisor, create_transport_factory
+from .internal.vision.analysis import init_analyzer
 from .internal.vision.client import VisionClient
-from .internal.vision.face_loop import FaceLoop
+from .internal.vision.vision_pipeline import VisionPipeline
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ class NoiseBotServer:
         if not config.dry_run and (transport.use_tcp or transport.uart):
             self._supervisor = self._build_supervisor()
 
-        self._face_loop = self._build_face_loop()
+        self._vision_pipeline = self._build_vision_pipeline()
 
     def _get_adapter(self) -> Any | None:
         if self._supervisor is None:
@@ -158,12 +159,12 @@ class NoiseBotServer:
             port=self._config.ops.port,
         )
 
-    def _build_face_loop(self) -> FaceLoop | None:
+    def _build_vision_pipeline(self) -> VisionPipeline | None:
         vision_client = VisionClient.from_config(self._config)
         if vision_client is None:
-            log.info("FaceLoop: sem URL de firmware, desabilitado.")
+            log.info("VisionPipeline: sem URL de firmware, desabilitado.")
             return None
-        return FaceLoop(vision_client=vision_client)
+        return VisionPipeline(vision_client=vision_client, get_adapter=self._get_adapter)
 
     def _build_supervisor(self) -> ConnectionSupervisor:
         return ConnectionSupervisor(
@@ -201,14 +202,15 @@ class NoiseBotServer:
                 name="nb_audio_codec_default",
             )
         )
-        if self._face_loop is not None:
-            self._face_loop.start()
-            self._tasks.append(
-                asyncio.create_task(
-                    self._wire_face_loop_adapter_on_connect(),
-                    name="nb_face_loop_adapter",
-                )
-            )
+        if _env_bool("NOISEBOT_VISION", False):
+            try:
+                await asyncio.to_thread(init_analyzer)
+                log.info("Vision: YuNet inicializado.")
+            except RuntimeError as exc:
+                log.error("Vision: inicialização falhou — %s", exc)
+
+        if self._vision_pipeline is not None:
+            self._vision_pipeline.start()
 
         try:
             await self._ops_server.start()
@@ -237,8 +239,8 @@ class NoiseBotServer:
         self._running = False
         log.info("NoiseBotServer: encerrando...")
 
-        if self._face_loop is not None:
-            self._face_loop.stop()
+        if self._vision_pipeline is not None:
+            self._vision_pipeline.stop()
 
         await self._ops_server.stop()
 
@@ -260,18 +262,6 @@ class NoiseBotServer:
         try:
             async for _event in EventBus.iter_queue(events):
                 await self._apply_default_audio_codec()
-        finally:
-            self._bus.unsubscribe(events)
-
-    async def _wire_face_loop_adapter_on_connect(self) -> None:
-        """Inject the FirmwareAdapter into FaceLoop each time firmware connects."""
-        events = self._bus.subscribe(FirmwareConnected, maxsize=4)
-        try:
-            async for _event in EventBus.iter_queue(events):
-                adapter = self._get_adapter()
-                if adapter is not None and self._face_loop is not None:
-                    self._face_loop.set_adapter(adapter)
-                    log.info("FaceLoop: adapter injetado apos conexao.")
         finally:
             self._bus.unsubscribe(events)
 

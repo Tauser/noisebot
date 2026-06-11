@@ -4,14 +4,22 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .client import VisionObservation
+
+log = logging.getLogger(__name__)
+
+_YUNET_MODEL_FILENAME = "face_detection_yunet_2023mar.onnx"
+_DEFAULT_MODEL_DIR = Path(__file__).parent.parent.parent / "resource" / "models"
+
+# Loaded once by init_analyzer(); None means detector is unavailable.
+_detector: Any = None
 
 
 @dataclass(frozen=True)
@@ -53,14 +61,71 @@ class VisionAnalysis:
         return (self.primary_face.center_y / float(self.observation.height)) * 2.0 - 1.0
 
 
-def analyze_jpeg(jpeg_bytes: bytes, observation: "VisionObservation") -> VisionAnalysis:
+def init_analyzer(model_path: Path | None = None) -> None:
+    """Load YuNet detector once at startup. Raises RuntimeError on any failure.
+
+    Call this early (e.g., in NoiseBotServer.run()) when NOISEBOT_VISION=1 so
+    that a missing model or opencv import fails loudly at boot, not silently
+    per frame.
+    """
+    global _detector
+    try:
+        import cv2  # type: ignore[import]
+    except ImportError as exc:
+        raise RuntimeError(
+            "opencv indisponível — instale com: pip install -e .[vision]"
+        ) from exc
+
+    path = model_path or _default_model_path()
+    if not path.exists():
+        raise RuntimeError(
+            f"Modelo YuNet não encontrado em '{path}'. "
+            "Baixe 'face_detection_yunet_2023mar.onnx' de "
+            "https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet "
+            "e coloque em server/noisebot_server/resource/models/"
+        )
+
+    det = cv2.FaceDetectorYN.create(
+        str(path),
+        "",
+        (240, 240),
+        score_threshold=0.6,
+        nms_threshold=0.3,
+        top_k=5,
+    )
+    _detector = det
+    log.info("YuNet inicializado: %s", path.name)
+
+
+def is_detector_available() -> bool:
+    return _detector is not None
+
+
+def _default_model_path() -> Path:
+    env = os.environ.get("NOISEBOT_YUNET_MODEL_PATH", "").strip()
+    if env:
+        return Path(env)
+    return _DEFAULT_MODEL_DIR / _YUNET_MODEL_FILENAME
+
+
+def analyze_jpeg(jpeg_bytes: bytes, observation: "VisionObservation") -> "VisionAnalysis":
+    if _detector is None:
+        return VisionAnalysis(
+            observation=observation,
+            detector="yunet",
+            detector_available=False,
+            face_detected=False,
+            face_count=0,
+            error="detector_not_initialized",
+        )
+
     try:
         import cv2  # type: ignore[import]
         import numpy as np  # type: ignore[import]
     except Exception as exc:
         return VisionAnalysis(
             observation=observation,
-            detector="opencv_haar",
+            detector="yunet",
             detector_available=False,
             face_detected=False,
             face_count=0,
@@ -72,38 +137,28 @@ def analyze_jpeg(jpeg_bytes: bytes, observation: "VisionObservation") -> VisionA
     if image is None:
         return VisionAnalysis(
             observation=observation,
-            detector="opencv_haar",
+            detector="yunet",
             detector_available=True,
             face_detected=False,
             face_count=0,
             error="jpeg_decode_failed",
         )
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    cascade = cv2.CascadeClassifier(cascade_path)
-    if cascade.empty():
-        return VisionAnalysis(
-            observation=observation,
-            detector="opencv_haar",
-            detector_available=False,
-            face_detected=False,
-            face_count=0,
-            error="cascade_unavailable",
-        )
+    h, w = image.shape[:2]
+    _detector.setInputSize((w, h))
+    _, faces = _detector.detect(image)
 
-    faces = cascade.detectMultiScale(
-        gray,
-        scaleFactor=1.1,
-        minNeighbors=4,
-        minSize=(36, 36),
-        flags=cv2.CASCADE_SCALE_IMAGE,
-    )
-    boxes = [FaceBox(int(x), int(y), int(w), int(h)) for (x, y, w, h) in faces]
-    primary = max(boxes, key=lambda box: box.width * box.height) if boxes else None
+    boxes: list[FaceBox] = []
+    if faces is not None:
+        for face in faces:
+            fx, fy, fw, fh = int(face[0]), int(face[1]), int(face[2]), int(face[3])
+            if fw > 0 and fh > 0:
+                boxes.append(FaceBox(fx, fy, fw, fh))
+
+    primary = max(boxes, key=lambda b: b.width * b.height) if boxes else None
     return VisionAnalysis(
         observation=observation,
-        detector="opencv_haar",
+        detector="yunet",
         detector_available=True,
         face_detected=primary is not None,
         face_count=len(boxes),
@@ -119,7 +174,7 @@ _VISION_DESCRIBE_PROMPT = (
 )
 
 _VISION_API_TIMEOUT_S = 8.0
-_VISION_MAX_JPEG_BYTES = 1_000_000  # 1 MB — sane limit before base64
+_VISION_MAX_JPEG_BYTES = 1_000_000
 
 
 def describe_with_vision_api(
@@ -129,11 +184,10 @@ def describe_with_vision_api(
     base_url: str = "https://api.openai.com/v1",
     model: str = "gpt-4o-mini",
 ) -> str | None:
-    """Call an OpenAI-compatible vision API to describe the JPEG content.
+    """Call an OpenAI-compatible vision API to describe the JPEG content."""
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request, urlopen
 
-    Returns a Portuguese description string, or None on any failure.
-    Uses urllib so it is safe to call from a thread (no event loop required).
-    """
     key = api_key or os.environ.get("OPENAI_API_KEY", "")
     if not key or not jpeg_bytes:
         return None
@@ -176,4 +230,11 @@ def describe_with_vision_api(
         return None
 
 
-__all__ = ["FaceBox", "VisionAnalysis", "analyze_jpeg", "describe_with_vision_api"]
+__all__ = [
+    "FaceBox",
+    "VisionAnalysis",
+    "analyze_jpeg",
+    "describe_with_vision_api",
+    "init_analyzer",
+    "is_detector_available",
+]

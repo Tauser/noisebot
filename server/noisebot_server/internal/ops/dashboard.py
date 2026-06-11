@@ -163,6 +163,12 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
 .tool-desc{font-size:12px;color:var(--text)}
 .tool-args{font-size:11px;color:var(--muted)}
 
+/* Vision card */
+.vision-frame{position:relative;display:inline-block;background:#000;border-radius:4px;overflow:hidden}
+.vision-frame img{display:block;width:240px;height:240px;object-fit:contain}
+.vision-frame canvas{position:absolute;top:0;left:0;width:240px;height:240px;pointer-events:none}
+.vision-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+
 /* Face enrollment */
 .face-list{display:flex;flex-direction:column;gap:6px;margin-bottom:4px}
 .face-item{display:flex;align-items:center;gap:8px;padding:7px 10px;
@@ -400,6 +406,53 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
       <button class="btn btn-secondary" disabled>
         Próximo endpoint
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- Vision Card -->
+<div class="card">
+  <h2>Câmera e Visão</h2>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+    <div>
+      <div class="vision-frame">
+        <img id="vision-snapshot" src="" alt="câmera" onerror="this.style.opacity='.3'">
+        <canvas id="vision-canvas" width="240" height="240"></canvas>
+      </div>
+      <div id="vision-frame-age" class="age" style="margin-top:4px;text-align:center">—</div>
+    </div>
+    <div style="flex:1;min-width:180px">
+      <div class="sg" style="margin-bottom:8px">
+        <div class="sg-cell">
+          <div class="sg-label">Pipeline</div>
+          <div class="sg-value" id="vision-state">—</div>
+        </div>
+        <div class="sg-cell">
+          <div class="sg-label">Detector</div>
+          <div id="vision-detector" class="pill pill-off">—</div>
+        </div>
+        <div class="sg-cell">
+          <div class="sg-label">Firmware</div>
+          <div id="vision-adapter" class="pill pill-off">—</div>
+        </div>
+        <div class="sg-cell">
+          <div class="sg-label">Detecções</div>
+          <div class="sg-value" id="vision-detections">0</div>
+        </div>
+        <div class="sg-cell">
+          <div class="sg-label">Gaze env.</div>
+          <div class="sg-value" id="vision-gaze-sends">0</div>
+        </div>
+        <div class="sg-cell">
+          <div class="sg-label">Erros cap.</div>
+          <div class="sg-value" id="vision-cap-errors">0</div>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--muted)">
+        Imagem atualizada a 1 Hz. Rectângulo azul = último face box enviado ao firmware.
+        Para habilitar detecção: <code style="font-family:var(--mono)">NOISEBOT_VISION=1</code>
+        e instalar <code style="font-family:var(--mono)">pip install -e .[vision]</code>.
+      </p>
     </div>
   </div>
 </div>
@@ -1234,12 +1287,93 @@ document.getElementById('raw-details').addEventListener('toggle', function() {
   if (this.open) renderRaw();
 });
 
+// ── Vision card ───────────────────────────────────────────────────────────
+let _visionFrameTs = 0;
+let _visionLastFrame = 0;
+let _visionTimer = null;
+let _lastFaceBox = null;
+
+function updateVisionCard() {
+  const img = document.getElementById('vision-snapshot');
+  if (img) {
+    _visionFrameTs = Date.now();
+    img.onload = () => { _visionLastFrame = Date.now(); drawFaceBox(); };
+    img.src = '/api/vision/snapshot?t=' + _visionFrameTs;
+  }
+  fetch('/api/vision/pipeline/status')
+    .then(r => r.ok ? r.json() : null)
+    .then(data => { if (data) renderVisionStatus(data); })
+    .catch(() => {});
+}
+
+function renderVisionStatus(d) {
+  const stateMap = {IDLE:'pill-off', ACQUIRE:'pill-warn', TRACK:'pill-ok', LOST:'pill-err', DISABLED:'pill-off'};
+  const stEl = document.getElementById('vision-state');
+  if (stEl) {
+    stEl.textContent = d.state || '—';
+  }
+  const detEl = document.getElementById('vision-detector');
+  if (detEl) {
+    detEl.className = 'pill ' + (d.detector_available ? 'pill-ok' : 'pill-err');
+    detEl.textContent = d.detector_available ? 'YuNet OK' : 'Indisponível';
+  }
+  const adEl = document.getElementById('vision-adapter');
+  if (adEl) {
+    adEl.className = 'pill ' + (d.adapter_connected ? 'pill-ok' : 'pill-off');
+    adEl.textContent = d.adapter_connected ? 'Conectado' : 'Desconectado';
+  }
+  const dcEl = document.getElementById('vision-detections');
+  if (dcEl) dcEl.textContent = d.detections ?? '0';
+  const gsEl = document.getElementById('vision-gaze-sends');
+  if (gsEl) gsEl.textContent = d.gaze_sends ?? '0';
+  const ceEl = document.getElementById('vision-cap-errors');
+  if (ceEl) ceEl.textContent = d.capture_errors ?? '0';
+  _lastFaceBox = d.last_face_box || null;
+  drawFaceBox();
+}
+
+function drawFaceBox() {
+  const canvas = document.getElementById('vision-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 240, 240);
+  const fb = _lastFaceBox;
+  if (!fb || !fb.w) return;
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(fb.x, fb.y, fb.w, fb.h);
+}
+
+setInterval(() => {
+  const ageEl = document.getElementById('vision-frame-age');
+  if (!ageEl) return;
+  if (!_visionLastFrame) { ageEl.textContent = 'sem frame'; return; }
+  const age = Math.round((Date.now() - _visionLastFrame) / 1000);
+  ageEl.className = 'age' + (age > 5 ? ' age-stale' : '');
+  ageEl.textContent = 'há ' + age + 's';
+}, 1000);
+
+function startVisionPolling() {
+  if (_visionTimer) return;
+  updateVisionCard();
+  _visionTimer = setInterval(updateVisionCard, 1000);
+}
+function stopVisionPolling() {
+  clearInterval(_visionTimer);
+  _visionTimer = null;
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopVisionPolling();
+  else startVisionPolling();
+});
+
 // ── Init ──────────────────────────────────────────────────────────────────
 updateTokenStatus();
 populateModels('openai', null);
 doRefresh();
 scheduleRefresh();
 loadFaces();
+startVisionPolling();
 </script>
 </body>
 </html>"""
