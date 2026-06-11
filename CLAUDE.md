@@ -103,23 +103,30 @@ Layer 8: Futuro     (camera, imu, battery)
 ```
 components/
 ├── infra/          # Layer 2+3: boot_manager, logger, event_bus,
-│                   #            config_manager, persistence_mgr,
+│                   #            config_manager, nvs_hal, persistence_mgr,
 │                   #            watchdog_service, error_policy, nb_events.h,
+│                   #            nb_task_config.h, nb_config_keys.h,
 │                   #            motion_safety, power_monitor (Layer 3 físico),
-│                   #            web_service, bridge_service, wifi_service,
-│                   #            diagnostics_service
+│                   #            web_service, web_ota, bridge_service,
+│                   #            wifi_service, diagnostics_service
 ├── nb_hal/         # Layer 1: display_hal (.cpp + .h), servo_hal,
 │                   #          audio_hal, led_hal, touch_hal, sd_hal,
-│                   #          camera_hal (preparado; DVP reservado)
+│                   #          i2c_hal, camera_hal (preparado; DVP reservado),
+│                   #          board_caps, nb_hw_config.h
 ├── services/       # Layer 4-5: render_service, motion_service,
 │                   #             audio_service (*_v2 canônico), led_service,
-│                   #             touch_service, gaze_service, idle_service,
-│                   #             expression_service, conductor,
-│                   #             vision_preview_service, ui_overlay_service,
-│                   #             agenda_service, circadian_service,
-│                   #             attention_service, rhythm_service,
-│                   #             time_service, wake_service
-├── behavior/       # Layer 6: behavior_engine, state_machine, emotion_model
+│                   #             touch_service, touch_semantic_service,
+│                   #             gaze_service, idle_service,
+│                   #             expression_service, synth_service, conductor,
+│                   #             vision_preview_service, vision_service,
+│                   #             camera_service, ui_overlay_service,
+│                   #             agenda_service, schedule_service,
+│                   #             circadian_service, attention_service,
+│                   #             rhythm_service, sound_analysis_service,
+│                   #             time_service, wake_service,
+│                   #             vad_semantic_service
+├── behavior/       # Layer 6: behavior_engine, state_machine, emotion_model,
+│                   #           boredom_service, voice_controller
 └── persona/        # Layer 7: persona_service, long_term_memory
 ```
 
