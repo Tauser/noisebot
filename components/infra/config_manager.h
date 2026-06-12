@@ -103,6 +103,18 @@ uint32_t  config_get_idle_timeout_s(void);
  */
 esp_err_t config_set_idle_timeout_s(uint32_t seconds);
 
+/* ── Presença Social (SPEC_PRESENCA_SOCIAL §2.3) ─────────────────────────── */
+/* Todos os timers são u32 em milissegundos. Retornam o default NVS quando a
+ * chave ainda não foi escrita (additive — não requer migração de schema). */
+
+uint32_t  config_get_presence_hold_ms(void);   /* hold antes de LEFT_RECENTLY  */
+uint32_t  config_get_presence_maybe_ms(void);  /* MAYBE_SOMEONE timeout         */
+uint32_t  config_get_presence_heur_ms(void);   /* heurística offline → PRESENT  */
+uint32_t  config_get_presence_lrec_ms(void);   /* LEFT_RECENTLY → AWAY          */
+uint32_t  config_get_presence_away_ms(void);   /* AWAY → ALONE_SETTLED          */
+uint32_t  config_get_presence_engd_ms(void);   /* PRESENT → ENGAGED             */
+uint32_t  config_get_presence_rtn_ms(void);    /* ausência mínima p/ RETURNED   */
+
 /* ── Estado de serviços (nb_svc) ─────────────────────────────────────────── */
 
 uint8_t   config_get_last_emotion(void);

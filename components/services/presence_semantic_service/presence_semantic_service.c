@@ -29,6 +29,7 @@
 #include "event_bus.h"
 #include "nb_events.h"
 #include "bridge_service.h"
+#include "config_manager.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
@@ -37,14 +38,14 @@
 
 #define TAG "nb_presence"
 
-/* Timers de transição (ms) — derivados da spec §2.3 */
-#define HOLD_MS              5000U    /* hold antes de LEFT_RECENTLY              */
-#define MAYBE_TIMEOUT_MS     5000U    /* MAYBE_SOMEONE sem confirmação → NO_ONE   */
-#define HEURISTIC_CONFIRM_MS 10000U   /* heurística sustentada offline → PRESENT  */
-#define LEFT_RECENTLY_MS     30000U   /* LEFT_RECENTLY → AWAY                     */
-#define AWAY_MS             120000U   /* AWAY → ALONE_SETTLED (após LEFT_RECENTLY) */
-#define ENGAGED_MS          180000U   /* PRESENT → ENGAGED (3 min)                */
-#define RETURNED_MIN_MS      60000U   /* ausência mínima para evento RETURNED      */
+/* Timers carregados do NVS no init (spec §2.3 — "todos em config NVS") */
+static uint32_t s_cfg_hold_ms          = 5000U;
+static uint32_t s_cfg_maybe_ms         = 5000U;
+static uint32_t s_cfg_heur_ms          = 10000U;
+static uint32_t s_cfg_lrec_ms          = 30000U;
+static uint32_t s_cfg_away_ms          = 120000U;
+static uint32_t s_cfg_engd_ms          = 180000U;
+static uint32_t s_cfg_rtn_ms           = 60000U;
 
 static const char * const k_state_names[7] = {
     "NO_ONE", "MAYBE", "PRESENT", "ENGAGED",
@@ -170,7 +171,7 @@ void presence_semantic_tick(uint32_t dt_ms)
         break;
 
     /* ── ALONE_SETTLED ──────────────────────────────────────────────────── */
-    /* Ausência total >> RETURNED_MIN_MS (≥ 150s): retorno vai direto para
+    /* Ausência total >> s_cfg_rtn_ms (≥ 150s): retorno vai direto para
      * PRESENT com RETURNED, sem passar por MAYBE_SOMEONE (spec §2.3). */
     case PRESENCE_ALONE_SETTLED:
         if (signal) {
@@ -188,7 +189,7 @@ void presence_semantic_tick(uint32_t dt_ms)
     case PRESENCE_MAYBE_SOMEONE:
         if (!signal) {
             s_maybe_elapsed_ms += dt_ms;
-            if (s_maybe_elapsed_ms >= MAYBE_TIMEOUT_MS) {
+            if (s_maybe_elapsed_ms >= s_cfg_maybe_ms) {
                 ESP_LOGD(TAG, "MAYBE timeout → NO_ONE");
                 s_state            = PRESENCE_NO_ONE;
                 s_maybe_elapsed_ms = 0U;
@@ -208,9 +209,9 @@ void presence_semantic_tick(uint32_t dt_ms)
             publish_transition(NB_EVT_SOCIAL_PRESENCE_CONFIRMED,
                                PRESENCE_MAYBE_SOMEONE, PRESENCE_PRESENT);
         } else {
-            /* Só heurística: aguarda HEURISTIC_CONFIRM_MS sustentado */
+            /* Só heurística: aguarda s_cfg_heur_ms sustentado */
             s_heur_conf_ms += dt_ms;
-            if (s_heur_conf_ms >= HEURISTIC_CONFIRM_MS) {
+            if (s_heur_conf_ms >= s_cfg_heur_ms) {
                 s_state                = PRESENCE_PRESENT;
                 s_confidence_confirmed = false;
                 s_engaged_ms           = 0U;
@@ -230,7 +231,7 @@ void presence_semantic_tick(uint32_t dt_ms)
             if (face_valid) s_confidence_confirmed = true;
         } else {
             s_hold_ms += dt_ms;
-            if (s_hold_ms >= HOLD_MS) {
+            if (s_hold_ms >= s_cfg_hold_ms) {
                 s_state         = PRESENCE_LEFT_RECENTLY;
                 s_since_left_ms = 0U;
                 s_engaged_ms    = 0U;
@@ -241,7 +242,7 @@ void presence_semantic_tick(uint32_t dt_ms)
             }
         }
         /* Verifica transição para ENGAGED somente se ainda em PRESENT */
-        if (s_state == PRESENCE_PRESENT && s_engaged_ms >= ENGAGED_MS) {
+        if (s_state == PRESENCE_PRESENT && s_engaged_ms >= s_cfg_engd_ms) {
             s_state = PRESENCE_ENGAGED;
             publish_transition(NB_EVT_SOCIAL_PRESENCE_ENGAGED,
                                PRESENCE_PRESENT, PRESENCE_ENGAGED);
@@ -255,7 +256,7 @@ void presence_semantic_tick(uint32_t dt_ms)
             if (face_valid) s_confidence_confirmed = true;
         } else {
             s_hold_ms += dt_ms;
-            if (s_hold_ms >= HOLD_MS) {
+            if (s_hold_ms >= s_cfg_hold_ms) {
                 s_state         = PRESENCE_LEFT_RECENTLY;
                 s_since_left_ms = 0U;
                 s_hold_ms       = 0U;
@@ -279,7 +280,7 @@ void presence_semantic_tick(uint32_t dt_ms)
             publish_transition(NB_EVT_SOCIAL_PRESENCE_CONFIRMED, old, PRESENCE_PRESENT);
             break;
         }
-        if (s_since_left_ms >= LEFT_RECENTLY_MS) {
+        if (s_since_left_ms >= s_cfg_lrec_ms) {
             s_state = PRESENCE_AWAY;
             s_away_count++;
             publish_transition(NB_EVT_SOCIAL_PRESENCE_AWAY,
@@ -297,7 +298,7 @@ void presence_semantic_tick(uint32_t dt_ms)
             s_hold_ms            = 0U;
             s_engaged_ms         = 0U;
             if (face_valid) s_confidence_confirmed = true;
-            if (s_since_left_ms >= RETURNED_MIN_MS) {
+            if (s_since_left_ms >= s_cfg_rtn_ms) {
                 s_returned_count++;
                 publish_transition(NB_EVT_SOCIAL_PRESENCE_RETURNED, old, PRESENCE_PRESENT);
             } else {
@@ -307,7 +308,7 @@ void presence_semantic_tick(uint32_t dt_ms)
             break;
         }
         /* s_since_left_ms inclui tempo em LEFT_RECENTLY + AWAY */
-        if (s_since_left_ms >= LEFT_RECENTLY_MS + AWAY_MS) {
+        if (s_since_left_ms >= s_cfg_lrec_ms + s_cfg_away_ms) {
             s_state = PRESENCE_ALONE_SETTLED;
             publish_transition(NB_EVT_SOCIAL_PRESENCE_SETTLED,
                                PRESENCE_AWAY, PRESENCE_ALONE_SETTLED);
@@ -324,6 +325,20 @@ void presence_semantic_tick(uint32_t dt_ms)
 esp_err_t presence_semantic_init(void)
 {
     esp_err_t err;
+
+    /* Carrega timers do NVS; usa defaults se as chaves ainda não existem. */
+    s_cfg_hold_ms  = config_get_presence_hold_ms();
+    s_cfg_maybe_ms = config_get_presence_maybe_ms();
+    s_cfg_heur_ms  = config_get_presence_heur_ms();
+    s_cfg_lrec_ms  = config_get_presence_lrec_ms();
+    s_cfg_away_ms  = config_get_presence_away_ms();
+    s_cfg_engd_ms  = config_get_presence_engd_ms();
+    s_cfg_rtn_ms   = config_get_presence_rtn_ms();
+    ESP_LOGI(TAG, "timers: hold=%lu maybe=%lu heur=%lu lrec=%lu away=%lu engd=%lu rtn=%lu",
+             (unsigned long)s_cfg_hold_ms, (unsigned long)s_cfg_maybe_ms,
+             (unsigned long)s_cfg_heur_ms, (unsigned long)s_cfg_lrec_ms,
+             (unsigned long)s_cfg_away_ms, (unsigned long)s_cfg_engd_ms,
+             (unsigned long)s_cfg_rtn_ms);
 
     err = nb_event_subscribe(NB_EVT_BRIDGE_FACE_BOX, on_face_box, NULL, NULL);
     if (err != ESP_OK)

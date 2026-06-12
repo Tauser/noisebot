@@ -294,6 +294,13 @@ class OpsHttpServer:
         if adapter is not None:
             capabilities = getattr(adapter, "peer_capabilities", {}) or {}
 
+        orchestrator = getattr(self._app, "_orchestrator", None)
+        social_presence = (
+            orchestrator.get_social_presence()
+            if orchestrator is not None and hasattr(orchestrator, "get_social_presence")
+            else None
+        )
+
         return _json(ai_status_response(
             connected=live_connected,
             pipeline="v2",
@@ -318,6 +325,7 @@ class OpsHttpServer:
                 "startup_chunks": SAY_STARTUP_CHUNKS,
                 "startup_interval_ms": round(SAY_STARTUP_INTERVAL_S * 1000.0, 3),
             },
+            social_presence=social_presence,
         ))
 
     async def _get_ai_metrics(self, request: web.Request) -> web.Response:

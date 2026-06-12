@@ -38,6 +38,8 @@
 #include "long_term_memory.h"
 #include "nb_config_keys.h"
 #include "bridge_service.h"
+#include "presence_semantic_service.h"
+#include "behavior_engine.h"
 #include "wake_service.h"
 #include "audio_processor_service.h"
 #include "audio_io_service_v2.h"
@@ -4371,7 +4373,18 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
         snprintf(rx_buf, sizeof(rx_buf), "%lu", (unsigned long)rx_age);
     }
 
-    char buf[640];
+    presence_diag_t pdiag = presence_semantic_get_diag();
+    uint32_t ping_total = 0U, ping_suppressed = 0U, ping_hour = 0U;
+    behavior_engine_get_ping_stats(&ping_total, &ping_suppressed, &ping_hour);
+
+    static const char * const k_pstate[7] = {
+        "NO_ONE","MAYBE_SOMEONE","PRESENT","ENGAGED",
+        "LEFT_RECENTLY","AWAY","ALONE_SETTLED"
+    };
+    const char *pstate_str = (pdiag.state <= PRESENCE_ALONE_SETTLED)
+                             ? k_pstate[pdiag.state] : "UNKNOWN";
+
+    char buf[900];
     snprintf(buf, sizeof(buf),
         "{"
         "\"version\":\"%.31s\","
@@ -4387,7 +4400,19 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
         "\"uptime_s\":%lu,"
         "\"touch_count\":%lu,"
         "\"sessions\":%lu,"
-        "\"hours_alive\":%lu"
+        "\"hours_alive\":%lu,"
+        "\"social_presence\":{"
+            "\"state\":\"%s\","
+            "\"session_s\":%lu,"
+            "\"absence_s\":%lu,"
+            "\"conf\":%s,"
+            "\"confirmed\":%lu,"
+            "\"returned\":%lu,"
+            "\"away\":%lu,"
+            "\"ping_total\":%lu,"
+            "\"ping_hour\":%lu,"
+            "\"ping_sup\":%lu"
+        "}"
         "}",
         d->version,
         state_machine_state_name(state_machine_get_state()),
@@ -4407,7 +4432,17 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
         (unsigned long)diagnostics_get_uptime_s(),
         (unsigned long)ltm_get_total_touch_count(),
         (unsigned long)ltm_get_total_sessions(),
-        (unsigned long)ltm_get_hours_alive());
+        (unsigned long)ltm_get_hours_alive(),
+        pstate_str,
+        (unsigned long)pdiag.presence_session_s,
+        (unsigned long)pdiag.absence_s,
+        pdiag.confidence_confirmed ? "true" : "false",
+        (unsigned long)pdiag.presence_confirmed_count,
+        (unsigned long)pdiag.presence_returned_count,
+        (unsigned long)pdiag.presence_away_count,
+        (unsigned long)ping_total,
+        (unsigned long)ping_hour,
+        (unsigned long)ping_suppressed);
 
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);

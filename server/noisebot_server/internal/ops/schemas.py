@@ -35,6 +35,7 @@ def ai_status_response(
     last_route: str,
     firmware_capabilities: dict | None = None,
     playback_config: dict | None = None,
+    social_presence: dict | None = None,
 ) -> dict:
     caps = firmware_capabilities if isinstance(firmware_capabilities, dict) else {}
     scheduler = playback_config if isinstance(playback_config, dict) else {}
@@ -69,6 +70,7 @@ def ai_status_response(
             "codec_options": codec_options if isinstance(codec_options, dict) else {},
             "features": features if isinstance(features, list) else [],
         },
+        "social_presence": social_presence if isinstance(social_presence, dict) else None,
         "updated_at": _now_iso(),
     }
 

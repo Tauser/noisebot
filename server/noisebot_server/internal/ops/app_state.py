@@ -11,7 +11,8 @@ import os
 import secrets
 import tempfile
 import threading
-from datetime import datetime, timezone
+import time
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,9 @@ DEFAULT_ADVANCED_SETTINGS: dict[str, bool | int | str] = {
 AGENDA_KINDS = {"timer", "alarm", "reminder"}
 
 
+_COMPANIONSHIP_PERSIST_INTERVAL_S = 3600.0  # 1×/h no máximo (spec §5)
+
+
 class AppStateStore:
     """Small JSON-backed store for app-facing routine and settings."""
 
@@ -75,6 +79,7 @@ class AppStateStore:
         self._path = Path(path) if path is not None else _default_state_path()
         self._lock = threading.Lock()
         self._state = self._load()
+        self._last_companionship_persist: float = 0.0
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -144,6 +149,36 @@ class AppStateStore:
             self._state["agenda"]["items"].insert(0, item)
             self._save_locked()
         return item
+
+    # -- Companionship accumulator (SPEC_PRESENCA_SOCIAL §5) ------------------
+
+    def get_companionship_today_s(self) -> int:
+        """Retorna segundos de companhia acumulados hoje; 0 se a data mudou."""
+        today = date.today().isoformat()
+        with self._lock:
+            c = self._state.get("companionship", {})
+            if not isinstance(c, dict) or c.get("date") != today:
+                return 0
+            return int(c.get("seconds", 0))
+
+    def update_companionship_today_s(self, seconds: int) -> None:
+        """Persiste o acumulador diário de companhia, no máximo 1×/h.
+
+        Reseta automaticamente quando a data muda. Não persiste por tick —
+        o chamador deve chamar com baixa frequência (1×/turno de fala é OK).
+        """
+        today = date.today().isoformat()
+        now = time.monotonic()
+        with self._lock:
+            c = self._state.get("companionship", {})
+            if not isinstance(c, dict) or c.get("date") != today:
+                c = {"date": today, "seconds": 0}
+            c["seconds"] = max(0, int(seconds))
+            self._state["companionship"] = c
+            # Rate-limit: persiste em disco no máximo 1×/h
+            if now - self._last_companionship_persist >= _COMPANIONSHIP_PERSIST_INTERVAL_S:
+                self._save_locked()
+                self._last_companionship_persist = now
 
     # -- Memory (Phase 15) -----------------------------------------------------
 
@@ -413,6 +448,7 @@ class AppStateStore:
         profile = raw.get("profile") if isinstance(raw, dict) else None
         device_persona = raw.get("device_persona") if isinstance(raw, dict) else None
         memory = raw.get("memory") if isinstance(raw, dict) else None
+        companionship = raw.get("companionship") if isinstance(raw, dict) else None
 
         return {
             "version": 1,
@@ -422,6 +458,7 @@ class AppStateStore:
             "memory": {
                 "facts": _normalize_facts(memory.get("facts") if isinstance(memory, dict) else []),
             },
+            "companionship": _normalize_companionship(companionship),
             "profile": _normalize_profile(profile if isinstance(profile, dict) else {}),
             "device_persona": _normalize_device_persona(
                 device_persona if isinstance(device_persona, dict) else {}
@@ -849,3 +886,12 @@ def _clamp_int(value: Any, minimum: int, maximum: int) -> int:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _normalize_companionship(raw: Any) -> dict[str, Any]:
+    today = date.today().isoformat()
+    if not isinstance(raw, dict):
+        return {"date": today, "seconds": 0}
+    stored_date = str(raw.get("date", ""))
+    seconds = int(raw.get("seconds", 0)) if stored_date == today else 0
+    return {"date": today if stored_date != today else stored_date, "seconds": seconds}

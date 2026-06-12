@@ -69,6 +69,15 @@
 /* ── Chaves nb_cfg — Comportamento ──────────────────────────────────────────*/
 #define NB_CFG_KEY_IDLE_TMO   "idle_timeout"     /* u32 — segundos até entrar em SLEEPING */
 
+/* ── Chaves nb_cfg — Presença Social (SPEC_PRESENCA_SOCIAL §2.3) ─────────── */
+#define NB_CFG_KEY_PRES_HOLD  "pres_hold_ms"     /* u32 — hold antes de LEFT_RECENTLY  */
+#define NB_CFG_KEY_PRES_MAYBE "pres_maybe_ms"    /* u32 — MAYBE_SOMEONE timeout         */
+#define NB_CFG_KEY_PRES_HEUR  "pres_heur_ms"     /* u32 — heurística offline → PRESENT  */
+#define NB_CFG_KEY_PRES_LREC  "pres_lrec_ms"     /* u32 — LEFT_RECENTLY → AWAY          */
+#define NB_CFG_KEY_PRES_AWAY  "pres_away_ms"     /* u32 — AWAY → ALONE_SETTLED          */
+#define NB_CFG_KEY_PRES_ENGD  "pres_engd_ms"     /* u32 — PRESENT → ENGAGED             */
+#define NB_CFG_KEY_PRES_RTN   "pres_rtn_ms"      /* u32 — ausência mínima p/ RETURNED   */
+
 /* ── Chaves nb_svc — Estado de serviços ─────────────────────────────────── */
 #define NB_SVC_KEY_EMOTION    "last_emotion"     /* u8 — nb_emotion_t (Etapa 5.1) */
 #define NB_SVC_KEY_PERSONA    "persona_seed"     /* u32 — seed aleatório no primeiro boot */
@@ -92,6 +101,14 @@
                                                  * primeiro tick de EMA. Gap enorme; 20% separa com
                                                  * margem confortável. Valores 5, 8 e 15 eram baixos. */
 #define NB_CFG_DEFAULT_IDLE_TIMEOUT_S   3600    /* 60 minutos */
+
+#define NB_CFG_DEFAULT_PRES_HOLD_MS     5000U   /* 5 s  — hold antes de LEFT_RECENTLY  */
+#define NB_CFG_DEFAULT_PRES_MAYBE_MS    5000U   /* 5 s  — MAYBE_SOMEONE sem confirmação */
+#define NB_CFG_DEFAULT_PRES_HEUR_MS    10000U   /* 10 s — heurística offline → PRESENT  */
+#define NB_CFG_DEFAULT_PRES_LREC_MS    30000U   /* 30 s — LEFT_RECENTLY → AWAY          */
+#define NB_CFG_DEFAULT_PRES_AWAY_MS   120000U   /* 2 min — AWAY → ALONE_SETTLED         */
+#define NB_CFG_DEFAULT_PRES_ENGD_MS   180000U   /* 3 min — PRESENT → ENGAGED            */
+#define NB_CFG_DEFAULT_PRES_RTN_MS     60000U   /* 1 min — ausência mínima p/ RETURNED  */
 
 #define NB_SVC_DEFAULT_EMOTION            0     /* NEUTRAL */
 

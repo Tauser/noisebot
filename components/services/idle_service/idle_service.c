@@ -79,6 +79,18 @@
 
 #define ALONE_THRESHOLD_MS  300000U
 
+/* ── Parâmetros de presence glance ───────────────────────────────────────── */
+
+/* Olhar breve de volta para a área da pessoa durante ENGAGED (§4.2 da spec).
+ * Posição levemente acima do centro — faces tipicamente acima do eixo para
+ * um robô de mesa. Amplitude pequena para não conflitar com MSG_GAZE. */
+#define PRESENCE_GLANCE_UP_MIN     0.08f    /* 0.08–0.14 para cima       */
+#define PRESENCE_GLANCE_UP_RNG     0.06f
+#define PRESENCE_GLANCE_LAT_MIN    0.04f    /* 0.04–0.12 lateral         */
+#define PRESENCE_GLANCE_LAT_RNG    0.08f
+#define PRESENCE_GLANCE_HOLD_MIN   350U
+#define PRESENCE_GLANCE_HOLD_RNG   400U     /* 350–750ms de hold         */
+
 /* ── Parâmetros de glance ─────────────────────────────────────────────────── */
 
 /*
@@ -183,6 +195,7 @@ typedef enum {
     IDLE_MOTIF_POSE_TILT,         /* overlay assimétrico dopen 5–15s                */
     IDLE_MOTIF_EXPR_CURIOUS_HOLD, /* CURIOUS sustentado 3.5–5s                      */
     IDLE_MOTIF_CAMERA_STEADY,     /* centro leve durante sessão de câmera ativa     */
+    IDLE_MOTIF_PRESENCE_GLANCE,   /* olhar breve p/ área da pessoa (só em ENGAGED)  */
 } idle_motif_t;
 
 static idle_motif_t s_motif              = IDLE_MOTIF_NONE;
@@ -273,6 +286,10 @@ static void begin_idle_motif(bool is_idle_now)
         return;
     }
 
+    taskENTER_CRITICAL(&s_mult_mux);
+    float calm = s_calm_factor;
+    taskEXIT_CRITICAL(&s_mult_mux);
+
     float r = rand01();
     if (is_idle_now) {
         if (s_camera_active) {
@@ -281,11 +298,21 @@ static void begin_idle_motif(bool is_idle_now)
             s_motif_sign = rand_sign();
             return;
         }
-        if      (r < 0.25f) s_motif = IDLE_MOTIF_GAZE_H;
-        else if (r < 0.45f) s_motif = IDLE_MOTIF_GAZE_V;
-        else if (r < 0.60f) s_motif = IDLE_MOTIF_GAZE_CORNERS;
-        else if (r < 0.85f) s_motif = IDLE_MOTIF_EXPR_CURIOUS_HOLD;
-        else                s_motif = IDLE_MOTIF_POSE_TILT;
+        if (calm < 1.0f) {
+            /* ENGAGED: distribui 20% para olhar de presença (§4.2 spec) */
+            if      (r < 0.20f) s_motif = IDLE_MOTIF_PRESENCE_GLANCE;
+            else if (r < 0.40f) s_motif = IDLE_MOTIF_GAZE_H;
+            else if (r < 0.55f) s_motif = IDLE_MOTIF_GAZE_V;
+            else if (r < 0.70f) s_motif = IDLE_MOTIF_GAZE_CORNERS;
+            else if (r < 0.90f) s_motif = IDLE_MOTIF_EXPR_CURIOUS_HOLD;
+            else                s_motif = IDLE_MOTIF_POSE_TILT;
+        } else {
+            if      (r < 0.25f) s_motif = IDLE_MOTIF_GAZE_H;
+            else if (r < 0.45f) s_motif = IDLE_MOTIF_GAZE_V;
+            else if (r < 0.60f) s_motif = IDLE_MOTIF_GAZE_CORNERS;
+            else if (r < 0.85f) s_motif = IDLE_MOTIF_EXPR_CURIOUS_HOLD;
+            else                s_motif = IDLE_MOTIF_POSE_TILT;
+        }
     } else {
         /* ATTENTIVE */
         if      (r < 0.25f) s_motif = IDLE_MOTIF_GAZE_H;
@@ -498,6 +525,30 @@ static void do_glance(bool is_idle_now)
             switch (s_motif_step++) {
                 case 0:
                     expression_service_set_idle_rotation(0.0f, 0.0f);
+                    do_center_pause();
+                    break;
+                default:
+                    finish_idle_motif();
+                    break;
+            }
+            break;
+
+        /*
+         * PRESENCE_GLANCE — olhar breve p/ área onde a pessoa está.
+         * Leve para cima + lateral aleatório; não compete com MSG_GAZE
+         * (amplitude pequena vs. bias do gaze_service).
+         * Só em NEUTRAL (guard no begin_idle_motif). Só dispara em ENGAGED
+         * (calm < 1.0 na distribuição acima).
+         */
+        case IDLE_MOTIF_PRESENCE_GLANCE:
+            switch (s_motif_step++) {
+                case 0:
+                    do_axis_glance(
+                        s_motif_sign * (PRESENCE_GLANCE_LAT_MIN + rand01() * PRESENCE_GLANCE_LAT_RNG),
+                        -(PRESENCE_GLANCE_UP_MIN + rand01() * PRESENCE_GLANCE_UP_RNG),
+                        rand_interval(PRESENCE_GLANCE_HOLD_MIN, PRESENCE_GLANCE_HOLD_RNG));
+                    break;
+                case 1:
                     do_center_pause();
                     break;
                 default:

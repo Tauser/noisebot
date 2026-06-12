@@ -474,6 +474,43 @@ esp_err_t config_set_idle_timeout_s(uint32_t seconds)
     return err;
 }
 
+/* ── Presença Social ─────────────────────────────────────────────────────── */
+
+uint32_t config_get_presence_hold_ms(void)
+{
+    return nvs_hal_get_u32(s_h_cfg, NB_CFG_KEY_PRES_HOLD,  NB_CFG_DEFAULT_PRES_HOLD_MS);
+}
+
+uint32_t config_get_presence_maybe_ms(void)
+{
+    return nvs_hal_get_u32(s_h_cfg, NB_CFG_KEY_PRES_MAYBE, NB_CFG_DEFAULT_PRES_MAYBE_MS);
+}
+
+uint32_t config_get_presence_heur_ms(void)
+{
+    return nvs_hal_get_u32(s_h_cfg, NB_CFG_KEY_PRES_HEUR,  NB_CFG_DEFAULT_PRES_HEUR_MS);
+}
+
+uint32_t config_get_presence_lrec_ms(void)
+{
+    return nvs_hal_get_u32(s_h_cfg, NB_CFG_KEY_PRES_LREC,  NB_CFG_DEFAULT_PRES_LREC_MS);
+}
+
+uint32_t config_get_presence_away_ms(void)
+{
+    return nvs_hal_get_u32(s_h_cfg, NB_CFG_KEY_PRES_AWAY,  NB_CFG_DEFAULT_PRES_AWAY_MS);
+}
+
+uint32_t config_get_presence_engd_ms(void)
+{
+    return nvs_hal_get_u32(s_h_cfg, NB_CFG_KEY_PRES_ENGD,  NB_CFG_DEFAULT_PRES_ENGD_MS);
+}
+
+uint32_t config_get_presence_rtn_ms(void)
+{
+    return nvs_hal_get_u32(s_h_cfg, NB_CFG_KEY_PRES_RTN,   NB_CFG_DEFAULT_PRES_RTN_MS);
+}
+
 /* ── Estado de serviços ──────────────────────────────────────────────────── */
 
 uint8_t config_get_last_emotion(void)

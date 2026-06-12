@@ -196,8 +196,14 @@ class Orchestrator:
         )
 
         # Presença social — espelho do firmware (F4)
-        self._companionship_s: int = 0           # segundos de companhia silenciosa hoje
+        self._companionship_s: int = (
+            self._app_state.get_companionship_today_s()
+            if self._app_state is not None
+               and hasattr(self._app_state, "get_companionship_today_s")
+            else 0
+        )
         self._presence_track_start: float | None = None  # quando pipeline entrou em TRACK
+        self._last_companionship_push: float = 0.0        # rate-limit persist app_state
 
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
@@ -1234,18 +1240,31 @@ class Orchestrator:
         from ..vision.vision_pipeline import PipelineState
         state = getattr(pipeline, "state", None)
         if state == PipelineState.TRACK:
-            # Atualiza acumulador de companhia
+            now = time.monotonic()
             if self._presence_track_start is None:
-                self._presence_track_start = time.monotonic()
+                self._presence_track_start = now
             else:
-                self._companionship_s += int(time.monotonic() - self._presence_track_start)
-                self._presence_track_start = time.monotonic()
+                self._companionship_s += int(now - self._presence_track_start)
+                self._presence_track_start = now
+            # Persiste no app_state max 1×/h (via update_companionship_today_s)
+            if (self._app_state is not None
+                    and hasattr(self._app_state, "update_companionship_today_s")
+                    and now - self._last_companionship_push >= 3600.0):
+                self._app_state.update_companionship_today_s(self._companionship_s)
+                self._last_companionship_push = now
             return "PRESENT"
         else:
             self._presence_track_start = None
             if state == PipelineState.ACQUIRE:
                 return "MAYBE_SOMEONE"
             return None
+
+    def get_social_presence(self) -> dict:
+        """Retorna snapshot do estado de presença social para o /ai/status."""
+        return {
+            "state": self._derive_presence_state() or "NO_ONE",
+            "companionship_today_s": self._companionship_s,
+        }
 
     async def _emit_llm_fallback(
         self,
