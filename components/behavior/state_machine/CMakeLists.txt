@@ -7,4 +7,5 @@ idf_component_register(
         log
         esp_timer
         audio_service
+        presence_semantic_service
 )

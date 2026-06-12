@@ -8,6 +8,7 @@
 
 #include "state_machine.h"
 #include "audio_service.h"
+#include "presence_semantic_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
@@ -138,7 +139,13 @@ void state_machine_update(uint32_t dt_ms)
         s_idle_elapsed_ms += dt_ms;
         if (s_idle_elapsed_ms >= s_idle_timeout_ms) {
             s_idle_elapsed_ms = 0;
-            do_transition(NB_STATE_SLEEPING, "idle timeout");
+            presence_state_t ps = presence_semantic_get_diag().state;
+            if (ps == PRESENCE_PRESENT || ps == PRESENCE_ENGAGED) {
+                /* Alguém presente — suprime sleep e reinicia o relógio. */
+                ESP_LOGD(TAG, "idle timeout suprimido: presença ativa (%d)", (int)ps);
+            } else {
+                do_transition(NB_STATE_SLEEPING, "idle timeout");
+            }
         }
     } else {
         s_idle_elapsed_ms = 0;
