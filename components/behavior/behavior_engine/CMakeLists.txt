@@ -22,6 +22,7 @@ idf_component_register(
         ui_overlay_service
         led_service
         audio_service
+        voice_capture_session_v2
         synth_service
         attention_service
 )
