@@ -32,6 +32,17 @@ from .internal.vision.vision_pipeline import VisionPipeline
 log = logging.getLogger(__name__)
 
 
+def _firmware_http_base_url(config: NoiseBotServerConfig) -> str | None:
+    explicit = os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "").strip()
+    if explicit:
+        return explicit.rstrip("/")
+
+    host = config.transport.host
+    if not host:
+        return None
+    return f"http://{host}"
+
+
 class NoiseBotServer:
     """Server-owned application graph.
 
@@ -222,7 +233,7 @@ class NoiseBotServer:
 
         await self._apply_default_audio_codec()
 
-        if self._config.transport.host:
+        if _firmware_http_base_url(self._config):
             self._tasks.append(
                 asyncio.create_task(
                     self._poll_firmware_presence(), name="nb_firmware_presence_poll"
@@ -247,7 +258,12 @@ class NoiseBotServer:
         import json
         import urllib.request
 
-        url = f"http://{self._config.transport.host}/api/diag"
+        base_url = _firmware_http_base_url(self._config)
+        if not base_url:
+            log.warning("firmware presence poll desabilitado: HTTP do firmware não configurado")
+            return
+
+        url = f"{base_url}/api/diag"
         log.info("firmware presence poll iniciado: %s", url)
         _last_state = "NO_ONE"
         _fail_count = 0
@@ -260,7 +276,7 @@ class NoiseBotServer:
                 data = await asyncio.to_thread(_fetch)
                 sp = data.get("social_presence")
                 if sp is None:
-                    log.warning("firmware /api/status sem campo social_presence — JSON: %.200s", data)
+                    log.warning("firmware /api/diag sem campo social_presence — JSON: %.200s", data)
                     await asyncio.sleep(3.0)
                     continue
                 state = str(sp.get("state", "NO_ONE"))

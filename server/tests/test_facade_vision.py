@@ -13,6 +13,15 @@ import pytest
 from _facade_common import _drain_queue, _make_server_config, _server_loud_pcm, _simulate_server_voice_session, _wait_until
 
 
+def test_server_presence_poll_uses_explicit_firmware_http_url(monkeypatch) -> None:
+    app_module = importlib.import_module("noisebot_server.app")
+
+    monkeypatch.setenv("NOISEBOT_ROBOT_HTTP_URL", "http://192.168.1.30/")
+    config = _make_server_config(host=None)
+
+    assert app_module._firmware_http_base_url(config) == "http://192.168.1.30"
+
+
 def test_server_vision_observation_parses_firmware_payload() -> None:
     vision = importlib.import_module("noisebot_server.internal.vision")
 
