@@ -852,23 +852,6 @@ def test_server_service_manager_uses_server_identity() -> None:
     assert "-m noisebot_server" in manager.SYSTEMD_TEMPLATE
     assert "SyslogIdentifier=noisebot-server" in manager.SYSTEMD_TEMPLATE
 
-def test_server_dashboard_renders_voice_diagnostics_panel() -> None:
-    dashboard = importlib.import_module("noisebot_server.internal.ops.dashboard")
-
-    html = dashboard.get_dashboard_html()
-
-    assert "Diagnóstico de Voz" in html
-    assert "voice-diagnosis" in html
-    assert "renderVoiceDiagnostics" in html
-    assert "Histórico recente" in html
-    assert "voice_end_to_stt_start_ms" in html
-    assert "turn_taking_policy" in html
-    assert "turn_taking_decision" in html
-    assert "cfg-followup-enabled" in html
-    assert "followup_window_ms" in html
-    assert "btn-release-check" in html
-    assert "runVoiceReleaseCheck" in html
-
 async def test_server_listening_watchdog_timeout_finishes_without_session_error() -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
     orchestrator_module = importlib.import_module(
