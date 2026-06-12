@@ -195,6 +195,10 @@ class Orchestrator:
             FirmwareDiagClient.from_config(config) if config is not None else None
         )
 
+        # Presença social — espelho do firmware (F4)
+        self._companionship_s: int = 0           # segundos de companhia silenciosa hoje
+        self._presence_track_start: float | None = None  # quando pipeline entrou em TRACK
+
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
         self._empty_wake_prompted_at: float | None = None
@@ -891,6 +895,8 @@ class Orchestrator:
                     if self._app_state is not None and hasattr(self._app_state, "list_facts")
                     else None
                 ),
+                presence_state=self._derive_presence_state(),
+                companionship_s=self._companionship_s,
             )
             _debug["turn_payload_summary"] = {
                 "mood": turn_payload.get("mood", ""),
@@ -1211,6 +1217,35 @@ class Orchestrator:
 
     async def _get_vision_snapshot(self) -> dict | None:
         return await self._persona_sync.get_vision_snapshot(self._intent._vision)
+
+    def _derive_presence_state(self) -> str | None:
+        """Deriva estado de presença social a partir do VisionPipeline do servidor.
+
+        Fonte secundária (espelho) — a fonte autoritativa é o firmware.
+        Usado exclusivamente para adicionar contexto discreto ao LLM.
+        Nunca gera fala espontânea por si só.
+        """
+        vision = self._intent._vision
+        if vision is None:
+            return None
+        pipeline = getattr(vision, "_pipeline", None)
+        if pipeline is None:
+            return None
+        from ..vision.vision_pipeline import PipelineState
+        state = getattr(pipeline, "state", None)
+        if state == PipelineState.TRACK:
+            # Atualiza acumulador de companhia
+            if self._presence_track_start is None:
+                self._presence_track_start = time.monotonic()
+            else:
+                self._companionship_s += int(time.monotonic() - self._presence_track_start)
+                self._presence_track_start = time.monotonic()
+            return "PRESENT"
+        else:
+            self._presence_track_start = None
+            if state == PipelineState.ACQUIRE:
+                return "MAYBE_SOMEONE"
+            return None
 
     async def _emit_llm_fallback(
         self,

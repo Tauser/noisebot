@@ -28,6 +28,8 @@ def build_turn_payload(
     allowed_tools: list[str] | None = None,
     vision_snapshot: dict[str, Any] | None = None,
     memory_facts: list[dict[str, Any]] | None = None,
+    presence_state: str | None = None,
+    companionship_s: int = 0,
 ) -> dict[str, Any]:
     """Build a compact, structured context payload for the LLM.
 
@@ -112,7 +114,35 @@ def build_turn_payload(
             for f in memory_facts[:10]  # max 10 fatos no contexto
         ]
 
+    presence_ctx = _build_presence_context(presence_state, companionship_s)
+    if presence_ctx:
+        payload["presence"] = presence_ctx
+
     return payload
+
+
+def _build_presence_context(state: str | None, companionship_s: int) -> dict[str, str] | None:
+    """Constrói bloco de contexto de presença para o LLM.
+
+    Discreto: descreve o que o robô percebe, nunca gera fala espontânea.
+    Fonte: espelho do estado do firmware (não é fonte autoritativa).
+    """
+    if not state or state in ("NO_ONE", "ALONE_SETTLED"):
+        return None
+
+    if state in ("PRESENT", "MAYBE_SOMEONE"):
+        ctx = "O usuário parece estar fisicamente presente diante do robô."
+    elif state == "ENGAGED":
+        mins = max(1, companionship_s // 60)
+        ctx = f"O usuário está em companhia silenciosa há aproximadamente {mins} minuto(s)."
+    elif state == "LEFT_RECENTLY":
+        ctx = "O usuário estava presente há pouco e pode ter se afastado momentaneamente."
+    elif state == "AWAY":
+        ctx = "O usuário se afastou há algum tempo; não há presença visual confirmada."
+    else:
+        return None
+
+    return {"note": ctx, "state": state, "companionship_s": str(companionship_s)}
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
