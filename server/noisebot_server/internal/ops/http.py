@@ -913,7 +913,7 @@ class OpsHttpServer:
         pipeline = getattr(self._app, "_vision_pipeline", None)
         if pipeline is None:
             return _json({"ok": True, "running": False})
-        pipeline.stop()
+        await pipeline.stop_async()
         return _json({"ok": True, "running": False})
 
     async def _get_vision_faces(self, request: web.Request) -> web.Response:

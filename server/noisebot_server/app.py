@@ -243,7 +243,7 @@ class NoiseBotServer:
         log.info("NoiseBotServer: encerrando...")
 
         if self._vision_pipeline is not None:
-            self._vision_pipeline.stop()
+            await self._vision_pipeline.stop_async()
 
         await self._ops_server.stop()
 

@@ -118,7 +118,21 @@ class VisionPipeline:
         if self._task:
             self._task.cancel()
             self._task = None
+        self._state = PipelineState.IDLE  # reset para que get_social_presence retorne NO_ONE
+        self._consecutive_misses = 0
+        self._consecutive_hits = 0
         log.info("VisionPipeline parado")
+
+    async def stop_async(self) -> None:
+        """Para o pipeline enviando clear_face_box antes de cancelar.
+
+        Usar em vez de stop() quando o caller é async e o bridge pode estar
+        conectado — garante que o firmware não fique com s_face_box_valid=true
+        e que o dashboard volte a mostrar NO_ONE imediatamente.
+        """
+        if self._state == PipelineState.TRACK:
+            await self._clear_face_box()
+        self.stop()
 
     def status_dict(self) -> dict:
         c = self._counters
@@ -209,10 +223,20 @@ class VisionPipeline:
 
         jpeg = await asyncio.to_thread(self._safe_capture)
         if not jpeg:
+            self._consecutive_misses += 1
+            if self._consecutive_misses >= _MISS_THRESHOLD:
+                log.info("VisionPipeline: rosto perdido (capture falhou %d×)", self._consecutive_misses)
+                self._transition_to(PipelineState.LOST)
+                await self._clear_face_box()
             return _TRACK_INTERVAL_S
 
         obs = self._cached_obs or await asyncio.to_thread(self._safe_observe)
         if obs is None:
+            self._consecutive_misses += 1
+            if self._consecutive_misses >= _MISS_THRESHOLD:
+                log.info("VisionPipeline: rosto perdido (observe falhou %d×)", self._consecutive_misses)
+                self._transition_to(PipelineState.LOST)
+                await self._clear_face_box()
             return _TRACK_INTERVAL_S
         self._cached_obs = obs
 
