@@ -204,6 +204,7 @@ class Orchestrator:
         )
         self._presence_track_start: float | None = None  # quando pipeline entrou em TRACK
         self._last_companionship_push: float = 0.0        # rate-limit persist app_state
+        self._firmware_presence_state: str = "NO_ONE"     # atualizado por poll em app.py
 
         # Métricas Fase 4+
         self._metrics = MetricsRegistry(window=100)
@@ -1224,45 +1225,38 @@ class Orchestrator:
     async def _get_vision_snapshot(self) -> dict | None:
         return await self._persona_sync.get_vision_snapshot(self._intent._vision)
 
-    def _derive_presence_state(self) -> str | None:
-        """Deriva estado de presença social a partir do VisionPipeline do servidor.
+    def set_firmware_presence_state(self, state: str) -> None:
+        """Recebe estado autoritativo do firmware (polled por app.py a cada 3 s)."""
+        self._firmware_presence_state = state
 
-        Fonte secundária (espelho) — a fonte autoritativa é o firmware.
-        Usado exclusivamente para adicionar contexto discreto ao LLM.
-        Nunca gera fala espontânea por si só.
+    def _derive_presence_state(self) -> str | None:
+        """Estado de presença para contexto LLM — lê do firmware (fonte autoritativa).
+
+        Side-effect: acumula _companionship_s enquanto PRESENT ou ENGAGED.
         """
-        vision = self._intent._vision
-        if vision is None:
-            return None
-        pipeline = getattr(vision, "_pipeline", None)
-        if pipeline is None:
-            return None
-        from ..vision.vision_pipeline import PipelineState
-        state = getattr(pipeline, "state", None)
-        if state == PipelineState.TRACK:
-            now = time.monotonic()
+        state = self._firmware_presence_state
+        in_company = state in ("PRESENT", "ENGAGED")
+        now = time.monotonic()
+        if in_company:
             if self._presence_track_start is None:
                 self._presence_track_start = now
             else:
                 self._companionship_s += int(now - self._presence_track_start)
                 self._presence_track_start = now
-            # Persiste no app_state max 1×/h (via update_companionship_today_s)
             if (self._app_state is not None
                     and hasattr(self._app_state, "update_companionship_today_s")
                     and now - self._last_companionship_push >= 3600.0):
                 self._app_state.update_companionship_today_s(self._companionship_s)
                 self._last_companionship_push = now
-            return "PRESENT"
         else:
             self._presence_track_start = None
-            if state == PipelineState.ACQUIRE:
-                return "MAYBE_SOMEONE"
-            return None
+        return state if state != "NO_ONE" else None
 
     def get_social_presence(self) -> dict:
         """Retorna snapshot do estado de presença social para o /ai/status."""
+        self._derive_presence_state()  # acumula companionship como side-effect
         return {
-            "state": self._derive_presence_state() or "NO_ONE",
+            "state": self._firmware_presence_state,
             "companionship_today_s": self._companionship_s,
         }
 

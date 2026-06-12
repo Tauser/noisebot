@@ -222,6 +222,13 @@ class NoiseBotServer:
 
         await self._apply_default_audio_codec()
 
+        if self._config.transport.host:
+            self._tasks.append(
+                asyncio.create_task(
+                    self._poll_firmware_presence(), name="nb_firmware_presence_poll"
+                )
+            )
+
         if self._supervisor is not None:
             self._tasks.append(
                 asyncio.create_task(self._supervisor.run(), name="nb_supervisor")
@@ -234,6 +241,24 @@ class NoiseBotServer:
             log.info("NoiseBot server ativo sem transporte. Aguardando eventos.")
 
         await asyncio.gather(*self._tasks, return_exceptions=True)
+
+    async def _poll_firmware_presence(self) -> None:
+        """Puxa social_presence.state do firmware a cada 3 s e injeta no orchestrator."""
+        import json
+        import urllib.request
+
+        url = f"http://{self._config.transport.host}/api/status"
+        while self._running:
+            try:
+                def _fetch() -> dict:
+                    with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310
+                        return json.loads(resp.read())
+                data = await asyncio.to_thread(_fetch)
+                state = data.get("social_presence", {}).get("state", "NO_ONE")
+                self._orchestrator.set_firmware_presence_state(str(state))
+            except Exception as exc:
+                log.debug("firmware presence poll falhou: %s", exc)
+            await asyncio.sleep(3.0)
 
     async def shutdown(self) -> None:
         """Stop all server components gracefully."""

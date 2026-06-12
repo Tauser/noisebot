@@ -402,8 +402,7 @@ def test_firmware_camera_active_overlay_contract_is_exposed() -> None:
     assert "case NB_UI_STATUS_ICON_CAMERA_ACTIVE:     return &NB_UI_OVERLAY_ICON_CAMERA;" in overlay_c
     assert "draw_icon_mask(spr, asset" in overlay_c
     assert "camera_service_set_event_cb(on_camera_event)" in boot_c
-    assert "ui_overlay_camera_set(true)" in boot_c
-    assert "ui_overlay_camera_set(false)" in boot_c
+    # ui_overlay_camera_set não é mais chamado em boot_manager — ícone desacoplado
 
 def test_server_vision_soak_collects_stable_samples(monkeypatch) -> None:
     soak = importlib.import_module("noisebot_server.internal.ops.vision_soak")
