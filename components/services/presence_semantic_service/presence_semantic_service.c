@@ -158,16 +158,29 @@ void presence_semantic_tick(uint32_t dt_ms)
 
     switch (s_state) {
 
-    /* ── NO_ONE / ALONE_SETTLED ─────────────────────────────────────────── */
+    /* ── NO_ONE ─────────────────────────────────────────────────────────── */
     case PRESENCE_NO_ONE:
+        if (signal) {
+            s_state            = PRESENCE_MAYBE_SOMEONE;
+            s_maybe_elapsed_ms = 0U;
+            s_heur_conf_ms     = 0U;
+            publish_transition(NB_EVT_SOCIAL_PRESENCE_ACQUIRED,
+                               PRESENCE_NO_ONE, PRESENCE_MAYBE_SOMEONE);
+        }
+        break;
+
+    /* ── ALONE_SETTLED ──────────────────────────────────────────────────── */
+    /* Ausência total >> RETURNED_MIN_MS (≥ 150s): retorno vai direto para
+     * PRESENT com RETURNED, sem passar por MAYBE_SOMEONE (spec §2.3). */
     case PRESENCE_ALONE_SETTLED:
         if (signal) {
-            presence_state_t old = s_state;
-            s_state              = PRESENCE_MAYBE_SOMEONE;
-            s_maybe_elapsed_ms   = 0U;
-            s_heur_conf_ms       = 0U;
-            publish_transition(NB_EVT_SOCIAL_PRESENCE_ACQUIRED, old,
-                               PRESENCE_MAYBE_SOMEONE);
+            s_state                = PRESENCE_PRESENT;
+            s_hold_ms              = 0U;
+            s_engaged_ms           = 0U;
+            if (face_valid) s_confidence_confirmed = true;
+            s_returned_count++;
+            publish_transition(NB_EVT_SOCIAL_PRESENCE_RETURNED,
+                               PRESENCE_ALONE_SETTLED, PRESENCE_PRESENT);
         }
         break;
 

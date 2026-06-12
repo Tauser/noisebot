@@ -429,13 +429,20 @@ static void handle_presence_social_event(const nb_event_t *evt)
         break;
 
     case NB_EVT_SOCIAL_PRESENCE_SETTLED:
-        /* Ausência longa: restaura timer normal (sem encurtar — spec §4.3) */
-        if (s_idle_timeout_overridden) {
-            state_machine_set_idle_timeout_s(s_orig_idle_timeout_s);
-            s_idle_timeout_overridden = false;
+        /* Ausência longa: encurta timer para que o robô durma mais cedo (spec §4.3).
+         * Se timeout foi congelado pelo ENGAGED, salva original antes de encurtar. */
+        if (!s_idle_timeout_overridden) {
+            s_orig_idle_timeout_s = config_get_idle_timeout_s();
         }
+        {
+            uint32_t short_tmo = s_orig_idle_timeout_s / 3U;
+            if (short_tmo < 60U) short_tmo = 60U; /* piso de 1 min */
+            state_machine_set_idle_timeout_s(short_tmo);
+            NB_LOGI(TAG, "presença SETTLED — sleep timer encurtado para %us", (unsigned)short_tmo);
+        }
+        /* Mantém s_idle_timeout_overridden=true para que RETURNED possa restaurar */
+        s_idle_timeout_overridden = true;
         idle_service_set_calm_mode(false);
-        NB_LOGD(TAG, "presença SETTLED — sleep timer restaurado");
         break;
 
     case NB_EVT_SOCIAL_PRESENCE_LOST_SHORT:
