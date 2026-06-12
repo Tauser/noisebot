@@ -794,6 +794,7 @@ esp_err_t behavior_engine_init(void)
         NB_EVT_BRIDGE_ACTION,
         NB_EVT_BRIDGE_EMOT_EVENT,
         NB_EVT_BRIDGE_GAZE,
+        NB_EVT_BRIDGE_FACE_BOX,
         NB_EVT_BRIDGE_TEXT_SCROLL,
         NB_EVT_BRIDGE_VOLUME,
         NB_EVT_BRIDGE_SESSION,
