@@ -1243,6 +1243,19 @@ static esp_err_t phase_services(void)
     NB_ASSERT(err == ESP_OK, TAG, "presence_semantic_init falhou: %s",
               esp_err_to_name(err));
 
+    /* Heurística local de presença: polling contínuo offline-first.
+     * Sem isso, NB_EVT_PRESENCE_DETECTED nunca é publicado sem server.
+     * 0 = usa NB_VISION_POLL_DEFAULT_INTERVAL_MS (300ms). */
+    if (vision_service_is_available()) {
+        err = vision_service_poll_start(0U);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "vision_service_poll_start falhou: %s — heurística offline inativa",
+                     esp_err_to_name(err));
+        }
+    } else {
+        ESP_LOGW(TAG, "vision_service indisponível no boot — câmera ausente?");
+    }
+
     /* state_machine e emotion_model (Etapa 5.1) */
     err = state_machine_init(config_get_idle_timeout_s(),
                               s_status.safe_mode,
