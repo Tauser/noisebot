@@ -38,6 +38,8 @@
 
 #define TAG "nb_presence"
 
+#define PRESENCE_EVT_FACE_CONFIRMED_FLAG (1UL << 16)
+
 /* Timers carregados do NVS no init (spec §2.3 — "todos em config NVS") */
 static uint32_t s_cfg_hold_ms          = 5000U;
 static uint32_t s_cfg_maybe_ms         = 5000U;
@@ -86,6 +88,22 @@ static void publish_transition(nb_event_type_t type,
         .type = type,
         .data = { .u32 = ((uint32_t)old_s << 8U) | (uint32_t)new_s },
     };
+    nb_event_publish(&ev);
+    ESP_LOGI(TAG, "%s → %s", k_state_names[old_s], k_state_names[new_s]);
+}
+
+static void publish_transition_with_face_flag(nb_event_type_t type,
+                                               presence_state_t old_s,
+                                               presence_state_t new_s,
+                                               bool face_confirmed)
+{
+    nb_event_t ev = {
+        .type = type,
+        .data = { .u32 = ((uint32_t)old_s << 8U) | (uint32_t)new_s },
+    };
+    if (face_confirmed) {
+        ev.data.u32 |= PRESENCE_EVT_FACE_CONFIRMED_FLAG;
+    }
     nb_event_publish(&ev);
     ESP_LOGI(TAG, "%s → %s", k_state_names[old_s], k_state_names[new_s]);
 }
@@ -180,8 +198,10 @@ void presence_semantic_tick(uint32_t dt_ms)
             s_engaged_ms           = 0U;
             if (face_valid) s_confidence_confirmed = true;
             s_returned_count++;
-            publish_transition(NB_EVT_SOCIAL_PRESENCE_RETURNED,
-                               PRESENCE_ALONE_SETTLED, PRESENCE_PRESENT);
+            publish_transition_with_face_flag(NB_EVT_SOCIAL_PRESENCE_RETURNED,
+                                              PRESENCE_ALONE_SETTLED,
+                                              PRESENCE_PRESENT,
+                                              face_valid);
         }
         break;
 
@@ -206,8 +226,10 @@ void presence_semantic_tick(uint32_t dt_ms)
             s_engaged_ms           = 0U;
             s_hold_ms              = 0U;
             s_confirmed_count++;
-            publish_transition(NB_EVT_SOCIAL_PRESENCE_CONFIRMED,
-                               PRESENCE_MAYBE_SOMEONE, PRESENCE_PRESENT);
+            publish_transition_with_face_flag(NB_EVT_SOCIAL_PRESENCE_CONFIRMED,
+                                              PRESENCE_MAYBE_SOMEONE,
+                                              PRESENCE_PRESENT,
+                                              true);
         } else {
             /* Só heurística: aguarda s_cfg_heur_ms sustentado */
             s_heur_conf_ms += dt_ms;
@@ -217,8 +239,10 @@ void presence_semantic_tick(uint32_t dt_ms)
                 s_engaged_ms           = 0U;
                 s_hold_ms              = 0U;
                 s_confirmed_count++;
-                publish_transition(NB_EVT_SOCIAL_PRESENCE_CONFIRMED,
-                                   PRESENCE_MAYBE_SOMEONE, PRESENCE_PRESENT);
+                publish_transition_with_face_flag(NB_EVT_SOCIAL_PRESENCE_CONFIRMED,
+                                                  PRESENCE_MAYBE_SOMEONE,
+                                                  PRESENCE_PRESENT,
+                                                  false);
             }
         }
         break;
@@ -277,7 +301,10 @@ void presence_semantic_tick(uint32_t dt_ms)
             s_engaged_ms         = 0U;
             if (face_valid) s_confidence_confirmed = true;
             s_confirmed_count++;
-            publish_transition(NB_EVT_SOCIAL_PRESENCE_CONFIRMED, old, PRESENCE_PRESENT);
+            publish_transition_with_face_flag(NB_EVT_SOCIAL_PRESENCE_CONFIRMED,
+                                              old,
+                                              PRESENCE_PRESENT,
+                                              face_valid);
             break;
         }
         if (s_since_left_ms >= s_cfg_lrec_ms) {
@@ -300,10 +327,16 @@ void presence_semantic_tick(uint32_t dt_ms)
             if (face_valid) s_confidence_confirmed = true;
             if (s_since_left_ms >= s_cfg_rtn_ms) {
                 s_returned_count++;
-                publish_transition(NB_EVT_SOCIAL_PRESENCE_RETURNED, old, PRESENCE_PRESENT);
+                publish_transition_with_face_flag(NB_EVT_SOCIAL_PRESENCE_RETURNED,
+                                                  old,
+                                                  PRESENCE_PRESENT,
+                                                  face_valid);
             } else {
                 s_confirmed_count++;
-                publish_transition(NB_EVT_SOCIAL_PRESENCE_CONFIRMED, old, PRESENCE_PRESENT);
+                publish_transition_with_face_flag(NB_EVT_SOCIAL_PRESENCE_CONFIRMED,
+                                                  old,
+                                                  PRESENCE_PRESENT,
+                                                  face_valid);
             }
             break;
         }

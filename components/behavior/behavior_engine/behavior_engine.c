@@ -62,6 +62,7 @@
 /* Rate-limit de pings de presença: máx 4 por hora (spec §4.1) */
 #define PRESENCE_PING_MAX_PER_HOUR   4U
 #define PRESENCE_PING_WINDOW_US      3600000000LL  /* 1 hora em µs */
+#define PRESENCE_EVT_FACE_CONFIRMED_FLAG (1UL << 16)
 
 /* Cooldown mínimo entre triggers de VOICE_ACTIVITY_START → conductor.
  * Previne o loop: servo move → vibração → VAD hit → conductor_play(CURIOUS)
@@ -371,6 +372,12 @@ static void apply_touch_feedback_for_event(nb_event_type_t event)
 
 static void handle_presence_ping(const nb_event_t *evt)
 {
+    if ((evt->data.u32 & PRESENCE_EVT_FACE_CONFIRMED_FLAG) == 0U) {
+        s_ping_suppressed++;
+        NB_LOGD(TAG, "ping presença suprimido (sem face confirmada)");
+        return;
+    }
+
     int64_t now = esp_timer_get_time();
     /* Reseta janela de 1 hora se necessário */
     if (s_ping_hour_start_us == 0 || (now - s_ping_hour_start_us) >= PRESENCE_PING_WINDOW_US) {
