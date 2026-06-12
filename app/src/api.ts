@@ -334,13 +334,13 @@ type HealthResponse = {
 };
 
 export type SocialPresenceState =
-  | "CONFIRMED"
-  | "PRESENT"
-  | "SETTLED"
-  | "RETURNED"
+  | "NO_ONE"
   | "MAYBE_SOMEONE"
-  | "ALONE_SETTLED"
-  | "NO_ONE";
+  | "PRESENT"
+  | "ENGAGED"
+  | "LEFT_RECENTLY"
+  | "AWAY"
+  | "ALONE_SETTLED";
 
 export type SocialPresence = {
   state: SocialPresenceState;

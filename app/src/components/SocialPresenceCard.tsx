@@ -3,14 +3,18 @@ import type { SocialPresence, SocialPresenceState } from "../api";
 
 function statePill(state: SocialPresenceState): { label: string; cls: string } {
   switch (state) {
-    case "CONFIRMED":
     case "PRESENT":
-    case "SETTLED":
-    case "RETURNED":
-      return { label: state.toLowerCase(), cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" };
+      return { label: "presente", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" };
+    case "ENGAGED":
+      return { label: "engajado", cls: "bg-emerald-500/25 text-emerald-300 border-emerald-500/30" };
     case "MAYBE_SOMEONE":
+      return { label: "talvez alguém", cls: "bg-amber-500/15 text-amber-400 border-amber-500/20" };
+    case "LEFT_RECENTLY":
+      return { label: "saiu há pouco", cls: "bg-amber-500/15 text-amber-400 border-amber-500/20" };
+    case "AWAY":
+      return { label: "ausente", cls: "bg-orange-500/15 text-orange-400 border-orange-500/20" };
     case "ALONE_SETTLED":
-      return { label: state === "MAYBE_SOMEONE" ? "talvez alguém" : "sozinho", cls: "bg-amber-500/15 text-amber-400 border-amber-500/20" };
+      return { label: "sozinho", cls: "bg-amber-500/15 text-amber-400 border-amber-500/20" };
     default:
       return { label: "ninguém", cls: "bg-white/5 text-slate-500 border-white/10" };
   }
