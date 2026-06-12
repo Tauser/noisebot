@@ -1,6 +1,7 @@
 export type RobotState = "online" | "offline" | "listening" | "thinking" | "speaking" | "resting";
 
 export type DashboardSnapshot = {
+  social_presence?: SocialPresence | null;
   robot: {
     name: string;
     state: RobotState;
@@ -332,6 +333,20 @@ type HealthResponse = {
   updated_at: string;
 };
 
+export type SocialPresenceState =
+  | "CONFIRMED"
+  | "PRESENT"
+  | "SETTLED"
+  | "RETURNED"
+  | "MAYBE_SOMEONE"
+  | "ALONE_SETTLED"
+  | "NO_ONE";
+
+export type SocialPresence = {
+  state: SocialPresenceState;
+  companionship_today_s: number;
+};
+
 type AiStatusResponse = {
   connected: boolean;
   mode: string;
@@ -346,6 +361,7 @@ type AiStatusResponse = {
   last_reply: string;
   last_route: string;
   updated_at: string;
+  social_presence?: SocialPresence | null;
 };
 
 const SERVER_URL = import.meta.env.VITE_NOISEBOT_SERVER_URL
@@ -710,6 +726,7 @@ function snapshotFromServer(health: HealthResponse, status: AiStatusResponse): D
   const serverOnline = health.status === "ok";
   return {
     ...fallbackSnapshot(serverOnline),
+    social_presence: status.social_presence ?? null,
     robot: {
       name: "NoiseBot",
       state: firmwareOnline ? "online" : "offline",

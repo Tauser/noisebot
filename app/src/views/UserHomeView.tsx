@@ -1,6 +1,7 @@
 import { Activity, Brain, Mic, Volume2 } from "lucide-react";
 import type { AppData, DashboardSnapshot } from "../api";
 import { InfoRow } from "../components/InfoRow";
+import { SocialPresenceCard } from "../components/SocialPresenceCard";
 import { Sparkline } from "../components/Sparkline";
 import { StatTile } from "../components/StatTile";
 import { TurnBubble } from "../components/TurnBubble";
@@ -66,7 +67,7 @@ export function UserHomeView({
       </div>
 
       {/* ── Linha inferior ── */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
         {/* Última interação — card largo */}
         <section className="flex flex-col rounded-xl bg-black/[0.18]">
           {/* Card header */}
@@ -172,6 +173,9 @@ export function UserHomeView({
             <Sparkline data={FAKE_BUDGET} color="#10b981" fill />
           </div>
         </section>
+
+        {/* Presença social — card lateral */}
+        <SocialPresenceCard presence={snapshot.social_presence} />
       </div>
     </div>
   );
