@@ -372,9 +372,12 @@ static void apply_touch_feedback_for_event(nb_event_type_t event)
 
 static void handle_presence_ping(const nb_event_t *evt)
 {
-    if ((evt->data.u32 & PRESENCE_EVT_FACE_CONFIRMED_FLAG) == 0U) {
+    /* Spec §2.1: heurística não dispara ping de RETORNO (evita falso positivo
+     * de reconexão com presença contínua). CONFIRMED pode pingar normalmente. */
+    bool face_confirmed = (evt->data.u32 & PRESENCE_EVT_FACE_CONFIRMED_FLAG) != 0U;
+    if (evt->type == NB_EVT_SOCIAL_PRESENCE_RETURNED && !face_confirmed) {
         s_ping_suppressed++;
-        NB_LOGD(TAG, "ping presença suprimido (sem face confirmada)");
+        NB_LOGD(TAG, "ping presença suprimido (RETURNED sem face confirmada)");
         return;
     }
 

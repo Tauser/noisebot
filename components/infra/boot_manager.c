@@ -717,12 +717,10 @@ static void on_bridge_status_event(const nb_event_t *ev, void *ctx)
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_CONNECTED, false);
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_OFFLINE, false);
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_WIFI_UNAVAILABLE, false);
-        ui_overlay_camera_set(true);
     } else if (ev->type == NB_EVT_BRIDGE_DISCONNECTED) {
         s_status_bridge_connected = false;
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_CONNECTED, false);
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_OFFLINE, true);
-        ui_overlay_camera_set(false);
     }
 }
 
