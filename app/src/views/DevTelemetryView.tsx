@@ -158,7 +158,7 @@ export function DevTelemetryView({
       </section>
 
       {/* Hardware e build */}
-      <DiagnosticCard defaultOpen icon={Cpu} title="Hardware e build">
+      <DiagnosticCard icon={Cpu} title="Hardware e build">
         <div className="grid gap-3 md:grid-cols-2">
           <Metric label="Firmware" value={snapshot.robot.firmwareOnline ? "online" : "offline"} />
           <Metric label="Estado" value={snapshot.robot.state} />
@@ -174,7 +174,7 @@ export function DevTelemetryView({
       </DiagnosticCard>
 
       {/* Memória */}
-      <DiagnosticCard defaultOpen icon={Database} title="Memória">
+      <DiagnosticCard icon={Database} title="Memória">
         <div className="grid gap-3 md:grid-cols-2">
           <Metric label="PSRAM livre" value={bytesValue(health.heap_psram_free)} />
           <Metric label="PSRAM mínimo" value={bytesValue(health.heap_psram_min)} />
@@ -206,7 +206,7 @@ export function DevTelemetryView({
       </DiagnosticCard>
 
       {/* Rede e bridge */}
-      <DiagnosticCard defaultOpen icon={Wifi} title="Rede e bridge">
+      <DiagnosticCard icon={Wifi} title="Rede e bridge">
         <div className="grid gap-3 md:grid-cols-2">
           <Metric label="Server" value={snapshot.robot.serverOnline ? "online" : "offline"} />
           <Metric label="Transporte" value={`${devData.device.transport_host || "--"}:${devData.device.transport_port || "--"}`} />
@@ -345,7 +345,7 @@ export function DevTelemetryView({
       </DiagnosticCard>
 
       {/* Última sessão de voz */}
-      <DiagnosticCard defaultOpen icon={Mic} title="Última sessão de voz">
+      <DiagnosticCard icon={Mic} title="Última sessão de voz">
         <div className="grid gap-3 md:grid-cols-2">
           <Metric label="Turno" value={numberValue(voice.turn_id, "")} />
           <Metric label="Resultado" value={textValue(voice.outcome)} />
