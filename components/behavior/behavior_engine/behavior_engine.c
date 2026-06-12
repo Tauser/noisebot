@@ -56,7 +56,8 @@
 
 #define TAG "nb_beng"
 
-#define BRIDGE_ERROR_TOAST_MS   2400U
+#define BRIDGE_ERROR_TOAST_MS        2400U
+#define FACE_DETECTED_ICON_TTL_US    3000000LL   /* ícone USER_IDENTIFYING some após 3s */
 
 /* Cooldown mínimo entre triggers de VOICE_ACTIVITY_START → conductor.
  * Previne o loop: servo move → vibração → VAD hit → conductor_play(CURIOUS)
@@ -430,6 +431,16 @@ static esp_timer_handle_t s_bridge_resp_timer;
 static bool               s_bridge_say_started;
 static bool               s_bridge_voice_pending;
 
+/* ── Face detected — ícone TTL (3s) ─────────────────────────────────────── */
+
+static esp_timer_handle_t s_face_icon_timer;
+
+static void face_icon_ttl_cb(void *arg)
+{
+    (void)arg;
+    ui_overlay_status_icon_set(NB_UI_STATUS_ICON_USER_IDENTIFYING, false);
+}
+
 static bool session_json_u8(const char *payload, const char *key, uint8_t *out_value)
 {
     if (!payload || !key || !out_value) return false;
@@ -570,7 +581,16 @@ static void bridge_on_event(const nb_event_t *evt)
     case NB_EVT_BRIDGE_FACE_BOX: {
         const nb_bridge_face_box_t *box = (const nb_bridge_face_box_t *)evt->data.ptr;
         bool face_present = box && box->width > 0 && box->height > 0;
-        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_USER_IDENTIFYING, face_present);
+        if (face_present) {
+            /* Acende o ícone e (re)inicia o TTL de 3s — some sozinho. */
+            ui_overlay_status_icon_set(NB_UI_STATUS_ICON_USER_IDENTIFYING, true);
+            esp_timer_stop(s_face_icon_timer);
+            esp_timer_start_once(s_face_icon_timer, FACE_DETECTED_ICON_TTL_US);
+        } else {
+            /* Rosto perdido: cancela timer e apaga imediatamente. */
+            esp_timer_stop(s_face_icon_timer);
+            ui_overlay_status_icon_set(NB_UI_STATUS_ICON_USER_IDENTIFYING, false);
+        }
         break;
     }
 
@@ -818,6 +838,13 @@ esp_err_t behavior_engine_init(void)
         .name     = "bridge_resp",
     };
     esp_timer_create(&timer_args, &s_bridge_resp_timer);
+
+    /* Timer one-shot para apagar ícone USER_IDENTIFYING após TTL */
+    const esp_timer_create_args_t face_icon_args = {
+        .callback = face_icon_ttl_cb,
+        .name     = "face_icon_ttl",
+    };
+    esp_timer_create(&face_icon_args, &s_face_icon_timer);
 
     /* Escalada criativa de ociosidade (boredom). */
     esp_err_t boredom_err = boredom_service_init();
