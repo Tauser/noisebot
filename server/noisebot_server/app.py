@@ -248,16 +248,31 @@ class NoiseBotServer:
         import urllib.request
 
         url = f"http://{self._config.transport.host}/api/status"
+        log.info("firmware presence poll iniciado: %s", url)
+        _last_state = "NO_ONE"
+        _fail_count = 0
+
         while self._running:
             try:
-                def _fetch() -> dict:
-                    with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310
+                def _fetch(u: str = url) -> dict:
+                    with urllib.request.urlopen(u, timeout=2) as resp:  # noqa: S310
                         return json.loads(resp.read())
                 data = await asyncio.to_thread(_fetch)
-                state = data.get("social_presence", {}).get("state", "NO_ONE")
-                self._orchestrator.set_firmware_presence_state(str(state))
+                sp = data.get("social_presence")
+                if sp is None:
+                    log.warning("firmware /api/status sem campo social_presence — JSON: %.200s", data)
+                    await asyncio.sleep(3.0)
+                    continue
+                state = str(sp.get("state", "NO_ONE"))
+                _fail_count = 0
+                if state != _last_state:
+                    log.info("firmware presence: %s → %s", _last_state, state)
+                    _last_state = state
+                self._orchestrator.set_firmware_presence_state(state)
             except Exception as exc:
-                log.debug("firmware presence poll falhou: %s", exc)
+                _fail_count += 1
+                if _fail_count == 1 or _fail_count % 10 == 0:
+                    log.warning("firmware presence poll falhou (%d×): %s", _fail_count, exc)
             await asyncio.sleep(3.0)
 
     async def shutdown(self) -> None:

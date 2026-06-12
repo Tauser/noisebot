@@ -4384,7 +4384,7 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
     const char *pstate_str = (pdiag.state <= PRESENCE_ALONE_SETTLED)
                              ? k_pstate[pdiag.state] : "UNKNOWN";
 
-    char buf[900];
+    char buf[1200];
     snprintf(buf, sizeof(buf),
         "{"
         "\"version\":\"%.31s\","
