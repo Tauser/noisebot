@@ -100,6 +100,18 @@ void idle_service_set_camera_active(bool active);
  */
 void idle_service_on_interaction(void);
 
+/**
+ * @brief Ativa/desativa modo calm de presença social.
+ *
+ * Quando ativo (ENGAGED), reduz a frequência de motifs aleatórios em ~60%
+ * — o robô fica mais quieto enquanto há companhia silenciosa.
+ * Chamado pelo behavior_engine em resposta a NB_EVT_SOCIAL_PRESENCE_ENGAGED
+ * e eventos de saída de presença.
+ *
+ * @param calm  true = ativo (ENGAGED); false = normal.
+ */
+void idle_service_set_calm_mode(bool calm);
+
 #ifdef __cplusplus
 }
 #endif

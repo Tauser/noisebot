@@ -167,6 +167,7 @@ static bool     s_was_active        = false;
 static bool     s_was_idle          = false;
 static float    s_saccade_mult      = 1.0f;
 static float    s_yawn_mult         = 1.0f;
+static float    s_calm_factor       = 1.0f; /* calm=ON → 0.4 (2.5× mais lento) */
 static uint32_t s_involuntary_ms    = 0;
 static volatile bool s_camera_active = false;
 static portMUX_TYPE s_mult_mux      = portMUX_INITIALIZER_UNLOCKED;
@@ -196,12 +197,14 @@ static uint32_t     s_next_glance_ms     = 0;
 static inline uint32_t saccade_interval_for(bool is_idle_now)
 {
     taskENTER_CRITICAL(&s_mult_mux);
-    float mult = s_saccade_mult;
+    float mult  = s_saccade_mult;
+    float calm  = s_calm_factor;
     taskEXIT_CRITICAL(&s_mult_mux);
     uint32_t base = is_idle_now
         ? rand_interval(SACCADE_IDLE_MIN_MS,      SACCADE_IDLE_RANGE_MS)
         : rand_interval(SACCADE_ATTENTIVE_MIN_MS, SACCADE_ATTENTIVE_RANGE_MS);
-    return (uint32_t)((float)base / mult);
+    /* calm_factor < 1 reduz mult, aumentando intervalo (motifs mais espaçados) */
+    return (uint32_t)((float)base / (mult * calm));
 }
 
 /* Backwards-compat: usado em init/reset, antes de termos contexto de estado. */
@@ -547,6 +550,14 @@ void idle_service_set_saccade_multiplier(float factor)
     taskENTER_CRITICAL(&s_mult_mux);
     s_saccade_mult = factor;
     taskEXIT_CRITICAL(&s_mult_mux);
+}
+
+void idle_service_set_calm_mode(bool calm)
+{
+    taskENTER_CRITICAL(&s_mult_mux);
+    s_calm_factor = calm ? 0.4f : 1.0f;
+    taskEXIT_CRITICAL(&s_mult_mux);
+    ESP_LOGD(TAG, "calm_mode=%d (factor=%.1f)", (int)calm, calm ? 0.4f : 1.0f);
 }
 
 void idle_service_set_yawn_multiplier(float factor)
