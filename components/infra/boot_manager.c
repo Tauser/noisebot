@@ -451,11 +451,9 @@ static void on_camera_event(nb_camera_event_t evt)
 {
     switch (evt) {
         case NB_CAMERA_EVT_SESSION_ACTIVE:
-            ui_overlay_camera_set(true);
             idle_service_set_camera_active(true);
             break;
         case NB_CAMERA_EVT_SESSION_INACTIVE:
-            ui_overlay_camera_set(false);
             idle_service_set_camera_active(false);
             break;
         default:
@@ -719,10 +717,12 @@ static void on_bridge_status_event(const nb_event_t *ev, void *ctx)
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_CONNECTED, false);
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_OFFLINE, false);
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_WIFI_UNAVAILABLE, false);
+        ui_overlay_camera_set(true);
     } else if (ev->type == NB_EVT_BRIDGE_DISCONNECTED) {
         s_status_bridge_connected = false;
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_CONNECTED, false);
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_BRIDGE_OFFLINE, true);
+        ui_overlay_camera_set(false);
     }
 }
 
