@@ -259,6 +259,11 @@ pre{background:#1e293b;color:#94a3b8;border-radius:var(--r);
       </div>
     </div>
 
+    <div class="card" id="social-presence-card" style="display:none">
+      <h2>Presença Social</h2>
+      <div class="sg" id="sp-grid"></div>
+    </div>
+
     <div class="card">
       <h2>Erros Recentes</h2>
       <div id="errors-list" class="err-list">
@@ -752,6 +757,7 @@ function render() {
   const { health, status, metrics, errors, config } = state;
   renderHeader(health);
   if (status) renderStatus(status);
+  if (status) renderSocialPresence(status);
   if (metrics) renderMetrics(metrics);
   if (metrics) renderVoiceDiagnostics(metrics);
   if (errors)  renderErrors(errors);
@@ -830,6 +836,36 @@ function renderStatus(s) {
   } else {
     eb.style.display = 'none';
   }
+}
+
+function renderSocialPresence(s) {
+  const card = document.getElementById('social-presence-card');
+  const grid = document.getElementById('sp-grid');
+  if (!card || !grid) return;
+  const sp = s.social_presence;
+  if (!sp) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  const STATE_CLS = {
+    CONFIRMED:     'pill-ok',
+    PRESENT:       'pill-ok',
+    SETTLED:       'pill-ok',
+    RETURNED:      'pill-ok',
+    MAYBE_SOMEONE: 'pill-warn',
+    ALONE_SETTLED: 'pill-warn',
+    NO_ONE:        'pill-off',
+  };
+  const state = sp.state || 'NO_ONE';
+  const cls   = STATE_CLS[state] || 'pill-off';
+  const compS = sp.companionship_today_s || 0;
+
+  grid.innerHTML =
+    '<div class="sg-cell"><div class="sg-label">Estado</div>' +
+      '<div class="sg-value"><span class="pill ' + cls + '">' + safeStr(state) + '</span></div>' +
+    '</div>' +
+    '<div class="sg-cell"><div class="sg-label">Companhia hoje</div>' +
+      '<div class="sg-value">' + (compS > 0 ? fmtUptime(compS) : '0s') + '</div>' +
+    '</div>';
 }
 
 function renderMetrics(m) {
