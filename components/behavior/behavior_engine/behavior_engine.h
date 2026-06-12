@@ -23,6 +23,7 @@
 #define NB_BEHAVIOR_ENGINE_H
 
 #include "esp_err.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,6 +38,14 @@ extern "C" {
  * @return ESP_OK ou ESP_ERR_INVALID_STATE se já inicializado.
  */
 esp_err_t behavior_engine_init(void);
+
+/**
+ * @brief Retorna contadores de ping de presença social (telemetria, F4).
+ * Thread-safe (leitura de uint32_t — atômica em Xtensa).
+ */
+void behavior_engine_get_ping_stats(uint32_t *out_total,
+                                    uint32_t *out_suppressed,
+                                    uint32_t *out_hour);
 
 #ifdef __cplusplus
 }

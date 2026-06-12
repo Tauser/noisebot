@@ -217,6 +217,29 @@ static const score_step_t k_stretch_a[] = {
     { 1400, NB_EXPR_NEUTRAL, 600.0f, false,   0.0f, CM_CENTER, 500, NULL },
 };
 
+/* NOTICE — Attention ping de presença social (sem áudio, não-verbal curto)
+ *
+ * Variação A: FOCUSED 1.5s — "notei alguém" (olhos alertas, discreto)
+ * Variação B: CURIOUS 1.2s — "olho de canto" (curiosidade passiva)
+ * Variação C: SURPRISED 0.7s + FOCUSED 0.9s — "piscada dupla" de atenção
+ *
+ * Todos expr_play=true: retornam ao baseline IDLE automaticamente.
+ * Nenhum movimento de servo (motion_safety não liberado).
+ * Nenhum áudio — presença anônima, sem anunciar que reconheceu a pessoa.
+ */
+static const score_step_t k_notice_a[] = {
+    { 0, NB_EXPR_FOCUSED,   120.0f, true, 1500.0f, CM_NONE, 0, NULL },
+};
+
+static const score_step_t k_notice_b[] = {
+    { 0, NB_EXPR_CURIOUS,   150.0f, true, 1200.0f, CM_NONE, 0, NULL },
+};
+
+static const score_step_t k_notice_c[] = {
+    {   0, NB_EXPR_SURPRISED, 60.0f, true,  700.0f, CM_NONE, 0, NULL },
+    { 600, NB_EXPR_FOCUSED,   80.0f, true,  900.0f, CM_NONE, 0, NULL },
+};
+
 /* ── Tabela de variações por ação ────────────────────────────────────────── */
 
 #define SCORE(arr) { .steps=(arr), .count=(int)(sizeof(arr)/sizeof((arr)[0])) }
@@ -232,8 +255,9 @@ static const nb_score_t k_scores[NB_ACTION_COUNT][3] = {
     [NB_ACTION_SPEAK_LOOP]    = { SCORE(k_speak_a), SCORE(k_speak_b), {NULL,0} },
     [NB_ACTION_SLEEP]         = { SCORE(k_sleep_a), {NULL,0}, {NULL,0} },
     [NB_ACTION_WAKE_UP]       = { SCORE(k_wake_a), SCORE(k_wake_b), SCORE(k_wake_c) },
-    [NB_ACTION_STRETCH]       = { SCORE(k_stretch_a),   {NULL,0}, {NULL,0} },
-    [NB_ACTION_CELEBRATE]     = { SCORE(k_celebrate_a), {NULL,0}, {NULL,0} },
+    [NB_ACTION_STRETCH]       = { SCORE(k_stretch_a),   {NULL,0},         {NULL,0}         },
+    [NB_ACTION_CELEBRATE]     = { SCORE(k_celebrate_a), {NULL,0},         {NULL,0}         },
+    [NB_ACTION_NOTICE]        = { SCORE(k_notice_a),    SCORE(k_notice_b), SCORE(k_notice_c) },
 };
 
 /* Número de variações por ação */
@@ -250,6 +274,7 @@ static const int k_num_vars[NB_ACTION_COUNT] = {
     [NB_ACTION_WAKE_UP]       = 3,
     [NB_ACTION_STRETCH]       = 1,
     [NB_ACTION_CELEBRATE]     = 1,
+    [NB_ACTION_NOTICE]        = 3,
 };
 
 /* ── Loader de partituras do SD (F45) ────────────────────────────────────── */

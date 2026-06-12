@@ -36,7 +36,8 @@ typedef enum {
     NB_ACTION_WAKE_UP       = 9,   /**< Despertar                                 */
     NB_ACTION_STRETCH       = 10,  /**< Espreguiçar ao sair de DAWN (circadiano)  */
     NB_ACTION_CELEBRATE     = 11,  /**< Celebração de marco (50 toques, 100h)      */
-    NB_ACTION_COUNT         = 12,
+    NB_ACTION_NOTICE        = 12,  /**< Attention ping de presença (sem áudio)      */
+    NB_ACTION_COUNT         = 13,
 } nb_action_t;
 
 /* ── API ─────────────────────────────────────────────────────────────────── */

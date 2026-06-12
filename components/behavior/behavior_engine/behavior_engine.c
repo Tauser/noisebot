@@ -59,6 +59,10 @@
 #define BRIDGE_ERROR_TOAST_MS        2400U
 #define FACE_DETECTED_ICON_TTL_US    3000000LL   /* ícone USER_IDENTIFYING some após 3s */
 
+/* Rate-limit de pings de presença: máx 4 por hora (spec §4.1) */
+#define PRESENCE_PING_MAX_PER_HOUR   4U
+#define PRESENCE_PING_WINDOW_US      3600000000LL  /* 1 hora em µs */
+
 /* Cooldown mínimo entre triggers de VOICE_ACTIVITY_START → conductor.
  * Previne o loop: servo move → vibração → VAD hit → conductor_play(CURIOUS)
  * → servo move → ... A cada hit dentro do cooldown só o bridge é notificado. */
@@ -296,6 +300,17 @@ static const nb_be_rule_t k_rules[] = {
 
 #define K_NRULES  ((uint8_t)(sizeof(k_rules) / sizeof(k_rules[0])))
 
+/* ── Presença social — contadores de ping ────────────────────────────────── */
+
+static uint32_t s_ping_count      = 0U;  /* total de pings disparados (telemetria) */
+static uint32_t s_ping_suppressed = 0U;  /* total suprimidos (guards + rate-limit)  */
+static uint32_t s_ping_hour_count = 0U;  /* pings na janela de hora atual           */
+static int64_t  s_ping_hour_start_us = 0; /* início da janela (µs)                  */
+
+/* Sleep timer: ENGAGED = congela; SETTLED = restaura; valor original salvo aqui */
+static bool     s_idle_timeout_overridden = false;
+static uint32_t s_orig_idle_timeout_s     = 0U;
+
 /* ── Estado ──────────────────────────────────────────────────────────────── */
 
 static bool s_initialized        = false;
@@ -349,6 +364,92 @@ static void apply_touch_feedback_for_event(nb_event_type_t event)
             break;
         default:
             break;
+    }
+}
+
+/* ── Presença social — ping e modulação de sleep ─────────────────────────── */
+
+static void handle_presence_ping(const nb_event_t *evt)
+{
+    int64_t now = esp_timer_get_time();
+    /* Reseta janela de 1 hora se necessário */
+    if (s_ping_hour_start_us == 0 || (now - s_ping_hour_start_us) >= PRESENCE_PING_WINDOW_US) {
+        s_ping_hour_start_us = now;
+        s_ping_hour_count    = 0U;
+    }
+
+    nb_robot_state_t st = state_machine_get_state();
+    bool guard_ok = (st != NB_STATE_RESPONDING &&
+                     st != NB_STATE_SLEEPING   &&
+                     st != NB_STATE_MEDITATION &&
+                     conductor_get_current() == NB_ACTION_NONE);
+
+    if (!guard_ok || s_ping_hour_count >= PRESENCE_PING_MAX_PER_HOUR) {
+        s_ping_suppressed++;
+        NB_LOGD(TAG, "ping presença suprimido (guard=%d rate=%u/h)",
+                (int)guard_ok, (unsigned)s_ping_hour_count);
+        return;
+    }
+
+    conductor_play(NB_ACTION_NOTICE);
+    s_ping_count++;
+    s_ping_hour_count++;
+    NB_LOGI(TAG, "ping presença #%u (hora=%u/%u) tipo=%s",
+            (unsigned)s_ping_count,
+            (unsigned)s_ping_hour_count,
+            (unsigned)PRESENCE_PING_MAX_PER_HOUR,
+            evt->type == NB_EVT_SOCIAL_PRESENCE_CONFIRMED ? "CONFIRMED" : "RETURNED");
+}
+
+static void handle_presence_social_event(const nb_event_t *evt)
+{
+    switch (evt->type) {
+
+    case NB_EVT_SOCIAL_PRESENCE_CONFIRMED:
+    case NB_EVT_SOCIAL_PRESENCE_RETURNED:
+        handle_presence_ping(evt);
+        /* Restaura timer de sleep normal ao (re)entrar em PRESENT */
+        if (s_idle_timeout_overridden) {
+            state_machine_set_idle_timeout_s(s_orig_idle_timeout_s);
+            idle_service_set_calm_mode(false);
+            s_idle_timeout_overridden = false;
+            NB_LOGD(TAG, "presença: timer sleep restaurado (%us)", (unsigned)s_orig_idle_timeout_s);
+        }
+        break;
+
+    case NB_EVT_SOCIAL_PRESENCE_ENGAGED:
+        /* Congela idle→sleep enquanto há companhia silenciosa */
+        if (!s_idle_timeout_overridden) {
+            s_orig_idle_timeout_s     = config_get_idle_timeout_s();
+            s_idle_timeout_overridden = true;
+        }
+        state_machine_set_idle_timeout_s(7200U); /* 2h — efetivamente congela */
+        idle_service_set_calm_mode(true);
+        NB_LOGI(TAG, "presença ENGAGED — sleep timer congelado, idle calm ON");
+        break;
+
+    case NB_EVT_SOCIAL_PRESENCE_SETTLED:
+        /* Ausência longa: restaura timer normal (sem encurtar — spec §4.3) */
+        if (s_idle_timeout_overridden) {
+            state_machine_set_idle_timeout_s(s_orig_idle_timeout_s);
+            s_idle_timeout_overridden = false;
+        }
+        idle_service_set_calm_mode(false);
+        NB_LOGD(TAG, "presença SETTLED — sleep timer restaurado");
+        break;
+
+    case NB_EVT_SOCIAL_PRESENCE_LOST_SHORT:
+    case NB_EVT_SOCIAL_PRESENCE_AWAY:
+        /* Saída de ENGAGED: restaura se não foi SETTLED já */
+        if (s_idle_timeout_overridden) {
+            state_machine_set_idle_timeout_s(s_orig_idle_timeout_s);
+            s_idle_timeout_overridden = false;
+        }
+        idle_service_set_calm_mode(false);
+        break;
+
+    default:
+        break;
     }
 }
 
@@ -778,6 +879,12 @@ static void on_bus_event(const nb_event_t *evt, void *ctx)
 
     /* Passa 3: wiring do bridge (Etapa 12.2) — independente das regras. */
     bridge_on_event(evt);
+
+    /* Passa 4: presença social — ping + modulação de sleep/calm */
+    if (evt->type >= NB_EVT_SOCIAL_PRESENCE_ACQUIRED &&
+        evt->type <= NB_EVT_SOCIAL_PRESENCE_RETURNED) {
+        handle_presence_social_event(evt);
+    }
 }
 
 /* ── API ─────────────────────────────────────────────────────────────────── */
@@ -805,7 +912,7 @@ esp_err_t behavior_engine_init(void)
         subscribed[t] = true;
     }
 
-    /* Subscreve eventos de bridge que não estão na tabela de regras */
+    /* Subscreve eventos de bridge e internos que não estão na tabela de regras */
     static const nb_event_type_t k_bridge_evts[] = {
         NB_EVT_WAKE_WORD_DETECTED,
         NB_EVT_VOICE_ACTIVITY_END,
@@ -823,6 +930,14 @@ esp_err_t behavior_engine_init(void)
         NB_EVT_BRIDGE_RESPONSE_TIMEOUT,
         NB_EVT_STATE_CHANGED,
         NB_EVT_WIFI_IP_ACQUIRED,
+        /* Presença social — ping + modulação de sleep/calm */
+        NB_EVT_SOCIAL_PRESENCE_ACQUIRED,
+        NB_EVT_SOCIAL_PRESENCE_CONFIRMED,
+        NB_EVT_SOCIAL_PRESENCE_ENGAGED,
+        NB_EVT_SOCIAL_PRESENCE_LOST_SHORT,
+        NB_EVT_SOCIAL_PRESENCE_AWAY,
+        NB_EVT_SOCIAL_PRESENCE_SETTLED,
+        NB_EVT_SOCIAL_PRESENCE_RETURNED,
     };
     for (size_t i = 0; i < sizeof(k_bridge_evts) / sizeof(k_bridge_evts[0]); i++) {
         nb_event_type_t t = k_bridge_evts[i];
@@ -856,4 +971,13 @@ esp_err_t behavior_engine_init(void)
     s_initialized = true;
     NB_LOGI(TAG, "behavior_engine inicializado (%u regras)", (unsigned)K_NRULES);
     return ESP_OK;
+}
+
+void behavior_engine_get_ping_stats(uint32_t *out_total,
+                                    uint32_t *out_suppressed,
+                                    uint32_t *out_hour)
+{
+    if (out_total)      *out_total      = s_ping_count;
+    if (out_suppressed) *out_suppressed = s_ping_suppressed;
+    if (out_hour)       *out_hour       = s_ping_hour_count;
 }
