@@ -138,6 +138,17 @@ typedef enum {
     NB_EVT_ALARM_CANCELLED,         /* data.u32 = alarm_id                      */
     NB_EVT_ALARM_DUE,               /* data.u32 = alarm_id                      */
 
+    /* Presença Social (SPEC_PRESENCA_SOCIAL_2026-06-11)
+     * Payload: data.u32 = (old_presence_state << 8) | new_presence_state
+     * Vocabulário separado de NB_EVT_PRESENCE_DETECTED/LOST (sinal bruto). */
+    NB_EVT_SOCIAL_PRESENCE_ACQUIRED,   /* NO_ONE/SETTLED → MAYBE_SOMEONE               */
+    NB_EVT_SOCIAL_PRESENCE_CONFIRMED,  /* → PRESENT (primeiro na sessão ou retorno < 60s) */
+    NB_EVT_SOCIAL_PRESENCE_ENGAGED,    /* → ENGAGED (companhia silenciosa; PRESENT ≥ 3min) */
+    NB_EVT_SOCIAL_PRESENCE_LOST_SHORT, /* → LEFT_RECENTLY (perda de sinal, hold 5s expirou) */
+    NB_EVT_SOCIAL_PRESENCE_AWAY,       /* → AWAY (LEFT_RECENTLY ≥ 30s)                     */
+    NB_EVT_SOCIAL_PRESENCE_SETTLED,    /* → ALONE_SETTLED (AWAY ≥ 120s)                    */
+    NB_EVT_SOCIAL_PRESENCE_RETURNED,   /* → PRESENT (retorno após ausência ≥ 60s)           */
+
     NB_EVT_COUNT,                   /* sentinela — manter ao final */
 } nb_event_type_t;
 

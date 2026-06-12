@@ -53,6 +53,7 @@
 #include "rhythm_service.h"
 #include "vad_semantic_service.h"
 #include "touch_semantic_service.h"
+#include "presence_semantic_service.h"
 #include "persona_service.h"
 #include "circadian_service.h"
 #include "wifi_service.h"
@@ -990,6 +991,7 @@ static void behavior_task(void *arg)
         rhythm_service_tick(100);
         vad_semantic_tick(100);
         touch_semantic_tick(100);
+        presence_semantic_tick(100);
         circadian_tick(100);
         idle_service_update(100);
         agenda_service_tick(100);
@@ -1232,6 +1234,11 @@ static esp_err_t phase_services(void)
     /* touch_semantic_service (Etapa 10.4): double-tap, DEEP, CARESS, WARM_PULSE */
     err = touch_semantic_init();
     NB_ASSERT(err == ESP_OK, TAG, "touch_semantic_init falhou: %s",
+              esp_err_to_name(err));
+
+    /* presence_semantic_service (SPEC_PRESENCA_SOCIAL_2026-06-11 F1) */
+    err = presence_semantic_init();
+    NB_ASSERT(err == ESP_OK, TAG, "presence_semantic_init falhou: %s",
               esp_err_to_name(err));
 
     /* state_machine e emotion_model (Etapa 5.1) */
