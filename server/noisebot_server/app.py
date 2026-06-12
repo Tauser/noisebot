@@ -247,7 +247,7 @@ class NoiseBotServer:
         import json
         import urllib.request
 
-        url = f"http://{self._config.transport.host}/api/status"
+        url = f"http://{self._config.transport.host}/api/diag"
         log.info("firmware presence poll iniciado: %s", url)
         _last_state = "NO_ONE"
         _fail_count = 0
