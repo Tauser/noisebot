@@ -87,6 +87,11 @@ TTS_FAST_FRAGMENT_MIN_CHARS = 24
 TEXT_SCROLL_MAX_BYTES = 128
 TEXT_SCROLL_PAGE_MAX_CHARS = 38
 TEXT_SCROLL_PAGE_INTERVAL_S = 2.2
+TEXT_SCROLL_MIN_PAGE_INTERVAL_S = 1.4
+TEXT_SCROLL_MAX_PAGE_INTERVAL_S = 3.8
+TEXT_SCROLL_ESTIMATED_CHARS_PER_S = 16.0
+VISION_THINKING_TEXT = "Olhando..."
+VISION_THINKING_EXPR_ID = 4
 
 
 def _sentences_for_tts(text: str) -> list[str]:
@@ -566,6 +571,8 @@ class Orchestrator:
             "status": self._last_status,
             "recent_barge_in": recent_barge_in,
         }
+        if _looks_like_vision_scene_question(event.text):
+            await self._show_vision_thinking_feedback(event.turn_id, session)
         t_intent_start = time.monotonic()
         intent = await asyncio.to_thread(
             self._intent.match,
@@ -650,6 +657,26 @@ class Orchestrator:
             )
             self._fsm.try_transition(TurnState.IDLE)
             await self._finish_turn()
+
+    async def _show_vision_thinking_feedback(
+        self,
+        turn_id: int,
+        session: SessionContext,
+    ) -> None:
+        adapter = self.adapter
+        if adapter is None:
+            return
+        try:
+            await adapter.send_expr(VISION_THINKING_EXPR_ID)
+            await adapter.send_text_scroll(VISION_THINKING_TEXT)
+            session.meta["vision_thinking_feedback"] = True
+        except Exception as exc:
+            session.meta["vision_thinking_feedback"] = False
+            log.warning(
+                "Turno %d: feedback visual de visao falhou: %s",
+                turn_id,
+                exc,
+            )
 
     def _apply_local_agenda_state(
         self,
@@ -1428,16 +1455,18 @@ class Orchestrator:
             return
         encoded = text.encode("utf-8")
         pages = _split_text_scroll_pages(text)
+        page_interval_s = _text_scroll_page_interval(text, len(pages))
         session.meta["text_scroll_chars"] = len(text)
         session.meta["text_scroll_bytes"] = len(encoded)
         session.meta["text_scroll_payload_bytes"] = min(len(encoded), TEXT_SCROLL_MAX_BYTES)
         session.meta["text_scroll_truncated"] = len(encoded) > TEXT_SCROLL_MAX_BYTES
         session.meta["text_scroll_pages"] = len(pages)
         session.meta["text_scroll_pages_sent"] = 0
+        session.meta["text_scroll_page_interval_ms"] = round(page_interval_s * 1000.0, 1)
         try:
             for index, page in enumerate(pages):
                 if index > 0:
-                    await asyncio.sleep(TEXT_SCROLL_PAGE_INTERVAL_S)
+                    await asyncio.sleep(page_interval_s)
                 await adapter.send_text_scroll(page)
                 session.meta["text_scroll_pages_sent"] = index + 1
         except Exception as exc:
@@ -1953,6 +1982,20 @@ def _split_text_scroll_pages(
     return pages or []
 
 
+def _text_scroll_page_interval(text: str, page_count: int) -> float:
+    if page_count <= 1:
+        return 0.0
+    estimated_duration_s = max(
+        TEXT_SCROLL_MIN_PAGE_INTERVAL_S * (page_count - 1),
+        len(str(text or "")) / TEXT_SCROLL_ESTIMATED_CHARS_PER_S,
+    )
+    interval_s = (estimated_duration_s * 0.90) / float(page_count - 1)
+    return max(
+        TEXT_SCROLL_MIN_PAGE_INTERVAL_S,
+        min(TEXT_SCROLL_MAX_PAGE_INTERVAL_S, interval_s),
+    )
+
+
 def _text_prefix(text: str, max_bytes: int, max_chars: int) -> str:
     out = ""
     for char in text:
@@ -1996,4 +2039,22 @@ def _log_voice_session_final(session: dict[str, Any]) -> None:
     log.info(
         "VOICE_SESSION_FINAL %s",
         json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _looks_like_vision_scene_question(text: str) -> bool:
+    from .intents import _normalize
+
+    norm = _normalize(text)
+    return any(
+        term in norm
+        for term in (
+            "o que voce esta vendo",
+            "o que vc esta vendo",
+            "o que esta vendo",
+            "o que voce ve",
+            "o que vc ve",
+            "descreve a cena",
+            "descreva a cena",
+        )
     )

@@ -795,6 +795,97 @@ def test_gateway_analyze_vision_executes_when_available() -> None:
     assert result.success is True  # executor retornou dict com "error" mas não levantou
     assert "error" in result.result
 
+def test_local_vision_scene_uses_ollama_vision_description(monkeypatch) -> None:
+    import unittest.mock as mock
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    intents = importlib.import_module("noisebot_server.internal.agent.intents")
+    vision = importlib.import_module("noisebot_server.internal.vision")
+
+    obs = _make_fake_vision_obs(luma=120, contrast=120)
+    analysis = vision.VisionAnalysis(
+        observation=obs,
+        detector="yunet",
+        detector_available=True,
+        face_detected=False,
+        face_count=0,
+        primary_face=None,
+    )
+
+    class FakeVisionClient:
+        def observe(self):
+            return obs
+
+        def snapshot(self):
+            return b"\xff\xd8\xff"
+
+        def session_close(self):
+            pass
+
+    monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "ollama")
+    monkeypatch.setenv("NOISEBOT_LLM_MODEL", "gemma4:12b")
+    monkeypatch.setenv("NOISEBOT_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    monkeypatch.setattr(intents, "analyze_jpeg", mock.Mock(return_value=analysis))
+    monkeypatch.setattr(
+        intents,
+        "describe_with_ollama_vision",
+        mock.Mock(return_value="Vejo voce sentado em frente ao robo."),
+    )
+    monkeypatch.setattr(intents, "describe_with_vision_api", mock.Mock(return_value=None))
+
+    provider = agent.LocalIntentProvider(vision_client=FakeVisionClient())
+    result = provider.match("o que voce esta vendo?", turn_id=12)
+
+    assert result.intent_name == "local_vision_scene"
+    assert result.reply_text == "Vejo voce sentado em frente ao robo."
+    intents.describe_with_ollama_vision.assert_called_once_with(
+        b"\xff\xd8\xff",
+        base_url="http://127.0.0.1:11434",
+        model="gemma4:12b",
+    )
+    intents.describe_with_vision_api.assert_not_called()
+
+def test_local_vision_scene_falls_back_to_local_reading(monkeypatch) -> None:
+    import unittest.mock as mock
+
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    intents = importlib.import_module("noisebot_server.internal.agent.intents")
+    vision = importlib.import_module("noisebot_server.internal.vision")
+
+    obs = _make_fake_vision_obs(motion=0, luma=120, contrast=120)
+    face = vision.FaceBox(x=96, y=72, width=48, height=64)
+    analysis = vision.VisionAnalysis(
+        observation=obs,
+        detector="yunet",
+        detector_available=True,
+        face_detected=True,
+        face_count=1,
+        primary_face=face,
+    )
+
+    class FakeVisionClient:
+        def observe(self):
+            return obs
+
+        def snapshot(self):
+            return b"\xff\xd8\xff"
+
+        def session_close(self):
+            pass
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "ollama")
+    monkeypatch.setattr(intents, "analyze_jpeg", mock.Mock(return_value=analysis))
+    monkeypatch.setattr(intents, "describe_with_ollama_vision", mock.Mock(return_value=None))
+    monkeypatch.setattr(intents, "describe_with_vision_api", mock.Mock(return_value=None))
+
+    provider = agent.LocalIntentProvider(vision_client=FakeVisionClient())
+    result = provider.match("descreva a cena", turn_id=13)
+
+    assert result.intent_name == "local_vision_scene"
+    assert "detectei um rosto" in result.reply_text
+    assert "quase nao percebi movimento" in result.reply_text
+
 def test_payload_vision_field_present_when_snapshot_provided() -> None:
     """build_turn_payload inclui 'vision' quando vision_snapshot é fornecido."""
     payload_builder = importlib.import_module(
@@ -1063,16 +1154,164 @@ def test_init_analyzer_raises_when_opencv_missing() -> None:
             sys.modules["cv2"] = original
 
 
+def test_describe_with_ollama_vision_posts_image_payload(monkeypatch) -> None:
+    import base64
+    import json
+
+    analysis_module = importlib.import_module("noisebot_server.internal.vision.analysis")
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return b'{"message":{"content":"Vejo uma pessoa na mesa."}}'
+
+    def fake_urlopen(req, timeout):
+        captured["url"] = req.full_url
+        captured["timeout"] = timeout
+        captured["payload"] = json.loads(req.data.decode("utf-8"))
+        return FakeResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    result = analysis_module.describe_with_ollama_vision(
+        b"jpeg-bytes",
+        base_url="http://127.0.0.1:11434",
+        model="gemma4:12b",
+    )
+
+    assert result == "Vejo uma pessoa na mesa."
+    assert captured["url"] == "http://127.0.0.1:11434/api/chat"
+    payload = captured["payload"]
+    assert payload["model"] == "gemma4:12b"
+    assert payload["stream"] is False
+    assert payload["think"] is False
+    assert payload["messages"][0]["images"] == [
+        base64.b64encode(b"jpeg-bytes").decode("ascii")
+    ]
+
+
+def test_describe_with_ollama_vision_falls_back_to_generate(monkeypatch) -> None:
+    import json
+
+    analysis_module = importlib.import_module("noisebot_server.internal.vision.analysis")
+    calls: list[tuple[str, dict]] = []
+
+    class FakeResponse:
+        def __init__(self, payload: bytes) -> None:
+            self._payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return self._payload
+
+    def fake_urlopen(req, timeout):
+        payload = json.loads(req.data.decode("utf-8"))
+        calls.append((req.full_url, payload))
+        if req.full_url.endswith("/api/chat"):
+            return FakeResponse(b'{"message":{"content":""}}')
+        return FakeResponse(b'{"response":"Vejo um ambiente interno com uma pessoa."}')
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    result = analysis_module.describe_with_ollama_vision(
+        b"jpeg-bytes",
+        base_url="http://127.0.0.1:11434",
+        model="gemma4:12b",
+    )
+
+    assert result == "Vejo um ambiente interno com uma pessoa."
+    assert calls[0][0] == "http://127.0.0.1:11434/api/chat"
+    assert calls[1][0] == "http://127.0.0.1:11434/api/generate"
+    assert calls[0][1]["think"] is False
+    assert calls[1][1]["think"] is False
+    assert calls[1][1]["images"]
+
+
+def test_analyzer_low_light_fallback_runs_when_first_detection_misses() -> None:
+    """Em baixa luz, analyze_jpeg tenta uma segunda detecção no frame realçado."""
+    import unittest.mock as mock
+    analysis_module = importlib.import_module("noisebot_server.internal.vision.analysis")
+    obs = _make_fake_vision_obs(luma=35)
+
+    fake_image = mock.MagicMock()
+    fake_image.shape = (240, 240, 3)
+    fake_cv2 = mock.MagicMock()
+    fake_cv2.IMREAD_COLOR = 1
+    fake_cv2.imdecode.return_value = fake_image
+    fake_np = mock.MagicMock()
+    fake_np.uint8 = object()
+    fake_np.frombuffer.return_value = b"arr"
+    fake_detector = mock.MagicMock()
+    fake_detector.detect.side_effect = [
+        (None, None),
+        (None, [[80, 60, 50, 70, 0.8]]),
+    ]
+
+    with mock.patch.dict("sys.modules", {"cv2": fake_cv2, "numpy": fake_np}), \
+         mock.patch.object(analysis_module, "_detector", fake_detector), \
+         mock.patch.object(analysis_module, "_enhance_low_light_image", return_value=fake_image):
+        result = analysis_module.analyze_jpeg(b"\xff\xd8\xff", obs)
+
+    assert fake_detector.detect.call_count == 2
+    assert result.face_detected is True
+    assert result.primary_face is not None
+    assert result.primary_face.width == 50
+
+
+def test_analyzer_skips_low_light_fallback_in_good_light() -> None:
+    """Em luz normal, um miss simples não deve pagar custo extra de realce."""
+    import unittest.mock as mock
+    analysis_module = importlib.import_module("noisebot_server.internal.vision.analysis")
+    obs = _make_fake_vision_obs(luma=130, contrast=120)
+
+    fake_image = mock.MagicMock()
+    fake_image.shape = (240, 240, 3)
+    fake_cv2 = mock.MagicMock()
+    fake_cv2.IMREAD_COLOR = 1
+    fake_cv2.imdecode.return_value = fake_image
+    fake_np = mock.MagicMock()
+    fake_np.uint8 = object()
+    fake_np.frombuffer.return_value = b"arr"
+    fake_detector = mock.MagicMock()
+    fake_detector.detect.return_value = (None, None)
+
+    with mock.patch.dict("sys.modules", {"cv2": fake_cv2, "numpy": fake_np}), \
+         mock.patch.object(analysis_module, "_detector", fake_detector), \
+         mock.patch.object(analysis_module, "_enhance_low_light_image") as enhance:
+        result = analysis_module.analyze_jpeg(b"\xff\xd8\xff", obs)
+
+    assert fake_detector.detect.call_count == 1
+    enhance.assert_not_called()
+    assert result.face_detected is False
+
+
 # ── VisionPipeline ────────────────────────────────────────────────────────────
 
-def _make_fake_vision_obs(motion: int = 0, luma: int = 0, width: int = 240, height: int = 240):
+def _make_fake_vision_obs(
+    motion: int = 0,
+    luma: int = 0,
+    width: int = 240,
+    height: int = 240,
+    contrast: int = 30,
+):
     VisionObservation = importlib.import_module(
         "noisebot_server.internal.vision.client"
     ).VisionObservation
     return VisionObservation(
         valid=True, scene="normal", timestamp_ms=0,
         width=width, height=height, jpeg_bytes=0, capture_ms=0,
-        luma_avg=luma, luma_min=0, luma_max=255, contrast=30, motion_score=motion,
+        luma_avg=luma, luma_min=0, luma_max=255, contrast=contrast, motion_score=motion,
     )
 
 
@@ -1103,6 +1342,14 @@ def test_vision_pipeline_status_dict_structure() -> None:
     assert "gaze_sends" in d
     assert "capture_errors" in d
     assert "last_face_box" in d
+
+
+def test_vision_pipeline_idle_check_interval_is_responsive() -> None:
+    """IDLE não deve esperar dezenas de segundos para procurar presença."""
+    pipeline_module = importlib.import_module(
+        "noisebot_server.internal.vision.vision_pipeline"
+    )
+    assert pipeline_module._IDLE_CHECK_INTERVAL_S <= 5.0
 
 
 @pytest.mark.asyncio
@@ -1147,6 +1394,43 @@ async def test_vision_pipeline_idle_to_acquire_on_motion() -> None:
 
 
 @pytest.mark.asyncio
+async def test_vision_pipeline_idle_to_acquire_on_static_face() -> None:
+    """IDLE também acorda quando há rosto estático, mesmo com motion_score baixo."""
+    import unittest.mock as mock
+    pipeline_module = importlib.import_module(
+        "noisebot_server.internal.vision.vision_pipeline"
+    )
+    analysis_module = importlib.import_module(
+        "noisebot_server.internal.vision.analysis"
+    )
+
+    obs = _make_fake_vision_obs(motion=0, luma=120)
+    face = analysis_module.FaceBox(x=100, y=70, width=56, height=72)
+    fake_analysis = analysis_module.VisionAnalysis(
+        observation=obs,
+        detector="yunet",
+        detector_available=True,
+        face_detected=True,
+        face_count=1,
+        primary_face=face,
+    )
+    pipe = pipeline_module.VisionPipeline(
+        vision_client=None,  # type: ignore[arg-type]
+        get_adapter=lambda: None,
+    )
+
+    with mock.patch.object(pipe, "_safe_observe", return_value=obs), \
+         mock.patch.object(pipe, "_safe_capture", return_value=b"\xff\xd8\xff"), \
+         mock.patch("noisebot_server.internal.vision.vision_pipeline.analyze_jpeg",
+                    return_value=fake_analysis):
+        interval = await pipe._tick_idle()
+
+    assert pipe.state == pipeline_module.PipelineState.ACQUIRE
+    assert pipe._consecutive_hits == 1
+    assert interval == pipeline_module._ACQUIRE_INTERVAL_S
+
+
+@pytest.mark.asyncio
 async def test_vision_pipeline_acquire_to_track_after_hits() -> None:
     """ACQUIRE → TRACK após _CONFIRM_HITS detecções consecutivas."""
     import unittest.mock as mock
@@ -1176,17 +1460,17 @@ async def test_vision_pipeline_acquire_to_track_after_hits() -> None:
     pipe._cached_obs = obs
     pipe._acquire_start_ts = asyncio.get_event_loop().time()
 
-    async def _noop_gaze(_): pass
     with mock.patch.object(pipe, "_safe_capture", return_value=b"\xff\xd8\xff"), \
          mock.patch("noisebot_server.internal.vision.vision_pipeline.analyze_jpeg",
                     return_value=fake_analysis), \
-         mock.patch.object(pipe, "_emit_gaze", side_effect=_noop_gaze):
+         mock.patch.object(pipe, "_emit_gaze") as emit_gaze:
         # Need _CONFIRM_HITS consecutive hits
         for _ in range(pipeline_module._CONFIRM_HITS):
             await pipe._tick_acquire()
 
     assert pipe.state == pipeline_module.PipelineState.TRACK
     assert pipe.counters.detections >= 1
+    emit_gaze.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1222,6 +1506,80 @@ async def test_vision_pipeline_track_to_lost_after_misses() -> None:
             await pipe._tick_track()
 
     assert pipe.state == pipeline_module.PipelineState.LOST
+
+
+@pytest.mark.asyncio
+async def test_vision_pipeline_track_does_not_stream_gaze() -> None:
+    """TRACK mantém presença por face_box sem prender o olhar em tracking contínuo."""
+    import unittest.mock as mock
+    pipeline_module = importlib.import_module(
+        "noisebot_server.internal.vision.vision_pipeline"
+    )
+    analysis_module = importlib.import_module(
+        "noisebot_server.internal.vision.analysis"
+    )
+
+    obs = _make_fake_vision_obs(width=240, height=240)
+    face = analysis_module.FaceBox(x=96, y=80, width=56, height=72)
+    fake_analysis = analysis_module.VisionAnalysis(
+        observation=obs,
+        detector="yunet",
+        detector_available=True,
+        face_detected=True,
+        face_count=1,
+        primary_face=face,
+    )
+
+    pipe = pipeline_module.VisionPipeline(
+        vision_client=None,  # type: ignore[arg-type]
+        get_adapter=lambda: None,
+    )
+    pipe._state = pipeline_module.PipelineState.TRACK
+    pipe._cached_obs = obs
+
+    async def _noop_face_box(_): pass
+    with mock.patch.object(pipe, "_safe_capture", return_value=b"\xff\xd8\xff"), \
+         mock.patch("noisebot_server.internal.vision.vision_pipeline.analyze_jpeg",
+                    return_value=fake_analysis), \
+         mock.patch.object(pipe, "_emit_gaze") as emit_gaze, \
+         mock.patch.object(pipe, "_emit_face_box", side_effect=_noop_face_box) as emit_face_box:
+        interval = await pipe._tick_track()
+
+    emit_gaze.assert_not_called()
+    assert emit_face_box.call_count == 1
+    assert interval == pipeline_module._TRACK_INTERVAL_S
+    assert pipe.state == pipeline_module.PipelineState.TRACK
+
+
+@pytest.mark.asyncio
+async def test_vision_pipeline_lost_reacquires_before_idle() -> None:
+    """LOST limpa tracking e entra em ACQUIRE rápido antes da cadência lenta de IDLE."""
+    pipeline_module = importlib.import_module(
+        "noisebot_server.internal.vision.vision_pipeline"
+    )
+
+    pipe = pipeline_module.VisionPipeline(
+        vision_client=None,  # type: ignore[arg-type]
+        get_adapter=lambda: None,
+    )
+    pipe._state = pipeline_module.PipelineState.LOST
+    pipe._consecutive_hits = 2
+    pipe._consecutive_misses = pipeline_module._MISS_THRESHOLD
+    pipe._cached_obs = object()  # type: ignore[assignment]
+    pipe._ema_x = 0.2
+    pipe._ema_y = -0.1
+    pipe._last_sent_x = 0.2
+    pipe._last_sent_y = -0.1
+
+    interval = await pipe._tick_lost()
+
+    assert pipe.state == pipeline_module.PipelineState.ACQUIRE
+    assert interval == pipeline_module._ACQUIRE_INTERVAL_S
+    assert pipe._consecutive_hits == 0
+    assert pipe._consecutive_misses == 0
+    assert pipe._cached_obs is None
+    assert pipe._ema_x is None
+    assert pipe._last_sent_x is None
 
 
 def test_vision_pipeline_uses_real_observation_dimensions() -> None:

@@ -1198,6 +1198,25 @@ def test_server_text_scroll_pages_split_visually_wide_reply() -> None:
     assert all(len(page.encode("utf-8")) <= 128 for page in pages)
     assert all(len(page) <= 38 for page in pages)
 
+def test_server_text_scroll_interval_tracks_reply_length() -> None:
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    short_interval = orchestrator_module._text_scroll_page_interval(
+        "Resposta curta para tela.",
+        2,
+    )
+    long_interval = orchestrator_module._text_scroll_page_interval(
+        "texto longo " * 60,
+        8,
+    )
+
+    assert short_interval >= orchestrator_module.TEXT_SCROLL_MIN_PAGE_INTERVAL_S
+    assert short_interval < 1.6
+    assert long_interval > short_interval
+    assert long_interval <= orchestrator_module.TEXT_SCROLL_MAX_PAGE_INTERVAL_S
+
 @pytest.mark.asyncio
 async def test_server_reply_text_scroll_sends_paginated_pages(monkeypatch) -> None:
     runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
@@ -1218,7 +1237,8 @@ async def test_server_reply_text_scroll_sends_paginated_pages(monkeypatch) -> No
         _make_server_config(),
         get_adapter=lambda: adapter,
     )
-    monkeypatch.setattr(orchestrator_module, "TEXT_SCROLL_PAGE_INTERVAL_S", 0)
+    monkeypatch.setattr(orchestrator_module, "TEXT_SCROLL_MIN_PAGE_INTERVAL_S", 0)
+    monkeypatch.setattr(orchestrator_module, "TEXT_SCROLL_MAX_PAGE_INTERVAL_S", 0)
     session = runtime.SessionContext(turn_id=78)
     session.reply_text = "Resposta longa. " + ("texto completo " * 20)
 
@@ -1258,6 +1278,49 @@ async def test_server_reply_text_scroll_preserves_utf8_text() -> None:
 
     assert adapter.texts == ["Olá! São águas incríveis para você."]
     assert session.reply_text == "Olá! São águas incríveis para você."
+
+def test_server_detects_vision_scene_question_for_pre_feedback() -> None:
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    assert orchestrator_module._looks_like_vision_scene_question(
+        "O que você está vendo?"
+    )
+    assert orchestrator_module._looks_like_vision_scene_question("descreva a cena")
+    assert not orchestrator_module._looks_like_vision_scene_question("que horas sao")
+
+@pytest.mark.asyncio
+async def test_server_vision_scene_pre_feedback_sends_visual_hint() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class DummyAdapter:
+        def __init__(self) -> None:
+            self.expressions: list[int] = []
+            self.texts: list[str] = []
+
+        async def send_expr(self, expression_id: int, duration_ms: int = 2000) -> None:
+            self.expressions.append(expression_id)
+
+        async def send_text_scroll(self, text: str) -> None:
+            self.texts.append(text)
+
+    adapter = DummyAdapter()
+    orchestrator = orchestrator_module.Orchestrator(
+        runtime.EventBus(),
+        _make_server_config(),
+        get_adapter=lambda: adapter,
+    )
+    session = runtime.SessionContext(turn_id=80)
+
+    await orchestrator._show_vision_thinking_feedback(session.turn_id, session)
+
+    assert adapter.expressions == [orchestrator_module.VISION_THINKING_EXPR_ID]
+    assert adapter.texts == [orchestrator_module.VISION_THINKING_TEXT]
+    assert session.meta["vision_thinking_feedback"] is True
 
 def test_server_metrics_replaces_duplicate_voice_session_turn() -> None:
     metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")

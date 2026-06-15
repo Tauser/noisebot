@@ -39,7 +39,7 @@ class SpeechCancelAdapter(AdapterProbe):
 
 
 def test_output_scheduler_default_prebuffer_leaves_firmware_queue_headroom() -> None:
-    assert FIRMWARE_SAY_QUEUE == 4
+    assert FIRMWARE_SAY_QUEUE == 1
 
 
 def test_output_scheduler_default_send_interval_matches_hardware_rate() -> None:

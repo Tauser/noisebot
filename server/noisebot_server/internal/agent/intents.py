@@ -5,13 +5,22 @@ fazem I/O bloqueante — o orchestrator os chama via asyncio.to_thread().
 """
 from __future__ import annotations
 
+import logging
+import os
 import re
 import unicodedata
 from datetime import datetime
 
 from .runtime import IntentResolved
 from ..vision import VisionAnalysis, VisionClient, VisionError, VisionObservation
+from ..vision.analysis import (
+    analyze_jpeg,
+    describe_with_ollama_vision,
+    describe_with_vision_api,
+)
 from .weather import fetch_weather_now, format_weather_reply
+
+log = logging.getLogger(__name__)
 
 
 # -- Normalizacao de texto ---------------------------------------------------
@@ -441,6 +450,68 @@ def _vision_person_analysis_reply(analysis: VisionAnalysis) -> str:
     return "Estou vendo a cena, mas nao detectei rosto agora."
 
 
+def _vision_description_fallback(analysis: VisionAnalysis) -> str:
+    obs = analysis.observation
+    if not obs.valid:
+        return "Consegui acessar a camera, mas a observacao ainda nao ficou confiavel."
+
+    details: list[str] = []
+    if analysis.detector_available and analysis.face_detected:
+        rosto = "um rosto" if analysis.face_count == 1 else f"{analysis.face_count} rostos"
+        details.append(f"detectei {rosto} {_face_position_label(analysis)}")
+    elif analysis.detector_available:
+        details.append("nao detectei rosto agora")
+
+    details.append(f"a cena esta {_scene_label(obs.scene)}")
+    if obs.motion_score >= 10:
+        details.append("percebi movimento")
+    else:
+        details.append("quase nao percebi movimento")
+
+    return "Estou vendo: " + ", ".join(details) + "."
+
+
+def _describe_scene_with_configured_model(jpeg: bytes) -> str | None:
+    provider = os.environ.get("NOISEBOT_LLM_PROVIDER", "ollama").strip().lower()
+    model = os.environ.get("NOISEBOT_LLM_MODEL", "gemma4:12b")
+    base_url = os.environ.get("NOISEBOT_OLLAMA_BASE_URL", "")
+    log.info(
+        "Vision describe: provider=%s model=%s jpeg_bytes=%d",
+        provider,
+        model,
+        len(jpeg),
+    )
+    if provider == "ollama":
+        description = describe_with_ollama_vision(
+            jpeg,
+            base_url=base_url,
+            model=model,
+        )
+        if description:
+            log.info(
+                "Vision describe: Ollama retornou descricao chars=%d",
+                len(description),
+            )
+            return description
+        log.warning(
+            "Vision describe: Ollama sem descricao, tentando fallback OpenAI/local. "
+            "base_url=%s model=%s",
+            base_url or "default",
+            model,
+        )
+
+    description = describe_with_vision_api(
+        jpeg,
+        api_key=os.environ.get("OPENAI_API_KEY", ""),
+    )
+    if description:
+        log.info(
+            "Vision describe: OpenAI-compatible retornou descricao chars=%d",
+            len(description),
+        )
+    return description
+
+
 # -- Mapeamentos de intents --------------------------------------------------
 
 # expression_id firmware: 0=NEUTRAL, 1=HAPPY, 2=CURIOUS, 3=SLEEPY, 4=FOCUSED
@@ -846,10 +917,9 @@ class LocalIntentProvider:
         if _has(norm, "o que voce esta vendo", "o que vc esta vendo",
                 "o que esta vendo", "o que voce ve", "o que vc ve",
                 "descreve a cena", "descreva a cena"):
-            return self._match_vision(
+            return self._match_vision_description(
                 turn_id=turn_id,
                 intent_name="local_vision_scene",
-                formatter=_vision_scene_reply,
             )
 
         if _has(norm, "voce esta me vendo", "vc esta me vendo",
@@ -1090,6 +1160,31 @@ class LocalIntentProvider:
                     reply = analyzer_formatter(self._vision.analyze())
                 else:
                     reply = formatter(self._vision.observe())
+            except VisionError:
+                reply = _vision_unavailable_reply()
+        return IntentResolved(
+            turn_id=turn_id,
+            intent_name=intent_name,
+            reply_text=reply,
+            expression_id=_EXPR_CURIOUS,
+            action_id=_ACTION_NONE,
+            emot_event_id=_EMOT_CURIOUS,
+        )
+
+    def _match_vision_description(self, turn_id: int, intent_name: str) -> IntentResolved:
+        reply = _vision_unavailable_reply()
+        if self._vision is not None:
+            try:
+                observation = self._vision.observe()
+                jpeg = self._vision.snapshot()
+                self._vision.session_close()
+                analysis = analyze_jpeg(jpeg, observation)
+                description = _describe_scene_with_configured_model(jpeg)
+                if description:
+                    reply = description
+                else:
+                    reply = _vision_description_fallback(analysis)
+                    log.warning("Vision describe: usando fallback local reply=%r", reply[:120])
             except VisionError:
                 reply = _vision_unavailable_reply()
         return IntentResolved(

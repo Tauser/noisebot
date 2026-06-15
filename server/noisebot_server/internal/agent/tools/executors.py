@@ -184,7 +184,7 @@ def execute_analyze_vision(
 ) -> dict[str, Any]:
     import os
 
-    from ...vision.analysis import describe_with_vision_api
+    from ...vision.analysis import describe_with_ollama_vision, describe_with_vision_api
 
     vision_client = context.get("vision_client")
     turn_id = context.get("turn_id", 0)
@@ -209,10 +209,18 @@ def execute_analyze_vision(
             "motion": motion,
         }
 
-        description = describe_with_vision_api(
-            jpeg,
-            api_key=os.environ.get("OPENAI_API_KEY", ""),
-        )
+        description = None
+        if os.environ.get("NOISEBOT_LLM_PROVIDER", "ollama").strip().lower() == "ollama":
+            description = describe_with_ollama_vision(
+                jpeg,
+                base_url=os.environ.get("NOISEBOT_OLLAMA_BASE_URL", ""),
+                model=os.environ.get("NOISEBOT_LLM_MODEL", "gemma4:12b"),
+            )
+        if not description:
+            description = describe_with_vision_api(
+                jpeg,
+                api_key=os.environ.get("OPENAI_API_KEY", ""),
+            )
         if description:
             result["description"] = description
             log.info("analyze_vision turn_id=%d description=%r", turn_id, description[:80])

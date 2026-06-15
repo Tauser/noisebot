@@ -1,10 +1,10 @@
 """Vision pipeline: presence-gated face detection with adaptive cadence.
 
 State machine:
-  IDLE    — no capture; observe() every 30 s to check motion/luma gate
+  IDLE    — low-rate observe/capture to check motion or static face
   ACQUIRE — burst at 3 Hz for up to 5 s to find a face
-  TRACK   — face confirmed; 2 Hz + EMA smoothing + dead-zone gaze updates
-  LOST    — K consecutive misses; clears face box and returns to IDLE
+  TRACK   — face confirmed; sends face_box, but does not continuously steer gaze
+  LOST    — K consecutive misses; clears face box and immediately reacquires
 """
 from __future__ import annotations
 
@@ -25,11 +25,11 @@ log = logging.getLogger(__name__)
 
 _ACQUIRE_INTERVAL_S: float = 1.0 / 3.0  # 3 Hz
 _TRACK_INTERVAL_S: float = 0.5          # 2 Hz
-_IDLE_CHECK_INTERVAL_S: float = 30.0    # opportunistic presence check
+_IDLE_CHECK_INTERVAL_S: float = 5.0     # low-rate presence check
 
 _ACQUIRE_TIMEOUT_S: float = 5.0
 _CONFIRM_HITS: int = 2   # consecutive detections to enter TRACK
-_MISS_THRESHOLD: int = 3  # consecutive misses to leave TRACK
+_MISS_THRESHOLD: int = 8  # consecutive misses to leave TRACK
 
 _EMA_ALPHA: float = 0.4
 _GAZE_DEADZONE: float = 0.05  # suppress gaze updates below this delta
@@ -65,7 +65,7 @@ class VisionPipeline:
     - Observation dimensions taken from real observe() call, not hardcoded 240.
     - Import/model errors surface at init_analyzer() boot time, not silently per tick.
     - State machine with hysteresis eliminates gaze flicker.
-    - EMA + dead zone reduces redundant gaze messages.
+    - Face presence does not steer gaze; firmware owns autonomous eye behavior.
     """
 
     def __init__(
@@ -184,6 +184,16 @@ class VisionPipeline:
                 self._acquire_start_ts = time.monotonic()
                 self._transition_to(PipelineState.ACQUIRE)
                 return _ACQUIRE_INTERVAL_S
+            if obs.valid and obs.scene == "normal":
+                jpeg = await asyncio.to_thread(self._safe_capture)
+                if jpeg:
+                    analysis = await asyncio.to_thread(analyze_jpeg, jpeg, obs)
+                    if analysis.face_detected:
+                        self._cached_obs = obs
+                        self._consecutive_hits = 1
+                        self._acquire_start_ts = time.monotonic()
+                        self._transition_to(PipelineState.ACQUIRE)
+                        return _ACQUIRE_INTERVAL_S
         return _IDLE_CHECK_INTERVAL_S
 
     async def _tick_acquire(self) -> float:
@@ -213,7 +223,6 @@ class VisionPipeline:
                     "VisionPipeline: rosto confirmado (%d hits)", self._consecutive_hits
                 )
                 self._transition_to(PipelineState.TRACK)
-                await self._emit_gaze(analysis)
         else:
             self._consecutive_hits = 0
         return _ACQUIRE_INTERVAL_S
@@ -245,7 +254,6 @@ class VisionPipeline:
             self._consecutive_misses = 0
             self._counters.detections += 1
             self._counters.last_detection_ts = time.time()
-            await self._emit_gaze(analysis)
             await self._emit_face_box(analysis)
         else:
             self._consecutive_misses += 1
@@ -263,8 +271,12 @@ class VisionPipeline:
         self._ema_y = None
         self._last_sent_x = None
         self._last_sent_y = None
-        self._transition_to(PipelineState.IDLE)
-        return _IDLE_CHECK_INTERVAL_S
+        self._cached_obs = None
+        self._consecutive_hits = 0
+        self._consecutive_misses = 0
+        self._acquire_start_ts = time.monotonic()
+        self._transition_to(PipelineState.ACQUIRE)
+        return _ACQUIRE_INTERVAL_S
 
     def _transition_to(self, new_state: PipelineState) -> None:
         if new_state != self._state:

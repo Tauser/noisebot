@@ -3726,7 +3726,8 @@ async def test_server_tts_records_playback_completion_diagnostics(monkeypatch) -
     orchestrator_module = importlib.import_module(
         "noisebot_server.internal.agent.orchestrator"
     )
-    monkeypatch.setattr(orchestrator_module, "TEXT_SCROLL_PAGE_INTERVAL_S", 0)
+    monkeypatch.setattr(orchestrator_module, "TEXT_SCROLL_MIN_PAGE_INTERVAL_S", 0)
+    monkeypatch.setattr(orchestrator_module, "TEXT_SCROLL_MAX_PAGE_INTERVAL_S", 0)
 
     class DummyTts:
         async def synthesize_stream(self, sentences):
