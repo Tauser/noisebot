@@ -115,7 +115,11 @@
       "Bash(cmd.exe /c \"set IDF_PYTHON_ENV_PATH=C:\\\\Users\\\\Tauser\\\\.espressif\\\\python_env\\\\idf5.5_py3.14_env && call C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.bat && idf.py build > build_out.txt 2>&1\")",
       "PowerShell(cd \"D:\\\\Projetos\\\\Noisebot\"; $env:IDF_PYTHON_ENV_PATH = \"C:\\\\Users\\\\Tauser\\\\.espressif\\\\python_env\\\\idf5.5_py3.14_env\"; cmd.exe /c \"call C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.bat && idf.py build > D:\\\\Projetos\\\\Noisebot\\\\build_out.txt 2>&1\"; Get-Content \"D:\\\\Projetos\\\\Noisebot\\\\build_out.txt\" | Select-Object -Last 60)",
       "PowerShell($content = Get-Content \"D:\\\\Projetos\\\\Noisebot\\\\build\\\\CMakeFiles\\\\noisebot.elf.rsp\" -Raw; $libs = $content -split '\\\\s+' | Where-Object { $_ -match '\\\\.a$' }; $idx_audio = [array]::IndexOf\\($libs, \"esp-idf/audio_service/libaudio_service.a\"\\); $idx_vcapv2 = [array]::IndexOf\\($libs, \"esp-idf/voice_capture_session_v2/libvoice_capture_session_v2.a\"\\); \"audio_service index: $idx_audio\"; \"voice_capture_session_v2 index: $idx_vcapv2\"; \"infra index: $\\([array]::IndexOf\\($libs, 'esp-idf/infra/libinfra.a'\\)\\)\")",
-      "PowerShell(cmd.exe /c \"set IDF_PYTHON_ENV_PATH=C:\\\\Users\\\\Tauser\\\\.espressif\\\\python_env\\\\idf5.5_py3.14_env&& call C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.bat && idf.py build\" > \"D:\\\\Projetos\\\\Noisebot\\\\build_out2.txt\" 2>&1; $LASTEXITCODE)"
+      "PowerShell(cmd.exe /c \"set IDF_PYTHON_ENV_PATH=C:\\\\Users\\\\Tauser\\\\.espressif\\\\python_env\\\\idf5.5_py3.14_env&& call C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.bat && idf.py build\" > \"D:\\\\Projetos\\\\Noisebot\\\\build_out2.txt\" 2>&1; $LASTEXITCODE)",
+      "PowerShell(cd \"D:\\\\Projetos\\\\Noisebot\"; $env:IDF_PYTHON_ENV_PATH = \"C:\\\\Users\\\\Tauser\\\\.espressif\\\\python_env\\\\idf5.5_py3.14_env\"; cmd.exe /c \"call C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.bat && idf.py build 2>&1\" | Select-Object -Last 20)",
+      "PowerShell(cd \"D:\\\\Projetos\\\\Noisebot\"; $env:IDF_PYTHON_ENV_PATH = \"C:\\\\Users\\\\Tauser\\\\.espressif\\\\python_env\\\\idf5.5_py3.14_env\"; cmd.exe /c \"call C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.bat && idf.py build 2>&1\" | Select-Object -Last 8)",
+      "PowerShell(cd \"D:\\\\Projetos\\\\Noisebot\"; $env:IDF_PYTHON_ENV_PATH = \"C:\\\\Users\\\\Tauser\\\\.espressif\\\\python_env\\\\idf5.5_py3.14_env\"; cmd.exe /c \"call C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.bat && idf.py build 2>&1\" | Select-Object -Last 6)",
+      "Bash(npm run *)"
     ]
   }
 }
