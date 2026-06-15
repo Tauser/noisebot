@@ -22,7 +22,8 @@
  * o contador de tempo ocioso do zero.
  *
  * Pausas: serviço fica inativo enquanto o robô estiver nos estados
- * SLEEPING, MEDITATION, SILENT_COMPANY, RESPONDING ou ERROR.
+ * SLEEPING, MEDITATION, SILENT_COMPANY, RESPONDING ou ERROR, ou quando
+ * behavior_engine declarar presença/ausência social calma.
  *
  * Restrições de arquitetura:
  *   - Layer 6 — chama somente serviços de Layer 4-5.
@@ -33,6 +34,7 @@
  * Threads:
  *   - boredom_service_on_interaction() — qualquer task (spinlock interno)
  *   - boredom_service_set_paused()     — qualquer task (spinlock interno)
+ *   - boredom_service_set_social_paused() — qualquer task (spinlock interno)
  *   - nb_boredom_task                  — task interna (prio 3, stack 4096)
  */
 
@@ -102,6 +104,16 @@ void boredom_service_on_interaction(void);
  * @param paused true = pausar, false = retomar.
  */
 void boredom_service_set_paused(bool paused);
+
+/**
+ * @brief Pausa por contexto social de presença.
+ *
+ * Usado por presence_semantic_service via behavior_engine: companhia silenciosa
+ * e ausência conhecida não devem virar "abandono" emocional. Thread-safe.
+ *
+ * @param paused true = pausar por contexto social, false = retomar.
+ */
+void boredom_service_set_social_paused(bool paused);
 
 #ifdef __cplusplus
 }

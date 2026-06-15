@@ -4,7 +4,7 @@
  * Implementação: ver boredom_service.h para contratos e arquitetura.
  *
  * Modelo de concorrência:
- *   s_mux (portMUX_TYPE spinlock) protege s.idle_ms, s.paused,
+ *   s_mux (portMUX_TYPE spinlock) protege s.idle_ms, flags de pausa,
  *   s.last_reaction_ms e s.last_demon_ms. O timer callback apenas dá
  *   xSemaphoreGive — toda a lógica pesada roda em nb_boredom_task (prio 3),
  *   sem contender com tasks de safety ou render.
@@ -76,7 +76,8 @@ typedef struct {
     uint64_t idle_ms;           /**< Tempo ocioso acumulado desde a última interação. */
     uint64_t last_reaction_ms;  /**< idle_ms no momento da última reação (cooldown).  */
     uint64_t last_demon_ms;     /**< Uptime (ms) no momento do último modo demônio.   */
-    bool     paused;            /**< Quando true, reações não disparam.               */
+    bool     state_paused;      /**< Pausa derivada do estado global do robô.         */
+    bool     social_paused;     /**< Pausa por presença/ausência social calma.        */
     SemaphoreHandle_t check_sem;
     esp_timer_handle_t timer;
     nb_event_sub_handle_t subs[BOREDOM_MAX_SUBS];
@@ -143,7 +144,7 @@ static void _react_demon(void)
 static void _check_and_react(uint64_t dt_ms)
 {
     portENTER_CRITICAL(&s_mux);
-    bool     paused           = s.paused;
+    bool     paused           = s.state_paused || s.social_paused;
     uint64_t idle_ms          = s.idle_ms;
     uint64_t last_reaction_ms = s.last_reaction_ms;
     uint64_t last_demon_ms    = s.last_demon_ms;
@@ -275,7 +276,14 @@ void boredom_service_on_interaction(void)
 void boredom_service_set_paused(bool paused)
 {
     portENTER_CRITICAL(&s_mux);
-    s.paused = paused;
+    s.state_paused = paused;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+void boredom_service_set_social_paused(bool paused)
+{
+    portENTER_CRITICAL(&s_mux);
+    s.social_paused = paused;
     portEXIT_CRITICAL(&s_mux);
 }
 

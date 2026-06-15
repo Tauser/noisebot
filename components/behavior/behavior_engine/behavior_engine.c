@@ -63,6 +63,10 @@
 #define PRESENCE_PING_MAX_PER_HOUR   4U
 #define PRESENCE_PING_WINDOW_US      3600000000LL  /* 1 hora em µs */
 #define PRESENCE_EVT_FACE_CONFIRMED_FLAG (1UL << 16)
+#define PRESENCE_GREETING_COOLDOWN_US 180000000LL  /* 3 min */
+#define PRESENCE_GREETING_TEXT_MS     1800U
+#define PRESENCE_GREETING_EXPR_MS     1800.0f
+#define PRESENCE_GREETING_TRANS_MS     220.0f
 
 /* Cooldown mínimo entre triggers de VOICE_ACTIVITY_START → conductor.
  * Previne o loop: servo move → vibração → VAD hit → conductor_play(CURIOUS)
@@ -70,6 +74,7 @@
 #define VOICE_ACT_COOLDOWN_US   4000000LL   /* 4s ≥ duração máx de CURIOUS */
 
 static int64_t s_voice_act_last_us = INT64_MIN;
+static bool    s_social_boredom_paused = false;
 
 /* ── Tipos internos ──────────────────────────────────────────────────────── */
 
@@ -179,6 +184,12 @@ static bool cond_responding(const nb_event_t *evt)
     return state_machine_get_state() == NB_STATE_RESPONDING;
 }
 
+static bool cond_idle_alone_allowed(const nb_event_t *evt)
+{
+    (void)evt;
+    return !s_social_boredom_paused;
+}
+
 /* Baixa confiança e fora de RESPONDING: STARTLE normal. */
 static bool cond_trust_low_not_responding(const nb_event_t *evt)
 {
@@ -268,7 +279,7 @@ static const nb_be_rule_t k_rules[] = {
     { NB_EVT_MILESTONE_UPTIME_100H, NULL, { ACT_PLAY(CELEBRATE) }},
 
     /* ── Solidão (idle alone) ───────────────────────────────────────────────── */
-    { NB_EVT_IDLE_ALONE, NULL, {
+    { NB_EVT_IDLE_ALONE, cond_idle_alone_allowed, {
         ACT_EMOT(IDLE_LONG) }},
 
     /* ── Touch Semântico (Etapa 10.4) ───────────────────────────────────────── */
@@ -307,6 +318,9 @@ static uint32_t s_ping_count      = 0U;  /* total de pings disparados (telemetri
 static uint32_t s_ping_suppressed = 0U;  /* total suprimidos (guards + rate-limit)  */
 static uint32_t s_ping_hour_count = 0U;  /* pings na janela de hora atual           */
 static int64_t  s_ping_hour_start_us = 0; /* início da janela (µs)                  */
+static int64_t  s_presence_greeting_last_us = 0;
+static bool     s_face_icon_armed = true; /* ícone one-shot: rearma após ausência   */
+static esp_timer_handle_t s_face_icon_timer;
 
 /* Sleep timer: ENGAGED = congela; SETTLED = restaura; valor original salvo aqui */
 static bool     s_idle_timeout_overridden = false;
@@ -411,13 +425,68 @@ static void handle_presence_ping(const nb_event_t *evt)
             evt->type == NB_EVT_SOCIAL_PRESENCE_CONFIRMED ? "CONFIRMED" : "RETURNED");
 }
 
+static void show_face_identification_icon_once(void)
+{
+    if (!s_face_icon_armed) {
+        return;
+    }
+    ui_overlay_status_icon_set(NB_UI_STATUS_ICON_USER_IDENTIFYING, true);
+    esp_timer_stop(s_face_icon_timer);
+    esp_timer_start_once(s_face_icon_timer, FACE_DETECTED_ICON_TTL_US);
+    s_face_icon_armed = false;
+}
+
+static void handle_presence_greeting(void)
+{
+    int64_t now = esp_timer_get_time();
+    if (s_ping_hour_start_us == 0 || (now - s_ping_hour_start_us) >= PRESENCE_PING_WINDOW_US) {
+        s_ping_hour_start_us = now;
+        s_ping_hour_count    = 0U;
+    }
+
+    nb_robot_state_t st = state_machine_get_state();
+    bool guard_ok = (st != NB_STATE_RESPONDING &&
+                     st != NB_STATE_SLEEPING   &&
+                     st != NB_STATE_MEDITATION &&
+                     conductor_get_current() == NB_ACTION_NONE);
+    bool cooldown_ok = (s_presence_greeting_last_us == 0) ||
+                       ((now - s_presence_greeting_last_us) >= PRESENCE_GREETING_COOLDOWN_US);
+
+    if (!guard_ok || !cooldown_ok || s_ping_hour_count >= PRESENCE_PING_MAX_PER_HOUR) {
+        s_ping_suppressed++;
+        NB_LOGD(TAG, "greeting presença suprimido (guard=%d cooldown=%d rate=%u/h)",
+                (int)guard_ok, (int)cooldown_ok, (unsigned)s_ping_hour_count);
+        return;
+    }
+
+    expression_play(NB_EXPR_HAPPY, PRESENCE_GREETING_EXPR_MS, PRESENCE_GREETING_TRANS_MS);
+    ui_overlay_show_text("Ola", PRESENCE_GREETING_TEXT_MS);
+    led_effect_heartbeat();
+
+    s_presence_greeting_last_us = now;
+    s_ping_count++;
+    s_ping_hour_count++;
+    NB_LOGI(TAG, "greeting presença #%u (hora=%u/%u)",
+            (unsigned)s_ping_count,
+            (unsigned)s_ping_hour_count,
+            (unsigned)PRESENCE_PING_MAX_PER_HOUR);
+}
+
 static void handle_presence_social_event(const nb_event_t *evt)
 {
     switch (evt->type) {
 
     case NB_EVT_SOCIAL_PRESENCE_CONFIRMED:
     case NB_EVT_SOCIAL_PRESENCE_RETURNED:
-        handle_presence_ping(evt);
+        if ((evt->data.u32 & PRESENCE_EVT_FACE_CONFIRMED_FLAG) != 0U) {
+            show_face_identification_icon_once();
+            handle_presence_greeting();
+        } else {
+            handle_presence_ping(evt);
+        }
+        boredom_service_on_interaction();
+        boredom_service_set_social_paused(false);
+        s_social_boredom_paused = false;
         /* Restaura timer de sleep normal ao (re)entrar em PRESENT */
         if (s_idle_timeout_overridden) {
             state_machine_set_idle_timeout_s(s_orig_idle_timeout_s);
@@ -428,6 +497,9 @@ static void handle_presence_social_event(const nb_event_t *evt)
         break;
 
     case NB_EVT_SOCIAL_PRESENCE_ENGAGED:
+        boredom_service_on_interaction();
+        boredom_service_set_social_paused(true);
+        s_social_boredom_paused = true;
         /* Congela idle→sleep enquanto há companhia silenciosa */
         if (!s_idle_timeout_overridden) {
             s_orig_idle_timeout_s     = config_get_idle_timeout_s();
@@ -439,6 +511,10 @@ static void handle_presence_social_event(const nb_event_t *evt)
         break;
 
     case NB_EVT_SOCIAL_PRESENCE_SETTLED:
+        s_face_icon_armed = true;
+        boredom_service_on_interaction();
+        boredom_service_set_social_paused(true);
+        s_social_boredom_paused = true;
         /* Ausência longa: encurta timer para que o robô durma mais cedo (spec §4.3).
          * Se timeout foi congelado pelo ENGAGED, salva original antes de encurtar. */
         if (!s_idle_timeout_overridden) {
@@ -457,6 +533,10 @@ static void handle_presence_social_event(const nb_event_t *evt)
 
     case NB_EVT_SOCIAL_PRESENCE_LOST_SHORT:
     case NB_EVT_SOCIAL_PRESENCE_AWAY:
+        s_face_icon_armed = true;
+        boredom_service_on_interaction();
+        boredom_service_set_social_paused(true);
+        s_social_boredom_paused = true;
         /* Saída de ENGAGED: restaura se não foi SETTLED já */
         if (s_idle_timeout_overridden) {
             state_machine_set_idle_timeout_s(s_orig_idle_timeout_s);
@@ -550,8 +630,6 @@ static bool               s_bridge_say_started;
 static bool               s_bridge_voice_pending;
 
 /* ── Face detected — ícone TTL (3s) ─────────────────────────────────────── */
-
-static esp_timer_handle_t s_face_icon_timer;
 
 static void face_icon_ttl_cb(void *arg)
 {
@@ -699,16 +777,7 @@ static void bridge_on_event(const nb_event_t *evt)
     case NB_EVT_BRIDGE_FACE_BOX: {
         const nb_bridge_face_box_t *box = (const nb_bridge_face_box_t *)evt->data.ptr;
         bool face_present = box && box->width > 0 && box->height > 0;
-        if (face_present) {
-            /* Acende o ícone e (re)inicia o TTL de 3s — some sozinho. */
-            ui_overlay_status_icon_set(NB_UI_STATUS_ICON_USER_IDENTIFYING, true);
-            esp_timer_stop(s_face_icon_timer);
-            esp_timer_start_once(s_face_icon_timer, FACE_DETECTED_ICON_TTL_US);
-        } else {
-            /* Rosto perdido: cancela timer e apaga imediatamente. */
-            esp_timer_stop(s_face_icon_timer);
-            ui_overlay_status_icon_set(NB_UI_STATUS_ICON_USER_IDENTIFYING, false);
-        }
+        (void)face_present;
         break;
     }
 

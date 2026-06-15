@@ -41,14 +41,16 @@ class BoredomEscalationPolicy:
         random_roll substitui esp_random() % 100.
 
     on_interaction()  -- reinicia idle_ms e last_reaction_ms.
-    set_paused(bool)  -- pausa/retoma reacoes.
+    set_paused(bool)  -- pausa/retoma reacoes por estado.
+    set_social_paused(bool)  -- pausa/retoma reacoes por contexto social.
     """
 
     def __init__(self):
         self._idle_ms = 0
         self._last_reaction_ms = 0
         self._last_demon_ms = 0
-        self._paused = False
+        self._state_paused = False
+        self._social_paused = False
         self._prev_now_ms = None
 
     def on_interaction(self, now_ms=0):
@@ -56,13 +58,16 @@ class BoredomEscalationPolicy:
         self._last_reaction_ms = 0
 
     def set_paused(self, paused):
-        self._paused = paused
+        self._state_paused = paused
+
+    def set_social_paused(self, paused):
+        self._social_paused = paused
 
     def check(self, now_ms, random_roll=50):
         dt_ms = CHECK_INTERVAL_MS if self._prev_now_ms is None else now_ms - self._prev_now_ms
         self._prev_now_ms = now_ms
 
-        if self._paused:
+        if self._state_paused or self._social_paused:
             return None
 
         self._idle_ms += dt_ms
@@ -374,6 +379,25 @@ class TestPausedStates(unittest.TestCase):
         _advance(p, 0, CHECK_INTERVAL_MS, pause_steps)
         resume_at = pause_steps * CHECK_INTERVAL_MS
         p.set_paused(False)
+        p.on_interaction(now_ms=resume_at)
+        p._prev_now_ms = resume_at
+        _advance(p, resume_at, CHECK_INTERVAL_MS, LEVEL1_MS // CHECK_INTERVAL_MS - 1)
+        result = p.check(now_ms=resume_at + LEVEL1_MS)
+        self.assertEqual(result, "curious")
+
+    def test_social_pause_blocks_reactions_independently(self):
+        p = BoredomEscalationPolicy()
+        p.set_social_paused(True)
+        steps = LEVEL4_MS // CHECK_INTERVAL_MS + 1
+        results = _advance(p, 0, CHECK_INTERVAL_MS, steps, random_roll=0)
+        self.assertTrue(all(r is None for r in results))
+
+    def test_social_unpause_restarts_from_interaction(self):
+        p = BoredomEscalationPolicy()
+        p.set_social_paused(True)
+        _advance(p, 0, CHECK_INTERVAL_MS, LEVEL4_MS // CHECK_INTERVAL_MS)
+        resume_at = LEVEL4_MS
+        p.set_social_paused(False)
         p.on_interaction(now_ms=resume_at)
         p._prev_now_ms = resume_at
         _advance(p, resume_at, CHECK_INTERVAL_MS, LEVEL1_MS // CHECK_INTERVAL_MS - 1)
