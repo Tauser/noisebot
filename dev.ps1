@@ -117,8 +117,8 @@ if ([string]::IsNullOrWhiteSpace($EnvFile)) {
 
 $PythonExe = Resolve-Tool @(
     $Python,
-    "C:\Users\Tauser\.platformio\penv\Scripts\python.exe",
     "C:\Users\Tauser\AppData\Local\Python\pythoncore-3.14-64\python.exe",
+    "C:\Users\Tauser\.platformio\penv\Scripts\python.exe",
     "python",
     "py"
 )
@@ -138,6 +138,7 @@ $AppPids = @(Get-ListeningPids -Port 5173)
 
 $ServerCommand = @"
 Set-Location -LiteralPath $(Quote-Ps $ServerDir)
+`$env:PYTHONPATH = $(Quote-Ps $ServerDir)
 `$env:NOISEBOT_HOST = $(Quote-Ps $RobotHost)
 `$env:NOISEBOT_PORT = $(Quote-Ps ([string]$RobotPort))
 `$env:NOISEBOT_ROBOT_HTTP_URL = $(Quote-Ps $RobotHttpUrl)
