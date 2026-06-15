@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export function ToggleRow({
   description,
   enabled,
@@ -6,7 +8,7 @@ export function ToggleRow({
 }: {
   description: string;
   enabled: boolean;
-  label: string;
+  label: ReactNode;
   onChange: (enabled: boolean) => void;
 }) {
   return (

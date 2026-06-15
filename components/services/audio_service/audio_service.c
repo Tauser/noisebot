@@ -1812,6 +1812,10 @@ esp_err_t audio_service_begin_listen_session_with_mode(nb_listen_source_t source
 {
     if (!s.initialized)           return ESP_ERR_INVALID_STATE;
     if (s.listen_session_active)  return ESP_ERR_INVALID_STATE;
+    if (config_get_silence_mode_enabled()) {
+        ESP_LOGI(TAG, "listen session rejeitada: modo silencio ativo");
+        return ESP_ERR_INVALID_STATE;
+    }
     if (mode != NB_LISTEN_MODE_AUTO) {
         ESP_LOGI(TAG, "listen mode=%s ainda nao suportado", listen_mode_name(mode));
         return ESP_ERR_NOT_SUPPORTED;

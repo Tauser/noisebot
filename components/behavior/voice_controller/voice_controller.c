@@ -5,6 +5,7 @@
 #include "voice_controller.h"
 
 #include "audio_service.h"
+#include "config_manager.h"
 #include "led_service.h"
 #include "synth_service.h"
 #include "ui_overlay_service.h"
@@ -72,6 +73,12 @@ esp_err_t voice_controller_init(void)
 
 bool voice_controller_on_wake_word_detected(void)
 {
+    if (config_get_silence_mode_enabled()) {
+        ESP_LOGI(TAG, "wake word ignorada: modo silencio ativo");
+        wake_service_suspend();
+        return false;
+    }
+
     nb_robot_state_t st = state_machine_get_state();
     if (st != NB_STATE_IDLE &&
         st != NB_STATE_SLEEPING &&
@@ -104,6 +111,12 @@ bool voice_controller_on_wake_word_detected(void)
 
 void voice_controller_request_followup_listen(void)
 {
+    if (config_get_silence_mode_enabled()) {
+        ESP_LOGI(TAG, "follow-up de voz ignorado: modo silencio ativo");
+        wake_service_suspend();
+        return;
+    }
+
     s_pending_listen = VOICE_PENDING_FOLLOWUP;
     state_machine_on_followup_listen();
     if (state_machine_get_state() != NB_STATE_ATTENTIVE) {
@@ -114,6 +127,14 @@ void voice_controller_request_followup_listen(void)
 static void begin_pending_listen(void)
 {
     nb_listen_source_t source;
+
+    if (config_get_silence_mode_enabled()) {
+        ESP_LOGI(TAG, "escuta pendente cancelada: modo silencio ativo");
+        s_pending_listen = VOICE_PENDING_NONE;
+        ui_overlay_listening_set(false);
+        wake_service_suspend();
+        return;
+    }
 
     switch (s_pending_listen) {
         case VOICE_PENDING_WAKE_WORD:
@@ -176,7 +197,11 @@ void voice_controller_on_state_changed(nb_robot_state_t new_state,
             break;
         case NB_STATE_IDLE:
             s_pending_listen = VOICE_PENDING_NONE;
-            wake_service_rearm();
+            if (config_get_silence_mode_enabled()) {
+                wake_service_suspend();
+            } else {
+                wake_service_rearm();
+            }
             break;
         default:
             break;

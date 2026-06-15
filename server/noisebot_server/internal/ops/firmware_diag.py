@@ -11,6 +11,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
+from ..transport.protocol import load_bridge_token
+
 
 class FirmwareDiagError(RuntimeError):
     """Firmware diagnostics query failed."""
@@ -22,17 +24,20 @@ class FirmwareDiagClient:
 
     base_url: str
     timeout_s: float = 1.5
+    token: str | None = None
 
     @classmethod
     def from_config(cls, config) -> "FirmwareDiagClient | None":
+        timeout_s = _env_float("NOISEBOT_DIAG_TIMEOUT_S", 1.5)
+        token = _load_firmware_http_token()
         explicit = os.environ.get("NOISEBOT_ROBOT_HTTP_URL", "").strip()
         if explicit:
-            return cls(explicit.rstrip("/") + "/", _env_float("NOISEBOT_DIAG_TIMEOUT_S", 1.5))
+            return cls(explicit.rstrip("/") + "/", timeout_s, token)
 
         host = getattr(getattr(config, "transport", None), "host", None)
         if not host:
             return None
-        return cls(f"http://{host}/", _env_float("NOISEBOT_DIAG_TIMEOUT_S", 1.5))
+        return cls(f"http://{host}/", timeout_s, token)
 
     def collect(self) -> dict[str, Any]:
         started = time.perf_counter()
@@ -90,14 +95,17 @@ class FirmwareDiagClient:
     def _post_json(self, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         url = urljoin(self.base_url, path.lstrip("/"))
         body = json.dumps(payload or {}).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "NoiseBot-Server/0.1",
+        }
+        if self.token:
+            headers["X-NB-Token"] = self.token
         request = Request(
             url,
             data=body,
             method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "User-Agent": "NoiseBot-Server/0.1",
-            },
+            headers=headers,
         )
         try:
             with urlopen(request, timeout=self.timeout_s) as response:
@@ -119,6 +127,19 @@ class FirmwareDiagClient:
         if status >= 400:
             decoded.setdefault("ok", False)
             decoded.setdefault("http_status", status)
+        return decoded
+
+    def _post_json_required_ok(
+        self,
+        path: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        decoded = self._post_json(path, payload)
+        if decoded.get("ok") is False:
+            reason = str(decoded.get("error") or decoded.get("message") or "ok=false")
+            status = decoded.get("http_status")
+            status_hint = f" HTTP {status}" if status is not None else ""
+            raise FirmwareDiagError(f"{path}:{status_hint} {reason}")
         return decoded
 
     def list_audio_files(self) -> dict[str, Any]:
@@ -309,12 +330,26 @@ class FirmwareDiagClient:
             },
         )
 
+    def set_silence_mode_enabled(self, enabled: bool) -> dict[str, Any]:
+        return self._post_json_required_ok(
+            "api/config",
+            {
+                "key": "silence_mode_enabled",
+                "value": 1 if enabled else 0,
+            },
+        )
+
 
 def _env_float(key: str, default: float) -> float:
     try:
         return float(os.environ.get(key, default))
     except (TypeError, ValueError):
         return default
+
+
+def _load_firmware_http_token() -> str | None:
+    token = os.environ.get("NOISEBOT_ROBOT_HTTP_TOKEN", "").strip()
+    return token or load_bridge_token()
 
 
 def _valid_audio_filename(name: str) -> bool:

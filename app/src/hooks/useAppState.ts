@@ -127,6 +127,7 @@ export function useAppState() {
   const [ledsStatus, setLedsStatus] = useState("pronto");
   const [profileStatus, setProfileStatus] = useState("pronto");
   const [followupStatus, setFollowupStatus] = useState("pronto");
+  const [silenceModeStatus, setSilenceModeStatus] = useState("pronto");
   const [devStatus, setDevStatus] = useState("pronto");
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(() => new Date());
@@ -191,7 +192,7 @@ export function useAppState() {
   }, []);
 
   const requireToken = (
-    target: "command" | "routine" | "volume" | "leds" | "profile" | "followup" | "dev",
+    target: "command" | "routine" | "volume" | "leds" | "profile" | "followup" | "silence" | "dev",
   ): string => {
     const token = opsToken.trim();
     if (!token) {
@@ -204,6 +205,7 @@ export function useAppState() {
       else if (target === "leds") setLedsStatus(msg);
       else if (target === "profile") setProfileStatus(msg);
       else if (target === "followup") setFollowupStatus(msg);
+      else if (target === "silence") setSilenceModeStatus(msg);
       else setDevStatus(msg);
       return "";
     }
@@ -285,7 +287,8 @@ export function useAppState() {
     if (!token) return;
     setVolumeStatus("salvando volume");
     try {
-      const saved = await saveBasicSettings({ volume }, token);
+      const result = await saveBasicSettings({ volume }, token);
+      const saved = result.settings;
       setAppData((prev: AppData) => ({ ...prev, settings: saved }));
       setVolume(saved.volume);
       setVolumeStatus(`volume alterado para ${saved.volume}%`);
@@ -297,7 +300,8 @@ export function useAppState() {
     if (!token) return;
     setLedsStatus("salvando brilho dos LEDs");
     try {
-      const saved = await saveBasicSettings({ led_brightness: leds }, token);
+      const result = await saveBasicSettings({ led_brightness: leds }, token);
+      const saved = result.settings;
       setAppData((prev: AppData) => ({ ...prev, settings: saved }));
       setLeds(saved.led_brightness);
       setLedsStatus(`brilho dos LEDs alterado para ${saved.led_brightness}%`);
@@ -321,6 +325,30 @@ export function useAppState() {
     } catch (e) {
       setFollowupOverride(null);
       setFollowupStatus(errorMessage(e));
+    }
+  };
+
+  const toggleSilenceMode = async (enabled: boolean) => {
+    const token = requireToken("silence");
+    if (!token) return;
+    setSilenceModeStatus(enabled ? "ativando modo silêncio" : "desativando modo silêncio");
+    try {
+      const result = await saveBasicSettings({ silent_mode: enabled }, token);
+      const saved = result.settings;
+      setAppData((prev: AppData) => ({ ...prev, settings: saved }));
+      setDevData(await safeLoadDevData());
+      const applied = result.applied.silent_mode;
+      if (applied === "firmware") {
+        setSilenceModeStatus(enabled ? "modo silêncio ativo no robô" : "modo silêncio desativado no robô");
+      } else {
+        setSilenceModeStatus(
+          enabled
+            ? "salvo no dashboard, mas o robô não confirmou"
+            : "desativado no dashboard, mas o robô não confirmou",
+        );
+      }
+    } catch (e) {
+      setSilenceModeStatus(errorMessage(e));
     }
   };
 
@@ -414,7 +442,7 @@ export function useAppState() {
     commandText, commandStatus,
     routineStatus,
     volumeStatus, ledsStatus,
-    profileStatus, followupStatus, devStatus,
+    profileStatus, followupStatus, silenceModeStatus, devStatus,
     refreshing,
     // computed
     followupEnabled: followupOverride ?? devData.config.conversation?.followup_enabled ?? false,
@@ -422,7 +450,7 @@ export function useAppState() {
     // actions
     refreshAll,
     createTimer, createAlarm, createReminder, toggleRoutine, removeRoutine,
-    saveVolume, saveLeds, toggleFollowup,
+    saveVolume, saveLeds, toggleFollowup, toggleSilenceMode,
     saveUserProfile,
     submitCommand,
     handleResetMetrics, handleRestartServer, handleAudioProcessorAction,

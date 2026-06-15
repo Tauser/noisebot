@@ -881,3 +881,42 @@ def test_voice_activity_v2_decider_flag_is_default_controlled_and_observable():
     assert "voice_activity_service_v2_session_end_observed(&activity_end_elapsed_ms)" in audio_service
     assert "voice_activity_service_v2_note_decider_end(activity_end_elapsed_ms)" in audio_service
     assert "config_get_voice_audio_v2_activity_decider_enabled()" not in activity_c
+
+
+def test_silence_mode_blocks_conversational_microphone():
+    web = (ROOT / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+    audio_service = (COMPONENTS / "audio_service" / "audio_service.c").read_text(
+        encoding="utf-8"
+    )
+    voice_controller = (
+        ROOT / "components" / "behavior" / "voice_controller" / "voice_controller.c"
+    ).read_text(encoding="utf-8")
+    boot = BOOT_MANAGER.read_text(encoding="utf-8")
+    config_h = CONFIG_H.read_text(encoding="utf-8")
+    config_c = CONFIG_C.read_text(encoding="utf-8")
+    config_keys = CONFIG_KEYS.read_text(encoding="utf-8")
+
+    assert '#define NB_CFG_KEY_MIC_MUTE   "mic_mute"' in config_keys
+    assert "#define NB_CFG_DEFAULT_MIC_MUTE           0" in config_keys
+    assert "bool      config_get_silence_mode_enabled(void);" in config_h
+    assert "esp_err_t config_set_silence_mode_enabled(bool enabled);" in config_h
+    assert "NB_CFG_KEY_MIC_MUTE" in config_c
+    assert "config_get_silence_mode_enabled" in config_c
+    assert "config_set_silence_mode_enabled" in config_c
+    assert "config_get_silence_mode_enabled()" in audio_service
+    assert "listen session rejeitada: modo silencio ativo" in audio_service
+    assert "wake word ignorada: modo silencio ativo" in voice_controller
+    assert "follow-up de voz ignorado: modo silencio ativo" in voice_controller
+    assert "escuta pendente cancelada: modo silencio ativo" in voice_controller
+    assert "silence_mode_enabled" in web
+    assert "apply_silence_mode" in web
+    assert "ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, true);" in web
+    assert "state_blocks_mic = state == NB_STATE_MEDITATION" in web
+    assert "ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, state_blocks_mic);" in web
+    assert "wake_service_suspend();" in web
+    assert "wake_service_rearm();" in web
+    assert '{ .uri = "/api/audio/silence-mode/enable"' in web
+    assert '{ .uri = "/api/audio/silence-mode/disable"' in web
+    assert "mic_blocked_status_should_show" in boot
+    assert "config_get_silence_mode_enabled() || state_is_intentional_silent(state)" in boot
+    assert "ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED," in boot

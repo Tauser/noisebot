@@ -117,6 +117,49 @@ def test_server_firmware_diag_client_returns_json_http_conflict(monkeypatch) -> 
     assert payload["http_status"] == 409
     assert payload["speaker_owner_real_block_reason"] == "DISABLED"
 
+def test_server_firmware_diag_client_sends_firmware_token_on_post(monkeypatch) -> None:
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    client = firmware_diag.FirmwareDiagClient(
+        "http://robot.local/",
+        token="abc123",
+    )
+    seen_headers: dict[str, str] = {}
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"ok":true}'
+
+    def fake_urlopen(request, timeout):
+        seen_headers.update(dict(request.header_items()))
+        return FakeResponse()
+
+    monkeypatch.setattr(firmware_diag, "urlopen", fake_urlopen)
+
+    payload = client.set_silence_mode_enabled(True)
+
+    assert payload["ok"] is True
+    assert seen_headers["X-nb-token"] == "abc123"
+
+def test_server_firmware_diag_silence_mode_rejects_ok_false(monkeypatch) -> None:
+    firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")
+    client = firmware_diag.FirmwareDiagClient("http://robot.local/")
+
+    def fake_post_json(self, path, payload=None):
+        return {"ok": False, "http_status": 401, "error": "missing X-NB-Token header"}
+
+    monkeypatch.setattr(firmware_diag.FirmwareDiagClient, "_post_json", fake_post_json)
+
+    with pytest.raises(firmware_diag.FirmwareDiagError, match="X-NB-Token"):
+        client.set_silence_mode_enabled(True)
+
 def test_server_cli_parses_voice_v2_debug_command() -> None:
     cli = importlib.import_module("noisebot_server.cli")
 

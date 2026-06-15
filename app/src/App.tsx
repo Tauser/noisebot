@@ -86,11 +86,11 @@ export function App() {
     saveOpsToken,
     commandText, commandStatus,
     routineStatus, volumeStatus, ledsStatus,
-    profileStatus, followupStatus, devStatus,
+    profileStatus, followupStatus, silenceModeStatus, devStatus,
     refreshing, followupEnabled, followupWindowMs,
     refreshAll,
     createTimer, createAlarm, createReminder, toggleRoutine, removeRoutine,
-    saveVolume, saveLeds, toggleFollowup,
+    saveVolume, saveLeds, toggleFollowup, toggleSilenceMode,
     saveUserProfile, submitCommand,
     handleResetMetrics, handleRestartServer, handleAudioProcessorAction,
   } = useAppState();
@@ -304,8 +304,11 @@ export function App() {
                   onLedsChange={setLeds}
                   onSaveLeds={saveLeds}
                   onSaveVolume={saveVolume}
+                  onToggleSilenceMode={toggleSilenceMode}
                   onToggleFollowup={toggleFollowup}
                   onVolumeChange={setVolume}
+                  silenceModeEnabled={appData.settings.silent_mode}
+                  silenceModeStatus={silenceModeStatus}
                   volume={volume}
                   volumeStatus={volumeStatus}
                 />

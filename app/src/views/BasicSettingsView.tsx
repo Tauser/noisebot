@@ -1,4 +1,4 @@
-import { CheckCircle2, MapPin, MessageSquare, SlidersHorizontal, Volume, Volume1, Volume2, VolumeX } from "lucide-react";
+import { CheckCircle2, MapPin, MessageSquare, MicOff, SlidersHorizontal, Volume, Volume1, Volume2, VolumeX } from "lucide-react";
 import type { AppData } from "../api";
 import { cardClass, primaryButtonClass } from "../lib/classes";
 import { ToggleRow } from "../components/ToggleRow";
@@ -14,8 +14,11 @@ export function BasicSettingsView({
   onLedsChange,
   onSaveLeds,
   onSaveVolume,
+  onToggleSilenceMode,
   onToggleFollowup,
   onVolumeChange,
+  silenceModeEnabled,
+  silenceModeStatus,
   volume,
   volumeStatus,
 }: {
@@ -28,8 +31,11 @@ export function BasicSettingsView({
   onLedsChange: (value: number) => void;
   onSaveLeds: () => void;
   onSaveVolume: () => void;
+  onToggleSilenceMode: (enabled: boolean) => void;
   onToggleFollowup: (enabled: boolean) => void;
   onVolumeChange: (value: number) => void;
+  silenceModeEnabled: boolean;
+  silenceModeStatus: string;
   volume: number;
   volumeStatus: string;
 }) {
@@ -98,6 +104,26 @@ export function BasicSettingsView({
             <MessageSquare size={16} className="text-slate-500" />
             Conversa
           </p>
+          <div className="pb-4">
+            <ToggleRow
+              description={
+                silenceModeEnabled
+                  ? "Microfone de conversa desligado; wake word e follow-up ficam suspensos."
+                  : "O robô pode ouvir pela palavra de ativação e pela escuta de continuação."
+              }
+              enabled={silenceModeEnabled}
+              label={
+                <span className="flex items-center gap-2">
+                  <MicOff size={15} className="text-slate-500" />
+                  Modo silêncio
+                </span>
+              }
+              onChange={onToggleSilenceMode}
+            />
+            {silenceModeStatus !== "pronto" && (
+              <p className="mt-2 text-xs text-slate-400">{silenceModeStatus}</p>
+            )}
+          </div>
           <ToggleRow
             description={
               followupEnabled

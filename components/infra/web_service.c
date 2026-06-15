@@ -48,6 +48,7 @@
 #include "voice_capture_session_v2.h"
 #include "audio_codec_service_v2.h"
 #include "audio_service.h"
+#include "ui_overlay_service.h"
 #include "touch_service.h"
 #include "time_service.h"
 #include "agenda_service.h"
@@ -881,10 +882,11 @@ static esp_err_t handle_api_vision_presence_reset(httpd_req_t *req)
 
 static esp_err_t handle_api_config_get(httpd_req_t *req)
 {
-    char buf[384];
+    char buf[448];
     snprintf(buf, sizeof(buf),
         "{\"volume\":%u,\"brightness\":%u,\"touch_sens\":%u,"
         "\"idle_timeout\":%lu,"
+        "\"silence_mode_enabled\":%s,"
         "\"voice_audio_v2_activity_decider_enabled\":%s,"
         "\"srv1_min\":%d,\"srv1_max\":%d,\"srv1_ctr\":%d,"
         "\"srv2_min\":%d,\"srv2_max\":%d,\"srv2_ctr\":%d}",
@@ -892,6 +894,7 @@ static esp_err_t handle_api_config_get(httpd_req_t *req)
         (unsigned)config_get_brightness(),
         (unsigned)config_get_touch_sensitivity(),
         (unsigned long)config_get_idle_timeout_s(),
+        config_get_silence_mode_enabled() ? "true" : "false",
         config_get_voice_audio_v2_activity_decider_enabled() ? "true" : "false",
         (int)config_get_servo_limit_min(1),
         (int)config_get_servo_limit_max(1),
@@ -917,6 +920,54 @@ static bool recv_body(httpd_req_t *req, char *buf, size_t size, int *out_len)
     buf[received] = '\0';
     if (out_len) *out_len = received;
     return true;
+}
+
+static esp_err_t apply_silence_mode(bool enabled)
+{
+    esp_err_t err = config_set_silence_mode_enabled(enabled);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (enabled) {
+        if (audio_service_is_listening()) {
+            ui_overlay_listening_set(false);
+            (void)audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
+        }
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, true);
+        wake_service_suspend();
+        NB_LOGI(TAG, "modo silencio ativado: wake/listen suspensos");
+    } else {
+        nb_robot_state_t state = state_machine_get_state();
+        bool state_blocks_mic = state == NB_STATE_MEDITATION ||
+                                state == NB_STATE_SILENT_COMPANY;
+        ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, state_blocks_mic);
+        if (state_machine_get_state() == NB_STATE_IDLE) {
+            wake_service_rearm();
+        }
+        NB_LOGI(TAG, "modo silencio desativado");
+    }
+
+    return ESP_OK;
+}
+
+static esp_err_t send_silence_mode_status(httpd_req_t *req, esp_err_t err)
+{
+    char buf[224];
+    const bool ok = err == ESP_OK;
+    if (!ok) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+    }
+    snprintf(buf, sizeof(buf),
+        "{\"ok\":%s,\"silence_mode_enabled\":%s,"
+        "\"listening\":%s,\"state\":\"%s\",\"error\":\"%s\"}",
+        ok ? "true" : "false",
+        config_get_silence_mode_enabled() ? "true" : "false",
+        audio_service_is_listening() ? "true" : "false",
+        state_machine_state_name(state_machine_get_state()),
+        ok ? "" : esp_err_to_name(err));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, buf);
 }
 
 static esp_err_t handle_api_vision_poll_status(httpd_req_t *req)
@@ -1028,6 +1079,9 @@ static esp_err_t handle_api_config_post(httpd_req_t *req)
     esp_err_t   err = ESP_ERR_NOT_FOUND;
 
     if      (strcmp(key, "volume")       == 0) err = config_set_volume((uint8_t)val);
+    else if (strcmp(key, "silence_mode_enabled") == 0) {
+        err = apply_silence_mode(val != 0.0);
+    }
     else if (strcmp(key, "voice_audio_v2_capture_enabled") == 0) {
         err = config_set_voice_audio_v2_capture_enabled(val != 0.0);
     }
@@ -1545,17 +1599,32 @@ static esp_err_t handle_api_circadian(httpd_req_t *req)
 
 static esp_err_t handle_api_audio(httpd_req_t *req)
 {
-    char buf[192];
+    char buf[256];
     snprintf(buf, sizeof(buf),
         "{\"volume\":%u,\"bpm\":%.1f,\"bpm_conf\":%.2f,"
-        "\"rms\":%.3f,\"dominant_freq\":%.1f}",
+        "\"rms\":%.3f,\"dominant_freq\":%.1f,"
+        "\"silence_mode_enabled\":%s,\"listening\":%s}",
         (unsigned)config_get_volume(),
         (double)rhythm_service_get_bpm(),
         (double)rhythm_service_get_confidence(),
         (double)sound_analysis_get_rms(),
-        (double)sound_analysis_get_dominant_freq());
+        (double)sound_analysis_get_dominant_freq(),
+        config_get_silence_mode_enabled() ? "true" : "false",
+        audio_service_is_listening() ? "true" : "false");
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, buf);
+}
+
+static esp_err_t handle_api_audio_silence_mode_enable(httpd_req_t *req)
+{
+    if (!api_require_token(req)) return ESP_OK;
+    return send_silence_mode_status(req, apply_silence_mode(true));
+}
+
+static esp_err_t handle_api_audio_silence_mode_disable(httpd_req_t *req)
+{
+    if (!api_require_token(req)) return ESP_OK;
+    return send_silence_mode_status(req, apply_silence_mode(false));
 }
 
 static esp_err_t send_audio_processor_status(httpd_req_t *req, esp_err_t probe_err)
@@ -3856,10 +3925,11 @@ static esp_err_t handle_api_wifi_delete(httpd_req_t *req)
 
 static esp_err_t handle_api_config_all(httpd_req_t *req)
 {
-    char buf[640];
+    char buf[704];
     snprintf(buf, sizeof(buf),
         "{\"volume\":%u,\"brightness\":%u,\"touch_sens\":%u,"
-        "\"idle_timeout\":%lu,\"voice_audio_v2_capture_enabled\":%s,"
+        "\"idle_timeout\":%lu,\"silence_mode_enabled\":%s,"
+        "\"voice_audio_v2_capture_enabled\":%s,"
         "\"voice_audio_v2_capture_tx_enabled\":%s,"
         "\"voice_audio_v2_activity_decider_enabled\":%s,"
         "\"srv1_min\":%d,\"srv1_max\":%d,\"srv1_ctr\":%d,"
@@ -3869,6 +3939,7 @@ static esp_err_t handle_api_config_all(httpd_req_t *req)
         (unsigned)config_get_brightness(),
         (unsigned)config_get_touch_sensitivity(),
         (unsigned long)config_get_idle_timeout_s(),
+        config_get_silence_mode_enabled() ? "true" : "false",
         config_get_voice_audio_v2_capture_enabled() ? "true" : "false",
         config_get_voice_audio_v2_capture_tx_enabled() ? "true" : "false",
         config_get_voice_audio_v2_activity_decider_enabled() ? "true" : "false",
@@ -4674,6 +4745,8 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/gaze",           .method = HTTP_POST,   .handler = handle_api_gaze_post },
     { .uri = "/api/circadian",      .method = HTTP_GET,    .handler = handle_api_circadian },
     { .uri = "/api/audio",          .method = HTTP_GET,    .handler = handle_api_audio },
+    { .uri = "/api/audio/silence-mode/enable", .method = HTTP_POST, .handler = handle_api_audio_silence_mode_enable },
+    { .uri = "/api/audio/silence-mode/disable", .method = HTTP_POST, .handler = handle_api_audio_silence_mode_disable },
     { .uri = "/api/audio/voice-v2", .method = HTTP_GET, .handler = handle_api_audio_voice_v2_status },
     { .uri = "/api/audio/io-v2", .method = HTTP_GET, .handler = handle_api_audio_io_v2_status },
     { .uri = "/api/audio/io-v2/probe", .method = HTTP_POST, .handler = handle_api_audio_io_v2_probe },

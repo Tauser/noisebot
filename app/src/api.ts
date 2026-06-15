@@ -277,6 +277,11 @@ export type BasicSettings = {
   subtle_leds: boolean;
 };
 
+export type BasicSettingsSaveResult = {
+  settings: BasicSettings;
+  applied: Record<string, string>;
+};
+
 export type ProfileSettings = {
   assistant_name: string;
   language: "pt-BR" | "en-US";
@@ -506,12 +511,12 @@ export async function deleteAgendaItem(id: string, token: string): Promise<AppDa
 export async function saveBasicSettings(
   settings: Partial<BasicSettings>,
   token: string,
-): Promise<BasicSettings> {
-  const body = await authedJson<{ settings: BasicSettings }>("/api/settings/basic", token, {
+): Promise<BasicSettingsSaveResult> {
+  const body = await authedJson<BasicSettingsSaveResult>("/api/settings/basic", token, {
     method: "PUT",
     body: settings,
   });
-  return body.settings;
+  return body;
 }
 
 export async function saveProfile(

@@ -1213,6 +1213,20 @@ class OpsHttpServer:
         if "display_brightness" in request_data:
             applied["display_brightness"] = "unsupported_no_backlight"
 
+        if "silent_mode" in request_data:
+            if self._firmware_diag_client is None:
+                applied["silent_mode"] = "saved_only"
+            else:
+                try:
+                    await asyncio.to_thread(
+                        self._firmware_diag_client.set_silence_mode_enabled,
+                        bool(settings["silent_mode"]),
+                    )
+                    applied["silent_mode"] = "firmware"
+                except Exception as exc:
+                    log.warning("Ops API: modo silencio salvo, envio ao firmware falhou: %s", exc)
+                    applied["silent_mode"] = "saved_only"
+
         for key in ("display_brightness", "led_brightness"):
             if key in request_data and key not in applied:
                 applied[key] = "saved_only"

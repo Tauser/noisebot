@@ -474,11 +474,16 @@ static bool state_is_intentional_silent(nb_robot_state_t state)
     return state == NB_STATE_MEDITATION || state == NB_STATE_SILENT_COMPANY;
 }
 
+static bool mic_blocked_status_should_show(nb_robot_state_t state)
+{
+    return config_get_silence_mode_enabled() || state_is_intentional_silent(state);
+}
+
 static void update_silent_status_icon(nb_robot_state_t new_state,
                                       nb_robot_state_t old_state)
 {
-    const bool now_silent = state_is_intentional_silent(new_state);
-    const bool was_silent = state_is_intentional_silent(old_state);
+    const bool now_silent = mic_blocked_status_should_show(new_state);
+    const bool was_silent = mic_blocked_status_should_show(old_state);
 
     if (now_silent) {
         ui_overlay_listening_set(false);
@@ -1190,6 +1195,8 @@ static esp_err_t phase_services(void)
     err = ui_overlay_service_init();
     NB_ASSERT(err == ESP_OK, TAG, "ui_overlay_service_init falhou: %s",
               esp_err_to_name(err));
+    ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED,
+                               config_get_silence_mode_enabled());
 
     /* audio_service (Bloco 4) */
     err = audio_service_init();

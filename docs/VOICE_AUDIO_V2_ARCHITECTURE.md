@@ -25,6 +25,12 @@ o robo que ja conversa: Playback v2 agora escreve SAY e probe no HAL, mantem
 estado ativo de SAY e o `audio_service` fica como loop fisico/compatibilidade
 para WAV local, synth, silencio, recovery e rollback v1.
 
+Modo silencio conversacional: o flag persistente `silence_mode_enabled`
+(`mic_mute` em NVS, default off) suspende wake/listen, cancela uma sessao de
+escuta ativa e bloqueia novas chamadas a `audio_service_begin_listen_session`.
+Ele nao desliga fisicamente o I2S nem muda HAL/codec/playback; e um mute de
+microfone para interacao por voz, com rollback imediato via API.
+
 ## Regras de Protecao
 
 - PCM16 atual permanece o fallback seguro ate o v2 passar em testes e hardware.
