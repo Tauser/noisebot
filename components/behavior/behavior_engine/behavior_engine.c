@@ -472,6 +472,28 @@ static void handle_presence_greeting(void)
             (unsigned)PRESENCE_PING_MAX_PER_HOUR);
 }
 
+static void handle_presence_wake_if_allowed(const nb_event_t *evt)
+{
+    if (!config_get_presence_wake_enabled()) {
+        return;
+    }
+    if (state_machine_get_state() != NB_STATE_SLEEPING) {
+        return;
+    }
+
+    bool face_confirmed = (evt->data.u32 & PRESENCE_EVT_FACE_CONFIRMED_FLAG) != 0U;
+    bool sustained_heuristic = evt->type == NB_EVT_SOCIAL_PRESENCE_CONFIRMED;
+    if (!face_confirmed && !sustained_heuristic) {
+        s_ping_suppressed++;
+        NB_LOGD(TAG, "wake por presença suprimido (RETURNED sem face confirmada)");
+        return;
+    }
+
+    state_machine_on_presence_wake();
+    NB_LOGI(TAG, "wake por presença (%s)",
+            face_confirmed ? "face" : "heurística sustentada");
+}
+
 static void handle_presence_social_event(const nb_event_t *evt)
 {
     switch (evt->type) {
@@ -487,6 +509,7 @@ static void handle_presence_social_event(const nb_event_t *evt)
         boredom_service_on_interaction();
         boredom_service_set_social_paused(false);
         s_social_boredom_paused = false;
+        handle_presence_wake_if_allowed(evt);
         /* Restaura timer de sleep normal ao (re)entrar em PRESENT */
         if (s_idle_timeout_overridden) {
             state_machine_set_idle_timeout_s(s_orig_idle_timeout_s);

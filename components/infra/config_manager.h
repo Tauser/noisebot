@@ -116,6 +116,8 @@ uint32_t  config_get_presence_lrec_ms(void);   /* LEFT_RECENTLY → AWAY        
 uint32_t  config_get_presence_away_ms(void);   /* AWAY → ALONE_SETTLED          */
 uint32_t  config_get_presence_engd_ms(void);   /* PRESENT → ENGAGED             */
 uint32_t  config_get_presence_rtn_ms(void);    /* ausência mínima p/ RETURNED   */
+bool      config_get_presence_wake_enabled(void);
+esp_err_t config_set_presence_wake_enabled(bool enabled);
 
 /* ── Estado de serviços (nb_svc) ─────────────────────────────────────────── */
 

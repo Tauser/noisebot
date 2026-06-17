@@ -538,6 +538,22 @@ uint32_t config_get_presence_rtn_ms(void)
     return nvs_hal_get_u32(s_h_cfg, NB_CFG_KEY_PRES_RTN,   NB_CFG_DEFAULT_PRES_RTN_MS);
 }
 
+bool config_get_presence_wake_enabled(void)
+{
+    return nvs_hal_get_u8(s_h_cfg,
+                          NB_CFG_KEY_PRES_WAKE,
+                          NB_CFG_DEFAULT_PRES_WAKE_EN) != 0U;
+}
+
+esp_err_t config_set_presence_wake_enabled(bool enabled)
+{
+    esp_err_t err = nvs_hal_set_u8(s_h_cfg,
+                                   NB_CFG_KEY_PRES_WAKE,
+                                   enabled ? 1U : 0U);
+    if (err == ESP_OK) nvs_hal_commit(s_h_cfg);
+    return err;
+}
+
 /* ── Estado de serviços ──────────────────────────────────────────────────── */
 
 uint8_t config_get_last_emotion(void)

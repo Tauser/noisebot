@@ -282,6 +282,14 @@ void state_machine_on_touch_wake(void)
     }
 }
 
+void state_machine_on_presence_wake(void)
+{
+    if (!s_initialized) return;
+    if (state_machine_get_state() == NB_STATE_SLEEPING) {
+        do_transition(NB_STATE_IDLE, "presence wake");
+    }
+}
+
 void state_machine_on_voice_start(void)
 {
     /* VAD não ativa ATTENTIVE. Sessão de escuta abre apenas por wake word. */

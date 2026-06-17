@@ -882,11 +882,12 @@ static esp_err_t handle_api_vision_presence_reset(httpd_req_t *req)
 
 static esp_err_t handle_api_config_get(httpd_req_t *req)
 {
-    char buf[448];
+    char buf[512];
     snprintf(buf, sizeof(buf),
         "{\"volume\":%u,\"brightness\":%u,\"touch_sens\":%u,"
         "\"idle_timeout\":%lu,"
         "\"silence_mode_enabled\":%s,"
+        "\"presence_wake_enabled\":%s,"
         "\"voice_audio_v2_activity_decider_enabled\":%s,"
         "\"srv1_min\":%d,\"srv1_max\":%d,\"srv1_ctr\":%d,"
         "\"srv2_min\":%d,\"srv2_max\":%d,\"srv2_ctr\":%d}",
@@ -895,6 +896,7 @@ static esp_err_t handle_api_config_get(httpd_req_t *req)
         (unsigned)config_get_touch_sensitivity(),
         (unsigned long)config_get_idle_timeout_s(),
         config_get_silence_mode_enabled() ? "true" : "false",
+        config_get_presence_wake_enabled() ? "true" : "false",
         config_get_voice_audio_v2_activity_decider_enabled() ? "true" : "false",
         (int)config_get_servo_limit_min(1),
         (int)config_get_servo_limit_max(1),
@@ -1081,6 +1083,9 @@ static esp_err_t handle_api_config_post(httpd_req_t *req)
     if      (strcmp(key, "volume")       == 0) err = config_set_volume((uint8_t)val);
     else if (strcmp(key, "silence_mode_enabled") == 0) {
         err = apply_silence_mode(val != 0.0);
+    }
+    else if (strcmp(key, "presence_wake_enabled") == 0) {
+        err = config_set_presence_wake_enabled(val != 0.0);
     }
     else if (strcmp(key, "voice_audio_v2_capture_enabled") == 0) {
         err = config_set_voice_audio_v2_capture_enabled(val != 0.0);
@@ -3925,10 +3930,11 @@ static esp_err_t handle_api_wifi_delete(httpd_req_t *req)
 
 static esp_err_t handle_api_config_all(httpd_req_t *req)
 {
-    char buf[704];
+    char buf[768];
     snprintf(buf, sizeof(buf),
         "{\"volume\":%u,\"brightness\":%u,\"touch_sens\":%u,"
         "\"idle_timeout\":%lu,\"silence_mode_enabled\":%s,"
+        "\"presence_wake_enabled\":%s,"
         "\"voice_audio_v2_capture_enabled\":%s,"
         "\"voice_audio_v2_capture_tx_enabled\":%s,"
         "\"voice_audio_v2_activity_decider_enabled\":%s,"
@@ -3940,6 +3946,7 @@ static esp_err_t handle_api_config_all(httpd_req_t *req)
         (unsigned)config_get_touch_sensitivity(),
         (unsigned long)config_get_idle_timeout_s(),
         config_get_silence_mode_enabled() ? "true" : "false",
+        config_get_presence_wake_enabled() ? "true" : "false",
         config_get_voice_audio_v2_capture_enabled() ? "true" : "false",
         config_get_voice_audio_v2_capture_tx_enabled() ? "true" : "false",
         config_get_voice_audio_v2_activity_decider_enabled() ? "true" : "false",
@@ -4455,7 +4462,7 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
     const char *pstate_str = (pdiag.state <= PRESENCE_ALONE_SETTLED)
                              ? k_pstate[pdiag.state] : "UNKNOWN";
 
-    char buf[1200];
+    char buf[1280];
     snprintf(buf, sizeof(buf),
         "{"
         "\"version\":\"%.31s\","
@@ -4474,6 +4481,7 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
         "\"hours_alive\":%lu,"
         "\"social_presence\":{"
             "\"state\":\"%s\","
+            "\"wake_enabled\":%s,"
             "\"session_s\":%lu,"
             "\"absence_s\":%lu,"
             "\"conf\":%s,"
@@ -4505,6 +4513,7 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
         (unsigned long)ltm_get_total_sessions(),
         (unsigned long)ltm_get_hours_alive(),
         pstate_str,
+        config_get_presence_wake_enabled() ? "true" : "false",
         (unsigned long)pdiag.presence_session_s,
         (unsigned long)pdiag.absence_s,
         pdiag.confidence_confirmed ? "true" : "false",

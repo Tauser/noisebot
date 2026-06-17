@@ -78,6 +78,7 @@
 #define NB_CFG_KEY_PRES_AWAY  "pres_away_ms"     /* u32 — AWAY → ALONE_SETTLED          */
 #define NB_CFG_KEY_PRES_ENGD  "pres_engd_ms"     /* u32 — PRESENT → ENGAGED             */
 #define NB_CFG_KEY_PRES_RTN   "pres_rtn_ms"      /* u32 — ausência mínima p/ RETURNED   */
+#define NB_CFG_KEY_PRES_WAKE  "pres_wake_en"     /* u8  — wake-on-presence opt-in       */
 
 /* ── Chaves nb_svc — Estado de serviços ─────────────────────────────────── */
 #define NB_SVC_KEY_EMOTION    "last_emotion"     /* u8 — nb_emotion_t (Etapa 5.1) */
@@ -111,6 +112,7 @@
 #define NB_CFG_DEFAULT_PRES_AWAY_MS   120000U   /* 2 min — AWAY → ALONE_SETTLED         */
 #define NB_CFG_DEFAULT_PRES_ENGD_MS   180000U   /* 3 min — PRESENT → ENGAGED            */
 #define NB_CFG_DEFAULT_PRES_RTN_MS     60000U   /* 1 min — ausência mínima p/ RETURNED  */
+#define NB_CFG_DEFAULT_PRES_WAKE_EN        0U   /* opt-in: não acorda por presença       */
 
 #define NB_SVC_DEFAULT_EMOTION            0     /* NEUTRAL */
 
