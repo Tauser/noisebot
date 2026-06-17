@@ -19,7 +19,7 @@
  *    5  | shadow_task      |  0   |  4096  | audio_processor_service
  *    5  | behav_task       |  *   |  4096  | boot_manager
  *    4  | nb_bridge_task   |  0   |  8192  | bridge_service
- *    4  | vision_poll_task |  *   |  4096  | vision_service
+ *    4  | vision_poll_task |  *   |  8192  | vision_service
  *    2  | opus_worker      |  0   |  4096  | audio_codec_service_v2
  *    2  | codec_worker     |  0   |  4096  | audio_codec_service_v2
  *
@@ -71,6 +71,10 @@
 #define NB_TASK_BRIDGE_PRIORITY   4U
 #define NB_TASK_BRIDGE_STACK      8192U
 #define NB_TASK_BRIDGE_CORE       0
+
+/* ── Vision polling ─────────────────────────────────────────────────────── */
+#define NB_TASK_VISION_POLL_PRIORITY 4U
+#define NB_TASK_VISION_POLL_STACK    8192U
 
 /* ── Opus/Codec workers ──────────────────────────────────────────────────── */
 #define NB_TASK_OPUS_PRIORITY     2U

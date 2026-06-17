@@ -487,12 +487,10 @@ esp_err_t camera_service_observe_scene(nb_camera_observation_t *out)
     }
 
     camera_service_hold_cancel();
-    nb_camera_diag_status_t diag;
-    camera_service_get_diag_status(&diag);
-    s_last_dma_before = diag.dma_free;
-    s_last_dma_largest_before = diag.dma_largest;
-    s_last_internal_before = diag.internal_free;
-    s_last_psram_before = diag.psram_free;
+    s_last_dma_before = heap_caps_get_free_size(MALLOC_CAP_DMA);
+    s_last_dma_largest_before = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+    s_last_internal_before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    s_last_psram_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
 
     if (!camera_hal_is_ready()) {
         esp_err_t init_err = camera_hal_init();
@@ -596,12 +594,10 @@ esp_err_t camera_service_capture_snapshot(nb_camera_snapshot_t *out,
     }
 
     camera_service_hold_cancel();
-    nb_camera_diag_status_t diag;
-    camera_service_get_diag_status(&diag);
-    s_last_dma_before = diag.dma_free;
-    s_last_dma_largest_before = diag.dma_largest;
-    s_last_internal_before = diag.internal_free;
-    s_last_psram_before = diag.psram_free;
+    s_last_dma_before = heap_caps_get_free_size(MALLOC_CAP_DMA);
+    s_last_dma_largest_before = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+    s_last_internal_before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    s_last_psram_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
 
     if (!camera_hal_is_ready()) {
         esp_err_t init_err = camera_hal_init();

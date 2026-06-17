@@ -1251,14 +1251,14 @@ static esp_err_t phase_services(void)
     /* Heurística local de presença: polling contínuo offline-first.
      * Sem isso, NB_EVT_PRESENCE_DETECTED nunca é publicado sem server.
      * 0 = usa NB_VISION_POLL_DEFAULT_INTERVAL_MS (300ms). */
-    if (vision_service_is_available()) {
+    if (camera_service_is_supported()) {
         err = vision_service_poll_start(0U);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "vision_service_poll_start falhou: %s — heurística offline inativa",
                      esp_err_to_name(err));
         }
     } else {
-        ESP_LOGW(TAG, "vision_service indisponível no boot — câmera ausente?");
+        ESP_LOGW(TAG, "camera_service sem suporte no boot — heurística offline inativa");
     }
 
     /* state_machine e emotion_model (Etapa 5.1) */
@@ -1381,10 +1381,9 @@ static esp_err_t phase_services(void)
         update_timer_badge();
     }
 
-    /* Visão/câmera ficam lazy. Inicializar aqui cria mutex/timer/driver de
-     * câmera antes da voz e consome SRAM interna que o AEC precisa. Os
-     * endpoints /api/vision/observe e /api/camera/snapshot inicializam sob
-     * demanda. */
+    /* Callback de sessão da câmera. A heurística offline de presença pode ter
+     * inicializado vision/camera acima; endpoints ainda compartilham o mesmo
+     * camera_service e capturam sob demanda. */
     camera_service_set_event_cb(on_camera_event);
 
     BOOT_SUBSCRIBE(NB_EVT_BRIDGE_SESSION,      on_bridge_alert_command, NULL);

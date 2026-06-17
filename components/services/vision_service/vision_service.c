@@ -6,6 +6,7 @@
 
 #include "camera_service.h"
 #include "event_bus.h"
+#include "nb_task_config.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -31,8 +32,6 @@ static nb_vision_presence_status_t s_presence = {
 #define NB_VISION_POLL_DEFAULT_INTERVAL_MS 300U
 #define NB_VISION_POLL_MIN_INTERVAL_MS 250U
 #define NB_VISION_POLL_MAX_INTERVAL_MS 10000U
-#define NB_VISION_POLL_TASK_STACK 4096U
-#define NB_VISION_POLL_TASK_PRIORITY 4U
 
 static TaskHandle_t s_poll_task = NULL;
 static nb_vision_poll_status_t s_poll = {0};
@@ -438,9 +437,9 @@ esp_err_t vision_service_poll_start(uint32_t interval_ms)
 
     BaseType_t rc = xTaskCreate(vision_poll_task,
                                 "nb_vision_poll",
-                                NB_VISION_POLL_TASK_STACK,
+                                NB_TASK_VISION_POLL_STACK,
                                 NULL,
-                                NB_VISION_POLL_TASK_PRIORITY,
+                                NB_TASK_VISION_POLL_PRIORITY,
                                 &s_poll_task);
     if (rc != pdPASS) {
         if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -452,7 +451,9 @@ esp_err_t vision_service_poll_start(uint32_t interval_ms)
         return ESP_ERR_NO_MEM;
     }
 
-    ESP_LOGI(TAG, "poll visual iniciado interval_ms=%lu", (unsigned long)interval_ms);
+    ESP_LOGI(TAG, "poll visual iniciado interval_ms=%lu stack=%lu",
+             (unsigned long)interval_ms,
+             (unsigned long)NB_TASK_VISION_POLL_STACK);
     return ESP_OK;
 }
 
