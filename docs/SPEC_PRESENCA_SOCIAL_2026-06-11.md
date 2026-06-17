@@ -148,6 +148,13 @@ Em ENGAGED (companhia silenciosa):
 
 Config NVS `presence_wake_en` (default 0). Quando ON: SLEEPING + heurística local alta ≥ 5 s → `PRESENCE_ACQUIRED` pode acordar via fluxo de wake existente. Default OFF porque "ele me viu chegar" pode ser charmoso ou creepy — decisão do usuário, não do firmware.
 
+Implementação atual: a opção é exposta como `presence_wake_enabled` em
+`/api/config` e `/api/config/all`, e aparece no bloco `social_presence` de
+`/api/diag`. O wake dispara em `SLEEPING` quando há
+`SOCIAL_PRESENCE_CONFIRMED` (face ou heurística sustentada) ou `RETURNED` com
+face confirmada; `RETURNED` por heurística sozinha é suprimido para evitar
+acordar com um único falso positivo após ausência longa.
+
 ---
 
 ## 5. Persona — fora desta etapa
