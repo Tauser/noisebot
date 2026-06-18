@@ -141,6 +141,7 @@ class NoiseBotServer:
                 temperature=llm.temperature,
                 max_tokens=llm.max_output_tokens,
                 think=llm.ollama_think,
+                num_ctx=llm.ollama_num_ctx,
             )
         log.warning("LLM provider %s ainda nao implementado; rodando sem LLM.", llm.provider)
         return None

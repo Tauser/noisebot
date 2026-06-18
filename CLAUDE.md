@@ -257,6 +257,10 @@ disco.
 - Documentos aparecem no histórico e podem ser reabertos enquanto estiverem no
   cache. PDF gera citações por página, DOCX por parágrafo e TXT por intervalo de
   linhas. PDF escaneado sem camada textual ainda não recebe OCR.
+- O contexto documental enviado à LLM é selecionado e limitado para preservar
+  espaço de resposta. Ollama usa `NOISEBOT_OLLAMA_NUM_CTX` (default `8192`,
+  mínimo `4096`); não remover esse orçamento ou anexos longos podem consumir a
+  janela inteira e produzir respostas de um único token.
 - Pesquisa web também pode ser usada no modo dashboard sem acionar o firmware.
 - Contexto extraído de anexos é dado externo não confiável e não pode fornecer
   instruções ao agente.

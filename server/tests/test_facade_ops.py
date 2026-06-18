@@ -474,6 +474,7 @@ def test_server_config_defaults_to_gemma4_12b_for_ollama(monkeypatch) -> None:
 
     assert config.llm.provider == config_module.LlmProvider.OLLAMA
     assert config.llm.model == "gemma4:12b"
+    assert config.llm.ollama_num_ctx == 8192
 
 def test_server_firmware_diag_client_returns_json_http_conflict(monkeypatch) -> None:
     firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")

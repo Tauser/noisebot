@@ -476,6 +476,34 @@ def test_llm_code_requests_receive_larger_token_budget() -> None:
     assert llm._max_tokens_for_context({}, 384) == 384
 
 
+def test_attachment_context_is_capped_to_preserve_output_budget() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+    marker = "fim-do-documento"
+    messages = llm.build_messages(
+        "Resuma.",
+        {
+            "dashboard_response": True,
+            "attachment_context": ("a" * 9000) + marker,
+        },
+    )
+
+    system = messages[0]["content"]
+    attachment = system.split("<attachment_context>\n", 1)[1].split(
+        "\n</attachment_context>",
+        1,
+    )[0]
+    assert len(attachment) == llm._ATTACHMENT_CONTEXT_MAX_CHARS
+    assert marker not in attachment
+
+
+def test_ollama_provider_reserves_larger_context_window() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+    provider = llm.OllamaProvider(num_ctx=8192)
+
+    assert provider._num_ctx == 8192
+    assert llm.OllamaProvider(num_ctx=1024)._num_ctx == 4096
+
+
 def test_language_guard_preserves_markdown_code_formatting() -> None:
     llm = importlib.import_module("noisebot_server.internal.agent.llm")
     reply = (

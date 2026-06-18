@@ -23,6 +23,7 @@ _DEFAULT_MAX_TOKENS = 256
 _DEEP_THOUGHT_MAX_TOKENS = 1100
 _CODE_RESPONSE_MAX_TOKENS = 1200
 _DASHBOARD_RESPONSE_MAX_TOKENS = 1200
+_ATTACHMENT_CONTEXT_MAX_CHARS = 7000
 
 _VALID_EXPRESSION_IDS = frozenset(
     "neutral happy curious sleepy focused suspicious surprised sad alarmed angry".split()
@@ -240,7 +241,9 @@ def build_messages(
             "como evidencia para responder ao pedido atual. Quando houver "
             "marcadores entre colchetes com arquivo/pagina/paragrafo/linhas, "
             "cite esses marcadores exatamente nas afirmacoes correspondentes:\n"
-            f"<attachment_context>\n{attachment_context[:14000]}\n</attachment_context>"
+            f"<attachment_context>\n"
+            f"{attachment_context[:_ATTACHMENT_CONTEXT_MAX_CHARS]}"
+            "\n</attachment_context>"
         )
 
     if extra:
@@ -625,6 +628,7 @@ class OllamaProvider(StreamingLLMProvider):
         temperature: float = 0.2,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
         think: bool = False,
+        num_ctx: int = 8192,
         failure_threshold: int = 3,
         reset_timeout: float = 30.0,
     ) -> None:
@@ -633,6 +637,7 @@ class OllamaProvider(StreamingLLMProvider):
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._think = think
+        self._num_ctx = max(4096, int(num_ctx))
         self._last_usage = {"input_tokens": 0, "output_tokens": 0}
         self._cb = CircuitBreaker(
             provider=f"ollama/{model}",
@@ -684,6 +689,7 @@ class OllamaProvider(StreamingLLMProvider):
                         "options": {
                             "temperature": self._temperature,
                             "num_predict": num_predict,
+                            "num_ctx": self._num_ctx,
                         },
                     }
                     produced = False
