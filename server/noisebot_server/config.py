@@ -65,7 +65,7 @@ class LlmConfig:
     ollama_think: bool
     openai_key_configured: bool
     gemini_key_configured: bool
-    ollama_num_ctx: int = 8192
+    ollama_num_ctx: int = 16384
 
 
 @dataclass(frozen=True)
@@ -311,7 +311,7 @@ def load_config(env_path: str | os.PathLike[str] | None = None) -> NoiseBotServe
             ollama_think=_env_bool("NOISEBOT_OLLAMA_THINK", False),
             openai_key_configured=bool(_env("OPENAI_API_KEY")),
             gemini_key_configured=bool(_env("GEMINI_API_KEY")),
-            ollama_num_ctx=max(4096, _env_int("NOISEBOT_OLLAMA_NUM_CTX", 8192)),
+            ollama_num_ctx=max(4096, _env_int("NOISEBOT_OLLAMA_NUM_CTX", 16384)),
         ),
         pipeline_mode=pipeline_mode,
         stt=SttConfig(

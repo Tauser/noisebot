@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import re
+import unicodedata
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,7 +19,17 @@ _MAX_PDF_PAGES = 200
 _MAX_DOCX_ENTRIES = 2_000
 _MAX_DOCX_UNCOMPRESSED_BYTES = 20_000_000
 _MAX_CONTEXT_CHARS = 6_000
+_MAX_OVERVIEW_CHUNKS = 12
 _WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ0-9_]{3,}")
+_OVERVIEW_TERMS = (
+    "resum",
+    "conteudo",
+    "do que se trata",
+    "sobre o que",
+    "assunto",
+    "visao geral",
+    "principais pontos",
+)
 
 
 class DocumentExtractionError(ValueError):
@@ -150,6 +161,9 @@ def _select_chunks(
     chunks: list[DocumentChunk],
     user_text: str,
 ) -> list[DocumentChunk]:
+    if _is_overview_request(user_text):
+        return _select_overview_chunks(chunks)
+
     query_terms = {term.lower() for term in _WORD_RE.findall(user_text)}
     ranked = []
     for index, chunk in enumerate(chunks):
@@ -179,6 +193,35 @@ def _select_chunks(
             break
     selected.sort(key=lambda chunk: chunks.index(chunk))
     return selected
+
+
+def _select_overview_chunks(chunks: list[DocumentChunk]) -> list[DocumentChunk]:
+    if not chunks:
+        return []
+    sample_count = min(len(chunks), _MAX_OVERVIEW_CHUNKS)
+    if sample_count == 1:
+        indices = [0]
+    else:
+        indices = sorted({
+            round(position * (len(chunks) - 1) / (sample_count - 1))
+            for position in range(sample_count)
+        })
+    per_chunk = max(300, _MAX_CONTEXT_CHARS // len(indices))
+    selected = []
+    for index in indices:
+        chunk = chunks[index]
+        text_budget = max(80, per_chunk - len(chunk.citation) - 2)
+        selected.append(DocumentChunk(chunk.citation, chunk.text[:text_budget]))
+    return selected
+
+
+def _is_overview_request(user_text: str) -> bool:
+    normalized = unicodedata.normalize("NFD", user_text or "")
+    normalized = "".join(
+        char for char in normalized
+        if unicodedata.category(char) != "Mn"
+    ).lower()
+    return any(term in normalized for term in _OVERVIEW_TERMS)
 
 
 def _is_docx(data: bytes) -> bool:

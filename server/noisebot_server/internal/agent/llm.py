@@ -476,6 +476,7 @@ def recover_llm_reply_text(raw: str) -> str:
 def enforce_pt_br_reply(reply: str, user_text: str = "") -> tuple[str, bool]:
     """Return a safe pt-BR reply when the model leaks unsupported languages."""
     cleaned = reply.strip() if "```" in reply else " ".join(reply.split()).strip()
+    cleaned = re.sub(r"\\(?=\d+\.)", "", cleaned)
     if not cleaned:
         return cleaned, False
     language_sample = re.sub(r"```[\s\S]*?(?:```|$)", "", cleaned).strip()
@@ -628,7 +629,7 @@ class OllamaProvider(StreamingLLMProvider):
         temperature: float = 0.2,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
         think: bool = False,
-        num_ctx: int = 8192,
+        num_ctx: int = 16384,
         failure_threshold: int = 3,
         reset_timeout: float = 30.0,
     ) -> None:

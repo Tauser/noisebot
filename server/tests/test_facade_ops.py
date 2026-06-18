@@ -98,6 +98,30 @@ def test_dashboard_interaction_extracts_txt_with_line_citations() -> None:
     assert "Receita total: R$ 120." in context
 
 
+def test_dashboard_interaction_summary_spreads_context_across_document() -> None:
+    documents = importlib.import_module(
+        "noisebot_server.internal.agent.document_extract"
+    )
+    chunks = [
+        documents.DocumentChunk(f"[ata.pdf, p. {page}]", f"pagina-{page} " * 500)
+        for page in range(1, 6)
+    ]
+
+    selected = documents._select_chunks(
+        chunks,
+        "Resuma o conteúdo deste arquivo.",
+    )
+
+    assert [chunk.citation for chunk in selected] == [
+        "[ata.pdf, p. 1]",
+        "[ata.pdf, p. 2]",
+        "[ata.pdf, p. 3]",
+        "[ata.pdf, p. 4]",
+        "[ata.pdf, p. 5]",
+    ]
+    assert sum(len(chunk.text) for chunk in selected) < 6_000
+
+
 def test_dashboard_interaction_extracts_pdf_with_page_citation() -> None:
     from pypdf import PdfWriter
     from pypdf.generic import DictionaryObject, NameObject, StreamObject
@@ -474,7 +498,7 @@ def test_server_config_defaults_to_gemma4_12b_for_ollama(monkeypatch) -> None:
 
     assert config.llm.provider == config_module.LlmProvider.OLLAMA
     assert config.llm.model == "gemma4:12b"
-    assert config.llm.ollama_num_ctx == 8192
+    assert config.llm.ollama_num_ctx == 16384
 
 def test_server_firmware_diag_client_returns_json_http_conflict(monkeypatch) -> None:
     firmware_diag = importlib.import_module("noisebot_server.internal.ops.firmware_diag")

@@ -498,9 +498,9 @@ def test_attachment_context_is_capped_to_preserve_output_budget() -> None:
 
 def test_ollama_provider_reserves_larger_context_window() -> None:
     llm = importlib.import_module("noisebot_server.internal.agent.llm")
-    provider = llm.OllamaProvider(num_ctx=8192)
+    provider = llm.OllamaProvider(num_ctx=16384)
 
-    assert provider._num_ctx == 8192
+    assert provider._num_ctx == 16384
     assert llm.OllamaProvider(num_ctx=1024)._num_ctx == 4096
 
 
@@ -519,6 +519,18 @@ def test_language_guard_preserves_markdown_code_formatting() -> None:
 
     assert replaced is False
     assert cleaned == reply
+
+
+def test_reply_cleanup_removes_stray_escape_before_numbered_list() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    cleaned, replaced = llm.enforce_pt_br_reply(
+        "1. Primeiro ponto. \\2. Segundo ponto.",
+        "resuma",
+    )
+
+    assert replaced is False
+    assert cleaned == "1. Primeiro ponto. 2. Segundo ponto."
 
 
 def test_parse_llm_json_preserves_code_fence_inside_reply() -> None:
