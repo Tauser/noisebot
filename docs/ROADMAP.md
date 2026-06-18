@@ -12,6 +12,8 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | --- | --- |
 | Foco do ciclo | Agenda local, status rail e organizacao de docs |
 | Trabalho principal agora | Agenda local (14.1), status rail (16.2) e limpeza documental (D.1) |
+| Direcao estrategica do server | Companheiro fisico + agente local privado; ver `docs/LOCAL_AGENT_PRODUCT_VISION.md` |
+| Ciclo multimodal | Imagens e documentos PDF/DOCX/TXT com citacoes concluidos; proximo passo e audio/transcricao |
 | Hardware que nao deve guiar trabalho agora | Servos, IMU, bateria |
 | Servos | Nao conectados; qualquer movimento continua bloqueado por `motion_safety` |
 | Camera | Pinos DVP preservados; preview e reconhecimento de face implementados via server |
@@ -88,6 +90,8 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | Organizacao documental inicial | `EM ANDAMENTO` | `docs/README.md`, `docs/PROJECT_CLEANUP_AUDIT.md` |
 | Touch sensibilidade e confiabilidade (2.2A) | `FEITO` — default 100 (20% threshold) calibrado com log real: proximidade fraw ~6%, toque real 130–200% acima do baseline; TAP_HOLD_MIN_MS=100ms como backup; legados 5/8/10/15/25 migrados; toque não silencia áudio | `components/services/touch_service/`, `components/infra/nb_config_keys.h` |
 | LLM tools pipeline (Fases 9–15) | `FEITO` — two-step loop, gateway, sandbox, tools (set_expression, show_message, list_agenda, create_timer, create_reminder, analyze_vision, remember_fact, forget_fact, recall_user_preferences), memória longa persistida | `server/noisebot_server/internal/agent/tools/` |
+| Primeiro ciclo multimodal do dashboard | `FEITO` — JPEG/PNG/WebP ate 5 MB, previa, imagem no chat, ampliacao, cache autenticado em memoria (12 imagens/30 min), resposta silenciosa ou falada e isolamento total do firmware | `server/noisebot_server/internal/ops/http.py`, `app/`, `docs/LOCAL_AGENT_PRODUCT_VISION.md` |
+| Documentos no dashboard | `FEITO` — PDF/DOCX/TXT ate 10 MB, extracao local fora do event loop, selecao de trechos e citacoes por pagina/paragrafo/linhas; PDF escaneado sem OCR fica fora deste corte | `server/noisebot_server/internal/agent/document_extract.py`, `app/`, `docs/LOCAL_AGENT_PRODUCT_VISION.md` |
 
 ## Etapas Ativas
 

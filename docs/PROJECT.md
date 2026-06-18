@@ -16,6 +16,12 @@ Com dois servos, um display de 2", dois LEDs, microfone, speaker e fita de cobre
 6. **Touch como vínculo:** fita de cobre é o canal físico de intimidade com o usuário.
 7. **Robustez:** firmware estável para operação contínua, sem crashes.
 8. **Evolução:** arquitetura que cresce sem reescrita — câmera, IMU e bateria são expansões planejadas.
+9. **Agente local privado:** o servidor amplia o NoiseBot com workspace
+   multimodal, documentos, pesquisa, memória controlável e automações sem
+   transferir processamento pesado ao firmware.
+
+A direção estratégica dessa integração está registrada em
+[`LOCAL_AGENT_PRODUCT_VISION.md`](./LOCAL_AGENT_PRODUCT_VISION.md).
 
 ## Princípios de Comportamento
 

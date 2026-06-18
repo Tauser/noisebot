@@ -240,21 +240,28 @@ Ajuste fino por env (todas opcionais; defaults entre colchetes):
 
 ### Interações multimodais do dashboard
 
-`POST /api/interactions` é o canal autenticado do agente no dashboard. O
-primeiro corte aceita texto e uma imagem JPEG/PNG/WebP de até 5 MB. A imagem é
-validada por assinatura, mantida apenas em memória e analisada no server; bytes,
-caminhos e conteúdo bruto nunca atravessam o bridge para o firmware.
-As últimas 12 imagens ficam disponíveis ao chat por até 30 minutos em cache de
-memória, via GET autenticado; nunca são persistidas em disco.
+`POST /api/interactions` é o canal autenticado do agente no dashboard. Aceita
+texto e um anexo: imagem JPEG/PNG/WebP de até 5 MB ou documento PDF/DOCX/TXT de
+até 10 MB. O anexo é validado pelo conteúdo, mantido apenas em memória e
+processado no server; bytes, caminhos e conteúdo bruto nunca atravessam o bridge
+para o firmware. Os 12 anexos mais recentes ficam disponíveis ao chat por até
+30 minutos em cache de memória, via GET autenticado; nunca são persistidos em
+disco.
 
 - `response_mode=dashboard`: resposta detalhada somente na interface; não envia
   expressão, texto, TTS nem eventos de sessão ao firmware e não ocupa a FSM do
   turno de voz, permitindo que o robô continue conversando em paralelo.
 - `response_mode=robot`: mantém o fluxo normal de resposta do robô.
+- O dashboard mostra prévia antes do envio, exibe a imagem na mensagem e abre
+  uma visualização ampliada ao clicar.
+- Documentos aparecem no histórico e podem ser reabertos enquanto estiverem no
+  cache. PDF gera citações por página, DOCX por parágrafo e TXT por intervalo de
+  linhas. PDF escaneado sem camada textual ainda não recebe OCR.
+- Pesquisa web também pode ser usada no modo dashboard sem acionar o firmware.
 - Contexto extraído de anexos é dado externo não confiável e não pode fornecer
   instruções ao agente.
-- Áudio e documentos devem reutilizar esse endpoint e a mesma fronteira de
-  isolamento quando forem implementados.
+- Áudio deve reutilizar esse endpoint e a mesma fronteira de isolamento quando
+  for implementado.
 
 ---
 
