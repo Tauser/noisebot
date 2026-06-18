@@ -59,10 +59,23 @@ _DEFAULT_PROVIDER = "tavily"
 _ALLOWED_MODES = {"auto", "general", "factual", "news", "technical"}
 _ALLOWED_PROVIDERS = {"auto", "tavily"}
 _DEFAULT_CACHE_TTL_S = 300
+_DEFAULT_NEWS_CACHE_TTL_S = 120  # noticia envelhece rapido -> cache mais curto
 _MAX_QUERY_LEN = 300
 _MAX_PROVIDER_QUERY_LEN = 380
 _SNIPPET_MAX = 280
 _TAVILY_ENDPOINT = "https://api.tavily.com/search"
+
+# Profundidade de busca Tavily. "advanced" custa ~2x creditos mas devolve
+# resultados muito mais precisos e relevantes (estilo Google) -> default.
+_DEFAULT_SEARCH_DEPTH = "advanced"
+_ALLOWED_DEPTHS = {"basic", "advanced"}
+# Score minimo de relevancia (0-1) para um hit entrar na resposta. Corta
+# resultado tangencial/spam. Se o filtro esvaziar tudo, mantemos o melhor hit.
+_DEFAULT_MIN_SCORE = 0.30
+# Janela de recencia (dias) aplicada ao topic="news" do Tavily.
+_DEFAULT_NEWS_DAYS = 7
+# Teto de entradas no cache em memoria (evita crescimento ilimitado).
+_CACHE_MAX_ENTRIES = 256
 
 # NOISEBOT_SEARCH_REGION -> parametro Tavily "country" (boost de localizacao,
 # nao garantia; so aplicavel quando topic == "general").
@@ -102,6 +115,7 @@ class SearchResponse:
     mode: str = "auto"
     provider: str = ""
     cached: bool = False
+    depth: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -116,13 +130,41 @@ def _region() -> str:
     return os.environ.get("NOISEBOT_SEARCH_REGION", "BR").strip().upper() or "BR"
 
 
-def _cache_ttl_s() -> int:
+def _cache_ttl_s(mode: str = "auto") -> int:
     raw = os.environ.get("NOISEBOT_SEARCH_CACHE_TTL_S", "")
     try:
         ttl = int(raw)
-        return ttl if ttl > 0 else _DEFAULT_CACHE_TTL_S
+        base = ttl if ttl > 0 else _DEFAULT_CACHE_TTL_S
     except (TypeError, ValueError):
-        return _DEFAULT_CACHE_TTL_S
+        base = _DEFAULT_CACHE_TTL_S
+    # Noticias envelhecem rapido: nunca cacheia mais que o teto de news.
+    if mode == "news":
+        return min(base, _DEFAULT_NEWS_CACHE_TTL_S)
+    return base
+
+
+def _search_depth() -> str:
+    raw = os.environ.get("NOISEBOT_SEARCH_DEPTH", "").strip().lower()
+    return raw if raw in _ALLOWED_DEPTHS else _DEFAULT_SEARCH_DEPTH
+
+
+def _min_score() -> float:
+    raw = os.environ.get("NOISEBOT_SEARCH_MIN_SCORE", "")
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_MIN_SCORE
+    # Mantem dentro de [0, 1]; fora disso volta ao default.
+    return val if 0.0 <= val <= 1.0 else _DEFAULT_MIN_SCORE
+
+
+def _news_days() -> int:
+    raw = os.environ.get("NOISEBOT_SEARCH_NEWS_DAYS", "")
+    try:
+        days = int(raw)
+        return days if days > 0 else _DEFAULT_NEWS_DAYS
+    except (TypeError, ValueError):
+        return _DEFAULT_NEWS_DAYS
 
 
 def _tavily_country() -> str | None:
@@ -264,6 +306,29 @@ def _build_provider_query(query: str, mode: str) -> str:
 # Deduplicacao
 # ---------------------------------------------------------------------------
 
+def _sort_by_score(hits: list[SearchHit]) -> list[SearchHit]:
+    """Ordena por score desc (mais relevante primeiro). Hits sem score vao por
+    ultimo, preservando a ordem original (stable sort)."""
+    return sorted(
+        hits,
+        key=lambda h: h.score if h.score is not None else -1.0,
+        reverse=True,
+    )
+
+
+def _filter_by_score(hits: list[SearchHit], min_score: float) -> list[SearchHit]:
+    """Descarta hits abaixo do score minimo de relevancia. Hits sem score
+    (None) sao mantidos (provider nao pontuou). Se o filtro esvaziar tudo mas
+    havia resultados, mantem o melhor hit — preferimos um resultado marginal a
+    'nenhum resultado'."""
+    if not hits:
+        return hits
+    kept = [h for h in hits if h.score is None or h.score >= min_score]
+    if not kept:
+        return hits[:1]
+    return kept
+
+
 def _dedupe_hits(hits: list[SearchHit]) -> list[SearchHit]:
     seen_urls: set[str] = set()
     seen_titles: set[str] = set()
@@ -315,8 +380,12 @@ def _set_cached_response(key: str, response: SearchResponse) -> None:
     # Nunca cacheia erro (inclui ausencia de chave / provider invalido).
     if response.error is not None:
         return
-    expiry = time.monotonic() + _cache_ttl_s()
+    expiry = time.monotonic() + _cache_ttl_s(response.mode)
     with _CACHE_LOCK:
+        # Teto de tamanho: remove a entrada que expira primeiro antes de inserir.
+        if len(_CACHE) >= _CACHE_MAX_ENTRIES and key not in _CACHE:
+            oldest = min(_CACHE, key=lambda k: _CACHE[k][0])
+            _CACHE.pop(oldest, None)
         _CACHE[key] = (expiry, response)
 
 
@@ -334,14 +403,19 @@ def _search_tavily(
 ) -> SearchResponse:
     api_key = os.environ.get("TAVILY_API_KEY", "")
     topic = "news" if mode == "news" else "general"
+    depth = _search_depth()
     body_obj: dict[str, object] = {
         "api_key": api_key,
         "query": query,
-        "max_results": max_results,
-        "include_answer": True,
-        "search_depth": "basic",
+        # Pede alguns resultados a mais que o necessario para o filtro de score
+        # ter material; o corte final para max_results acontece apos filtrar.
+        "max_results": min(max_results + 3, 10),
+        "include_answer": "advanced" if depth == "advanced" else True,
+        "search_depth": depth,
         "topic": topic,
     }
+    if topic == "news":
+        body_obj["days"] = _news_days()  # janela de recencia para noticias
     if topic == "general":
         country = _tavily_country()
         if country:
@@ -403,11 +477,14 @@ def _search_tavily(
             score=score_val,
         ))
 
+    # Ordena por relevancia, corta os de score baixo, dedup e limita.
+    hits = _sort_by_score(hits)
+    hits = _filter_by_score(hits, _min_score())
     hits = _dedupe_hits(hits)[:max_results]
     answer_raw = payload.get("answer")
     answer = _normalize_text(answer_raw) if answer_raw else None
     return SearchResponse(query=original_query, results=hits, answer=answer,
-                          source="Tavily", error=None)
+                          source="Tavily", error=None, depth=depth)
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +576,10 @@ def format_search_results_for_llm(resp: SearchResponse, *, max_chars: int = 1600
         f'Resultados da busca por: "{query}"',
         f"Provider: {provider_label}",
         f"Modo: {resp.mode}",
+    ]
+    if resp.depth:
+        head.append(f"Profundidade: {resp.depth}")
+    head += [
         f"Cache: {cache_label}",
         "",
         _INJECTION_WARNING,

@@ -331,6 +331,103 @@ def test_build_provider_query_modos():
     assert "noticias" in ws._build_provider_query("eleicao", "news").lower()
 
 
+# === precisao: depth / news days / score filter =============================
+
+def _capture_body(monkeypatch, payload: dict) -> dict:
+    """Mocka urlopen e captura o corpo JSON enviado ao Tavily."""
+    captured: dict = {}
+
+    def _fake(request, timeout=None):
+        captured.update(json.loads(request.data.decode("utf-8")))
+        return _Resp(json.dumps(payload).encode("utf-8"))
+
+    monkeypatch.setattr(ws, "urlopen", _fake)
+    return captured
+
+
+def test_depth_advanced_por_padrao(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "k")
+    monkeypatch.delenv("NOISEBOT_SEARCH_DEPTH", raising=False)
+    body = _capture_body(monkeypatch, _OK_PAYLOAD)
+    resp = ws.fetch_web_search("copa", use_cache=False)
+    assert body["search_depth"] == "advanced"
+    assert resp.depth == "advanced"
+
+
+def test_depth_basic_via_env(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "k")
+    monkeypatch.setenv("NOISEBOT_SEARCH_DEPTH", "basic")
+    body = _capture_body(monkeypatch, _OK_PAYLOAD)
+    ws.fetch_web_search("copa", use_cache=False)
+    assert body["search_depth"] == "basic"
+
+
+def test_news_envia_days(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "k")
+    monkeypatch.setenv("NOISEBOT_SEARCH_NEWS_DAYS", "3")
+    body = _capture_body(monkeypatch, _OK_PAYLOAD)
+    ws.fetch_web_search("eleicao", mode="news", use_cache=False)
+    assert body["topic"] == "news"
+    assert body["days"] == 3
+
+
+def test_general_nao_envia_days(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "k")
+    body = _capture_body(monkeypatch, _OK_PAYLOAD)
+    ws.fetch_web_search("capital franca", mode="factual", use_cache=False)
+    assert "days" not in body
+
+
+def test_filtro_corta_score_baixo(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "k")
+    monkeypatch.setenv("NOISEBOT_SEARCH_MIN_SCORE", "0.5")
+    payload = {"results": [
+        {"title": "Bom", "content": "x", "url": "https://a.com", "score": 0.9},
+        {"title": "Lixo", "content": "y", "url": "https://b.com", "score": 0.1},
+    ]}
+    _mock_tavily(monkeypatch, payload)
+    resp = ws.fetch_web_search("q", use_cache=False)
+    assert [h.title for h in resp.results] == ["Bom"]
+
+
+def test_filtro_mantem_melhor_se_todos_baixos(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "k")
+    monkeypatch.setenv("NOISEBOT_SEARCH_MIN_SCORE", "0.9")
+    payload = {"results": [
+        {"title": "Menos pior", "content": "x", "url": "https://a.com", "score": 0.4},
+        {"title": "Pior", "content": "y", "url": "https://b.com", "score": 0.1},
+    ]}
+    _mock_tavily(monkeypatch, payload)
+    resp = ws.fetch_web_search("q", use_cache=False)
+    # filtro esvaziaria tudo -> mantem o melhor (maior score, ja ordenado)
+    assert [h.title for h in resp.results] == ["Menos pior"]
+
+
+def test_ordena_por_score(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "k")
+    monkeypatch.delenv("NOISEBOT_SEARCH_MIN_SCORE", raising=False)
+    payload = {"results": [
+        {"title": "C", "content": "x", "url": "https://c.com", "score": 0.4},
+        {"title": "A", "content": "y", "url": "https://a.com", "score": 0.9},
+        {"title": "B", "content": "z", "url": "https://b.com", "score": 0.6},
+    ]}
+    _mock_tavily(monkeypatch, payload)
+    resp = ws.fetch_web_search("q", use_cache=False)
+    assert [h.title for h in resp.results] == ["A", "B", "C"]
+
+
+def test_news_cache_ttl_menor():
+    assert ws._cache_ttl_s("news") <= ws._DEFAULT_NEWS_CACHE_TTL_S
+    assert ws._cache_ttl_s("general") == ws._DEFAULT_CACHE_TTL_S
+
+
+def test_format_inclui_profundidade():
+    resp = ws.SearchResponse(query="q", source="Tavily", depth="advanced",
+                             results=[ws.SearchHit("T", "s", "https://a.com")])
+    text = ws.format_search_results_for_llm(resp)
+    assert "Profundidade: advanced" in text
+
+
 # === Integracao: catalog / allowed_tools / gateway ==========================
 
 def test_catalog_expoe_mode():
@@ -389,9 +486,53 @@ def test_extract_sources_da_web_search():
     })
     out = _extract_sources(tr)
     assert out == [
-        {"title": "A", "source": "a.com", "url": "https://a.com/1"},
-        {"title": "C", "source": "c.com", "url": "https://c.com/2"},
+        {"title": "A", "source": "a.com", "url": "https://a.com/1",
+         "snippet": "", "published": "", "score": None},
+        {"title": "C", "source": "c.com", "url": "https://c.com/2",
+         "snippet": "", "published": "", "score": None},
     ]
+
+
+def test_extract_sources_carrega_snippet_score_published():
+    """Dashboard: snippet/score/published devem ser carregados quando presentes."""
+    from types import SimpleNamespace
+    from noisebot_server.internal.agent.orchestrator import _extract_sources
+
+    tr = SimpleNamespace(success=True, tool_name="web_search", result={
+        "results": [
+            {"title": "A", "source": "a.com", "url": "https://a.com/1",
+             "snippet": "trecho relevante", "published": "2026-06-10", "score": 0.87},
+        ]
+    })
+    out = _extract_sources(tr)
+    assert out == [{
+        "title": "A", "source": "a.com", "url": "https://a.com/1",
+        "snippet": "trecho relevante", "published": "2026-06-10", "score": 0.87,
+    }]
+
+
+def test_extract_search_meta():
+    from types import SimpleNamespace
+    from noisebot_server.internal.agent.orchestrator import _extract_search_meta
+
+    tr = SimpleNamespace(success=True, tool_name="web_search", result={
+        "query": "dolar hoje", "provider": "tavily", "mode": "factual",
+        "depth": "advanced", "cached": False, "result_count": 3, "answer": "R$ 5,40",
+    })
+    meta = _extract_search_meta(tr)
+    assert meta == {
+        "query": "dolar hoje", "provider": "tavily", "mode": "factual",
+        "depth": "advanced", "cached": False, "result_count": 3, "answer": "R$ 5,40",
+    }
+
+
+def test_extract_search_meta_none_quando_nao_web_search():
+    from types import SimpleNamespace
+    from noisebot_server.internal.agent.orchestrator import _extract_search_meta
+    assert _extract_search_meta(None) is None
+    assert _extract_search_meta(
+        SimpleNamespace(success=True, tool_name="analyze_vision", result={})
+    ) is None
 
 
 def test_extract_sources_vazio_quando_sem_tool():

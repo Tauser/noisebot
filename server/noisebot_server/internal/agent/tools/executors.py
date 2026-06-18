@@ -337,8 +337,10 @@ def execute_web_search(
         "source": resp.source,
         "provider": resp.provider,
         "mode": resp.mode,
+        "depth": resp.depth,
         "cached": resp.cached,
         "answer": resp.answer,
+        "result_count": len(resp.results),
         "results": [
             {
                 "title": h.title, "snippet": h.snippet, "url": h.url,
