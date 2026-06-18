@@ -42,7 +42,9 @@ function NavSection({ children, title }: { children: React.ReactNode; title: str
       <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
         {title}
       </p>
-      <div className="grid gap-0.5">{children}</div>
+      <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-1 md:gap-0.5">
+        {children}
+      </div>
     </div>
   );
 }
@@ -70,7 +72,10 @@ function NavBtn({
     >
       <Icon size={16} className={active ? "text-blue-400" : "text-slate-500"} />
       <span className="flex-1 text-left">{label}</span>
-      <ChevronRight size={13} className={active ? "text-blue-400" : "text-slate-600"} />
+      <ChevronRight
+        size={13}
+        className={active ? "hidden text-blue-400 md:block" : "hidden text-slate-600 md:block"}
+      />
     </button>
   );
 }
@@ -84,7 +89,7 @@ export function App() {
     volume, leds, opsToken, now,
     setProfileDraft, setCommandText, setVolume, setLeds,
     saveOpsToken,
-    commandText, commandStatus,
+    commandText, commandStatus, pendingCommand,
     routineStatus, volumeStatus, ledsStatus,
     profileStatus, followupStatus, silenceModeStatus, devStatus,
     refreshing, followupEnabled, followupWindowMs,
@@ -112,7 +117,7 @@ export function App() {
           Full-width top header (spans sidebar + content)
       ═══════════════════════════════════════════════════════ */}
       <header
-        className="flex h-14 shrink-0 items-center justify-between px-5"
+        className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-5"
         style={{ background: "#1a2035" }}
       >
         {/* Logo */}
@@ -155,15 +160,15 @@ export function App() {
       {/* ═══════════════════════════════════════════════════════
           Body: sidebar + main content side-by-side
       ═══════════════════════════════════════════════════════ */}
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 flex-col md:flex-row">
 
         {/* ── Sidebar ─────────────────────────────────────── */}
         <aside
-          className="flex w-60 shrink-0 flex-col px-3 py-5 overflow-y-auto"
+          className="flex w-full shrink-0 flex-col overflow-y-auto px-3 py-3 md:w-60 md:py-5"
           style={{ background: "#1a2035" }}
         >
           {/* Mode toggle: User ↔ Dev */}
-          <div className="mb-5 grid grid-cols-2 rounded-lg bg-black/[0.20] p-1">
+          <div className="mb-3 grid grid-cols-2 rounded-lg bg-black/[0.20] p-1 md:mb-5">
             {(["user", "dev"] as const).map((m) => (
               <button
                 key={m}
@@ -221,7 +226,7 @@ export function App() {
           )}
 
           {/* Robot status — sidebar footer */}
-          <div className="mt-auto pt-4">
+          <div className="mt-auto hidden pt-4 md:block">
             <div className="rounded-lg bg-black/[0.18] px-3 py-3">
               <div className="mb-1 flex items-center gap-2">
                 <span
@@ -241,8 +246,8 @@ export function App() {
         </aside>
 
         {/* ── Main content ─────────────────────────────────── */}
-        <main className="flex-1 min-w-0 overflow-auto">
-          <div className="px-6 py-5">
+        <main className="min-w-0 flex-1 overflow-visible md:overflow-auto">
+          <div className="px-3 py-4 sm:px-6 sm:py-5">
             {/* Breadcrumb — "YOU ARE HERE" Flatlogic style */}
             <div className="mb-6">
               <p className="mb-1 flex flex-wrap items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
@@ -260,12 +265,19 @@ export function App() {
             {/* ── Views ─────────────────────────────────────── */}
             <div className="max-w-7xl">
               {mode === "user" && userSection === "home" && (
-                <UserHomeView appData={appData} snapshot={snapshot} />
+                <UserHomeView
+                  appData={appData}
+                  diagnostics={devData.diagnostics}
+                  metrics={devData.metrics}
+                  snapshot={snapshot}
+                />
               )}
               {mode === "user" && userSection === "interaction" && (
                 <InteractionView
                   commandStatus={commandStatus}
                   commandText={commandText}
+                  pendingCommand={pendingCommand}
+                  sessions={devData.metrics.recent_voice_sessions}
                   onCommandChange={setCommandText}
                   onCommandSubmit={submitCommand}
                   snapshot={snapshot}

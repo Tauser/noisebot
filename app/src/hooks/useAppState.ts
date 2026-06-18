@@ -13,6 +13,11 @@ import { errorMessage } from "../lib/format";
 export type AppMode = "user" | "dev";
 export type UserSection = "home" | "profile" | "interaction" | "routine" | "basics";
 export type DevSection = "telemetry" | "integrations" | "console" | "llm";
+export type PendingCommand = {
+  turnId: number;
+  text: string;
+  startedAt: number;
+};
 
 const initialSnapshot: DashboardSnapshot = {
   robot: {
@@ -122,6 +127,7 @@ export function useAppState() {
 
   const [commandText, setCommandText] = useState("");
   const [commandStatus, setCommandStatus] = useState("pronto");
+  const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
   const [routineStatus, setRoutineStatus] = useState("pronto");
   const [volumeStatus, setVolumeStatus] = useState("pronto");
   const [ledsStatus, setLedsStatus] = useState("pronto");
@@ -190,6 +196,37 @@ export function useAppState() {
     const interval = window.setInterval(() => void refresh(), 5000);
     return () => { cancelled = true; window.clearInterval(interval); };
   }, []);
+
+  useEffect(() => {
+    if (!pendingCommand) return;
+    const completed = devData.metrics.recent_voice_sessions.find(
+      (session) => session.turn_id === pendingCommand.turnId,
+    );
+    if (!completed) return;
+
+    setPendingCommand(null);
+    if (completed.reply) {
+      setCommandStatus("pronto");
+      return;
+    }
+    const reason = completed.error_reason
+      || completed.discard_reason
+      || completed.outcome
+      || "sem resposta";
+    setCommandStatus(`O turno terminou sem resposta: ${reason}. Tente novamente.`);
+  }, [devData.metrics.recent_voice_sessions, pendingCommand]);
+
+  useEffect(() => {
+    if (!pendingCommand) return;
+    const elapsed = Date.now() - pendingCommand.startedAt;
+    const remaining = Math.max(0, 45_000 - elapsed);
+    const timer = window.setTimeout(() => {
+      setCommandStatus(
+        "A resposta demorou demais e o turno não foi concluído. Verifique a conexão e tente novamente.",
+      );
+    }, remaining);
+    return () => window.clearTimeout(timer);
+  }, [pendingCommand]);
 
   const requireToken = (
     target: "command" | "routine" | "volume" | "leds" | "profile" | "followup" | "silence" | "dev",
@@ -375,9 +412,14 @@ export function useAppState() {
     if (!text || !token) return;
     setCommandStatus("enviando");
     try {
-      await sendDebugTranscript(text, token);
+      const result = await sendDebugTranscript(text, token);
       setCommandText("");
-      setCommandStatus("enviado");
+      setPendingCommand({
+        turnId: result.turn_id,
+        text,
+        startedAt: Date.now(),
+      });
+      setCommandStatus("preparando");
       window.setTimeout(() => void refreshAll(), 800);
     } catch (e) { setCommandStatus(errorMessage(e)); }
   };
@@ -439,7 +481,7 @@ export function useAppState() {
     setProfileDraft, setCommandText, setVolume, setLeds,
     saveOpsToken,
     // status
-    commandText, commandStatus,
+    commandText, commandStatus, pendingCommand,
     routineStatus,
     volumeStatus, ledsStatus,
     profileStatus, followupStatus, silenceModeStatus, devStatus,

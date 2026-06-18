@@ -67,6 +67,7 @@ export type VisionAnalysis = {
 export type VoiceSessionSummary = {
   turn_id?: number;
   outcome?: string;
+  route?: string;
   state?: string;
   discard_reason?: string | null;
   voice_end_reason?: string | null;
@@ -88,6 +89,10 @@ export type VoiceSessionSummary = {
   first_audio_out_ms?: number | null;
   first_audio_after_voice_end_ms?: number | null;
   speech_total_ms?: number | null;
+  llm_first_token_ms?: number | null;
+  llm_total_ms?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
   error_stage?: string | null;
   error_reason?: string | null;
 };
@@ -451,7 +456,10 @@ export async function loadAppData(): Promise<AppData> {
   }
 }
 
-export async function sendDebugTranscript(text: string, token: string): Promise<void> {
+export async function sendDebugTranscript(
+  text: string,
+  token: string,
+): Promise<{ turn_id: number }> {
   const response = await fetch(`${SERVER_URL}/debug/transcript`, {
     method: "POST",
     headers: {
@@ -464,6 +472,7 @@ export async function sendDebugTranscript(text: string, token: string): Promise<
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error ?? `server ${response.status}`);
   }
+  return response.json() as Promise<{ turn_id: number }>;
 }
 
 export async function createAgendaItem(
