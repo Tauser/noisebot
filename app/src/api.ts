@@ -506,7 +506,7 @@ export async function sendInteraction(
   text: string,
   token: string,
   responseMode: InteractionResponseMode,
-  image?: File | null,
+  attachment?: File | null,
 ): Promise<{
   turn_id: number;
   reply?: string | null;
@@ -515,7 +515,7 @@ export async function sendInteraction(
   const form = new FormData();
   form.set("text", text);
   form.set("response_mode", responseMode);
-  if (image) form.set("image", image, image.name);
+  if (attachment) form.set("attachment", attachment, attachment.name);
 
   const response = await fetch(`${SERVER_URL}/api/interactions`, {
     method: "POST",

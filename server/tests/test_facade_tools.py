@@ -41,6 +41,7 @@ def test_llm_prompt_supports_dashboard_attachment_context() -> None:
     system = messages[0]["content"]
     assert "somente no dashboard" in system
     assert "nao confiavel" in system
+    assert "cite esses marcadores exatamente" in system
     assert "E_CONN_RESET" in system
     assert llm._max_tokens_for_context({"dashboard_response": True}, 256) == 1200
 

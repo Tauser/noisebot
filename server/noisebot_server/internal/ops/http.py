@@ -61,7 +61,8 @@ from ..service.healthcheck import is_healthy
 log = logging.getLogger(__name__)
 
 _INTERACTION_IMAGE_MAX_BYTES = 5_000_000
-_INTERACTION_REQUEST_MAX_BYTES = 6 * 1024 * 1024
+_INTERACTION_DOCUMENT_MAX_BYTES = 10_000_000
+_INTERACTION_REQUEST_MAX_BYTES = 11 * 1024 * 1024
 _INTERACTION_RESPONSE_MODES = {"dashboard", "robot"}
 _INTERACTION_ATTACHMENT_TTL_S = 30 * 60
 _INTERACTION_ATTACHMENT_MAX_ITEMS = 12
@@ -1053,15 +1054,15 @@ class OpsHttpServer:
         return _json(ok_response("transcript injetado", turn_id=turn_id, text=text))
 
     async def _post_interaction(self, request: web.Request) -> web.Response:
-        """Recebe texto e imagem do dashboard sem encaminhar bytes ao firmware."""
+        """Recebe texto e anexo do dashboard sem encaminhar bytes ao firmware."""
         self._require_token(request)
         if not request.content_type.startswith("multipart/"):
             return _json(error_response("multipart/form-data obrigatório"), status=415)
 
         text = ""
         response_mode = "dashboard"
-        image_bytes = b""
-        image_name = ""
+        attachment_bytes = b""
+        attachment_name = ""
         declared_type = ""
         try:
             reader = await request.multipart()
@@ -1070,44 +1071,80 @@ class OpsHttpServer:
                     text = (await part.text()).strip()
                 elif part.name == "response_mode":
                     response_mode = (await part.text()).strip().lower()
-                elif part.name == "image":
-                    image_name = _safe_attachment_name(part.filename or "imagem")
+                elif part.name in {"image", "attachment"}:
+                    attachment_name = _safe_attachment_name(
+                        part.filename or "anexo"
+                    )
                     declared_type = str(part.headers.get("Content-Type", "") or "")
-                    image_bytes = await part.read(decode=False)
+                    attachment_bytes = await part.read(decode=False)
         except (ValueError, web.HTTPException):
             return _json(error_response("multipart inválido"), status=400)
 
         if not text:
-            text = "Analise esta imagem." if image_bytes else ""
+            text = "Analise este anexo." if attachment_bytes else ""
         if not text:
-            return _json(error_response("text ou image obrigatório"), status=400)
+            return _json(error_response("text ou attachment obrigatório"), status=400)
         if len(text) > 500:
             return _json(error_response("text deve ter no máximo 500 caracteres"), status=422)
         if response_mode not in _INTERACTION_RESPONSE_MODES:
             return _json(error_response("response_mode inválido"), status=422)
-        if len(image_bytes) > _INTERACTION_IMAGE_MAX_BYTES:
-            return _json(error_response("imagem deve ter no máximo 5 MB"), status=413)
+        if len(attachment_bytes) > _INTERACTION_DOCUMENT_MAX_BYTES:
+            return _json(error_response("anexo deve ter no máximo 10 MB"), status=413)
 
-        image_type = ""
+        attachment_type = ""
         attachment_context = ""
-        if image_bytes:
-            image_type = _detect_image_media_type(image_bytes)
-            if not image_type:
-                return _json(
-                    error_response("formato de imagem inválido; use JPEG, PNG ou WebP"),
-                    status=415,
+        if attachment_bytes:
+            attachment_type = _detect_image_media_type(attachment_bytes)
+            if attachment_type:
+                if len(attachment_bytes) > _INTERACTION_IMAGE_MAX_BYTES:
+                    return _json(
+                        error_response("imagem deve ter no máximo 5 MB"),
+                        status=413,
+                    )
+                attachment_context = await asyncio.to_thread(
+                    _describe_interaction_image,
+                    attachment_bytes,
+                    attachment_type,
+                    text,
                 )
-            attachment_context = await asyncio.to_thread(
-                _describe_interaction_image,
-                image_bytes,
-                image_type,
-                text,
-            )
+                if not attachment_context:
+                    return _json(
+                        error_response(
+                            "o modelo visual local não conseguiu analisar a imagem"
+                        ),
+                        status=422,
+                    )
+            else:
+                from ..agent.document_extract import (
+                    DocumentExtractionError,
+                    detect_document_media_type,
+                    extract_document_context,
+                )
+
+                attachment_type = detect_document_media_type(
+                    attachment_bytes,
+                    attachment_name,
+                )
+                if not attachment_type:
+                    return _json(
+                        error_response(
+                            "formato inválido; use JPEG, PNG, WebP, PDF, DOCX ou TXT"
+                        ),
+                        status=415,
+                    )
+                try:
+                    attachment_context = await asyncio.to_thread(
+                        extract_document_context,
+                        attachment_bytes,
+                        attachment_type,
+                        attachment_name,
+                        text,
+                    )
+                except DocumentExtractionError as exc:
+                    return _json(error_response(str(exc)), status=422)
             if not attachment_context:
                 return _json(
-                    error_response(
-                        "o modelo visual local não conseguiu analisar a imagem"
-                    ),
+                    error_response("o anexo não contém conteúdo aproveitável"),
                     status=422,
                 )
 
@@ -1123,8 +1160,8 @@ class OpsHttpServer:
                     turn_id=turn_id,
                     text=text,
                     attachment_context=attachment_context,
-                    attachment_name=image_name if image_bytes else "",
-                    attachment_type=image_type,
+                    attachment_name=attachment_name if attachment_bytes else "",
+                    attachment_type=attachment_type,
                 )
             except RuntimeError as exc:
                 return _json(error_response(str(exc)), status=503)
@@ -1141,22 +1178,22 @@ class OpsHttpServer:
                 origin="dashboard",
                 response_mode=response_mode,
                 context_text=attachment_context,
-                attachment_name=image_name if image_bytes else "",
-                attachment_type=image_type,
+                attachment_name=attachment_name if attachment_bytes else "",
+                attachment_type=attachment_type,
             ))
-        if image_bytes:
+        if attachment_bytes:
             self._store_interaction_attachment(
                 turn_id,
-                image_name,
-                image_type,
-                image_bytes,
+                attachment_name,
+                attachment_type,
+                attachment_bytes,
             )
         log.info(
-            "Interacao dashboard turn_id=%d mode=%s image=%s bytes=%d declared=%s",
+            "Interacao dashboard turn_id=%d mode=%s attachment=%s bytes=%d declared=%s",
             turn_id,
             response_mode,
-            image_type or "none",
-            len(image_bytes),
+            attachment_type or "none",
+            len(attachment_bytes),
             declared_type or "none",
         )
         return _json(ok_response(
@@ -1166,10 +1203,10 @@ class OpsHttpServer:
             reply=reply,
             response_mode=response_mode,
             attachment={
-                "name": image_name,
-                "type": image_type,
-                "size": len(image_bytes),
-            } if image_bytes else None,
+                "name": attachment_name,
+                "type": attachment_type,
+                "size": len(attachment_bytes),
+            } if attachment_bytes else None,
         ))
 
     async def _get_interaction_attachment(self, request: web.Request) -> web.Response:

@@ -9,6 +9,7 @@ description = "NoiseBot local companion server"
 requires-python = ">=3.10"
 dependencies = [
     "aiohttp>=3.9",
+    "pypdf>=5.0",
 ]
 
 [project.optional-dependencies]

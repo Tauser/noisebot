@@ -415,16 +415,19 @@ export function useAppState() {
   // --- Interaction ---
 
   const submitCommand = async (
-    image?: File | null,
+    attachment?: File | null,
     responseMode: InteractionResponseMode = "dashboard",
   ) => {
     const text = commandText.trim();
     const token = requireToken("command");
-    if ((!text && !image) || !token) return;
-    const prompt = text || "Analise esta imagem.";
-    setCommandStatus(image ? "analisando imagem" : "enviando");
+    if ((!text && !attachment) || !token) return;
+    const isImage = attachment?.type.startsWith("image/");
+    const prompt = text || (isImage ? "Analise esta imagem." : "Resuma este documento.");
+    setCommandStatus(
+      attachment ? (isImage ? "analisando imagem" : "lendo documento") : "enviando",
+    );
     try {
-      const result = await sendInteraction(prompt, token, responseMode, image);
+      const result = await sendInteraction(prompt, token, responseMode, attachment);
       setCommandText("");
       setPendingCommand({
         turnId: result.turn_id,

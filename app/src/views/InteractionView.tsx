@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot, CircleAlert, ExternalLink, Globe, Image as ImageIcon, Paperclip,
+  Bot, CircleAlert, ExternalLink, FileText, Globe, Image as ImageIcon, Paperclip,
   SendHorizontal, UserRound, Volume2, X,
 } from "lucide-react";
 import type {
@@ -134,27 +134,29 @@ export function InteractionView({
   llmDebug?: LlmTurnDebug[];
   onCommandChange: (value: string) => void;
   onCommandSubmit: (
-    image?: File | null,
+    attachment?: File | null,
     responseMode?: InteractionResponseMode,
   ) => void | Promise<void>;
   opsToken: string;
   snapshot: DashboardSnapshot;
 }) {
-  const [image, setImage] = useState<File | null>(null);
-  const [imageError, setImageError] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentError, setAttachmentError] = useState("");
   const [responseMode, setResponseMode] = useState<InteractionResponseMode>("dashboard");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imagePreviewUrl = useMemo(
-    () => image ? URL.createObjectURL(image) : "",
-    [image],
+    () => attachment?.type.startsWith("image/")
+      ? URL.createObjectURL(attachment)
+      : "",
+    [attachment],
   );
   useEffect(() => () => {
     if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
   }, [imagePreviewUrl]);
   useEffect(() => {
     if (commandStatus === "preparando") {
-      setImage(null);
-      setImageError("");
+      setAttachment(null);
+      setAttachmentError("");
     }
   }, [commandStatus]);
 
@@ -213,21 +215,30 @@ export function InteractionView({
   const isSending = (
     commandStatus === "enviando"
     || commandStatus === "analisando imagem"
+    || commandStatus === "lendo documento"
     || commandStatus === "preparando"
   );
   const hasError = commandStatus !== "pronto" && !isSending;
-  const selectImage = (file?: File) => {
+  const selectAttachment = (file?: File) => {
     if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setImageError("Use uma imagem JPEG, PNG ou WebP.");
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const isImage = ["image/jpeg", "image/png", "image/webp"].includes(file.type);
+    const isDocument = ["pdf", "docx", "txt"].includes(extension);
+    if (!isImage && !isDocument) {
+      setAttachmentError("Use JPEG, PNG, WebP, PDF, DOCX ou TXT.");
       return;
     }
-    if (file.size > 5_000_000) {
-      setImageError("A imagem deve ter no máximo 5 MB.");
+    const maxBytes = isImage ? 5_000_000 : 10_000_000;
+    if (file.size > maxBytes) {
+      setAttachmentError(
+        isImage
+          ? "A imagem deve ter no máximo 5 MB."
+          : "O documento deve ter no máximo 10 MB.",
+      );
       return;
     }
-    setImage(file);
-    setImageError("");
+    setAttachment(file);
+    setAttachmentError("");
   };
 
   return (
@@ -311,6 +322,8 @@ export function InteractionView({
                     ? "Enviando sua mensagem"
                     : commandStatus === "analisando imagem"
                       ? "Analisando a imagem no servidor local"
+                    : commandStatus === "lendo documento"
+                      ? "Extraindo o documento no servidor local"
                     : "Aguarde, estou preparando sua resposta"}
                 </div>
               )}
@@ -319,23 +332,29 @@ export function InteractionView({
         </div>
 
         <footer className="border-t border-white/10 bg-black/[0.08] p-3 sm:p-4">
-          {image && (
+          {attachment && (
             <div className="mx-auto mb-2 flex max-w-3xl items-center gap-3 rounded-lg border border-white/10 bg-black/[0.14] p-2">
-              <img
-                alt="Pré-visualização do anexo"
-                className="h-14 w-14 rounded-md object-cover"
-                src={imagePreviewUrl}
-              />
+              {imagePreviewUrl ? (
+                <img
+                  alt="Pré-visualização do anexo"
+                  className="h-14 w-14 rounded-md object-cover"
+                  src={imagePreviewUrl}
+                />
+              ) : (
+                <span className="flex h-14 w-14 items-center justify-center rounded-md bg-blue-500/10 text-blue-200">
+                  <FileText size={24} />
+                </span>
+              )}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold text-slate-200">{image.name}</p>
+                <p className="truncate text-xs font-semibold text-slate-200">{attachment.name}</p>
                 <p className="text-[11px] text-slate-500">
-                  {(image.size / 1024).toFixed(0)} KB · processada somente no servidor
+                  {(attachment.size / 1024).toFixed(0)} KB · processado somente no servidor
                 </p>
               </div>
               <button
-                aria-label="Remover imagem"
+                aria-label="Remover anexo"
                 className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-white/5 hover:text-white"
-                onClick={() => setImage(null)}
+                onClick={() => setAttachment(null)}
                 type="button"
               >
                 <X size={15} />
@@ -346,25 +365,25 @@ export function InteractionView({
             className="mx-auto grid max-w-3xl gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              void onCommandSubmit(image, responseMode);
+              void onCommandSubmit(attachment, responseMode);
             }}
           >
             <div className="flex items-center gap-2">
               <input
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png,image/webp,.pdf,.docx,.txt"
                 className="hidden"
                 onChange={(e) => {
-                  selectImage(e.target.files?.[0]);
+                  selectAttachment(e.target.files?.[0]);
                   e.target.value = "";
                 }}
                 ref={fileInputRef}
                 type="file"
               />
               <button
-                aria-label="Anexar imagem"
+                aria-label="Anexar arquivo"
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/[0.12] text-slate-400 transition hover:text-white"
                 onClick={() => fileInputRef.current?.click()}
-                title="Anexar imagem"
+                title="Anexar imagem ou documento"
                 type="button"
               >
                 <Paperclip size={17} />
@@ -373,13 +392,17 @@ export function InteractionView({
                 aria-label="Mensagem para o NoiseBot"
                 className={`${inputClass} min-w-0 flex-1`}
                 onChange={(e) => onCommandChange(e.target.value)}
-                placeholder={image ? "O que deseja saber sobre a imagem?" : `Mensagem para ${snapshot.robot.name}`}
+                placeholder={
+                  attachment
+                    ? "O que deseja saber sobre este anexo?"
+                    : `Mensagem para ${snapshot.robot.name}`
+                }
                 value={commandText}
               />
               <button
                 aria-label="Enviar mensagem"
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
-                disabled={(!commandText.trim() && !image) || isSending}
+                disabled={(!commandText.trim() && !attachment) || isSending}
                 title="Enviar mensagem"
                 type="submit"
               >
@@ -399,10 +422,10 @@ export function InteractionView({
               </select>
             </label>
           </form>
-          {imageError && (
+          {attachmentError && (
             <p className="mx-auto mt-2 flex max-w-3xl items-center gap-2 text-xs text-amber-300">
               <CircleAlert size={14} />
-              {imageError}
+              {attachmentError}
             </p>
           )}
           {hasError && (
@@ -473,7 +496,13 @@ function ChatMessage({
                 turnId={turnId}
               />
             )}
-            {attachmentName && (
+            {attachmentName && !attachmentType?.startsWith("image/") && turnId && opsToken ? (
+              <InteractionDocument
+                attachmentName={attachmentName}
+                opsToken={opsToken}
+                turnId={turnId}
+              />
+            ) : attachmentName && (
               <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-500/20 px-2 py-1 text-[11px] text-blue-100">
                 <ImageIcon size={12} />
                 {attachmentName}
@@ -548,6 +577,55 @@ function InteractionImage({
         className="max-h-72 w-full max-w-sm rounded-lg border border-white/10 bg-black/20 object-contain"
         src={url}
       />
+    </a>
+  );
+}
+
+function InteractionDocument({
+  attachmentName,
+  opsToken,
+  turnId,
+}: {
+  attachmentName: string;
+  opsToken: string;
+  turnId: number;
+}) {
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    void loadInteractionAttachment(turnId, opsToken)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [opsToken, turnId]);
+
+  const className = "inline-flex items-center gap-1.5 rounded-md bg-blue-500/20 px-2 py-1 text-[11px] text-blue-100";
+  if (!url) {
+    return (
+      <span className={className}>
+        <FileText size={12} />
+        {attachmentName}
+      </span>
+    );
+  }
+  return (
+    <a
+      className={`${className} hover:bg-blue-500/30`}
+      download={attachmentName}
+      href={url}
+      title={`Abrir ${attachmentName}`}
+    >
+      <FileText size={12} />
+      {attachmentName}
     </a>
   );
 }
