@@ -1954,6 +1954,7 @@ def test_server_app_contract_tracks_implemented_endpoints() -> None:
 
     assert ("GET", "/health") in paths
     assert ("GET", "/ai/status") in paths
+    assert ("POST", "/api/interactions") in paths
     assert ("POST", "/debug/transcript") in paths
     assert all(endpoint.implemented for endpoint in implemented)
 

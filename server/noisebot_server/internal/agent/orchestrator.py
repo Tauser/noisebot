@@ -208,6 +208,7 @@ class Orchestrator:
 
         # TTS Provider Fase 6 (opcional — None = SpeechDone imediato)
         self._tts: Any | None = tts_provider
+        self._llm_lock = asyncio.Lock()
 
         # VAD secundário Fase 7: detecta barge-in durante SPEAKING/THINKING
         self._vad = BargeInMonitor()
@@ -281,6 +282,232 @@ class Orchestrator:
         seguir em modo sem voz sintetizada em vez de manter uma referência ruim.
         """
         self._tts = provider
+
+    async def run_dashboard_interaction(
+        self,
+        *,
+        turn_id: int,
+        text: str,
+        attachment_context: str = "",
+        attachment_name: str = "",
+        attachment_type: str = "",
+    ) -> str:
+        """Executa um turno do dashboard sem tocar FSM, TTS ou firmware."""
+        async with self._llm_lock:
+            return await self._run_dashboard_interaction_unlocked(
+                turn_id=turn_id,
+                text=text,
+                attachment_context=attachment_context,
+                attachment_name=attachment_name,
+                attachment_type=attachment_type,
+            )
+
+    async def _run_dashboard_interaction_unlocked(
+        self,
+        *,
+        turn_id: int,
+        text: str,
+        attachment_context: str = "",
+        attachment_name: str = "",
+        attachment_type: str = "",
+    ) -> str:
+        if self._llm is None:
+            raise RuntimeError("LLM provider indisponível")
+
+        from .llm import (
+            enforce_pt_br_reply,
+            parse_llm_json,
+            recover_llm_reply_text,
+            wants_code_response,
+            wants_deep_reflection,
+        )
+        from .payload_builder import build_turn_payload
+
+        started = time.monotonic()
+        first_token_ms: float | None = None
+        user_profile = await self._current_user_profile()
+        turn_payload = build_turn_payload(
+            text=text,
+            turn_id=turn_id,
+            last_status=dict(self._last_status),
+            user_profile=user_profile,
+            recent_user_texts=list(self._recent_user_texts),
+            recent_robot_replies=list(self._recent_llm_replies),
+            pipeline_mode=getattr(
+                getattr(self._config, "pipeline_mode", None), "value", "normal"
+            ),
+            firmware_online=bool(
+                getattr(self._store, "firmware_connected", False)
+                if self._store else False
+            ),
+            tts_available=False,
+            vision_available=bool(attachment_context),
+            servos_enabled=False,
+            allowed_tools=["web_search"],
+            memory_facts=(
+                self._app_state.list_facts()
+                if self._app_state is not None and hasattr(self._app_state, "list_facts")
+                else None
+            ),
+            presence_state=self._derive_presence_state(),
+            companionship_s=self._companionship_s,
+        )
+        context = {
+            "turn_id": turn_id,
+            "turn_payload": turn_payload,
+            "recent_replies": list(self._recent_llm_replies),
+            "deep_thought": wants_deep_reflection(text),
+            "code_response": wants_code_response(text),
+            "dashboard_response": True,
+            "attachment_context": attachment_context,
+        }
+
+        raw_tokens: list[str] = []
+        async for token in self._llm.generate_stream(text, context):
+            if first_token_ms is None:
+                first_token_ms = (time.monotonic() - started) * 1000.0
+                self._metrics.record("llm_first_token_ms", first_token_ms)
+            raw_tokens.append(token)
+
+        usage = self._consume_llm_usage()
+        input_tokens = usage["input_tokens"]
+        output_tokens = usage["output_tokens"]
+        raw_response = "".join(raw_tokens)
+        try:
+            parsed = parse_llm_json(raw_response)
+        except Exception:
+            parsed = {
+                "reply": recover_llm_reply_text(raw_response),
+                "expression_id": None,
+                "tool_call": None,
+            }
+        first_parsed = dict(parsed)
+        tool_result = None
+        second_raw = ""
+        tool_call = parsed.get("tool_call")
+        if isinstance(tool_call, dict) and tool_call.get("name") == "web_search":
+            from .tools.gateway import execute_tool_call
+
+            tool_result = await asyncio.to_thread(
+                execute_tool_call,
+                tool_call,
+                current_state=str(self._last_status.get("state", "")),
+                vision_available=False,
+                adapter=None,
+                app_state=self._app_state,
+                vision_client=None,
+                turn_id=turn_id,
+                sandbox=bool(getattr(self._store, "tool_sandbox_enabled", False)),
+            )
+            second_context = {
+                **context,
+                "deep_thought": False,
+                "tool_call_result": {
+                    "tool_name": tool_result.tool_name,
+                    "success": tool_result.success,
+                    "vetoed": tool_result.vetoed,
+                    "veto_reason": tool_result.veto_reason,
+                    "result": tool_result.result,
+                    "error": tool_result.error,
+                },
+                "first_assistant_json": raw_response,
+            }
+            second_tokens: list[str] = []
+            async for token in self._llm.generate_stream(text, second_context):
+                second_tokens.append(token)
+            second_usage = self._consume_llm_usage()
+            input_tokens += second_usage["input_tokens"]
+            output_tokens += second_usage["output_tokens"]
+            second_raw = "".join(second_tokens)
+            try:
+                second_parsed = parse_llm_json(second_raw)
+                if second_parsed.get("reply"):
+                    parsed = second_parsed
+            except Exception:
+                recovered = recover_llm_reply_text(second_raw)
+                if recovered:
+                    parsed = {
+                        "reply": recovered,
+                        "expression_id": parsed.get("expression_id"),
+                        "tool_call": None,
+                    }
+        reply_text, _ = enforce_pt_br_reply(str(parsed.get("reply") or ""), text)
+        if not reply_text:
+            reply_text = "Não consegui produzir uma resposta útil para este anexo."
+
+        total_ms = (time.monotonic() - started) * 1000.0
+        self._metrics.record("llm_total_ms", total_ms)
+        if input_tokens:
+            self._metrics.record("input_tokens", input_tokens)
+        if output_tokens:
+            self._metrics.record("output_tokens", output_tokens)
+        self._recent_user_texts.append(text)
+        self._recent_llm_replies.append(reply_text)
+        turn_sources = _extract_sources(tool_result)
+        search_meta = _extract_search_meta(tool_result)
+
+        if self._store:
+            self._store.record_turn(
+                turn_id,
+                "dashboard",
+                transcript=text,
+                reply=reply_text,
+                route="dashboard",
+            )
+            self._store.record_voice_session({
+                "turn_id": turn_id,
+                "outcome": "dashboard",
+                "route": "dashboard",
+                "state": "idle",
+                "origin": "dashboard",
+                "response_mode": "dashboard",
+                "attachment_name": attachment_name,
+                "attachment_type": attachment_type,
+                "transcript_quality": "good",
+                "transcript": text,
+                "reply": reply_text,
+                "reply_chars": len(reply_text),
+                "llm_first_token_ms": round(first_token_ms, 1) if first_token_ms else None,
+                "llm_total_ms": round(total_ms, 1),
+                "input_tokens": input_tokens or None,
+                "output_tokens": output_tokens or None,
+            })
+            self._store.record_llm_turn_debug({
+                "turn_id": turn_id,
+                "ts": time.time(),
+                "transcript": text[:300],
+                "origin": "dashboard",
+                "response_mode": "dashboard",
+                "attachment": {
+                    "name": attachment_name,
+                    "type": attachment_type,
+                } if attachment_name else None,
+                "step1": {
+                    "raw_response": raw_response[:600],
+                    "expression_id": first_parsed.get("expression_id"),
+                    "reply": str(first_parsed.get("reply") or "")[:400],
+                    "has_tool_call": bool(tool_call),
+                    "tool_name": (tool_call or {}).get("name"),
+                    "latency_ms": round(total_ms, 1),
+                },
+                "tool": {
+                    "name": tool_result.tool_name,
+                    "outcome": "success" if tool_result.success else "error",
+                    "veto_reason": tool_result.veto_reason,
+                    "sandboxed": tool_result.sandbox,
+                } if tool_result is not None else None,
+                "search": search_meta,
+                "step2": {
+                    "raw_response": second_raw[:600],
+                    "reply": reply_text[:400],
+                } if second_raw else None,
+                "retry_count": 0,
+                "final_reply": reply_text[:400],
+                "sources": turn_sources,
+                "final_expression_id": None,
+                "total_latency_ms": round(total_ms, 1),
+            })
+        return reply_text
 
     # -- Ciclo principal ----------------------------------------------------
 
@@ -554,6 +781,10 @@ class Orchestrator:
         session.meta["no_speech_prob"] = round(event.no_speech_prob, 3)
         session.meta["avg_logprob"] = round(event.avg_logprob, 3)
         session.meta["compression_ratio"] = round(event.compression_ratio, 3)
+        session.meta["origin"] = event.origin
+        session.meta["response_mode"] = event.response_mode
+        session.meta["attachment_name"] = event.attachment_name
+        session.meta["attachment_type"] = event.attachment_type
         if self._store:
             self._store.record_turn_detail(event.turn_id, transcript=event.text)
 
@@ -595,15 +826,25 @@ class Orchestrator:
             "status": self._last_status,
             "recent_barge_in": recent_barge_in,
         }
-        if _looks_like_vision_scene_question(event.text):
+        if event.response_mode != "dashboard" and _looks_like_vision_scene_question(event.text):
             await self._show_vision_thinking_feedback(event.turn_id, session)
         t_intent_start = time.monotonic()
-        intent = await asyncio.to_thread(
-            self._intent.match,
-            text=event.text,
-            turn_id=event.turn_id,
-            context=context,
-        )
+        if (
+            event.origin == "dashboard"
+            and (event.response_mode == "dashboard" or bool(event.context_text))
+        ):
+            intent = IntentResolved(
+                turn_id=event.turn_id,
+                intent_name=None,
+                resolution_reason="dashboard_agent",
+            )
+        else:
+            intent = await asyncio.to_thread(
+                self._intent.match,
+                text=event.text,
+                turn_id=event.turn_id,
+                context=context,
+            )
         t_intent_end = time.monotonic()
         self._metrics.record("local_intent_ms", (t_intent_end - t_intent_start) * 1000.0)
 
@@ -668,9 +909,15 @@ class Orchestrator:
                 "Turno %d: sem intent local para %r → LLM (%s)",
                 event.turn_id, event.text, getattr(self._llm, "_provider_name", "?"),
             )
-            await self._show_llm_thinking_feedback(event.turn_id, session)
+            if event.response_mode != "dashboard":
+                await self._show_llm_thinking_feedback(event.turn_id, session)
             self._turn_task = asyncio.create_task(
-                self._run_llm_worker(session, event.text, event.turn_id),
+                self._run_llm_worker(
+                    session,
+                    event.text,
+                    event.turn_id,
+                    attachment_context=event.context_text,
+                ),
                 name=f"nb_llm_{event.turn_id}",
             )
 
@@ -929,7 +1176,28 @@ class Orchestrator:
             await self._bus.publish(SpeechDone(turn_id=event.turn_id))
 
     async def _run_llm_worker(
-        self, session: SessionContext, text: str, turn_id: int
+        self,
+        session: SessionContext,
+        text: str,
+        turn_id: int,
+        *,
+        attachment_context: str = "",
+    ) -> None:
+        async with self._llm_lock:
+            await self._run_llm_worker_unlocked(
+                session,
+                text,
+                turn_id,
+                attachment_context=attachment_context,
+            )
+
+    async def _run_llm_worker_unlocked(
+        self,
+        session: SessionContext,
+        text: str,
+        turn_id: int,
+        *,
+        attachment_context: str = "",
     ) -> None:
         """Task de LLM: stream de tokens → sentencizer → SentenceReady → robot.
 
@@ -939,7 +1207,17 @@ class Orchestrator:
         t_llm_start = time.monotonic()
         first_token_recorded = False
         raw_tokens: list[str] = []
-        _debug: dict[str, Any] = {"turn_id": turn_id, "ts": time.time(), "transcript": text[:300]}
+        _debug: dict[str, Any] = {
+            "turn_id": turn_id,
+            "ts": time.time(),
+            "transcript": text[:300],
+            "origin": session.meta.get("origin", "voice"),
+            "response_mode": session.meta.get("response_mode", "robot"),
+            "attachment": {
+                "name": session.meta.get("attachment_name", ""),
+                "type": session.meta.get("attachment_type", ""),
+            } if session.meta.get("attachment_name") else None,
+        }
 
         try:
             from .llm import wants_code_response, wants_deep_reflection
@@ -990,6 +1268,8 @@ class Orchestrator:
                 "recent_replies": list(self._recent_llm_replies),
                 "deep_thought": wants_deep_reflection(text),
                 "code_response": wants_code_response(text),
+                "dashboard_response": False,
+                "attachment_context": attachment_context,
             }
 
             stream = self._llm.generate_stream(text, context)
@@ -1952,6 +2232,10 @@ class Orchestrator:
             "no_speech_prob": session.meta.get("no_speech_prob"),
             "avg_logprob": session.meta.get("avg_logprob"),
             "compression_ratio": session.meta.get("compression_ratio"),
+            "origin": session.meta.get("origin"),
+            "response_mode": session.meta.get("response_mode"),
+            "attachment_name": session.meta.get("attachment_name"),
+            "attachment_type": session.meta.get("attachment_type"),
             "recent_barge_in": session.meta.get("recent_barge_in"),
             "turn_taking_policy": session.meta.get("turn_taking_policy"),
             "turn_taking_decision": session.meta.get("turn_taking_decision"),

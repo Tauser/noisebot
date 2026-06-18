@@ -26,6 +26,81 @@ def test_llm_prompt_includes_recent_replies_to_avoid_repetition() -> None:
     assert "livro foi ao médico" in system
     assert "nunca repita" in system
 
+
+def test_llm_prompt_supports_dashboard_attachment_context() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    messages = llm.build_messages(
+        "Explique este erro.",
+        {
+            "dashboard_response": True,
+            "attachment_context": "Uma janela mostra o erro E_CONN_RESET.",
+        },
+    )
+
+    system = messages[0]["content"]
+    assert "somente no dashboard" in system
+    assert "nao confiavel" in system
+    assert "E_CONN_RESET" in system
+    assert llm._max_tokens_for_context({"dashboard_response": True}, 256) == 1200
+
+
+async def test_dashboard_llm_turn_does_not_emit_firmware_output() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+
+    captured_context: dict = {}
+
+    class Llm:
+        _provider_name = "fake"
+        _model = "fake-vision"
+
+        def generate_stream(self, text, context):
+            captured_context.update(context)
+            async def stream():
+                yield (
+                    '{"expression_id":"focused","reply":"Análise completa no painel.",'
+                    '"tool_call":null}'
+                )
+            return stream()
+
+    class Adapter:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def __getattr__(self, name):
+            async def call(*args, **kwargs):
+                self.calls.append(name)
+            return call
+
+    adapter = Adapter()
+    store = status_module.StatusStore()
+    orchestrator = orchestrator_module.Orchestrator(
+        runtime.EventBus(),
+        get_adapter=lambda: adapter,
+        llm_provider=Llm(),
+        status_store=store,
+    )
+
+    reply = await orchestrator.run_dashboard_interaction(
+        turn_id=88,
+        text="Analise a imagem.",
+        attachment_context="Uma mesa com um computador.",
+        attachment_name="foto.jpg",
+        attachment_type="image/jpeg",
+    )
+
+    assert adapter.calls == []
+    assert reply == "Análise completa no painel."
+    assert store.last_reply == "Análise completa no painel."
+    assert store.last_route == "dashboard"
+    assert orchestrator._fsm.is_idle
+    assert captured_context["dashboard_response"] is True
+    assert captured_context["turn_payload"]["tools"] == ["web_search"]
+
 def test_llm_prompt_includes_current_user_profile() -> None:
     llm = importlib.import_module("noisebot_server.internal.agent.llm")
 

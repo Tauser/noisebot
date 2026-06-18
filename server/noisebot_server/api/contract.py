@@ -80,6 +80,14 @@ def default_app_contract() -> tuple[AppEndpoint, ...]:
             implemented=True,
         ),
         AppEndpoint(
+            domain="agent",
+            method="POST",
+            path="/api/interactions",
+            purpose="Submit dashboard text and optional image to the local agent.",
+            auth_required=True,
+            implemented=True,
+        ),
+        AppEndpoint(
             domain="ops",
             method="POST",
             path="/debug/transcript",

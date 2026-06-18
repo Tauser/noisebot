@@ -214,7 +214,7 @@ _VISION_DESCRIBE_PROMPT = (
 
 _VISION_API_TIMEOUT_S = 8.0
 _OLLAMA_VISION_TIMEOUT_S = 25.0
-_VISION_MAX_JPEG_BYTES = 1_000_000
+_VISION_MAX_IMAGE_BYTES = 5_000_000
 
 
 def describe_with_vision_api(
@@ -223,18 +223,21 @@ def describe_with_vision_api(
     api_key: str | None = None,
     base_url: str = "https://api.openai.com/v1",
     model: str = "gpt-4o-mini",
+    prompt: str | None = None,
+    media_type: str = "image/jpeg",
 ) -> str | None:
-    """Call an OpenAI-compatible vision API to describe the JPEG content."""
+    """Call an OpenAI-compatible vision API to describe image content."""
     from urllib.error import HTTPError, URLError
     from urllib.request import Request, urlopen
 
     key = api_key or os.environ.get("OPENAI_API_KEY", "")
     if not key or not jpeg_bytes:
         return None
-    if len(jpeg_bytes) > _VISION_MAX_JPEG_BYTES:
+    if len(jpeg_bytes) > _VISION_MAX_IMAGE_BYTES:
         return None
 
     b64 = base64.b64encode(jpeg_bytes).decode("ascii")
+    selected_prompt = prompt or _VISION_DESCRIBE_PROMPT
     body = {
         "model": model,
         "max_tokens": 150,
@@ -242,10 +245,13 @@ def describe_with_vision_api(
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": _VISION_DESCRIBE_PROMPT},
+                    {"type": "text", "text": selected_prompt},
                     {
                         "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "low"},
+                        "image_url": {
+                            "url": f"data:{media_type};base64,{b64}",
+                            "detail": "low",
+                        },
                     },
                 ],
             }
@@ -275,12 +281,13 @@ def describe_with_ollama_vision(
     *,
     base_url: str | None = None,
     model: str | None = None,
+    prompt: str | None = None,
 ) -> str | None:
-    """Call a local Ollama multimodal model to describe the JPEG content."""
+    """Call a local Ollama multimodal model to describe image content."""
     from urllib.error import HTTPError, URLError
     from urllib.request import Request, urlopen
 
-    if not jpeg_bytes or len(jpeg_bytes) > _VISION_MAX_JPEG_BYTES:
+    if not jpeg_bytes or len(jpeg_bytes) > _VISION_MAX_IMAGE_BYTES:
         return None
 
     selected_model = (model or os.environ.get("NOISEBOT_LLM_MODEL", "gemma4:12b")).strip()
@@ -293,6 +300,7 @@ def describe_with_ollama_vision(
     )).rstrip("/")
     timeout_s = _env_float("NOISEBOT_VISION_LLM_TIMEOUT_S", _OLLAMA_VISION_TIMEOUT_S)
     encoded_image = base64.b64encode(jpeg_bytes).decode("ascii")
+    selected_prompt = prompt or _VISION_DESCRIBE_PROMPT
 
     chat_body = {
         "model": selected_model,
@@ -301,7 +309,7 @@ def describe_with_ollama_vision(
         "messages": [
             {
                 "role": "user",
-                "content": _VISION_DESCRIBE_PROMPT,
+                "content": selected_prompt,
                 "images": [encoded_image],
             }
         ],
@@ -334,7 +342,7 @@ def describe_with_ollama_vision(
 
     generate_body = {
         "model": selected_model,
-        "prompt": _VISION_DESCRIBE_PROMPT,
+        "prompt": selected_prompt,
         "images": [encoded_image],
         "stream": False,
         "think": False,

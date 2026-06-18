@@ -173,6 +173,11 @@ class FinalTranscript:
     no_speech_prob: float = 0.0
     avg_logprob: float = 0.0
     compression_ratio: float = 1.0
+    origin: str = "voice"
+    response_mode: str = "robot"
+    context_text: str = ""
+    attachment_name: str = ""
+    attachment_type: str = ""
     t: float = field(default_factory=_now)
 
     @property

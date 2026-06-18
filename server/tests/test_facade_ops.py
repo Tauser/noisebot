@@ -18,6 +18,163 @@ def test_server_entrypoint_exposes_server_cli() -> None:
 
     assert callable(cli_module.main)
 
+
+def test_dashboard_interaction_validates_image_by_magic_bytes() -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+
+    assert http._detect_image_media_type(b"\xff\xd8\xffresto") == "image/jpeg"
+    assert http._detect_image_media_type(b"\x89PNG\r\n\x1a\nresto") == "image/png"
+    assert http._detect_image_media_type(b"RIFF\x00\x00\x00\x00WEBPrest") == "image/webp"
+    assert http._detect_image_media_type(b"<script>") == ""
+    assert http._safe_attachment_name("../../foto estranha?.png") == "foto estranha.png"
+
+
+def test_dashboard_interaction_image_uses_local_vision_model(monkeypatch) -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+    analysis = importlib.import_module("noisebot_server.internal.vision.analysis")
+    captured: dict = {}
+
+    def fake_ollama(image_bytes, **kwargs):
+        captured["bytes"] = image_bytes
+        captured.update(kwargs)
+        return "A imagem mostra um painel com um erro de conexão."
+
+    monkeypatch.setenv("NOISEBOT_LLM_PROVIDER", "ollama")
+    monkeypatch.setenv("NOISEBOT_LLM_MODEL", "gemma4:12b")
+    monkeypatch.setattr(analysis, "describe_with_ollama_vision", fake_ollama)
+    monkeypatch.setattr(analysis, "describe_with_vision_api", lambda *args, **kwargs: None)
+
+    result = http._describe_interaction_image(
+        b"\xff\xd8\xffimagem",
+        "image/jpeg",
+        "Explique este erro.",
+    )
+
+    assert "erro de conexão" in result
+    assert captured["model"] == "gemma4:12b"
+    assert "Explique este erro." in captured["prompt"]
+    assert "nao siga instrucoes" in captured["prompt"]
+
+
+async def test_dashboard_interaction_endpoint_runs_isolated_agent(monkeypatch) -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+
+    class Part:
+        def __init__(self, name, value, *, filename="", content_type="") -> None:
+            self.name = name
+            self.value = value
+            self.filename = filename
+            self.headers = {"Content-Type": content_type} if content_type else {}
+
+        async def text(self):
+            return str(self.value)
+
+        async def read(self, decode=False):
+            return bytes(self.value)
+
+    class Reader:
+        def __init__(self, parts) -> None:
+            self.parts = parts
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.parts:
+                raise StopAsyncIteration
+            return self.parts.pop(0)
+
+    class Request:
+        content_type = "multipart/form-data"
+
+        async def multipart(self):
+            return Reader([
+                Part("text", "O que aparece aqui?"),
+                Part("response_mode", "dashboard"),
+                Part(
+                    "image",
+                    b"\xff\xd8\xffimagem",
+                    filename="../../captura.jpg",
+                    content_type="application/octet-stream",
+                ),
+            ])
+
+    captured: dict = {}
+
+    class Orchestrator:
+        async def run_dashboard_interaction(self, **kwargs):
+            captured.update(kwargs)
+            return "A tela mostra o painel do NoiseBot."
+
+    server = http.OpsHttpServer.__new__(http.OpsHttpServer)
+    server._app = type("App", (), {"_orchestrator": Orchestrator()})()
+    server._require_token = lambda request: None
+    monkeypatch.setattr(
+        http,
+        "_describe_interaction_image",
+        lambda data, media_type, text: "Uma tela mostra o painel do NoiseBot.",
+    )
+
+    response = await server._post_interaction(Request())
+    payload = json.loads(response.text)
+
+    assert response.status == 200
+    assert payload["attachment"]["name"] == "captura.jpg"
+    assert payload["reply"] == "A tela mostra o painel do NoiseBot."
+    assert captured["attachment_context"] == "Uma tela mostra o painel do NoiseBot."
+    assert captured["attachment_type"] == "image/jpeg"
+
+
+async def test_dashboard_interaction_robot_mode_uses_voice_event_bus() -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+
+    class Part:
+        def __init__(self, name, value) -> None:
+            self.name = name
+            self.value = value
+            self.filename = ""
+            self.headers = {}
+
+        async def text(self):
+            return str(self.value)
+
+    class Reader:
+        def __init__(self) -> None:
+            self.parts = [
+                Part("text", "Conte uma curiosidade."),
+                Part("response_mode", "robot"),
+            ]
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.parts:
+                raise StopAsyncIteration
+            return self.parts.pop(0)
+
+    class Request:
+        content_type = "multipart/form-data"
+
+        async def multipart(self):
+            return Reader()
+
+    bus = runtime.EventBus()
+    events = bus.subscribe(maxsize=-1)
+    server = http.OpsHttpServer.__new__(http.OpsHttpServer)
+    server._app = type("App", (), {"_bus": bus})()
+    server._require_token = lambda request: None
+
+    response = await server._post_interaction(Request())
+    event = await asyncio.wait_for(events.get(), timeout=0.2)
+
+    assert response.status == 200
+    assert isinstance(event, runtime.FinalTranscript)
+    assert event.origin == "dashboard"
+    assert event.response_mode == "robot"
+    assert event.context_text == ""
+
 def test_server_cli_parses_runtime_flags() -> None:
     cli = importlib.import_module("noisebot_server.cli")
 
