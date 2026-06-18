@@ -107,6 +107,8 @@ export function App() {
   }, [mode, userSection, devSection]);
 
   const currentTime = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const micEnabled = !appData.settings.silent_mode;
+  const micListening = micEnabled && snapshot.robot.state === "listening";
 
   return (
     <div
@@ -137,9 +139,10 @@ export function App() {
             pulse={snapshot.robot.firmwareOnline}
           />
           <Vital
-            icon={snapshot.robot.state === "listening" ? Mic : MicOff}
-            label={snapshot.robot.state === "listening" ? "ouvindo" : "mic"}
-            good={snapshot.robot.state === "listening"}
+            icon={micEnabled ? Mic : MicOff}
+            label={micListening ? "ouvindo" : micEnabled ? "mic ativo" : "mic desligado"}
+            good={micEnabled}
+            pulse={micListening}
           />
           <Vital icon={BatteryCharging} label={snapshot.robot.batteryLabel || "energia"} />
           <Vital
