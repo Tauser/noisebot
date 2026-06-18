@@ -238,6 +238,22 @@ Ajuste fino por env (todas opcionais; defaults entre colchetes):
   texto falado ao adapter). O robô responde com 2-3 frases citando o dado
   exato; se os resultados não respondem, diz isso em vez de ser vago.
 
+### Interações multimodais do dashboard
+
+`POST /api/interactions` é o canal autenticado do agente no dashboard. O
+primeiro corte aceita texto e uma imagem JPEG/PNG/WebP de até 5 MB. A imagem é
+validada por assinatura, mantida apenas em memória e analisada no server; bytes,
+caminhos e conteúdo bruto nunca atravessam o bridge para o firmware.
+
+- `response_mode=dashboard`: resposta detalhada somente na interface; não envia
+  expressão, texto, TTS nem eventos de sessão ao firmware e não ocupa a FSM do
+  turno de voz, permitindo que o robô continue conversando em paralelo.
+- `response_mode=robot`: mantém o fluxo normal de resposta do robô.
+- Contexto extraído de anexos é dado externo não confiável e não pode fornecer
+  instruções ao agente.
+- Áudio e documentos devem reutilizar esse endpoint e a mesma fronteira de
+  isolamento quando forem implementados.
+
 ---
 
 ## Documentação de Referência
