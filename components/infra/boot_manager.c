@@ -1037,8 +1037,8 @@ static void behavior_task(void *arg)
             }
         }
 
-        /* Diagnostics a cada 60s (600 x 100ms). */
-        if (++stats_tick >= 600u) {
+        /* Diagnostics a cada 5s (50 x 100ms): alimenta telemetria da Home. */
+        if (++stats_tick >= 50u) {
             diagnostics_collect();
             stats_tick = 0;
         }

@@ -33,5 +33,6 @@ void      sd_hal_deinit(void);
 bool      sd_hal_is_mounted(void);
 esp_err_t sd_hal_try_remount(void);
 esp_err_t sd_hal_get_free_bytes(uint64_t *out_free_bytes);
+esp_err_t sd_hal_get_total_bytes(uint64_t *out_total_bytes);
 
 #endif /* NB_SD_HAL_H */

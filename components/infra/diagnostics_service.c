@@ -55,6 +55,7 @@ static const char *const k_task_names[] = {
 };
 
 #define K_NTASKS  ((int)(sizeof(k_task_names) / sizeof(k_task_names[0])))
+#define CPU_STATS_MAX_TASKS  48U
 
 /* ── Estado interno ──────────────────────────────────────────────────────── */
 
@@ -69,6 +70,7 @@ static struct {
 
     /* snapshot da última coleta — protegido por s_mux */
     float                    fps;
+    float                    cpu_percent;
     uint32_t                 psram_free_kb;
     uint32_t                 sram_free_kb;
     uint8_t                  health_score;
@@ -80,6 +82,10 @@ static struct {
 } s_state;
 
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
+static TaskStatus_t s_cpu_tasks[CPU_STATS_MAX_TASKS];
+static uint32_t s_cpu_prev_total;
+static uint32_t s_cpu_prev_idle;
+static bool s_cpu_has_baseline;
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 
@@ -128,6 +134,48 @@ static uint8_t compute_health_score(float fps,
     return (uint8_t)score;
 }
 
+static float collect_cpu_percent(void)
+{
+    uint32_t runtime_now = 0U;
+    UBaseType_t count = uxTaskGetSystemState(
+        s_cpu_tasks,
+        CPU_STATS_MAX_TASKS,
+        &runtime_now);
+    if (count == 0U) {
+        return 0.0f;
+    }
+
+    uint32_t total_now = 0U;
+    uint32_t idle_now = 0U;
+    for (UBaseType_t i = 0U; i < count; i++) {
+        total_now += s_cpu_tasks[i].ulRunTimeCounter;
+        if (strncmp(s_cpu_tasks[i].pcTaskName, "IDLE", 4U) == 0) {
+            idle_now += s_cpu_tasks[i].ulRunTimeCounter;
+        }
+    }
+
+    if (!s_cpu_has_baseline) {
+        s_cpu_prev_total = total_now;
+        s_cpu_prev_idle = idle_now;
+        s_cpu_has_baseline = true;
+        return 0.0f;
+    }
+
+    uint32_t total_delta = total_now - s_cpu_prev_total;
+    uint32_t idle_delta = idle_now - s_cpu_prev_idle;
+    s_cpu_prev_total = total_now;
+    s_cpu_prev_idle = idle_now;
+    if (total_delta == 0U) {
+        return 0.0f;
+    }
+
+    float idle_ratio = (float)idle_delta / (float)total_delta;
+    float cpu_percent = (1.0f - idle_ratio) * 100.0f;
+    if (cpu_percent < 0.0f) return 0.0f;
+    if (cpu_percent > 100.0f) return 100.0f;
+    return cpu_percent;
+}
+
 /* ── API ─────────────────────────────────────────────────────────────────── */
 
 esp_err_t diagnostics_init(const nb_diagnostics_config_t *cfg)
@@ -158,6 +206,7 @@ void diagnostics_collect(void)
     uint32_t psram_kb = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_SPIRAM)   / 1024U;
     uint32_t sram_kb  = (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024U;
     float    fps      = (s_state.get_fps != NULL) ? s_state.get_fps() : 0.0f;
+    float    cpu_percent = collect_cpu_percent();
 
     /* ── Coleta de stack watermarks ── */
     nb_diag_task_t tasks[K_NTASKS];
@@ -171,8 +220,9 @@ void diagnostics_collect(void)
     uint8_t score = compute_health_score(fps, psram_kb, sram_kb, tasks, K_NTASKS);
 
     /* ── Log de diagnóstico detalhado: útil em debug, ruidoso no monitor normal. */
-    NB_LOGD(TAG, "--- DIAG ---  PSRAM=%luKB  SRAM=%luKB  FPS=%.1f  health=%u/100",
-            (unsigned long)psram_kb, (unsigned long)sram_kb, fps, (unsigned)score);
+    NB_LOGD(TAG, "--- DIAG ---  PSRAM=%luKB  SRAM=%luKB  CPU=%.1f%%  FPS=%.1f  health=%u/100",
+            (unsigned long)psram_kb, (unsigned long)sram_kb,
+            (double)cpu_percent, (double)fps, (unsigned)score);
 
     for (int i = 0; i < K_NTASKS; i++) {
         if (tasks[i].watermark_words == 0U) continue;
@@ -184,6 +234,7 @@ void diagnostics_collect(void)
     /* ── Atualiza estado protegido ── */
     taskENTER_CRITICAL(&s_mux);
     s_state.fps          = fps;
+    s_state.cpu_percent  = cpu_percent;
     s_state.psram_free_kb = psram_kb;
     s_state.sram_free_kb  = sram_kb;
     s_state.health_score  = score;
@@ -232,6 +283,7 @@ void diagnostics_dump_to_sd(void)
     uint32_t psram_kb    = s_state.psram_free_kb;
     uint32_t sram_kb     = s_state.sram_free_kb;
     float    fps         = s_state.fps;
+    float    cpu_percent = s_state.cpu_percent;
     uint8_t  score       = s_state.health_score;
     nb_diag_task_t tasks[K_NTASKS];
     for (int i = 0; i < K_NTASKS; i++) tasks[i] = s_state.tasks[i];
@@ -245,6 +297,7 @@ void diagnostics_dump_to_sd(void)
     fprintf(f, "  PSRAM free   : %lu KB\n", (unsigned long)psram_kb);
     fprintf(f, "  SRAM  free   : %lu KB\n", (unsigned long)sram_kb);
     fprintf(f, "  FPS          : %.1f\n",   fps);
+    fprintf(f, "  CPU          : %.1f%%\n",  cpu_percent);
     fprintf(f, "\nServo bus stats (EMI):\n");
     fprintf(f, "  rx_timeouts  : %lu\n", (unsigned long)bus_stats.timeouts);
     fprintf(f, "  rx_errors    : %lu\n", (unsigned long)bus_stats.errors);
@@ -276,6 +329,15 @@ float diagnostics_get_fps(void)
     float v;
     taskENTER_CRITICAL(&s_mux);
     v = s_state.fps;
+    taskEXIT_CRITICAL(&s_mux);
+    return v;
+}
+
+float diagnostics_get_cpu_percent(void)
+{
+    float v;
+    taskENTER_CRITICAL(&s_mux);
+    v = s_state.cpu_percent;
     taskEXIT_CRITICAL(&s_mux);
     return v;
 }

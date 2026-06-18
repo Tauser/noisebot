@@ -64,7 +64,7 @@ esp_err_t diagnostics_init(const nb_diagnostics_config_t *cfg);
 /**
  * @brief Coleta snapshot de métricas e avalia health_score.
  *
- * Deve ser chamado pelo behavior_task a cada 60s.
+ * Deve ser chamado pelo behavior_task a cada 5s.
  * Publica NB_EVT_HEALTH_WARNING se score < threshold.
  * Publica NB_EVT_HEAP_LOW se PSRAM < threshold.
  * Thread-unsafe — chamar de uma única task.
@@ -86,6 +86,9 @@ uint8_t  diagnostics_get_health_score(void);
 
 /** Último FPS medido pelo render_service. Zero antes da primeira coleta. */
 float    diagnostics_get_fps(void);
+
+/** Uso agregado dos dois núcleos [0, 100], medido entre coletas. */
+float    diagnostics_get_cpu_percent(void);
 
 /** Memória livre em bytes para o capability fornecido (ex: MALLOC_CAP_SPIRAM). */
 uint32_t diagnostics_get_heap_free(uint32_t caps);

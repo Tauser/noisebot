@@ -1345,14 +1345,24 @@ static void send_health_object(httpd_req_t *req, bool wrap)
 {
     bool sd_mounted = sd_hal_is_mounted();
     uint64_t sd_free_bytes = 0;
+    uint64_t sd_total_bytes = 0;
     bool sd_free_ok = sd_mounted
         && sd_hal_get_free_bytes(&sd_free_bytes) == ESP_OK;
+    bool sd_total_ok = sd_mounted
+        && sd_hal_get_total_bytes(&sd_total_bytes) == ESP_OK;
     char sd_free_buf[24];
+    char sd_total_buf[24];
     if (sd_free_ok) {
         snprintf(sd_free_buf, sizeof(sd_free_buf), "%llu",
                  (unsigned long long)sd_free_bytes);
     } else {
         snprintf(sd_free_buf, sizeof(sd_free_buf), "null");
+    }
+    if (sd_total_ok) {
+        snprintf(sd_total_buf, sizeof(sd_total_buf), "%llu",
+                 (unsigned long long)sd_total_bytes);
+    } else {
+        snprintf(sd_total_buf, sizeof(sd_total_buf), "null");
     }
 
     char buf[768];
@@ -1363,8 +1373,11 @@ static void send_health_object(httpd_req_t *req, bool wrap)
         "\"heap_dma_free\":%lu,\"heap_dma_min\":%lu,\"heap_dma_largest\":%lu,"
         "\"heap_psram_free\":%lu,\"heap_psram_min\":%lu,"
         "\"heap_psram_largest\":%lu,"
-        "\"storage\":{\"sd_mounted\":%s,\"sd_free_bytes\":%s},"
-        "\"task_count\":%lu,\"uptime_s\":%lu,\"health\":%u%s",
+        "\"heap_psram_total\":%lu,"
+        "\"storage\":{\"sd_mounted\":%s,\"sd_free_bytes\":%s,"
+                    "\"sd_total_bytes\":%s},"
+        "\"task_count\":%lu,\"uptime_s\":%lu,\"cpu_percent\":%.1f,"
+        "\"health\":%u%s",
         wrap ? "{" : "",
         (unsigned long)esp_get_free_heap_size(),
         (unsigned long)esp_get_minimum_free_heap_size(),
@@ -1377,10 +1390,13 @@ static void send_health_object(httpd_req_t *req, bool wrap)
         (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
         (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
         (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
+        (unsigned long)heap_caps_get_total_size(MALLOC_CAP_SPIRAM),
         sd_mounted ? "true" : "false",
         sd_free_buf,
+        sd_total_buf,
         (unsigned long)uxTaskGetNumberOfTasks(),
         (unsigned long)diagnostics_get_uptime_s(),
+        (double)diagnostics_get_cpu_percent(),
         (unsigned)diagnostics_get_health_score(),
         wrap ? "}" : "");
     httpd_resp_sendstr_chunk(req, buf);
@@ -3930,7 +3946,7 @@ static esp_err_t handle_api_wifi_delete(httpd_req_t *req)
 
 static esp_err_t handle_api_config_all(httpd_req_t *req)
 {
-    char buf[768];
+    char buf[896];
     snprintf(buf, sizeof(buf),
         "{\"volume\":%u,\"brightness\":%u,\"touch_sens\":%u,"
         "\"idle_timeout\":%lu,\"silence_mode_enabled\":%s,"
@@ -4473,6 +4489,7 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
                   "\"threshold\":%.2f,\"detections\":%lu},"
         "\"audio\":{\"rms\":%.4f,\"listening\":%s},"
         "\"memory\":{\"psram_free\":%lu,\"dram_free\":%lu},"
+        "\"cpu_percent\":%.1f,"
         "\"fps\":%.1f,"
         "\"health\":%u,"
         "\"uptime_s\":%lu,"
@@ -4506,6 +4523,7 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
         audio_service_is_listening() ? "true" : "false",
         (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
         (unsigned long)esp_get_free_heap_size(),
+        (double)diagnostics_get_cpu_percent(),
         (double)diagnostics_get_fps(),
         (unsigned)diagnostics_get_health_score(),
         (unsigned long)diagnostics_get_uptime_s(),

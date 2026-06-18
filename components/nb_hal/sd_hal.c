@@ -115,3 +115,13 @@ esp_err_t sd_hal_get_free_bytes(uint64_t *out_free_bytes)
     }
     return ESP_OK;
 }
+
+esp_err_t sd_hal_get_total_bytes(uint64_t *out_total_bytes)
+{
+    if (!s_mounted || s_card == NULL) return ESP_ERR_INVALID_STATE;
+    if (out_total_bytes) {
+        *out_total_bytes =
+            (uint64_t)s_card->csd.capacity * s_card->csd.sector_size;
+    }
+    return ESP_OK;
+}
