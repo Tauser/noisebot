@@ -422,9 +422,28 @@ export function useAppState() {
     const token = requireToken("command");
     if ((!text && !attachment) || !token) return;
     const isImage = attachment?.type.startsWith("image/");
-    const prompt = text || (isImage ? "Analise esta imagem." : "Resuma este documento.");
+    const attachmentExtension = attachment?.name.split(".").pop()?.toLowerCase();
+    const isAudio = attachment?.type.startsWith("audio/") || (
+      attachmentExtension != null
+      && ["wav", "mp3", "m4a", "ogg", "flac", "webm"].includes(attachmentExtension)
+    );
+    const prompt = text || (
+      isImage
+        ? "Analise esta imagem."
+        : isAudio
+          ? "Transcreva e resuma este áudio."
+          : "Resuma este documento."
+    );
     setCommandStatus(
-      attachment ? (isImage ? "analisando imagem" : "lendo documento") : "enviando",
+      attachment
+        ? (
+          isImage
+            ? "analisando imagem"
+            : isAudio
+              ? "transcrevendo áudio"
+              : "lendo documento"
+        )
+        : "enviando",
     );
     try {
       const result = await sendInteraction(prompt, token, responseMode, attachment);

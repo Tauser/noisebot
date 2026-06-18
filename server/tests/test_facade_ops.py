@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import struct
+import wave
 import zipfile
 from pathlib import Path
 from urllib.error import HTTPError
@@ -47,6 +48,60 @@ def test_dashboard_interaction_detects_document_by_content() -> None:
         b"<script>alert(1)</script>",
         "ata.pdf",
     ) == ""
+
+
+def test_dashboard_interaction_detects_audio_by_content() -> None:
+    audio = importlib.import_module("noisebot_server.internal.agent.audio_extract")
+
+    assert audio.detect_audio_media_type(
+        b"RIFF\x00\x00\x00\x00WAVEfmt ",
+        "reuniao.wav",
+    ) == "audio/wav"
+    assert audio.detect_audio_media_type(b"ID3resto", "fala.mp3") == "audio/mpeg"
+    assert audio.detect_audio_media_type(b"OggSresto", "fala.ogg") == "audio/ogg"
+    assert audio.detect_audio_media_type(b"nao e audio", "fala.mp3") == ""
+
+
+def test_dashboard_audio_is_decoded_to_cited_wav_segment(monkeypatch) -> None:
+    audio = importlib.import_module("noisebot_server.internal.agent.audio_extract")
+    payload = io.BytesIO()
+    with wave.open(payload, "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(16_000)
+        output.writeframes(struct.pack("<16000h", *([500] * 16_000)))
+
+    captured: list[bytes] = []
+    monkeypatch.setattr(
+        audio,
+        "_transcribe_wav_with_ollama",
+        lambda wav_bytes: captured.append(wav_bytes) or "A reunião definiu a tarefa.",
+    )
+
+    context = audio.extract_audio_context(
+        payload.getvalue(),
+        "audio/wav",
+        "reuniao.wav",
+        "Resuma.",
+    )
+
+    assert captured and captured[0].startswith(b"RIFF")
+    assert "[reuniao.wav, 00:00-00:01]" in context
+    assert "A reunião definiu a tarefa." in context
+
+
+def test_dashboard_audio_context_spreads_budget_across_segments() -> None:
+    audio = importlib.import_module("noisebot_server.internal.agent.audio_extract")
+    transcripts = [
+        (f"[audio.wav, 0{index}:00-0{index + 1}:00]", f"segmento-{index} " * 800)
+        for index in range(4)
+    ]
+
+    context = audio._fit_transcripts(transcripts)
+
+    for index in range(4):
+        assert f"[audio.wav, 0{index}:00-0{index + 1}:00]" in context
+    assert len(context) < 7_000
 
 
 def test_dashboard_interaction_extracts_docx_with_paragraph_citations() -> None:
@@ -332,6 +387,73 @@ async def test_dashboard_interaction_endpoint_extracts_document(monkeypatch) -> 
         "text/plain",
         b"Decisao: manter tudo local.",
     )
+
+
+async def test_dashboard_interaction_endpoint_transcribes_audio(monkeypatch) -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+    audio = importlib.import_module("noisebot_server.internal.agent.audio_extract")
+
+    class Part:
+        def __init__(self, name, value, *, filename="") -> None:
+            self.name = name
+            self.value = value
+            self.filename = filename
+            self.headers = {"Content-Type": "application/octet-stream"}
+
+        async def text(self):
+            return str(self.value)
+
+        async def read(self, decode=False):
+            return bytes(self.value)
+
+    class Reader:
+        def __init__(self, parts) -> None:
+            self.parts = parts
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.parts:
+                raise StopAsyncIteration
+            return self.parts.pop(0)
+
+    wav_bytes = b"RIFF\x00\x00\x00\x00WAVEfmt "
+
+    class Request:
+        content_type = "multipart/form-data"
+
+        async def multipart(self):
+            return Reader([
+                Part("text", "Resuma este áudio."),
+                Part("response_mode", "dashboard"),
+                Part("attachment", wav_bytes, filename="reuniao.wav"),
+            ])
+
+    captured: dict = {}
+
+    class Orchestrator:
+        async def run_dashboard_interaction(self, **kwargs):
+            captured.update(kwargs)
+            return "A decisão foi registrada [reuniao.wav, 00:00-05:00]."
+
+    server = http.OpsHttpServer.__new__(http.OpsHttpServer)
+    server._app = type("App", (), {"_orchestrator": Orchestrator()})()
+    server._require_token = lambda request: None
+    server._interaction_attachments = {}
+    monkeypatch.setattr(
+        audio,
+        "extract_audio_context",
+        lambda *args: "[reuniao.wav, 00:00-05:00]\nDecisão registrada.",
+    )
+
+    response = await server._post_interaction(Request())
+    payload = json.loads(response.text)
+
+    assert response.status == 200
+    assert payload["attachment"]["type"] == "audio/wav"
+    assert captured["attachment_type"] == "audio/wav"
+    assert "[reuniao.wav, 00:00-05:00]" in captured["attachment_context"]
 
 
 async def test_dashboard_interaction_attachment_get_is_authenticated_and_inline() -> None:

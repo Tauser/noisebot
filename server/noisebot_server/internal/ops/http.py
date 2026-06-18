@@ -62,7 +62,8 @@ log = logging.getLogger(__name__)
 
 _INTERACTION_IMAGE_MAX_BYTES = 5_000_000
 _INTERACTION_DOCUMENT_MAX_BYTES = 10_000_000
-_INTERACTION_REQUEST_MAX_BYTES = 11 * 1024 * 1024
+_INTERACTION_AUDIO_MAX_BYTES = 20_000_000
+_INTERACTION_REQUEST_MAX_BYTES = 21 * 1024 * 1024
 _INTERACTION_RESPONSE_MODES = {"dashboard", "robot"}
 _INTERACTION_ATTACHMENT_TTL_S = 30 * 60
 _INTERACTION_ATTACHMENT_MAX_ITEMS = 12
@@ -1088,8 +1089,8 @@ class OpsHttpServer:
             return _json(error_response("text deve ter no máximo 500 caracteres"), status=422)
         if response_mode not in _INTERACTION_RESPONSE_MODES:
             return _json(error_response("response_mode inválido"), status=422)
-        if len(attachment_bytes) > _INTERACTION_DOCUMENT_MAX_BYTES:
-            return _json(error_response("anexo deve ter no máximo 10 MB"), status=413)
+        if len(attachment_bytes) > _INTERACTION_AUDIO_MAX_BYTES:
+            return _json(error_response("anexo deve ter no máximo 20 MB"), status=413)
 
         attachment_type = ""
         attachment_context = ""
@@ -1115,33 +1116,60 @@ class OpsHttpServer:
                         status=422,
                     )
             else:
+                from ..agent.audio_extract import (
+                    AudioExtractionError,
+                    detect_audio_media_type,
+                    extract_audio_context,
+                )
                 from ..agent.document_extract import (
                     DocumentExtractionError,
                     detect_document_media_type,
                     extract_document_context,
                 )
 
-                attachment_type = detect_document_media_type(
+                attachment_type = detect_audio_media_type(
                     attachment_bytes,
                     attachment_name,
                 )
+                if attachment_type:
+                    try:
+                        attachment_context = await asyncio.to_thread(
+                            extract_audio_context,
+                            attachment_bytes,
+                            attachment_type,
+                            attachment_name,
+                            text,
+                        )
+                    except AudioExtractionError as exc:
+                        return _json(error_response(str(exc)), status=422)
+                else:
+                    attachment_type = detect_document_media_type(
+                        attachment_bytes,
+                        attachment_name,
+                    )
                 if not attachment_type:
                     return _json(
                         error_response(
-                            "formato inválido; use JPEG, PNG, WebP, PDF, DOCX ou TXT"
+                            "formato inválido; use imagem, PDF, DOCX, TXT ou áudio"
                         ),
                         status=415,
                     )
-                try:
-                    attachment_context = await asyncio.to_thread(
-                        extract_document_context,
-                        attachment_bytes,
-                        attachment_type,
-                        attachment_name,
-                        text,
-                    )
-                except DocumentExtractionError as exc:
-                    return _json(error_response(str(exc)), status=422)
+                if not attachment_context:
+                    if len(attachment_bytes) > _INTERACTION_DOCUMENT_MAX_BYTES:
+                        return _json(
+                            error_response("documento deve ter no máximo 10 MB"),
+                            status=413,
+                        )
+                    try:
+                        attachment_context = await asyncio.to_thread(
+                            extract_document_context,
+                            attachment_bytes,
+                            attachment_type,
+                            attachment_name,
+                            text,
+                        )
+                    except DocumentExtractionError as exc:
+                        return _json(error_response(str(exc)), status=422)
             if not attachment_context:
                 return _json(
                     error_response("o anexo não contém conteúdo aproveitável"),

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot, CircleAlert, ExternalLink, FileText, Globe, Image as ImageIcon, Paperclip,
+  AudioLines, Bot, CircleAlert, ExternalLink, FileText, Globe,
+  Image as ImageIcon, Paperclip,
   SendHorizontal, UserRound, Volume2, X,
 } from "lucide-react";
 import type {
@@ -216,6 +217,7 @@ export function InteractionView({
     commandStatus === "enviando"
     || commandStatus === "analisando imagem"
     || commandStatus === "lendo documento"
+    || commandStatus === "transcrevendo áudio"
     || commandStatus === "preparando"
   );
   const hasError = commandStatus !== "pronto" && !isSending;
@@ -224,16 +226,19 @@ export function InteractionView({
     const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
     const isImage = ["image/jpeg", "image/png", "image/webp"].includes(file.type);
     const isDocument = ["pdf", "docx", "txt"].includes(extension);
-    if (!isImage && !isDocument) {
-      setAttachmentError("Use JPEG, PNG, WebP, PDF, DOCX ou TXT.");
+    const isAudio = ["wav", "mp3", "m4a", "ogg", "flac", "webm"].includes(extension);
+    if (!isImage && !isDocument && !isAudio) {
+      setAttachmentError("Use imagem, PDF, DOCX, TXT, WAV, MP3, M4A, OGG, FLAC ou WebM.");
       return;
     }
-    const maxBytes = isImage ? 5_000_000 : 10_000_000;
+    const maxBytes = isImage ? 5_000_000 : isAudio ? 20_000_000 : 10_000_000;
     if (file.size > maxBytes) {
       setAttachmentError(
         isImage
           ? "A imagem deve ter no máximo 5 MB."
-          : "O documento deve ter no máximo 10 MB.",
+          : isAudio
+            ? "O áudio deve ter no máximo 20 MB."
+            : "O documento deve ter no máximo 10 MB.",
       );
       return;
     }
@@ -324,6 +329,8 @@ export function InteractionView({
                       ? "Analisando a imagem no servidor local"
                     : commandStatus === "lendo documento"
                       ? "Extraindo o documento no servidor local"
+                    : commandStatus === "transcrevendo áudio"
+                      ? "Transcrevendo o áudio com o modelo local"
                     : "Aguarde, estou preparando sua resposta"}
                 </div>
               )}
@@ -342,7 +349,9 @@ export function InteractionView({
                 />
               ) : (
                 <span className="flex h-14 w-14 items-center justify-center rounded-md bg-blue-500/10 text-blue-200">
-                  <FileText size={24} />
+                  {attachment.type.startsWith("audio/")
+                    ? <AudioLines size={24} />
+                    : <FileText size={24} />}
                 </span>
               )}
               <div className="min-w-0 flex-1">
@@ -370,7 +379,7 @@ export function InteractionView({
           >
             <div className="flex items-center gap-2">
               <input
-                accept="image/jpeg,image/png,image/webp,.pdf,.docx,.txt"
+                accept="image/jpeg,image/png,image/webp,.pdf,.docx,.txt,.wav,.mp3,.m4a,.ogg,.flac,.webm,audio/*"
                 className="hidden"
                 onChange={(e) => {
                   selectAttachment(e.target.files?.[0]);
@@ -383,7 +392,7 @@ export function InteractionView({
                 aria-label="Anexar arquivo"
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/[0.12] text-slate-400 transition hover:text-white"
                 onClick={() => fileInputRef.current?.click()}
-                title="Anexar imagem ou documento"
+                title="Anexar imagem, documento ou áudio"
                 type="button"
               >
                 <Paperclip size={17} />
@@ -612,7 +621,9 @@ function InteractionDocument({
   if (!url) {
     return (
       <span className={className}>
-        <FileText size={12} />
+                {attachmentName.match(/\.(wav|mp3|m4a|ogg|flac|webm)$/i)
+                  ? <AudioLines size={12} />
+                  : <FileText size={12} />}
         {attachmentName}
       </span>
     );
@@ -624,7 +635,9 @@ function InteractionDocument({
       href={url}
       title={`Abrir ${attachmentName}`}
     >
-      <FileText size={12} />
+      {attachmentName.match(/\.(wav|mp3|m4a|ogg|flac|webm)$/i)
+        ? <AudioLines size={12} />
+        : <FileText size={12} />}
       {attachmentName}
     </a>
   );

@@ -9,6 +9,7 @@ description = "NoiseBot local companion server"
 requires-python = ">=3.10"
 dependencies = [
     "aiohttp>=3.9",
+    "av>=14.0",
     "pypdf>=5.0",
 ]
 
@@ -17,7 +18,7 @@ stt = ["faster-whisper>=1.0"]
 llm = ["openai>=1.30"]
 uart = ["pyserial-asyncio>=0.6"]
 vision = ["opencv-python-headless>=4.8", "numpy>=1.24"]
-codec = ["av>=14.0", "numpy>=1.24"]
+codec = ["numpy>=1.24"]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio==0.23.8",
