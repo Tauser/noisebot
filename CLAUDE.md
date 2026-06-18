@@ -244,6 +244,8 @@ Ajuste fino por env (todas opcionais; defaults entre colchetes):
 primeiro corte aceita texto e uma imagem JPEG/PNG/WebP de até 5 MB. A imagem é
 validada por assinatura, mantida apenas em memória e analisada no server; bytes,
 caminhos e conteúdo bruto nunca atravessam o bridge para o firmware.
+As últimas 12 imagens ficam disponíveis ao chat por até 30 minutos em cache de
+memória, via GET autenticado; nunca são persistidas em disco.
 
 - `response_mode=dashboard`: resposta detalhada somente na interface; não envia
   expressão, texto, TTS nem eventos de sessão ao firmware e não ocupa a FSM do
