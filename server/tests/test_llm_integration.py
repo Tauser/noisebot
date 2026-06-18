@@ -339,6 +339,30 @@ def test_truncated_json_still_produces_reply() -> None:
     assert speech_done is not None
 
 
+def test_truncated_code_json_keeps_original_reply_without_corrective_retry() -> None:
+    """Código útil truncado não deve ser trocado por uma desculpa genérica."""
+    raw = (
+        '{"expression_id":"happy","reply":"Aqui está:\\n\\n```java\\n'
+        'public class HelloWorld {\\n'
+        '    public static void main(String[] args) {\\n'
+        '        System.out.println(\\"Olá, mundo!\\");\\n'
+        "    }"
+    )
+    llm = MockLLMProvider(
+        raw,
+        '{"expression_id":"happy","reply":"Desculpe pelo erro. Como posso ajudar?","tool_call":null}',
+    )
+
+    events = asyncio.run(_do_turn(llm, "crie uma classe HelloWorld em Java"))
+
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    complete = _first(events, runtime.LlmReplyComplete)
+    assert complete is not None
+    assert "public class HelloWorld" in complete.reply
+    assert complete.reply.endswith("```")
+    assert llm._call_index == 1
+
+
 # ---------------------------------------------------------------------------
 # Scenario 4 — Turn payload contains turn context
 # ---------------------------------------------------------------------------

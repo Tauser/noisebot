@@ -47,6 +47,7 @@ class _Series:
             "p50_ms": round(p50, 1) if p50 is not None else None,
             "p95_ms": round(p95, 1) if p95 is not None else None,
             "mean_ms": round(mean, 1) if mean is not None else None,
+            "total": round(self.total_sum, 1),
             "count": self.total_count,
             "window": min(len(self.samples), self.window),
         }

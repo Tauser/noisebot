@@ -42,6 +42,17 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
+def _is_greeting(text: str) -> bool:
+    """Aceita saudações curtas sem capturar termos técnicos como hello world."""
+    return re.fullmatch(
+        r"(?:"
+        r"(?:oi|ola|hello|hi|hey)(?:\s+(?:noisebot|noise bot))?(?:\s+tudo bem)?"
+        r"|(?:bom dia|boa tarde|boa noite)(?:\s+(?:noisebot|noise bot))?"
+        r")",
+        text,
+    ) is not None
+
+
 # -- Agenda helpers ---------------------------------------------------------
 
 _UNIT_SECONDS: dict[str, int] = {
@@ -1057,8 +1068,7 @@ class LocalIntentProvider:
                 )
 
         # -- Saudacoes ---------------------------------------------------------
-        if _has(norm, "ola", "oi ", "oi!", "oi.", "bom dia", "boa tarde",
-                "boa noite", "hey ", "hello", "hi "):
+        if _is_greeting(norm):
             return IntentResolved(
                 turn_id=turn_id,
                 intent_name="local_greeting",

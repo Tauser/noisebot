@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 _DEFAULT_TEMPERATURE = 0.7
 _DEFAULT_MAX_TOKENS = 256
 _DEEP_THOUGHT_MAX_TOKENS = 1100
+_CODE_RESPONSE_MAX_TOKENS = 1200
 
 _VALID_EXPRESSION_IDS = frozenset(
     "neutral happy curious sleepy focused suspicious surprised sad alarmed angry".split()
@@ -35,7 +36,7 @@ _SYSTEM_PROMPT = (
     "Voce e NoiseBot, um companion robot expressivo de mesa.\n"
     "Personalidade: caloroso, curioso, expressivo, fala em voz alta para o usuario.\n"
     "\n"
-    "Responda SEMPRE com um unico objeto JSON valido, sem texto fora do JSON, sem markdown:\n"
+    "Responda SEMPRE com um unico objeto JSON valido, sem texto fora do JSON:\n"
     '{"expression_id":"<expressao>","reply":"<texto>","tool_call":null}\n'
     "\n"
     "expression_id deve ser exatamente uma destas strings (minusculo, sem numeros):\n"
@@ -60,6 +61,10 @@ _SYSTEM_PROMPT = (
     "diretas. Para perguntas reflexivas, filosoficas ou que pedem opiniao "
     "elaborada, pode se estender mais (ate 5-6 frases), desenvolvendo o "
     "raciocinio com calma, sem soar como leitura de texto.\n"
+    'Quando o usuario pedir codigo, inclua no campo "reply" uma explicacao curta '
+    "e o codigo em bloco Markdown cercado por tres crases, com a linguagem "
+    "identificada (por exemplo: ```java). O envelope externo continua sendo "
+    "JSON valido; quebras de linha do reply devem estar corretamente escapadas.\n"
     '"reply" deve ser SEMPRE em portugues do Brasil. Nao use chines, japones, '
     "coreano, ingles, espanhol ou mistura de idiomas.\n"
     "Se o usuario pedir piada, varie tema, estrutura e punchline; nunca repita "
@@ -96,6 +101,24 @@ _REFLECTIVE_TERMS = (
     "qual e o seu proposito",
 )
 
+_CODE_REQUEST_TERMS = (
+    "codigo",
+    "classe",
+    "funcao",
+    "script",
+    "programa",
+    "algoritmo",
+    "java",
+    "python",
+    "javascript",
+    "typescript",
+    "c#",
+    "c++",
+    "sql",
+    "html",
+    "css",
+)
+
 
 def _normalize_for_match(text: str) -> str:
     normalized = unicodedata.normalize("NFD", text or "")
@@ -111,6 +134,18 @@ def wants_deep_reflection(text: str) -> bool:
     """
     normalized = _normalize_for_match(text)
     return any(term in normalized for term in _REFLECTIVE_TERMS)
+
+
+def wants_code_response(text: str) -> bool:
+    """Reserva resposta longa para pedidos explícitos de programação."""
+    normalized = _normalize_for_match(text)
+    return any(term in normalized for term in _CODE_REQUEST_TERMS)
+
+
+def _max_tokens_for_context(context: dict, default: int) -> int:
+    if context.get("code_response"):
+        return max(default, _CODE_RESPONSE_MAX_TOKENS)
+    return default
 
 _FOREIGN_SCRIPT_RE = re.compile(
     r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]"
@@ -336,10 +371,15 @@ def _format_tool_result_injection(tcr: dict[str, Any]) -> str:
     return (
         f"Ferramenta '{tool_name}' {outcome}. "
         "Agora responda ao usuario em portugues, natural para ser falado em voz alta. "
-        "VA DIRETO AO PONTO: comece pela informacao em si (datas, fatos, numeros). "
-        "NAO use preambulos como 'Encontrei as informacoes', 'Consegui os dados' ou "
-        "'Aqui esta o que achei'. Resuma o essencial em 2-3 frases curtas; se a pergunta "
-        "for ambigua ou o resultado for de outro assunto, diga isso brevemente. "
+        "VA DIRETO AO PONTO: comece pela informacao em si (datas, fatos, numeros, nomes). "
+        "Use SOMENTE os dados concretos presentes no resultado acima — cite o valor "
+        "exato (a data, o numero, o preco, o placar), nunca uma versao aproximada ou "
+        "generica. NAO invente nada que nao esteja nos resultados. "
+        "Se os resultados NAO responderem exatamente o que o usuario perguntou, ou "
+        "trouxerem outro assunto, diga isso de forma direta (ex.: 'Nao achei o placar "
+        "desse jogo') em vez de dar uma resposta vaga ou enrolada. "
+        "Proibido preambulo ('Encontrei', 'Consegui os dados', 'Aqui esta o que achei') "
+        "e proibido frase de enchimento. Maximo 2-3 frases curtas, so o essencial. "
         'Retorne JSON valido sem tool_call: '
         '{"expression_id":"<expr>","reply":"<texto>","tool_call":null}'
     )
@@ -353,7 +393,7 @@ def parse_llm_json(raw: str) -> dict[str, Any]:
     tool_call is {"name": str, "arguments": dict} or None.
     """
     cleaned = raw.strip()
-    md = re.search(r"```(?:json)?\s*([\s\S]*?)```", cleaned)
+    md = re.fullmatch(r"```(?:json)?\s*([\s\S]*?)```\s*", cleaned)
     if md:
         cleaned = md.group(1).strip()
 
@@ -397,7 +437,7 @@ def parse_llm_json(raw: str) -> dict[str, Any]:
 
 def recover_llm_reply_text(raw: str) -> str:
     cleaned = raw.strip()
-    md = re.search(r"```(?:json)?\s*([\s\S]*?)(?:```|$)", cleaned)
+    md = re.fullmatch(r"```(?:json)?\s*([\s\S]*?)(?:```)?\s*", cleaned)
     if md:
         cleaned = md.group(1).strip()
 
@@ -412,10 +452,14 @@ def recover_llm_reply_text(raw: str) -> str:
 
 def enforce_pt_br_reply(reply: str, user_text: str = "") -> tuple[str, bool]:
     """Return a safe pt-BR reply when the model leaks unsupported languages."""
-    cleaned = " ".join(reply.split()).strip()
+    cleaned = reply.strip() if "```" in reply else " ".join(reply.split()).strip()
     if not cleaned:
         return cleaned, False
-    if not _FOREIGN_SCRIPT_RE.search(cleaned) and not _looks_like_english_leak(cleaned):
+    language_sample = re.sub(r"```[\s\S]*?(?:```|$)", "", cleaned).strip()
+    if (
+        not _FOREIGN_SCRIPT_RE.search(language_sample)
+        and not _looks_like_english_leak(language_sample)
+    ):
         return cleaned, False
     user_lower = user_text.casefold()
     if "curiosidade" in user_lower or "curioso" in user_lower:
@@ -569,6 +613,7 @@ class OllamaProvider(StreamingLLMProvider):
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._think = think
+        self._last_usage = {"input_tokens": 0, "output_tokens": 0}
         self._cb = CircuitBreaker(
             provider=f"ollama/{model}",
             failure_threshold=failure_threshold,
@@ -582,8 +627,14 @@ class OllamaProvider(StreamingLLMProvider):
     def generate_stream(self, text: str, context: dict) -> AsyncIterator[str]:
         return self._do_stream(text, context)
 
+    def consume_last_usage(self) -> dict[str, int]:
+        usage = self._last_usage
+        self._last_usage = {"input_tokens": 0, "output_tokens": 0}
+        return usage
+
     async def _do_stream(self, text: str, context: dict) -> AsyncIterator[str]:
         self._cb.allow_request()
+        self._last_usage = {"input_tokens": 0, "output_tokens": 0}
         try:
             import aiohttp
         except ImportError as exc:
@@ -594,11 +645,12 @@ class OllamaProvider(StreamingLLMProvider):
         # tokens e não sobra nada para o "content" (done_reason="length", reply
         # vazia). Se isso acontecer, refaz a chamada sem "thinking" para sempre
         # entregar uma resposta ao usuário.
+        normal_max_tokens = _max_tokens_for_context(context, self._max_tokens)
         attempts: list[tuple[bool, int]] = [
-            (deep_thought, _DEEP_THOUGHT_MAX_TOKENS if deep_thought else self._max_tokens),
+            (deep_thought, _DEEP_THOUGHT_MAX_TOKENS if deep_thought else normal_max_tokens),
         ]
         if deep_thought:
-            attempts.append((False, self._max_tokens))
+            attempts.append((False, normal_max_tokens))
 
         try:
             timeout = aiohttp.ClientTimeout(total=None, sock_connect=5, sock_read=60)
@@ -631,6 +683,12 @@ class OllamaProvider(StreamingLLMProvider):
                                 produced = True
                                 yield token
                             if data.get("done"):
+                                self._last_usage["input_tokens"] += int(
+                                    data.get("prompt_eval_count") or 0
+                                )
+                                self._last_usage["output_tokens"] += int(
+                                    data.get("eval_count") or 0
+                                )
                                 break
 
                     if produced or attempt_index == len(attempts) - 1:
@@ -660,6 +718,7 @@ class OpenAIStreamingProvider(StreamingLLMProvider):
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
+        self._last_usage = {"input_tokens": 0, "output_tokens": 0}
         self._cb = CircuitBreaker(
             provider=f"openai/{model}",
             failure_threshold=failure_threshold,
@@ -673,6 +732,11 @@ class OpenAIStreamingProvider(StreamingLLMProvider):
     def generate_stream(self, text: str, context: dict) -> AsyncIterator[str]:
         return self._do_stream(text, context)
 
+    def consume_last_usage(self) -> dict[str, int]:
+        usage = self._last_usage
+        self._last_usage = {"input_tokens": 0, "output_tokens": 0}
+        return usage
+
     async def generate_complete(
         self,
         text: str,
@@ -682,12 +746,13 @@ class OpenAIStreamingProvider(StreamingLLMProvider):
         self._cb.allow_request()
         client = _get_openai_client()
         messages = build_messages(text, context)
+        max_tokens = _max_tokens_for_context(context, self._max_tokens)
         try:
             response = await client.chat.completions.create(
                 model=self._model,
                 messages=messages,
                 temperature=self._temperature,
-                max_tokens=self._max_tokens,
+                max_tokens=max_tokens,
                 stream=False,
             )
             raw = response.choices[0].message.content or ""
@@ -711,17 +776,26 @@ class OpenAIStreamingProvider(StreamingLLMProvider):
 
     async def _do_stream(self, text: str, context: dict) -> AsyncIterator[str]:
         self._cb.allow_request()
+        self._last_usage = {"input_tokens": 0, "output_tokens": 0}
         client = _get_openai_client()
         messages = build_messages(text, context)
+        max_tokens = _max_tokens_for_context(context, self._max_tokens)
         try:
             stream = await client.chat.completions.create(
                 model=self._model,
                 messages=messages,
                 temperature=self._temperature,
-                max_tokens=self._max_tokens,
+                max_tokens=max_tokens,
                 stream=True,
+                stream_options={"include_usage": True},
             )
             async for chunk in stream:
+                usage = getattr(chunk, "usage", None)
+                if usage is not None:
+                    self._last_usage = {
+                        "input_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+                        "output_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+                    }
                 if chunk.choices:
                     delta = chunk.choices[0].delta
                     if delta and delta.content:
@@ -762,12 +836,13 @@ class GeminiProvider(StreamingLLMProvider):
     async def _do_stream(self, text: str, context: dict) -> AsyncIterator[str]:
         self._cb.allow_request()
         messages = build_messages(text, context)
+        max_tokens = _max_tokens_for_context(context, self._max_tokens)
         try:
             raw = await _call_gemini(
                 self._model,
                 messages,
                 self._temperature,
-                self._max_tokens,
+                max_tokens,
             )
             self._cb.record_success()
             yield raw
@@ -834,5 +909,6 @@ __all__ = [
     "enforce_pt_br_reply",
     "parse_llm_json",
     "recover_llm_reply_text",
+    "wants_code_response",
     "translate_expression_id",
 ]

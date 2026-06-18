@@ -84,6 +84,9 @@ def _round(v: float | None) -> float | None:
 def _total_from_snapshot(series: dict | None) -> int | None:
     if not series:
         return None
+    total = series.get("total")
+    if total is not None:
+        return int(total)
     mean = series.get("mean_ms")
     count = series.get("count", 0)
     if mean is None or not count:

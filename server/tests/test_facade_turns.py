@@ -1322,6 +1322,63 @@ async def test_server_vision_scene_pre_feedback_sends_visual_hint() -> None:
     assert adapter.texts == [orchestrator_module.VISION_THINKING_TEXT]
     assert session.meta["vision_thinking_feedback"] is True
 
+@pytest.mark.asyncio
+async def test_server_llm_pre_feedback_sends_wait_message() -> None:
+    runtime = importlib.import_module("noisebot_server.internal.agent.runtime")
+    orchestrator_module = importlib.import_module(
+        "noisebot_server.internal.agent.orchestrator"
+    )
+
+    class DummyAdapter:
+        def __init__(self) -> None:
+            self.expressions: list[int] = []
+            self.texts: list[str] = []
+
+        async def send_expr(self, expression_id: int, duration_ms: int = 2000) -> None:
+            self.expressions.append(expression_id)
+
+        async def send_text_scroll(self, text: str) -> None:
+            self.texts.append(text)
+
+    adapter = DummyAdapter()
+    orchestrator = orchestrator_module.Orchestrator(
+        runtime.EventBus(),
+        _make_server_config(),
+        get_adapter=lambda: adapter,
+    )
+    session = runtime.SessionContext(turn_id=81)
+
+    await orchestrator._show_llm_thinking_feedback(session.turn_id, session)
+
+    assert adapter.expressions == [orchestrator_module.LLM_THINKING_EXPR_ID]
+    assert adapter.texts == [orchestrator_module.LLM_THINKING_TEXT]
+    assert session.meta["llm_thinking_feedback"] is True
+
+
+def test_server_status_clears_stale_reply_when_new_turn_starts() -> None:
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+    store = status_module.StatusStore()
+    store.record_turn_detail(10, transcript="oi", reply="Olá!", route="local_intent")
+
+    store.record_turn_detail(11, transcript="crie um hello world")
+
+    assert store.last_turn_id == 11
+    assert store.last_transcript == "crie um hello world"
+    assert store.last_reply == ""
+    assert store.last_route == ""
+
+
+def test_server_voice_session_preserves_long_code_reply() -> None:
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+    store = status_module.StatusStore()
+    reply = "```java\n" + ("System.out.println(\"NoiseBot\");\n" * 80) + "```"
+
+    store.record_voice_session({"turn_id": 12, "outcome": "ok", "reply": reply})
+
+    assert store.last_voice_session["reply"] == reply
+    assert store.recent_voice_sessions[0]["reply"].endswith("```")
+
+
 def test_server_metrics_replaces_duplicate_voice_session_turn() -> None:
     metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
     api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
@@ -1342,6 +1399,42 @@ def test_server_metrics_replaces_duplicate_voice_session_turn() -> None:
     reset_payload = api.get_metrics()
     assert reset_payload["last_voice_session"] == {}
     assert reset_payload["recent_voice_sessions"] == []
+
+
+def test_server_voice_session_exposes_llm_time_and_token_usage() -> None:
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+    store = status_module.StatusStore()
+    store.record_voice_session({
+        "turn_id": 8,
+        "outcome": "ok",
+        "llm_first_token_ms": 245.7,
+        "llm_total_ms": 1320.4,
+        "input_tokens": 418,
+        "output_tokens": 73,
+    })
+
+    assert store.last_voice_session["llm_first_token_ms"] == 245.7
+    assert store.last_voice_session["llm_total_ms"] == 1320.4
+    assert store.last_voice_session["input_tokens"] == 418
+    assert store.last_voice_session["output_tokens"] == 73
+
+
+def test_server_metrics_token_total_uses_full_history_beyond_window() -> None:
+    metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
+    api_module = importlib.import_module("noisebot_server.internal.ops.metrics")
+    status_module = importlib.import_module("noisebot_server.internal.ops.status")
+    registry = metrics_module.MetricsRegistry(window=2)
+    for value in (10, 20, 30):
+        registry.record("input_tokens", value)
+    for value in (4, 5, 6):
+        registry.record("output_tokens", value)
+
+    payload = api_module.MetricsApi(
+        registry,
+        status_module.StatusStore(),
+    ).get_metrics()
+
+    assert payload["tokens"] == {"input": 60, "output": 15}
 
 def test_server_metrics_distinguishes_visual_text_scroll_truncation() -> None:
     metrics_module = importlib.import_module("noisebot_server.internal.agent.metrics")
@@ -1614,6 +1707,33 @@ def test_server_agent_local_status_emits_visual_command() -> None:
         "event": "STATUS_COMMAND",
         "action": "quick_status",
     }
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "crie um exemplo de hello world em python",
+        "monte uma classe hello world em java",
+        "explique o programa hello world",
+    ],
+)
+def test_server_agent_hello_world_is_not_a_greeting(phrase: str) -> None:
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match(phrase, turn_id=52)
+
+    assert result.intent_name is None
+
+
+@pytest.mark.parametrize("phrase", ["oi", "olá NoiseBot", "bom dia", "hello"])
+def test_server_agent_short_greetings_remain_local(phrase: str) -> None:
+    agent = importlib.import_module("noisebot_server.internal.agent")
+    provider = agent.LocalIntentProvider()
+
+    result = provider.match(phrase, turn_id=53)
+
+    assert result.intent_name == "local_greeting"
+
 
 def test_server_agent_show_status_phrase_emits_visual_command() -> None:
     agent = importlib.import_module("noisebot_server.internal.agent")

@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from collections import deque
 from dataclasses import replace
@@ -92,6 +93,29 @@ TEXT_SCROLL_MAX_PAGE_INTERVAL_S = 3.8
 TEXT_SCROLL_ESTIMATED_CHARS_PER_S = 16.0
 VISION_THINKING_TEXT = "Olhando..."
 VISION_THINKING_EXPR_ID = 4
+LLM_THINKING_TEXT = "Aguarde, estou preparando sua resposta."
+LLM_THINKING_EXPR_ID = 4
+
+
+def _looks_like_truncated_llm_json(raw: str) -> bool:
+    clean = raw.strip()
+    return (
+        clean.startswith("{")
+        and '"reply"' in clean
+        and ('"tool_call"' not in clean or not clean.endswith("}"))
+    )
+
+
+def _close_unfinished_code_fence(reply: str) -> str:
+    clean = reply.strip()
+    if clean.count("```") % 2 == 1:
+        return clean + "\n```"
+    return clean
+
+
+def _recover_expression_id(raw: str) -> str | None:
+    match = re.search(r'"expression_id"\s*:\s*"([a-zA-Z_]+)"', raw)
+    return match.group(1).lower() if match else None
 
 
 def _sentences_for_tts(text: str) -> list[str]:
@@ -644,6 +668,7 @@ class Orchestrator:
                 "Turno %d: sem intent local para %r → LLM (%s)",
                 event.turn_id, event.text, getattr(self._llm, "_provider_name", "?"),
             )
+            await self._show_llm_thinking_feedback(event.turn_id, session)
             self._turn_task = asyncio.create_task(
                 self._run_llm_worker(session, event.text, event.turn_id),
                 name=f"nb_llm_{event.turn_id}",
@@ -674,6 +699,26 @@ class Orchestrator:
             session.meta["vision_thinking_feedback"] = False
             log.warning(
                 "Turno %d: feedback visual de visao falhou: %s",
+                turn_id,
+                exc,
+            )
+
+    async def _show_llm_thinking_feedback(
+        self,
+        turn_id: int,
+        session: SessionContext,
+    ) -> None:
+        adapter = self.adapter
+        if adapter is None:
+            return
+        try:
+            await adapter.send_expr(LLM_THINKING_EXPR_ID)
+            await adapter.send_text_scroll(LLM_THINKING_TEXT)
+            session.meta["llm_thinking_feedback"] = True
+        except Exception as exc:
+            session.meta["llm_thinking_feedback"] = False
+            log.warning(
+                "Turno %d: feedback visual de LLM falhou: %s",
                 turn_id,
                 exc,
             )
@@ -897,7 +942,7 @@ class Orchestrator:
         _debug: dict[str, Any] = {"turn_id": turn_id, "ts": time.time(), "transcript": text[:300]}
 
         try:
-            from .llm import wants_deep_reflection
+            from .llm import wants_code_response, wants_deep_reflection
             from .payload_builder import build_turn_payload
 
             user_profile = await self._current_user_profile()
@@ -944,6 +989,7 @@ class Orchestrator:
                 "turn_payload": turn_payload,
                 "recent_replies": list(self._recent_llm_replies),
                 "deep_thought": wants_deep_reflection(text),
+                "code_response": wants_code_response(text),
             }
 
             stream = self._llm.generate_stream(text, context)
@@ -956,6 +1002,9 @@ class Orchestrator:
                 raw_tokens.append(token)
                 await self._bus.publish(LlmTokenDelta(turn_id=turn_id, text=token))
 
+            usage = self._consume_llm_usage()
+            input_tokens = usage["input_tokens"]
+            output_tokens = usage["output_tokens"]
             t_llm_end = time.monotonic()
             llm_total_ms = (t_llm_end - t_llm_start) * 1000.0
             self._metrics.record("llm_total_ms", llm_total_ms)
@@ -972,18 +1021,33 @@ class Orchestrator:
             try:
                 parsed = parse_llm_json(raw_response)
             except (ValueError, Exception) as exc:
-                log.warning(
-                    "Turno %d: falha ao parsear JSON LLM (%s) — tentando correcao",
-                    turn_id, exc,
-                )
-                _retry_count = 1
-                parsed = await self._try_corrective_json_retry(raw_response, turn_id)
-                if parsed is None:
+                recovered_reply = recover_llm_reply_text(raw_response)
+                if _looks_like_truncated_llm_json(raw_response) and recovered_reply:
+                    log.warning(
+                        "Turno %d: JSON LLM truncado; preservando reply parcial",
+                        turn_id,
+                    )
                     parsed = {
-                        "reply": recover_llm_reply_text(raw_response),
-                        "expression_id": None,
+                        "reply": _close_unfinished_code_fence(recovered_reply),
+                        "expression_id": _recover_expression_id(raw_response),
                         "tool_call": None,
                     }
+                else:
+                    log.warning(
+                        "Turno %d: falha ao parsear JSON LLM (%s) — tentando correcao",
+                        turn_id, exc,
+                    )
+                    _retry_count = 1
+                    parsed = await self._try_corrective_json_retry(raw_response, turn_id)
+                    retry_usage = self._consume_llm_usage()
+                    input_tokens += retry_usage["input_tokens"]
+                    output_tokens += retry_usage["output_tokens"]
+                    if parsed is None:
+                        parsed = {
+                            "reply": recovered_reply,
+                            "expression_id": None,
+                            "tool_call": None,
+                        }
             _debug["step1"] = {
                 "raw_response": raw_response[:600],
                 "expression_id": parsed.get("expression_id"),
@@ -1068,8 +1132,11 @@ class Orchestrator:
                     "result_summary": _result_summary(tool_result.result),
                     "sandboxed": tool_result.sandbox,
                 }
+                # Metricas de busca web para o dashboard (None se nao foi busca).
+                _debug["search"] = _extract_search_meta(tool_result)
             else:
                 _debug["tool"] = None
+                _debug["search"] = None
 
             _debug["step2"] = None
             # ── Segundo passo LLM: usa resultado da tool como contexto ───────
@@ -1094,6 +1161,9 @@ class Orchestrator:
                     second_stream = self._llm.generate_stream(text, second_context)
                     async for s_token in second_stream:
                         second_raw_tokens.append(s_token)
+                    second_usage = self._consume_llm_usage()
+                    input_tokens += second_usage["input_tokens"]
+                    output_tokens += second_usage["output_tokens"]
                     t_step2_end = time.monotonic()
                     second_raw = "".join(second_raw_tokens)
                     second_parsed = parse_llm_json(second_raw)
@@ -1156,6 +1226,8 @@ class Orchestrator:
                 expression_id=translate_expression_id(parsed.get("expression_id")),
                 action_id=None,
                 emot_event_id=None,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
                 provider=getattr(self._llm, "_provider_name", "unknown"),
                 model=getattr(self._llm, "_model", ""),
                 sources=turn_sources,
@@ -1180,6 +1252,19 @@ class Orchestrator:
             )
             session.intent_name = "llm_reply"
             session.reply_text = reply_text
+            session.input_tokens = input_tokens
+            session.output_tokens = output_tokens
+            session.meta["llm_total_ms"] = round(
+                (time.monotonic() - t_llm_start) * 1000.0,
+                1,
+            )
+            session.meta["llm_first_token_ms"] = (
+                round(llm_first_ms, 1) if first_token_recorded else None
+            )
+            if input_tokens:
+                self._metrics.record("input_tokens", input_tokens)
+            if output_tokens:
+                self._metrics.record("output_tokens", output_tokens)
             if self._store:
                 self._store.record_turn_detail(
                     turn_id,
@@ -1238,6 +1323,18 @@ class Orchestrator:
                 stage="llm",
                 reason=type(exc).__name__,
             ))
+
+    def _consume_llm_usage(self) -> dict[str, int]:
+        consume = getattr(self._llm, "consume_last_usage", None)
+        if not callable(consume):
+            return {"input_tokens": 0, "output_tokens": 0}
+        usage = consume()
+        if not isinstance(usage, dict):
+            return {"input_tokens": 0, "output_tokens": 0}
+        return {
+            "input_tokens": max(0, int(usage.get("input_tokens") or 0)),
+            "output_tokens": max(0, int(usage.get("output_tokens") or 0)),
+        }
 
     @staticmethod
     def _is_llm_config_error(exc: Exception) -> bool:
@@ -1884,6 +1981,10 @@ class Orchestrator:
             "first_audio_out_ms": since_start_ms("first_audio_out"),
             "first_audio_after_voice_end_ms": delta_ms("voice_end", "first_audio_out"),
             "speech_total_ms": since_start_ms("speech_done"),
+            "llm_first_token_ms": session.meta.get("llm_first_token_ms"),
+            "llm_total_ms": session.meta.get("llm_total_ms"),
+            "input_tokens": session.input_tokens or None,
+            "output_tokens": session.output_tokens or None,
             "error_stage": session.meta.get("error_stage"),
             "error_reason": session.meta.get("error_reason"),
         }
@@ -1892,10 +1993,14 @@ class Orchestrator:
 
 
 def _extract_sources(tool_result: Any | None, *, limit: int = 5) -> list[dict]:
-    """Constroi a lista de fontes (title/source/url) a partir do resultado de
-    uma tool de busca, de forma DETERMINISTICA — sem depender de o LLM copiar
-    URLs (modelo local erra/inventa). Generico: qualquer tool cujo result tenha
-    'results' com itens {url,title,source}. Deduplica por URL e limita."""
+    """Constroi a lista de fontes a partir do resultado de uma tool de busca, de
+    forma DETERMINISTICA — sem depender de o LLM copiar URLs (modelo local
+    erra/inventa). Generico: qualquer tool cujo result tenha 'results' com itens
+    {url,title,source,...}. Deduplica por URL e limita.
+
+    Alem de title/source/url, carrega snippet/score/published quando presentes —
+    esses campos sao para EXIBICAO no dashboard. Eles nunca vao ao firmware
+    (output.py so envia o texto falado ao adapter; sources vao so para o bus)."""
     if tool_result is None or not getattr(tool_result, "success", False):
         return []
     result = getattr(tool_result, "result", None)
@@ -1913,14 +2018,44 @@ def _extract_sources(tool_result: Any | None, *, limit: int = 5) -> list[dict]:
         if not url or url in seen:
             continue
         seen.add(url)
+        score = item.get("score")
+        try:
+            score_val = round(float(score), 3) if score is not None else None
+        except (TypeError, ValueError):
+            score_val = None
         out.append({
             "title": str(item.get("title", "") or ""),
             "source": str(item.get("source", "") or ""),
             "url": url,
+            "snippet": str(item.get("snippet", "") or ""),
+            "published": str(item.get("published", "") or ""),
+            "score": score_val,
         })
         if len(out) >= limit:
             break
     return out
+
+
+def _extract_search_meta(tool_result: Any | None) -> dict | None:
+    """Metricas da busca para o dashboard (depth, modo, cache, contagem, resumo
+    do provider). Retorna None quando o turno nao teve busca web."""
+    if tool_result is None or not getattr(tool_result, "success", False):
+        return None
+    if getattr(tool_result, "tool_name", "") != "web_search":
+        return None
+    result = getattr(tool_result, "result", None)
+    if not isinstance(result, dict):
+        return None
+    answer = result.get("answer")
+    return {
+        "query": str(result.get("query", "") or ""),
+        "provider": str(result.get("provider", "") or ""),
+        "mode": str(result.get("mode", "") or ""),
+        "depth": str(result.get("depth", "") or ""),
+        "cached": bool(result.get("cached", False)),
+        "result_count": result.get("result_count"),
+        "answer": str(answer) if answer else None,
+    }
 
 
 def _allowed_tools(*, vision_available: bool, sandbox: bool = False) -> list[str]:

@@ -64,6 +64,10 @@ class StatusStore:
         route: str | None = None,
     ) -> None:
         """Atualiza detalhes do último turno sem alterar contadores."""
+        if turn_id != self.last_turn_id:
+            self.last_transcript = ""
+            self.last_reply = ""
+            self.last_route = ""
         self.last_turn_id = turn_id
         if transcript is not None:
             self.last_transcript = _safe_runtime_text(transcript, limit=500)
@@ -234,6 +238,10 @@ def _sanitize_session(value: dict) -> dict:
         "first_audio_out_ms",
         "first_audio_after_voice_end_ms",
         "speech_total_ms",
+        "llm_first_token_ms",
+        "llm_total_ms",
+        "input_tokens",
+        "output_tokens",
         "error_stage",
         "error_reason",
     }
@@ -250,7 +258,7 @@ def _sanitize_session(value: dict) -> dict:
 
 def _session_text_limit(key: str) -> int:
     if key == "reply":
-        return 1200
+        return 6000
     if key == "transcript":
         return 500
     return 120

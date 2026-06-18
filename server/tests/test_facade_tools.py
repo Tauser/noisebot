@@ -387,6 +387,49 @@ def test_llm_system_prompt_has_unified_envelope() -> None:
     assert "expression_id" in llm._SYSTEM_PROMPT
     assert "tool_call" in llm._SYSTEM_PROMPT
     assert "reply" in llm._SYSTEM_PROMPT
+    assert "```java" in llm._SYSTEM_PROMPT
+    assert "codigo em bloco Markdown" in llm._SYSTEM_PROMPT
+
+
+def test_llm_code_requests_receive_larger_token_budget() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+
+    assert llm.wants_code_response("crie uma classe HelloWorld em Java") is True
+    assert llm.wants_code_response("que horas sao") is False
+    assert llm._max_tokens_for_context({"code_response": True}, 384) == 1200
+    assert llm._max_tokens_for_context({}, 384) == 384
+
+
+def test_language_guard_preserves_markdown_code_formatting() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+    reply = (
+        "Aqui está o exemplo:\n\n"
+        "```java\n"
+        "public class HelloWorld {\n"
+        "    public static void main(String[] args) {}\n"
+        "}\n"
+        "```"
+    )
+
+    cleaned, replaced = llm.enforce_pt_br_reply(reply, "crie uma classe Java")
+
+    assert replaced is False
+    assert cleaned == reply
+
+
+def test_parse_llm_json_preserves_code_fence_inside_reply() -> None:
+    llm = importlib.import_module("noisebot_server.internal.agent.llm")
+    raw = json.dumps({
+        "expression_id": "focused",
+        "reply": "Aqui está:\n\n```java\npublic class HelloWorld {}\n```",
+        "tool_call": None,
+    })
+
+    parsed = llm.parse_llm_json(raw)
+
+    assert parsed["reply"].endswith("```")
+    assert "public class HelloWorld" in parsed["reply"]
+
 
 def test_llm_system_prompt_lists_expression_strings() -> None:
     llm = importlib.import_module("noisebot_server.internal.agent.llm")
