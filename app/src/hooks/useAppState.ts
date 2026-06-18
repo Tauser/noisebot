@@ -19,6 +19,7 @@ export type PendingCommand = {
   text: string;
   startedAt: number;
   attachmentName?: string;
+  attachmentType?: string;
   responseMode?: InteractionResponseMode;
 };
 
@@ -430,6 +431,7 @@ export function useAppState() {
         text: prompt,
         startedAt: Date.now(),
         attachmentName: result.attachment?.name,
+        attachmentType: result.attachment?.type,
         responseMode,
       });
       setCommandStatus("preparando");

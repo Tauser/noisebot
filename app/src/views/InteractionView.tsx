@@ -7,6 +7,7 @@ import type {
   DashboardSnapshot, InteractionResponseMode, LlmTurnDebug, SearchMeta,
   SearchSource, VoiceSessionSummary,
 } from "../api";
+import { loadInteractionAttachment } from "../api";
 import type { PendingCommand } from "../hooks/useAppState";
 import { cardClass, inputClass } from "../lib/classes";
 import { lastReplyText } from "../lib/format";
@@ -123,6 +124,7 @@ export function InteractionView({
   llmDebug,
   onCommandChange,
   onCommandSubmit,
+  opsToken,
   snapshot,
 }: {
   commandStatus: string;
@@ -135,6 +137,7 @@ export function InteractionView({
     image?: File | null,
     responseMode?: InteractionResponseMode,
   ) => void | Promise<void>;
+  opsToken: string;
   snapshot: DashboardSnapshot;
 }) {
   const [image, setImage] = useState<File | null>(null);
@@ -183,6 +186,7 @@ export function InteractionView({
         transcript: pendingCommand.text,
         outcome: "processing",
         attachment_name: pendingCommand.attachmentName,
+        attachment_type: pendingCommand.attachmentType,
         response_mode: pendingCommand.responseMode,
       });
     }
@@ -282,7 +286,10 @@ export function InteractionView({
                       meta={session.turn_id ? `Turno ${session.turn_id}` : undefined}
                       text={session.transcript}
                       attachmentName={session.attachment_name}
+                      attachmentType={session.attachment_type}
                       responseMode={session.response_mode}
+                      turnId={session.turn_id}
+                      opsToken={opsToken}
                     />
                   )}
                   {session.reply && (
@@ -420,7 +427,10 @@ function ChatMessage({
   text,
   search,
   attachmentName,
+  attachmentType,
   responseMode,
+  turnId,
+  opsToken,
 }: {
   icon: "user" | "robot";
   label: string;
@@ -429,7 +439,10 @@ function ChatMessage({
   text: string;
   search?: TurnSearch;
   attachmentName?: string | null;
+  attachmentType?: string | null;
   responseMode?: string | null;
+  turnId?: number;
+  opsToken?: string;
 }) {
   const isUser = icon === "user";
   const Icon = isUser ? UserRound : Bot;
@@ -453,6 +466,13 @@ function ChatMessage({
         </div>
         {isUser ? (
           <div className="inline-grid gap-1.5 text-left">
+            {attachmentName && attachmentType?.startsWith("image/") && turnId && opsToken && (
+              <InteractionImage
+                attachmentName={attachmentName}
+                opsToken={opsToken}
+                turnId={turnId}
+              />
+            )}
             {attachmentName && (
               <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-500/20 px-2 py-1 text-[11px] text-blue-100">
                 <ImageIcon size={12} />
@@ -483,6 +503,52 @@ function ChatMessage({
         )}
       </div>
     </article>
+  );
+}
+
+function InteractionImage({
+  attachmentName,
+  opsToken,
+  turnId,
+}: {
+  attachmentName: string;
+  opsToken: string;
+  turnId: number;
+}) {
+  const [url, setUrl] = useState("");
+  const [unavailable, setUnavailable] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    setUnavailable(false);
+    void loadInteractionAttachment(turnId, opsToken)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => {
+        if (active) setUnavailable(true);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [opsToken, turnId]);
+
+  if (unavailable) return null;
+  if (!url) {
+    return <span className="h-36 w-56 animate-pulse rounded-lg bg-white/[0.06]" />;
+  }
+  return (
+    <a href={url} rel="noreferrer" target="_blank" title={`Abrir ${attachmentName}`}>
+      <img
+        alt={attachmentName}
+        className="max-h-72 w-full max-w-sm rounded-lg border border-white/10 bg-black/20 object-contain"
+        src={url}
+      />
+    </a>
   );
 }
 

@@ -533,6 +533,21 @@ export async function sendInteraction(
   }>;
 }
 
+export async function loadInteractionAttachment(
+  turnId: number,
+  token: string,
+): Promise<Blob> {
+  const response = await fetch(
+    `${SERVER_URL}/api/interactions/${encodeURIComponent(turnId)}/attachment`,
+    { headers: { "Authorization": `Bearer ${token}` } },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `server ${response.status}`);
+  }
+  return response.blob();
+}
+
 export async function createAgendaItem(
   kind: RoutineKind,
   payload: Record<string, unknown>,

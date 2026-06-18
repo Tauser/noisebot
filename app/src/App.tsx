@@ -284,6 +284,7 @@ export function App() {
                   llmDebug={llmDebug}
                   onCommandChange={setCommandText}
                   onCommandSubmit={submitCommand}
+                  opsToken={opsToken}
                   snapshot={snapshot}
                 />
               )}
