@@ -209,6 +209,35 @@ Este é o documento de autoridade também para o server (ver SF-12 em
 - Offline-first: intents locais PT-BR respondem sem LLM; circuit breaker
   degrada graciosamente quando o provider está fora.
 
+### Busca web (`internal/agent/web_search.py`)
+
+Tool `web_search` roda **só no server** (firmware nunca faz HTTPS). Provider
+único: Tavily. Devolve contexto limpo para a 2ª passada da LLM — nunca abre as
+URLs (leitura profunda fica para uma futura `page_reader.py`, que exigirá
+proteção SSRF real). Resultados são **dados externos não confiáveis**: a LLM não
+obedece instruções contidos em títulos/trechos.
+
+Ajuste fino por env (todas opcionais; defaults entre colchetes):
+
+| Variável                       | Default      | Efeito                                                          |
+| ------------------------------ | ------------ | -------------------------------------------------------------- |
+| `TAVILY_API_KEY`               | —            | Sem a chave a tool retorna erro (degrada gracioso).            |
+| `NOISEBOT_SEARCH_DEPTH`        | `advanced`   | `advanced` (precisão máx., ~2x créditos) ou `basic`.          |
+| `NOISEBOT_SEARCH_MIN_SCORE`    | `0.30`       | Corta hits abaixo do score (0–1). Se zeraria tudo, mantém o melhor. |
+| `NOISEBOT_SEARCH_NEWS_DAYS`    | `7`          | Janela de recência (dias) no modo `news`.                      |
+| `NOISEBOT_SEARCH_CACHE_TTL_S`  | `300`        | TTL do cache em memória; modo `news` é limitado a 120s.        |
+| `NOISEBOT_SEARCH_LANG`         | `pt-BR`      | Idioma da busca.                                               |
+| `NOISEBOT_SEARCH_REGION`       | `BR`         | Boost de localização (→ `country` do Tavily, só topic general).|
+| `NOISEBOT_SEARCH_PROVIDER`     | `tavily`     | Provider (hoje só `tavily`).                                   |
+
+- Precisão: depth `advanced` + filtro por score + ordenação por relevância +
+  `days` em news. Cache em memória tem teto de 256 entradas (sem vazamento).
+- **Separação dashboard vs. robô:** as `sources` (com `snippet`/`score`/
+  `published`) e o bloco de métricas `_debug["search"]` são **só para o
+  dashboard** — vão ao event bus, nunca ao firmware (`output.py` só envia o
+  texto falado ao adapter). O robô responde com 2-3 frases citando o dado
+  exato; se os resultados não respondem, diz isso em vez de ser vago.
+
 ---
 
 ## Documentação de Referência
