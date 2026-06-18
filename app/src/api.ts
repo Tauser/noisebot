@@ -218,6 +218,25 @@ export type LlmToolDebug = {
   sandboxed?: boolean;
 };
 
+export type SearchSource = {
+  title: string;
+  source: string;
+  url: string;
+  snippet?: string;
+  published?: string;
+  score?: number | null;
+};
+
+export type SearchMeta = {
+  query: string;
+  provider: string;
+  mode: string;
+  depth: string;
+  cached: boolean;
+  result_count?: number | null;
+  answer?: string | null;
+};
+
 export type LlmTurnDebug = {
   turn_id: number;
   ts: number;
@@ -235,6 +254,8 @@ export type LlmTurnDebug = {
   final_reply: string;
   final_expression_id: number | null;
   total_latency_ms: number;
+  sources?: SearchSource[];
+  search?: SearchMeta | null;
 };
 
 export type DevData = {

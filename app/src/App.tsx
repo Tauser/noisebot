@@ -85,7 +85,7 @@ export function App() {
   const {
     mode, userSection, devSection,
     setAppMode, setUserSection, setDevSection,
-    snapshot, appData, devicePersona, profileDraft, devData,
+    snapshot, appData, devicePersona, profileDraft, devData, llmDebug,
     volume, leds, opsToken, now,
     setProfileDraft, setCommandText, setVolume, setLeds,
     saveOpsToken,
@@ -278,6 +278,7 @@ export function App() {
                   commandText={commandText}
                   pendingCommand={pendingCommand}
                   sessions={devData.metrics.recent_voice_sessions}
+                  llmDebug={llmDebug}
                   onCommandChange={setCommandText}
                   onCommandSubmit={submitCommand}
                   snapshot={snapshot}

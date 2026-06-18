@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot, CircleAlert, SendHorizontal, UserRound,
+  Bot, CircleAlert, ExternalLink, Globe, SendHorizontal, UserRound,
 } from "lucide-react";
-import type { DashboardSnapshot, VoiceSessionSummary } from "../api";
+import type {
+  DashboardSnapshot, LlmTurnDebug, SearchMeta, SearchSource, VoiceSessionSummary,
+} from "../api";
 import type { PendingCommand } from "../hooks/useAppState";
 import { cardClass, inputClass } from "../lib/classes";
 import { lastReplyText } from "../lib/format";
+
+type TurnSearch = { sources: SearchSource[]; search: SearchMeta | null };
 
 /* ─── Command Reference data ────────────────────────────────────── */
 
@@ -114,6 +118,7 @@ export function InteractionView({
   commandText,
   pendingCommand,
   sessions,
+  llmDebug,
   onCommandChange,
   onCommandSubmit,
   snapshot,
@@ -122,10 +127,24 @@ export function InteractionView({
   commandText: string;
   pendingCommand: PendingCommand | null;
   sessions: VoiceSessionSummary[];
+  llmDebug?: LlmTurnDebug[];
   onCommandChange: (value: string) => void;
   onCommandSubmit: () => void;
   snapshot: DashboardSnapshot;
 }) {
+  // Mapa turn_id -> dados de busca web (fontes + métricas), vindos de /ai/llm/debug.
+  const searchByTurn = useMemo(() => {
+    const map = new Map<number, TurnSearch>();
+    for (const turn of llmDebug ?? []) {
+      const sources = turn.sources ?? [];
+      const search = turn.search ?? null;
+      if (sources.length > 0 || search) {
+        map.set(turn.turn_id, { sources, search });
+      }
+    }
+    return map;
+  }, [llmDebug]);
+
   const conversation = useMemo(() => {
     const complete = sessions
       .filter((session) => session.transcript || session.reply)
@@ -229,6 +248,7 @@ export function InteractionView({
                       meta={session.intent_name || session.route || session.outcome}
                       metrics={formatTurnMetrics(session)}
                       text={session.reply}
+                      search={session.turn_id != null ? searchByTurn.get(session.turn_id) : undefined}
                     />
                   )}
                 </div>
@@ -290,12 +310,14 @@ function ChatMessage({
   meta,
   metrics,
   text,
+  search,
 }: {
   icon: "user" | "robot";
   label: string;
   meta?: string | null;
   metrics?: string | null;
   text: string;
+  search?: TurnSearch;
 }) {
   const isUser = icon === "user";
   const Icon = isUser ? UserRound : Bot;
@@ -326,6 +348,9 @@ function ChatMessage({
             <p className="w-fit whitespace-pre-wrap rounded-lg bg-black/[0.18] px-3 py-2 text-left text-sm leading-6 text-slate-200">
               {text}
             </p>
+            {search && (search.sources.length > 0 || search.search) && (
+              <SearchSources search={search} />
+            )}
             {metrics && (
               <p className="mt-1.5 text-left text-[10px] text-slate-500">
                 {metrics}
@@ -336,6 +361,68 @@ function ChatMessage({
       </div>
     </article>
   );
+}
+
+function SearchSources({ search }: { search: TurnSearch }) {
+  const { sources, search: meta } = search;
+  return (
+    <div className="mt-2 rounded-lg border border-white/10 bg-black/[0.12] px-3 py-2">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+        <Globe size={12} className="text-blue-300" />
+        Pesquisa na web
+        {formatSearchMeta(meta) && (
+          <span className="font-normal normal-case tracking-normal text-slate-500">
+            · {formatSearchMeta(meta)}
+          </span>
+        )}
+      </div>
+      {sources.length > 0 && (
+        <ol className="grid gap-1.5">
+          {sources.map((src, i) => (
+            <li key={src.url || i} className="grid grid-cols-[1.1rem_1fr] gap-1.5 text-xs">
+              <span className="pt-0.5 text-right font-mono text-[10px] text-slate-500">
+                {i + 1}.
+              </span>
+              <div className="min-w-0">
+                <a
+                  href={src.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-medium text-sky-300 hover:text-sky-200 hover:underline"
+                  title={src.url}
+                >
+                  <span className="truncate">{src.title || src.source || src.url}</span>
+                  <ExternalLink size={11} className="shrink-0 opacity-70" />
+                </a>
+                <div className="flex flex-wrap items-center gap-x-2 text-[10px] text-slate-500">
+                  {src.source && <span>{src.source}</span>}
+                  {src.published && <span>· {src.published}</span>}
+                  {src.score != null && <span>· relevância {Math.round(src.score * 100)}%</span>}
+                </div>
+                {src.snippet && (
+                  <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-400">
+                    {src.snippet}
+                  </p>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function formatSearchMeta(meta: SearchMeta | null): string | null {
+  if (!meta) return null;
+  const parts: string[] = [];
+  if (meta.mode && meta.mode !== "auto") parts.push(meta.mode);
+  if (meta.depth) parts.push(meta.depth);
+  if (meta.result_count != null) {
+    parts.push(`${meta.result_count} resultado${meta.result_count === 1 ? "" : "s"}`);
+  }
+  if (meta.cached) parts.push("cache");
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 function formatTurnMetrics(session: VoiceSessionSummary): string | null {

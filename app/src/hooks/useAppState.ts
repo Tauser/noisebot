@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  AppData, DashboardSnapshot, DevData, DevicePersona, RoutineItem,
+  AppData, DashboardSnapshot, DevData, DevicePersona, LlmTurnDebug, RoutineItem,
   createAgendaItem, defaultAppData, defaultDevicePersona,
-  deleteAgendaItem, loadAppData, loadDevData, loadDevicePersona,
+  deleteAgendaItem, fetchLlmDebug, loadAppData, loadDevData, loadDevicePersona,
   loadSnapshot, resetMetrics, restartServer, saveBasicSettings,
   saveDevicePersona, sendDebugTranscript, setFollowupEnabled,
   startAudioProcessorBridge, startAudioProcessorShadow,
@@ -120,6 +120,7 @@ export function useAppState() {
   const [devicePersona, setDevicePersona] = useState<DevicePersona>(defaultDevicePersona);
   const [profileDraft, setProfileDraft] = useState(defaultDevicePersona.user);
   const [devData, setDevData] = useState<DevData>(defaultDevData);
+  const [llmDebug, setLlmDebug] = useState<LlmTurnDebug[]>([]);
   const [volume, setVolume] = useState(defaultAppData.settings.volume);
   const [leds, setLeds] = useState(defaultAppData.settings.led_brightness);
   const [followupOverride, setFollowupOverride] = useState<boolean | null>(null);
@@ -158,12 +159,13 @@ export function useAppState() {
   const refreshAll = async () => {
     setRefreshing(true);
     try {
-      const [nextSnapshot, nextData, nextDevData] = await Promise.all([
-        loadSnapshot(), loadAppData(), safeLoadDevData(),
+      const [nextSnapshot, nextData, nextDevData, nextLlmDebug] = await Promise.all([
+        loadSnapshot(), loadAppData(), safeLoadDevData(), fetchLlmDebug(),
       ]);
       const nextPersona = await safeLoadDevicePersona();
       setSnapshot(withRoutine(nextSnapshot, nextData));
       setDevData(nextDevData);
+      setLlmDebug(nextLlmDebug);
       setDevicePersona(nextPersona);
       const ctx = contextRef.current;
       applyAppData(nextData, !editableContext(ctx.mode, ctx.userSection, ctx.devSection));
@@ -178,12 +180,14 @@ export function useAppState() {
   useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
-      const [nextSnapshot, nextData, nextDevData, nextPersona] = await Promise.all([
+      const [nextSnapshot, nextData, nextDevData, nextPersona, nextLlmDebug] = await Promise.all([
         loadSnapshot(), loadAppData(), safeLoadDevData(), safeLoadDevicePersona(),
+        fetchLlmDebug(),
       ]);
       if (!cancelled) {
         setSnapshot(withRoutine(nextSnapshot, nextData));
         setDevData(nextDevData);
+        setLlmDebug(nextLlmDebug);
         setDevicePersona(nextPersona);
         const ctx = contextRef.current;
         applyAppData(nextData, !editableContext(ctx.mode, ctx.userSection, ctx.devSection));
@@ -474,7 +478,7 @@ export function useAppState() {
     mode, userSection, devSection,
     setAppMode, setUserSection, setDevSection,
     // data
-    snapshot, appData, devicePersona, profileDraft, devData,
+    snapshot, appData, devicePersona, profileDraft, devData, llmDebug,
     // controls
     volume, leds, opsToken, now,
     // setters
