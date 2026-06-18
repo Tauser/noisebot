@@ -241,12 +241,12 @@ Ajuste fino por env (todas opcionais; defaults entre colchetes):
 ### Interações multimodais do dashboard
 
 `POST /api/interactions` é o canal autenticado do agente no dashboard. Aceita
-texto e um anexo: imagem JPEG/PNG/WebP de até 5 MB ou documento PDF/DOCX/TXT de
-até 10 MB. O anexo é validado pelo conteúdo, mantido apenas em memória e
-processado no server; bytes, caminhos e conteúdo bruto nunca atravessam o bridge
-para o firmware. Os 12 anexos mais recentes ficam disponíveis ao chat por até
-30 minutos em cache de memória, via GET autenticado; nunca são persistidos em
-disco.
+texto e um anexo: imagem JPEG/PNG/WebP de até 5 MB, documento PDF/DOCX/TXT de
+até 10 MB ou áudio WAV/MP3/M4A/OGG/FLAC/WebM de até 20 MB. O anexo é validado
+pelo conteúdo, mantido apenas em memória e processado no server; bytes, caminhos
+e conteúdo bruto nunca atravessam o bridge para o firmware. Os 12 anexos mais
+recentes ficam disponíveis ao chat por até 30 minutos em cache de memória, via
+GET autenticado; nunca são persistidos em disco.
 
 - `response_mode=dashboard`: resposta detalhada somente na interface; não envia
   expressão, texto, TTS nem eventos de sessão ao firmware e não ocupa a FSM do
@@ -263,11 +263,14 @@ disco.
   janela inteira e produzir respostas de um único token.
 - Pedidos gerais de resumo distribuem o orçamento entre o início, meio e fim do
   documento em vez de preencher o contexto apenas com as primeiras páginas.
+- Áudio do dashboard é decodificado tecnicamente para WAV mono 16 kHz e
+  transcrito pelo endpoint multimodal do modelo Ollama configurado, sem usar o
+  Whisper do pipeline de voz. Áudios de até 30 minutos são divididos em blocos
+  de cinco minutos e recebem citações por intervalo temporal. Isso é
+  server-only e não altera Voice Audio v2, Opus, wake, STT do robô ou firmware.
 - Pesquisa web também pode ser usada no modo dashboard sem acionar o firmware.
 - Contexto extraído de anexos é dado externo não confiável e não pode fornecer
   instruções ao agente.
-- Áudio deve reutilizar esse endpoint e a mesma fronteira de isolamento quando
-  for implementado.
 
 ---
 

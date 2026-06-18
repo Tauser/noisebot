@@ -141,8 +141,8 @@ validação de tipo de conteúdo e isolamento contra prompt injection.
 | ~~1~~ | ~~Anexos de imagem~~ | **CONCLUÍDO** — imagem enviada, exibida e analisada sem chegar ao firmware |
 | ~~2~~ | ~~Modo “só dashboard”~~ | **CONCLUÍDO** — tarefa silenciosa sem TTS, movimento ou sessão no robô |
 | ~~3~~ | ~~Documentos com citações~~ | **CONCLUÍDO** — PDF, DOCX e TXT respondidos com marcadores rastreáveis |
-| 4 | **Áudio e transcrição — próximo passo** | Áudio enviado, transcrito e resumido com decisões e tarefas |
-| 5 | Biblioteca local/RAG | Coleções locais indexadas, pesquisáveis e removíveis |
+| ~~4~~ | ~~Áudio e transcrição~~ | **CONCLUÍDO** — áudio transcrito pela LLM local com intervalos temporais |
+| 5 | **Biblioteca local/RAG — próximo passo** | Coleções locais indexadas, pesquisáveis e removíveis |
 | 6 | Pesquisa profunda | Relatório web seguro, comparativo e citado |
 | 7 | Projetos, memória e automações | Contextos isolados, memória revisável e rotinas locais |
 
@@ -223,10 +223,27 @@ Validação:
 | Pesquisa web no modo dashboard | **Concluído** |
 | Modo “resumir para o robô” | **Planejado** |
 | PDF, DOCX e TXT com citações | **Concluído** |
-| Áudio enviado e transcrição | **Próximo passo** |
-| Biblioteca local/RAG | **Planejado** |
+| Áudio enviado e transcrição | **Concluído** |
+| Biblioteca local/RAG | **Próximo passo** |
 | Leitura profunda de páginas | **Planejado; depende das proteções de segurança** |
 | Projetos, memória revisável e automações | **Planejado; ferramentas locais básicas já existem** |
+
+## Terceiro Ciclo Multimodal — Áudio
+
+Concluído em 2026-06-18:
+
+- upload de WAV, MP3, M4A, OGG, FLAC e WebM de até 20 MB;
+- decodificação técnica local para WAV mono 16 kHz;
+- transcrição pelo endpoint multimodal do modelo configurado no Ollama;
+- nenhum uso de Whisper nesse fluxo do dashboard;
+- segmentação de áudios de até 30 minutos em blocos de cinco minutos;
+- citações por intervalo temporal;
+- resumo e análise pelo agente isolado do dashboard;
+- arquivo apenas no cache autenticado em memória;
+- nenhum áudio ou texto bruto enviado ao firmware.
+
+Este ciclo não modifica o pipeline de voz do robô. Voice Audio v2, Opus,
+wake word e STT conversacional permanecem intactos.
 
 ## Critérios Gerais de Aceite
 
