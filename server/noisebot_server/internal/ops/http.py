@@ -63,6 +63,8 @@ log = logging.getLogger(__name__)
 _INTERACTION_IMAGE_MAX_BYTES = 5_000_000
 _INTERACTION_REQUEST_MAX_BYTES = 6 * 1024 * 1024
 _INTERACTION_RESPONSE_MODES = {"dashboard", "robot"}
+_INTERACTION_ATTACHMENT_TTL_S = 30 * 60
+_INTERACTION_ATTACHMENT_MAX_ITEMS = 12
 
 
 class OpsHttpServer:
@@ -98,6 +100,7 @@ class OpsHttpServer:
         self._agenda_client = FirmwareAgendaClient.from_config(app._config)
         self._firmware_diag_client = FirmwareDiagClient.from_config(app._config)
         self._vision_client = VisionClient.from_config(app._config)
+        self._interaction_attachments: dict[int, tuple[float, str, str, bytes]] = {}
         self._t_start = time.monotonic()
         self._runner: web.AppRunner | None = None
         self._web_app = self._build_app()
@@ -122,6 +125,10 @@ class OpsHttpServer:
         wa.router.add_post("/ai/metrics/reset", self._post_metrics_reset)
         wa.router.add_get("/api/release/voice-check", self._get_release_voice_check)
         wa.router.add_post("/api/interactions", self._post_interaction)
+        wa.router.add_get(
+            "/api/interactions/{turn_id}/attachment",
+            self._get_interaction_attachment,
+        )
         wa.router.add_post("/debug/transcript", self._post_debug_transcript)
         wa.router.add_post("/debug/voice-turn", self._post_debug_voice_turn)
         wa.router.add_get("/api/app/state", self._get_app_state)
@@ -1137,6 +1144,13 @@ class OpsHttpServer:
                 attachment_name=image_name if image_bytes else "",
                 attachment_type=image_type,
             ))
+        if image_bytes:
+            self._store_interaction_attachment(
+                turn_id,
+                image_name,
+                image_type,
+                image_bytes,
+            )
         log.info(
             "Interacao dashboard turn_id=%d mode=%s image=%s bytes=%d declared=%s",
             turn_id,
@@ -1157,6 +1171,65 @@ class OpsHttpServer:
                 "size": len(image_bytes),
             } if image_bytes else None,
         ))
+
+    async def _get_interaction_attachment(self, request: web.Request) -> web.Response:
+        self._require_token(request)
+        turn_id = _safe_turn_id(request.match_info.get("turn_id"))
+        attachment = self._load_interaction_attachment(turn_id)
+        if attachment is None:
+            return _json(error_response("anexo não encontrado ou expirado"), status=404)
+        name, media_type, payload = attachment
+        return web.Response(
+            body=payload,
+            content_type=media_type,
+            headers={
+                "Cache-Control": "private, max-age=300",
+                "Content-Disposition": f'inline; filename="{name}"',
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    def _store_interaction_attachment(
+        self,
+        turn_id: int,
+        name: str,
+        media_type: str,
+        payload: bytes,
+    ) -> None:
+        now = time.monotonic()
+        self._prune_interaction_attachments(now)
+        while (
+            len(self._interaction_attachments) >= _INTERACTION_ATTACHMENT_MAX_ITEMS
+            and turn_id not in self._interaction_attachments
+        ):
+            oldest = next(iter(self._interaction_attachments))
+            self._interaction_attachments.pop(oldest, None)
+        self._interaction_attachments[turn_id] = (
+            now + _INTERACTION_ATTACHMENT_TTL_S,
+            name,
+            media_type,
+            payload,
+        )
+
+    def _load_interaction_attachment(
+        self,
+        turn_id: int,
+    ) -> tuple[str, str, bytes] | None:
+        self._prune_interaction_attachments(time.monotonic())
+        item = self._interaction_attachments.get(turn_id)
+        if item is None:
+            return None
+        _, name, media_type, payload = item
+        return name, media_type, payload
+
+    def _prune_interaction_attachments(self, now: float) -> None:
+        expired = [
+            turn_id
+            for turn_id, (expiry, _, _, _) in self._interaction_attachments.items()
+            if now >= expiry
+        ]
+        for turn_id in expired:
+            self._interaction_attachments.pop(turn_id, None)
 
     async def _post_debug_voice_turn(self, request: web.Request) -> web.Response:
         self._require_token(request)

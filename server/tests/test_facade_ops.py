@@ -109,6 +109,7 @@ async def test_dashboard_interaction_endpoint_runs_isolated_agent(monkeypatch) -
     server = http.OpsHttpServer.__new__(http.OpsHttpServer)
     server._app = type("App", (), {"_orchestrator": Orchestrator()})()
     server._require_token = lambda request: None
+    server._interaction_attachments = {}
     monkeypatch.setattr(
         http,
         "_describe_interaction_image",
@@ -123,6 +124,47 @@ async def test_dashboard_interaction_endpoint_runs_isolated_agent(monkeypatch) -
     assert payload["reply"] == "A tela mostra o painel do NoiseBot."
     assert captured["attachment_context"] == "Uma tela mostra o painel do NoiseBot."
     assert captured["attachment_type"] == "image/jpeg"
+    stored = server._load_interaction_attachment(payload["turn_id"])
+    assert stored == ("captura.jpg", "image/jpeg", b"\xff\xd8\xffimagem")
+
+
+async def test_dashboard_interaction_attachment_get_is_authenticated_and_inline() -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+
+    class Request:
+        match_info = {"turn_id": "42"}
+
+    server = http.OpsHttpServer.__new__(http.OpsHttpServer)
+    server._interaction_attachments = {}
+    checked: list[object] = []
+    server._require_token = lambda request: checked.append(request)
+    server._store_interaction_attachment(
+        42,
+        "captura.png",
+        "image/png",
+        b"\x89PNG\r\n\x1a\nimagem",
+    )
+
+    response = await server._get_interaction_attachment(Request())
+
+    assert checked
+    assert response.status == 200
+    assert response.content_type == "image/png"
+    assert response.body == b"\x89PNG\r\n\x1a\nimagem"
+    assert response.headers["Content-Disposition"] == 'inline; filename="captura.png"'
+
+
+def test_dashboard_interaction_attachment_cache_is_bounded(monkeypatch) -> None:
+    http = importlib.import_module("noisebot_server.internal.ops.http")
+    server = http.OpsHttpServer.__new__(http.OpsHttpServer)
+    server._interaction_attachments = {}
+    monkeypatch.setattr(http, "_INTERACTION_ATTACHMENT_MAX_ITEMS", 2)
+
+    server._store_interaction_attachment(1, "1.jpg", "image/jpeg", b"1")
+    server._store_interaction_attachment(2, "2.jpg", "image/jpeg", b"2")
+    server._store_interaction_attachment(3, "3.jpg", "image/jpeg", b"3")
+
+    assert list(server._interaction_attachments) == [2, 3]
 
 
 async def test_dashboard_interaction_robot_mode_uses_voice_event_bus() -> None:

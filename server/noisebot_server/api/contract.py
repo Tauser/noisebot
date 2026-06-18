@@ -88,6 +88,14 @@ def default_app_contract() -> tuple[AppEndpoint, ...]:
             implemented=True,
         ),
         AppEndpoint(
+            domain="agent",
+            method="GET",
+            path="/api/interactions/{turn_id}/attachment",
+            purpose="Read a temporary dashboard interaction attachment.",
+            auth_required=True,
+            implemented=True,
+        ),
+        AppEndpoint(
             domain="ops",
             method="POST",
             path="/debug/transcript",
