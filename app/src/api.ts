@@ -69,6 +69,10 @@ export type VoiceSessionSummary = {
   outcome?: string;
   route?: string;
   state?: string;
+  origin?: string | null;
+  response_mode?: string | null;
+  attachment_name?: string | null;
+  attachment_type?: string | null;
   discard_reason?: string | null;
   voice_end_reason?: string | null;
   total_samples?: number;
@@ -494,6 +498,39 @@ export async function sendDebugTranscript(
     throw new Error(body.error ?? `server ${response.status}`);
   }
   return response.json() as Promise<{ turn_id: number }>;
+}
+
+export type InteractionResponseMode = "dashboard" | "robot";
+
+export async function sendInteraction(
+  text: string,
+  token: string,
+  responseMode: InteractionResponseMode,
+  image?: File | null,
+): Promise<{
+  turn_id: number;
+  reply?: string | null;
+  attachment?: { name: string; type: string; size: number } | null;
+}> {
+  const form = new FormData();
+  form.set("text", text);
+  form.set("response_mode", responseMode);
+  if (image) form.set("image", image, image.name);
+
+  const response = await fetch(`${SERVER_URL}/api/interactions`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` },
+    body: form,
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error ?? `server ${response.status}`);
+  }
+  return response.json() as Promise<{
+    turn_id: number;
+    reply?: string | null;
+    attachment?: { name: string; type: string; size: number } | null;
+  }>;
 }
 
 export async function createAgendaItem(

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot, CircleAlert, ExternalLink, Globe, SendHorizontal, UserRound,
+  Bot, CircleAlert, ExternalLink, Globe, Image as ImageIcon, Paperclip,
+  SendHorizontal, UserRound, Volume2, X,
 } from "lucide-react";
 import type {
-  DashboardSnapshot, LlmTurnDebug, SearchMeta, SearchSource, VoiceSessionSummary,
+  DashboardSnapshot, InteractionResponseMode, LlmTurnDebug, SearchMeta,
+  SearchSource, VoiceSessionSummary,
 } from "../api";
 import type { PendingCommand } from "../hooks/useAppState";
 import { cardClass, inputClass } from "../lib/classes";
@@ -129,9 +131,30 @@ export function InteractionView({
   sessions: VoiceSessionSummary[];
   llmDebug?: LlmTurnDebug[];
   onCommandChange: (value: string) => void;
-  onCommandSubmit: () => void;
+  onCommandSubmit: (
+    image?: File | null,
+    responseMode?: InteractionResponseMode,
+  ) => void | Promise<void>;
   snapshot: DashboardSnapshot;
 }) {
+  const [image, setImage] = useState<File | null>(null);
+  const [imageError, setImageError] = useState("");
+  const [responseMode, setResponseMode] = useState<InteractionResponseMode>("dashboard");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imagePreviewUrl = useMemo(
+    () => image ? URL.createObjectURL(image) : "",
+    [image],
+  );
+  useEffect(() => () => {
+    if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+  }, [imagePreviewUrl]);
+  useEffect(() => {
+    if (commandStatus === "preparando") {
+      setImage(null);
+      setImageError("");
+    }
+  }, [commandStatus]);
+
   // Mapa turn_id -> dados de busca web (fontes + métricas), vindos de /ai/llm/debug.
   const searchByTurn = useMemo(() => {
     const map = new Map<number, TurnSearch>();
@@ -159,6 +182,8 @@ export function InteractionView({
         turn_id: pendingCommand.turnId,
         transcript: pendingCommand.text,
         outcome: "processing",
+        attachment_name: pendingCommand.attachmentName,
+        response_mode: pendingCommand.responseMode,
       });
     }
 
@@ -181,8 +206,25 @@ export function InteractionView({
     });
   }, [conversation.length, commandStatus]);
 
-  const isSending = commandStatus === "enviando" || commandStatus === "preparando";
+  const isSending = (
+    commandStatus === "enviando"
+    || commandStatus === "analisando imagem"
+    || commandStatus === "preparando"
+  );
   const hasError = commandStatus !== "pronto" && !isSending;
+  const selectImage = (file?: File) => {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setImageError("Use uma imagem JPEG, PNG ou WebP.");
+      return;
+    }
+    if (file.size > 5_000_000) {
+      setImageError("A imagem deve ter no máximo 5 MB.");
+      return;
+    }
+    setImage(file);
+    setImageError("");
+  };
 
   return (
     <div className="grid gap-4">
@@ -239,6 +281,8 @@ export function InteractionView({
                       label="Você"
                       meta={session.turn_id ? `Turno ${session.turn_id}` : undefined}
                       text={session.transcript}
+                      attachmentName={session.attachment_name}
+                      responseMode={session.response_mode}
                     />
                   )}
                   {session.reply && (
@@ -258,6 +302,8 @@ export function InteractionView({
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
                   {commandStatus === "enviando"
                     ? "Enviando sua mensagem"
+                    : commandStatus === "analisando imagem"
+                      ? "Analisando a imagem no servidor local"
                     : "Aguarde, estou preparando sua resposta"}
                 </div>
               )}
@@ -266,30 +312,92 @@ export function InteractionView({
         </div>
 
         <footer className="border-t border-white/10 bg-black/[0.08] p-3 sm:p-4">
+          {image && (
+            <div className="mx-auto mb-2 flex max-w-3xl items-center gap-3 rounded-lg border border-white/10 bg-black/[0.14] p-2">
+              <img
+                alt="Pré-visualização do anexo"
+                className="h-14 w-14 rounded-md object-cover"
+                src={imagePreviewUrl}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold text-slate-200">{image.name}</p>
+                <p className="text-[11px] text-slate-500">
+                  {(image.size / 1024).toFixed(0)} KB · processada somente no servidor
+                </p>
+              </div>
+              <button
+                aria-label="Remover imagem"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-white/5 hover:text-white"
+                onClick={() => setImage(null)}
+                type="button"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          )}
           <form
-            className="mx-auto flex max-w-3xl items-center gap-2"
+            className="mx-auto grid max-w-3xl gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              void onCommandSubmit();
+              void onCommandSubmit(image, responseMode);
             }}
           >
-            <input
-              aria-label="Mensagem para o NoiseBot"
-              className={`${inputClass} min-w-0 flex-1`}
-              onChange={(e) => onCommandChange(e.target.value)}
-              placeholder={`Mensagem para ${snapshot.robot.name}`}
-              value={commandText}
-            />
-            <button
-              aria-label="Enviar mensagem"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={!commandText.trim() || commandStatus === "enviando"}
-              title="Enviar mensagem"
-              type="submit"
-            >
-              <SendHorizontal size={18} />
-            </button>
+            <div className="flex items-center gap-2">
+              <input
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  selectImage(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+                ref={fileInputRef}
+                type="file"
+              />
+              <button
+                aria-label="Anexar imagem"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/[0.12] text-slate-400 transition hover:text-white"
+                onClick={() => fileInputRef.current?.click()}
+                title="Anexar imagem"
+                type="button"
+              >
+                <Paperclip size={17} />
+              </button>
+              <input
+                aria-label="Mensagem para o NoiseBot"
+                className={`${inputClass} min-w-0 flex-1`}
+                onChange={(e) => onCommandChange(e.target.value)}
+                placeholder={image ? "O que deseja saber sobre a imagem?" : `Mensagem para ${snapshot.robot.name}`}
+                value={commandText}
+              />
+              <button
+                aria-label="Enviar mensagem"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={(!commandText.trim() && !image) || isSending}
+                title="Enviar mensagem"
+                type="submit"
+              >
+                <SendHorizontal size={18} />
+              </button>
+            </div>
+            <label className="flex w-fit items-center gap-2 text-[11px] text-slate-400">
+              {responseMode === "dashboard" ? <ImageIcon size={13} /> : <Volume2 size={13} />}
+              Resposta
+              <select
+                className="rounded-md border border-white/10 bg-[#182036] px-2 py-1 text-[11px] text-slate-200 outline-none"
+                onChange={(e) => setResponseMode(e.target.value as InteractionResponseMode)}
+                value={responseMode}
+              >
+                <option value="dashboard">somente no dashboard</option>
+                <option value="robot">dashboard e robô</option>
+              </select>
+            </label>
           </form>
+          {imageError && (
+            <p className="mx-auto mt-2 flex max-w-3xl items-center gap-2 text-xs text-amber-300">
+              <CircleAlert size={14} />
+              {imageError}
+            </p>
+          )}
           {hasError && (
             <p className="mx-auto mt-2 flex max-w-3xl items-center gap-2 text-xs text-rose-300">
               <CircleAlert size={14} />
@@ -311,6 +419,8 @@ function ChatMessage({
   metrics,
   text,
   search,
+  attachmentName,
+  responseMode,
 }: {
   icon: "user" | "robot";
   label: string;
@@ -318,6 +428,8 @@ function ChatMessage({
   metrics?: string | null;
   text: string;
   search?: TurnSearch;
+  attachmentName?: string | null;
+  responseMode?: string | null;
 }) {
   const isUser = icon === "user";
   const Icon = isUser ? UserRound : Bot;
@@ -340,9 +452,20 @@ function ChatMessage({
           {meta && <span className="text-[10px] text-slate-500">{meta}</span>}
         </div>
         {isUser ? (
-          <p className="inline-block whitespace-pre-wrap rounded-lg bg-blue-600 px-3 py-2 text-left text-sm leading-6 text-white">
-            {text}
-          </p>
+          <div className="inline-grid gap-1.5 text-left">
+            {attachmentName && (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-500/20 px-2 py-1 text-[11px] text-blue-100">
+                <ImageIcon size={12} />
+                {attachmentName}
+              </span>
+            )}
+            <p className="whitespace-pre-wrap rounded-lg bg-blue-600 px-3 py-2 text-sm leading-6 text-white">
+              {text}
+            </p>
+            {responseMode === "dashboard" && (
+              <span className="text-right text-[10px] text-slate-500">resposta silenciosa</span>
+            )}
+          </div>
         ) : (
           <>
             <p className="w-fit whitespace-pre-wrap rounded-lg bg-black/[0.18] px-3 py-2 text-left text-sm leading-6 text-slate-200">

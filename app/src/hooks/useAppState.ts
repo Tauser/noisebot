@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  AppData, DashboardSnapshot, DevData, DevicePersona, LlmTurnDebug, RoutineItem,
+  AppData, DashboardSnapshot, DevData, DevicePersona, InteractionResponseMode,
+  LlmTurnDebug, RoutineItem,
   createAgendaItem, defaultAppData, defaultDevicePersona,
   deleteAgendaItem, fetchLlmDebug, loadAppData, loadDevData, loadDevicePersona,
   loadSnapshot, resetMetrics, restartServer, saveBasicSettings,
-  saveDevicePersona, sendDebugTranscript, setFollowupEnabled,
+  saveDevicePersona, sendInteraction, setFollowupEnabled,
   startAudioProcessorBridge, startAudioProcessorShadow,
   stopAudioProcessorBridge, stopAudioProcessorShadow, updateAgendaItem,
 } from "../api";
@@ -17,6 +18,8 @@ export type PendingCommand = {
   turnId: number;
   text: string;
   startedAt: number;
+  attachmentName?: string;
+  responseMode?: InteractionResponseMode;
 };
 
 const initialSnapshot: DashboardSnapshot = {
@@ -410,18 +413,24 @@ export function useAppState() {
 
   // --- Interaction ---
 
-  const submitCommand = async () => {
+  const submitCommand = async (
+    image?: File | null,
+    responseMode: InteractionResponseMode = "dashboard",
+  ) => {
     const text = commandText.trim();
     const token = requireToken("command");
-    if (!text || !token) return;
-    setCommandStatus("enviando");
+    if ((!text && !image) || !token) return;
+    const prompt = text || "Analise esta imagem.";
+    setCommandStatus(image ? "analisando imagem" : "enviando");
     try {
-      const result = await sendDebugTranscript(text, token);
+      const result = await sendInteraction(prompt, token, responseMode, image);
       setCommandText("");
       setPendingCommand({
         turnId: result.turn_id,
-        text,
+        text: prompt,
         startedAt: Date.now(),
+        attachmentName: result.attachment?.name,
+        responseMode,
       });
       setCommandStatus("preparando");
       window.setTimeout(() => void refreshAll(), 800);
