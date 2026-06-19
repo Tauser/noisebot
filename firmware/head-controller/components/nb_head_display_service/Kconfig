@@ -8,4 +8,13 @@ menu "NoiseBot head display"
             LovyanGFX and physical display GPIO remain deferred until the DM2
             hardware gate.
 
+    config NB_HEAD_DISPLAY_HW_ENABLED
+        bool "Enable physical ST7789 display on head"
+        depends on NB_HEAD_DISPLAY_ENABLED
+        default n
+        help
+            Initializes LovyanGFX on SPI2 using GPIO47 SCLK, GPIO21 MOSI and
+            GPIO45 DC. Enable only after the DM2 electrical gate. The regular
+            DM2 semantic profile keeps this disabled.
+
 endmenu

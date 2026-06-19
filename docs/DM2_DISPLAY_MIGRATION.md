@@ -52,6 +52,36 @@ o próximo gate.
 Resultado DM2.1: **aprovado para rota semântica ponta a ponta**. Isso não
 aprova ainda o display físico nem a paridade visual.
 
+## DM2.2 — HAL físico preparado
+
+- LovyanGFX movido para `firmware/shared/components/LovyanGFX`, evitando duas
+  cópias durante o fallback main/head;
+- HAL ST7789 exclusivo do head em `nb_head_display_hal`;
+- SPI2 a 60 MHz: GPIO47 SCLK, GPIO21 MOSI e GPIO45 DC;
+- CS em GND, reset por software e sem backlight controlável;
+- render mínimo sem framebuffer ou alocação dinâmica no caminho de frame;
+- telemetria de hardware, erros e PSRAM livre;
+- headroom mínimo de 300 KB validado antes da inicialização;
+- flag física separada `CONFIG_NB_HEAD_DISPLAY_HW_ENABLED`.
+
+O perfil `build-dm2` continua sem tocar no painel. O primeiro teste elétrico e
+visual usa exclusivamente `build-dm2-hw`.
+
+### Gate de bancada DM2.2
+
+1. Manter a main no perfil `build-dm2`.
+2. Gravar somente o head com `build-dm2-hw`.
+3. Reiniciar a main para reenviar o snapshot semântico.
+4. Confirmar no head:
+   - log `ST7789 pronto`;
+   - telemetria `hw=1/0`;
+   - PSRAM livre maior ou igual a 300 KB;
+   - cena simples visível e estável.
+5. Observar por 30 minutos: zero corrupção, erro de hardware ou impacto no
+   enlace.
+6. Em qualquer anomalia, gravar novamente o perfil semântico `build-dm2`, que
+   não inicializa o painel.
+
 ## Ordem de implementação
 
 1. Fechar DM1: soak, E5 e E6.
@@ -88,10 +118,9 @@ aprova ainda o display físico nem a paridade visual.
 - reboot isolado do head restaura snapshot sem piscar estado incorreto;
 - desconexão do head mantém main operacional e fallback coerente.
 
-## Fora deste scaffold
+## Fora do corte DM2.2
 
-- inicialização física do ST7789;
-- movimentação do submódulo LovyanGFX;
 - touch do display;
 - preview de câmera;
+- paridade completa do render legado;
 - remoção do render local no main.

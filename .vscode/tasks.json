@@ -165,6 +165,21 @@
       "problemMatcher": []
     },
     {
+      "label": "DM2: build head display físico",
+      "type": "shell",
+      "command": "idf.py",
+      "args": [
+        "-B", "build-dm2-hw",
+        "-D", "SDKCONFIG=sdkconfig.dm2-hw",
+        "-D", "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.dm2-hw.defaults",
+        "build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/firmware/head-controller"
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
       "label": "Firmware: fullclean main-controller",
       "type": "shell",
       "command": "idf.py",

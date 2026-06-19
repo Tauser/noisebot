@@ -1,10 +1,12 @@
 idf_component_register(
-    SRCS "nb_head_display_service.c"
+    SRCS "nb_head_display_hal.cpp"
     INCLUDE_DIRS "."
     REQUIRES
         esp_common
+        esp_psram
         log
-        nb_head_display_hal
+        LovyanGFX
+        nb_head_hal
         nb_inter_mcu_protocol
 )
 

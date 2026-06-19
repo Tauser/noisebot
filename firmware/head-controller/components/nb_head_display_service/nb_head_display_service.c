@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "nb_head_display_hal.h"
 
 #ifndef CONFIG_NB_HEAD_DISPLAY_ENABLED
 #define CONFIG_NB_HEAD_DISPLAY_ENABLED 0
@@ -20,7 +21,18 @@ esp_err_t nb_head_display_service_init(void)
         return ESP_ERR_NOT_SUPPORTED;
     }
 
-    ESP_LOGI(TAG, "DM2 display semantic receiver enabled; hardware deferred");
+    const esp_err_t hw_err = nb_head_display_hal_init();
+    if (hw_err == ESP_OK) {
+        s_status.hardware_ready = true;
+        ESP_LOGI(TAG, "DM2 display semantic receiver + ST7789 enabled");
+    } else if (hw_err == ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGI(TAG,
+                 "DM2 display semantic receiver enabled; hardware deferred");
+    } else {
+        ++s_status.hardware_errors;
+        ESP_LOGE(TAG, "ST7789 init failed: %s", esp_err_to_name(hw_err));
+        return hw_err;
+    }
     return ESP_OK;
 }
 
@@ -48,7 +60,17 @@ esp_err_t nb_head_display_service_apply(const void *payload, uint16_t length)
         return ESP_OK;
     }
 
-    memcpy(&s_status.scene, payload, sizeof(s_status.scene));
+    if (s_status.hardware_ready) {
+        const esp_err_t hw_err = nb_head_display_hal_apply(command);
+        if (hw_err != ESP_OK) {
+            ++s_status.hardware_errors;
+            ESP_LOGE(TAG, "scene hardware apply failed: %s",
+                     esp_err_to_name(hw_err));
+            return hw_err;
+        }
+    }
+
+    memcpy(&s_status.scene, command, sizeof(s_status.scene));
     s_status.scene_valid = true;
     ++s_status.accepted;
     ESP_LOGI(TAG,
@@ -66,6 +88,7 @@ esp_err_t nb_head_display_service_apply(const void *payload, uint16_t length)
 void nb_head_display_service_get_status(nb_head_display_status_t *out)
 {
     if (out != NULL) {
+        s_status.spiram_free_bytes = nb_head_display_hal_spiram_free();
         *out = s_status;
     }
 }

@@ -13,6 +13,9 @@ typedef struct {
     uint32_t accepted;
     uint32_t rejected;
     uint32_t ignored;
+    uint32_t hardware_errors;
+    uint32_t spiram_free_bytes;
+    bool hardware_ready;
     nb_display_command_t scene;
 } nb_head_display_status_t;
 

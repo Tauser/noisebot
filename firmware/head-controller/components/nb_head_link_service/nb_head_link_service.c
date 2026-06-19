@@ -129,7 +129,8 @@ static void link_task(void *arg)
                      "telemetry state=%s tx=%lu rx=%lu invalid=%lu "
                      "retry=%lu timeout=%lu spi_to=%lu spi_err=%lu "
                      "hs=%lums ack_last/avg/max=%lu/%lu/%lums "
-                     "display=%lu/%lu/%lu gen=%lu",
+                     "display=%lu/%lu/%lu gen=%lu hw=%u/%lu "
+                     "spiram=%lu",
                      state_name(nb_link_engine_state(&s_engine)),
                      (unsigned long)stats->frames_tx,
                      (unsigned long)stats->frames_rx,
@@ -147,7 +148,10 @@ static void link_task(void *arg)
                      (unsigned long)display_status.ignored,
                      (unsigned long)(display_status.scene_valid
                                          ? display_status.scene.generation
-                                         : 0U));
+                                         : 0U),
+                     display_status.hardware_ready ? 1U : 0U,
+                     (unsigned long)display_status.hardware_errors,
+                     (unsigned long)display_status.spiram_free_bytes);
             last_telemetry_ms = now_ms;
         }
     }

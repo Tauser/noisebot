@@ -16,6 +16,7 @@ firmware/**/sdkconfig.bak-pre-*
 firmware/**/sdkconfig.dm1
 firmware/**/sdkconfig.e6
 firmware/**/sdkconfig.dm2
+firmware/**/sdkconfig.dm2-hw
 .idf_build_apps.json
 dependencies.lock
 managed_components/

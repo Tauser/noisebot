@@ -261,14 +261,6 @@ static void copy_text(char *dst, size_t dst_size, const char *src)
     dst[i] = '\0';
 }
 
-static void draw_speaker_icon(LGFX_Sprite *spr, int x, int y, uint16_t color)
-{
-    spr->fillRect(x, y + 10, 7, 14, color);
-    spr->fillTriangle(x + 7, y + 10, x + 19, y + 3, x + 19, y + 31, color);
-    spr->drawArc(x + 20, y + 17, 10, 8, 305, 55, color);
-    spr->drawArc(x + 20, y + 17, 17, 15, 305, 55, color);
-}
-
 static void draw_icon_mask(LGFX_Sprite *spr,
                            const nb_ui_overlay_icon_t *icon,
                            int x,

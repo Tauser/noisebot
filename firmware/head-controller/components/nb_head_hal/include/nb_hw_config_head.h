@@ -47,6 +47,9 @@
 #define NB_HEAD_PIN_DISP_DC          45
 #define NB_HEAD_PIN_DISP_CS          (-1)
 #define NB_HEAD_PIN_DISP_RST         (-1)
+#define NB_HEAD_DISP_SPI_FREQ_KHZ    60000
+#define NB_HEAD_DISP_WIDTH           240
+#define NB_HEAD_DISP_HEIGHT          320
 
 #define NB_HEAD_PIN_SD_CMD           38
 #define NB_HEAD_PIN_SD_CLK           39
@@ -63,5 +66,9 @@ _Static_assert(NB_HEAD_PIN_LINK_CS != NB_HEAD_PIN_HEAD_IRQ,
                "head link CS/IRQ conflict");
 _Static_assert(NB_HEAD_PIN_LINK_MISO != NB_HEAD_PIN_LINK_MOSI,
                "head link MISO/MOSI conflict");
+_Static_assert(NB_HEAD_PIN_DISP_MOSI != NB_HEAD_PIN_LINK_MOSI,
+               "head display/link MOSI conflict");
+_Static_assert(NB_HEAD_PIN_DISP_SCLK != NB_HEAD_PIN_LINK_SCLK,
+               "head display/link SCLK conflict");
 
 #endif /* NB_HW_CONFIG_HEAD_H */
