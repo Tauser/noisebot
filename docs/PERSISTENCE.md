@@ -82,6 +82,26 @@ sem IP configurado, ou indisponivel durante o boot. Quando o firmware responde,
 dashboard salva, `PUT /api/device/persona` grava primeiro no `app_state.json` e
 depois tenta aplicar no firmware.
 
+### Server — `conversations.sqlite3` (histórico conversacional)
+
+Conversas persistentes usam SQLite em
+`~/.noisebot-server/conversations.sqlite3`, com override por
+`NOISEBOT_CONVERSATIONS_DB_PATH`.
+
+O schema v1 foi iniciado em 2026-06-18 e mantém:
+
+- conversas separadas por usuário;
+- conversa ativa por usuário;
+- turnos com status `pending`, `complete`, `failed` ou `interrupted`;
+- mensagens ordenadas por sequência;
+- idempotência de requisições do dashboard;
+- cascata de exclusão;
+- migrations monotônicas.
+
+SQLite é a fonte de verdade operacional. A futura projeção para Obsidian será
+derivada e não substituirá o banco. O módulo é síncrono; chamadas feitas pelo
+event loop devem usar `asyncio.to_thread`.
+
 ### microSD
 
 Todos os dados com volume alto, append-only, ou que podem ser regenerados:

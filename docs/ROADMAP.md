@@ -10,10 +10,12 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 
 | Campo | Decisao |
 | --- | --- |
-| Foco do ciclo | Agenda local, status rail e organizacao de docs |
-| Trabalho principal agora | Agenda local (14.1), status rail (16.2) e limpeza documental (D.1) |
+| Foco do ciclo | Conversas persistentes e voz bilingue para estudos |
+| Trabalho principal agora | C0/V0: banco e contratos de conversa + baseline mensuravel do Whisper; agenda, status rail e limpeza documental continuam como frentes paralelas |
 | Direcao estrategica do server | Companheiro fisico + agente local privado; ver `docs/LOCAL_AGENT_PRODUCT_VISION.md` |
-| Ciclo multimodal | Imagens, documentos e audio com transcricao LLM concluidos; proximo passo e biblioteca local/RAG |
+| Continuidade de conversas | Plano seguro definido: SQLite como fonte de verdade + vault privado do Obsidian como projecao humana; ver `docs/CONVERSATION_CONTINUITY_PLAN.md` |
+| Voz para estudos | Primeiro teste em Whisper `medium/cpu/int8`; depois comparar com `large-v3/cuda/int8_float16`, usando o mesmo corpus; ver `docs/BILINGUAL_VOICE_STT_PLAN.md` |
+| Ciclo multimodal | Imagens, documentos e audio com transcricao LLM concluidos; conversas persistentes entram antes da biblioteca local/RAG |
 | Hardware que nao deve guiar trabalho agora | Servos, IMU, bateria |
 | Servos | Nao conectados; qualquer movimento continua bloqueado por `motion_safety` |
 | Camera | Pinos DVP preservados; preview e reconhecimento de face implementados via server |
@@ -43,9 +45,11 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | --- | --- | --- | --- |
 | ~~1~~ | ~~2.2A - Touch: sensibilidade e confiabilidade~~ | ~~Touch deixa de disparar ou falhar de forma imprevisivel~~ | `FEITO` |
 | ~~2~~ | ~~13.1 - Presence detection + face recognition~~ | ~~Camera como sensor de presenca, preview no display, reconhecimento de usuario~~ | `FEITO` |
-| 3 | 14.1 - Agenda local | Timers, alarmes e lembretes basicos funcionam de verdade | Criar, listar, disparar e cancelar itens locais |
-| 4 | 16.2 - Status rail invisivel e status rapido | Icones persistentes organizados pelo overlay, sem disputa com a face | Mic e camera simultaneos aparecem alinhados; status rapido exibe WiFi/hora/energia sob demanda |
-| 5 | D.1 - Limpeza de documentacao | Roadmap e docs centrais ficam legiveis e sem duplicacao obsoleta | Arquivos ativos apontam para fontes certas; historicos ficam fora do git |
+| 3 | C0-C2 - Conversas persistentes e continuidade | Historico sobrevive a restart e a LLM retoma a conversa certa com idioma apropriado | CRUD/paginacao/idempotencia aprovados; “vamos continuar” recupera o estudo sem misturar conversas |
+| 4 | V0-V3 - Whisper medido e conversa bilíngue | STT começa em `medium/cpu/int8`, usa idioma da conversa e o robô responde em inglês sem bloquear PT-BR | Corpus PT/EN mede CPU e depois CUDA; transcrição incerta é corrigível; guard respeita a conversa |
+| 5 | 14.1 - Agenda local | Timers, alarmes e lembretes basicos funcionam de verdade | Criar, listar, disparar e cancelar itens locais |
+| 6 | 16.2 - Status rail invisivel e status rapido | Icones persistentes organizados pelo overlay, sem disputa com a face | Mic e camera simultaneos aparecem alinhados; status rapido exibe WiFi/hora/energia sob demanda |
+| 7 | D.1 - Limpeza de documentacao | Roadmap e docs centrais ficam legiveis e sem duplicacao obsoleta | Arquivos ativos apontam para fontes certas; historicos ficam fora do git |
 
 ### P1 - Proximo
 
@@ -56,6 +60,8 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | 9.6 - WiFi service | Util como conveniencia, mas produto continua offline-first |
 | 12.x - Dashboard/observabilidade | Ajuda validar firmware, bridge e eventos sem depender de tentativa manual |
 | 15.x - Voice polish | Melhorias pontuais em feedback, erros e telemetria apos estabilizar base |
+| C3-C6 - Voz, Obsidian, progresso e backup | Entra apos o historico e o contexto persistente do dashboard estarem estaveis |
+| V4-V5 - TTS inglês e integração de estudos | Entra após STT/LLM bilíngues estarem medidos; preserva Piper PT-BR e Voice Audio v2 |
 
 ### P2 - Backlog
 
@@ -93,6 +99,8 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | Primeiro ciclo multimodal do dashboard | `FEITO` — JPEG/PNG/WebP ate 5 MB, previa, imagem no chat, ampliacao, cache autenticado em memoria (12 imagens/30 min), resposta silenciosa ou falada e isolamento total do firmware | `server/noisebot_server/internal/ops/http.py`, `app/`, `docs/LOCAL_AGENT_PRODUCT_VISION.md` |
 | Documentos no dashboard | `FEITO` — PDF/DOCX/TXT ate 10 MB, extracao local fora do event loop, selecao de trechos e citacoes por pagina/paragrafo/linhas; PDF escaneado sem OCR fica fora deste corte | `server/noisebot_server/internal/agent/document_extract.py`, `app/`, `docs/LOCAL_AGENT_PRODUCT_VISION.md` |
 | Audio no dashboard | `FEITO` — WAV/MP3/M4A/OGG/FLAC/WebM ate 20 MB, transcricao pelo modelo multimodal Ollama, blocos de 5 min e citacoes temporais; nao usa Whisper nem altera o firmware | `server/noisebot_server/internal/agent/audio_extract.py`, `app/`, `docs/LOCAL_AGENT_PRODUCT_VISION.md` |
+| Continuidade de conversas | `EM ANDAMENTO` — C0 possui schema SQLite v1, migrations, ConversationStore, idempotencia, paginacao e recuperacao de turnos; wiring/API/dashboard ainda pendentes | `server/noisebot_server/internal/conversations/`, `docs/CONVERSATION_CONTINUITY_PLAN.md` |
+| Plano de voz bilíngue e Whisper | `PLANEJADO` — corpus dourado PT/EN, WER/CER, STT contextual, retry sob baixa confiança, correção manual, LLM por idioma e TTS Piper roteado por voz | `docs/BILINGUAL_VOICE_STT_PLAN.md` |
 
 ## Etapas Ativas
 

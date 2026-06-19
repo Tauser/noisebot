@@ -142,9 +142,11 @@ validação de tipo de conteúdo e isolamento contra prompt injection.
 | ~~2~~ | ~~Modo “só dashboard”~~ | **CONCLUÍDO** — tarefa silenciosa sem TTS, movimento ou sessão no robô |
 | ~~3~~ | ~~Documentos com citações~~ | **CONCLUÍDO** — PDF, DOCX e TXT respondidos com marcadores rastreáveis |
 | ~~4~~ | ~~Áudio e transcrição~~ | **CONCLUÍDO** — áudio transcrito pela LLM local com intervalos temporais |
-| 5 | **Biblioteca local/RAG — próximo passo** | Coleções locais indexadas, pesquisáveis e removíveis |
-| 6 | Pesquisa profunda | Relatório web seguro, comparativo e citado |
-| 7 | Projetos, memória e automações | Contextos isolados, memória revisável e rotinas locais |
+| 5 | **Conversas persistentes e continuidade — próximo passo** | Histórico local durável, retomada por conversa e progresso de estudos |
+| 6 | **Voz bilíngue para estudos** | Whisper medido e corrigível; NoiseBot ouve e fala português/inglês por conversa |
+| 7 | Biblioteca local/RAG | Coleções locais indexadas, pesquisáveis e removíveis |
+| 8 | Pesquisa profunda | Relatório web seguro, comparativo e citado |
+| 9 | Projetos, memória e automações | Contextos isolados, memória revisável e rotinas locais |
 
 ## Primeiro Ciclo Multimodal — Concluído em 2026-06-18
 

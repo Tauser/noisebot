@@ -9,6 +9,8 @@ validacao. Use este indice para saber por onde comecar.
 | ------- | --- |
 | `PROJECT.md` | Visao de produto, principios e contexto geral. |
 | `LOCAL_AGENT_PRODUCT_VISION.md` | Direcao estrategica: companheiro fisico + agente local privado, capacidades e sequencia de entrega. |
+| `CONVERSATION_CONTINUITY_PLAN.md` | Plano seguro para historico persistente, continuidade de estudos, voz e exportacao para Obsidian. |
+| `BILINGUAL_VOICE_STT_PLAN.md` | Plano de qualidade do Whisper, transcricao corrigivel e conversacao falada em portugues/ingles. |
 | `ROADMAP.md` | Painel ativo: decisoes atuais, fila P0/P1/P2, feito consolidado e criterios de aceite. |
 | `ARCHITECTURE.md` | Arquitetura do firmware/server, camadas, event bus e tasks. |
 | `HARDWARE.md` | Mapa de hardware, pinos e restricoes fisicas. |

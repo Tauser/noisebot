@@ -200,6 +200,22 @@ Este é o documento de autoridade também para o server (ver SF-12 em
   espalhado pelos módulos.
 - Subprocessos: usar `asyncio.create_subprocess_exec` (nunca `shell=True`).
 
+### STT local
+
+- Perfil de avaliação atual: faster-whisper `medium`, `device=cpu`,
+  `compute_type=int8`, beam size 5.
+- Alvo posterior, condicionado ao baseline: `large-v3` em CUDA com
+  `int8_float16`.
+- Ao testar o alvo CUDA, não fazer fallback silencioso para CPU; falha CUDA
+  deixa STT indisponível com diagnóstico explícito, sem derrubar dashboard e
+  demais serviços.
+- Idioma do STT deve evoluir para política por conversa. Enquanto essa etapa
+  não estiver implementada, não confundir troca de modelo com suporte
+  bilíngue completo.
+- A RTX 4070 de 12 GB também hospeda o Ollama; a promoção para CUDA precisa validar
+  coexistência real, VRAM, latência e ausência de OOM.
+- Plano e gates: `docs/BILINGUAL_VOICE_STT_PLAN.md`.
+
 ### Secrets, tokens e rede
 
 - Secrets (API keys de LLM etc.) só via variáveis de ambiente, lidas no ponto
