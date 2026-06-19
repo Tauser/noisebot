@@ -24,6 +24,7 @@
 
 #define NB_E6_READY_TIMEOUT_MS 10000U
 #define NB_E6_READY_POLL_MS 20U
+#define NB_E6_ARM_DELAY_MS 5000U
 
 static const char *TAG = "nb_main";
 
@@ -47,6 +48,9 @@ void app_main(void)
             if (nb_main_link_service_state() != NB_LINK_STATE_READY) {
                 ESP_LOGE(TAG, "E6 probe abortado: enlace nao chegou a READY");
             } else {
+                ESP_LOGI(TAG, "E6 probe armado; HEAD_RESET em %u ms",
+                         (unsigned)NB_E6_ARM_DELAY_MS);
+                vTaskDelay(pdMS_TO_TICKS(NB_E6_ARM_DELAY_MS));
                 const esp_err_t first = nb_main_link_service_reset_head();
                 ESP_LOGI(TAG, "E6 primeiro HEAD_RESET: %s",
                          esp_err_to_name(first));

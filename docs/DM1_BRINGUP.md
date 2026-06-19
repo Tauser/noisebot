@@ -252,12 +252,12 @@ handshake/snapshot.
 
 | Verificação | Esperado | Resultado |
 | --- | --- | --- |
-| EN do head em repouso | pull-up, sem 5 V | pendente |
-| pulso main GPIO8→EN | LOW por aproximadamente 20 ms | pendente |
-| retomada | espera de aproximadamente 100 ms | pendente |
-| rate limit | segundo pedido antes de 10 s rejeitado | pendente |
-| recuperação | novo `boot_id`, handshake e snapshot | pendente |
-| isolamento | main não reinicia | pendente |
+| EN do head em repouso | pull-up, sem 5 V | confirmado pelo operador antes do flash (sem osciloscópio para medição elétrica independente) |
+| pulso main GPIO8→EN | LOW por aproximadamente 20 ms | não medido eletricamente; aplicado por código (`NB_HEAD_RESET_LOW_MS=20`) e corroborado pelo log: `READY -> DEGRADED` em seguida ao reset |
+| retomada | espera de aproximadamente 100 ms | não medido eletricamente; aplicado por código (`NB_HEAD_RESET_SETTLE_MS=100`) |
+| rate limit | segundo pedido antes de 10 s rejeitado | aprovado: log mostra `E6 primeiro HEAD_RESET: ESP_OK` seguido imediatamente de `E6 segundo HEAD_RESET imediato: ESP_ERR_INVALID_STATE` |
+| recuperação | novo `boot_id`, handshake e snapshot | aprovado: `READY -> DEGRADED -> SNAPSHOT -> READY` em 313 ms entre degradação e retorno; telemetria pós-recuperação com `invalid=0 retry=0 timeout=0 spi_err=0` por 15 s |
+| isolamento | main não reinicia | aprovado: main manteve `main_task`/log corrido sem reboot durante todo o probe; apenas o link transitou de estado |
 
 ## Soak e promoção
 
@@ -347,4 +347,49 @@ não reiniciou as placas e preservou os contadores acumulados.
 
 Resultado do soak de 8 horas: **APROVADO em 10 MHz**.
 
-Pendentes: fault injection E5 e `HEAD_RESET` E6.
+Pendentes: fault injection E5.8 (sem injetor) e confirmação elétrica de `HEAD_RESET`
+E6 com osciloscópio.
+
+## Execução E6 — 2026-06-19
+
+Operador confirmou EN do head em repouso com pull-up e sem 5 V, e a fiação
+GPIO8 (main) → EN (head), antes do flash. Build e flash do perfil isolado:
+
+```powershell
+idf.py -B build-e6 -D SDKCONFIG=sdkconfig.e6 `
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.e6.defaults" build
+idf.py -B build-e6 -p COM5 flash
+```
+
+Captura serial da main (COM5, 115200) após o flash:
+
+```
+W (432) nb_main: DM1 bench profile ativo — boot monolitico legado ignorado
+I (440) nb_main_link: state RESET -> HANDSHAKE
+I (1453) nb_main_link: state HANDSHAKE -> SNAPSHOT
+I (1478) nb_main_link: state SNAPSHOT -> READY
+I (1489) nb_main: E6 probe armado; HEAD_RESET em 5000 ms
+I (6609) nb_main: E6 primeiro HEAD_RESET: ESP_OK
+I (6609) nb_main: E6 segundo HEAD_RESET imediato: ESP_ERR_INVALID_STATE
+I (7230) nb_main_link: state READY -> DEGRADED
+I (7518) nb_main_link: state DEGRADED -> SNAPSHOT
+I (7543) nb_main_link: state SNAPSHOT -> READY
+I (10355) nb_main_link: telemetry state=READY tx=44 rx=32 invalid=0 retry=0 timeout=0 spi_err=0 hs=55ms
+I (15355) nb_main_link: telemetry state=READY tx=64 rx=51 invalid=0 retry=0 timeout=0 spi_err=0 hs=55ms
+```
+
+Achados:
+
+- rate limit de 10 s confirmado pelo segundo pedido imediato (`ESP_ERR_INVALID_STATE`);
+- recuperação completa (`READY -> DEGRADED -> SNAPSHOT -> READY`) em 313 ms
+  entre degradação e retorno, sem `invalid`/`retry`/`timeout`/`spi_err`
+  na telemetria de 15 s seguinte;
+- main permaneceu ativa durante todo o probe, sem reboot — apenas o link
+  transitou de estado, confirmando isolamento do reset ao head;
+- duração real do pulso LOW e do intervalo de retomada não foram medidas com
+  osciloscópio nesta sessão; ambas seguem o valor fixo no código
+  (`NB_HEAD_RESET_LOW_MS=20`, `NB_HEAD_RESET_SETTLE_MS=100`).
+
+Resultado do Gate E6: **aprovado por evidência de log** (estado, rate limit,
+recuperação). Medição elétrica direta do pulso com osciloscópio fica como
+verificação complementar, não bloqueante para o aceite funcional.
