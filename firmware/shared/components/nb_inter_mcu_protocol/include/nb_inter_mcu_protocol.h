@@ -14,6 +14,7 @@ extern "C" {
 #define NB_LINK_PROTOCOL_VERSION_MINOR 1U
 #define NB_LINK_MAX_PAYLOAD_BYTES      4096U
 #define NB_LINK_BULK_WINDOW_CHUNKS      4U
+#define NB_LINK_CHANNEL_COUNT           5U
 
 typedef enum {
     NB_LINK_CHANNEL_CONTROL = 0,
@@ -96,7 +97,61 @@ typedef struct __attribute__((packed)) {
     uint32_t source_sequence;
 } nb_link_event_timestamp_t;
 
+typedef enum {
+    NB_LINK_VALIDATE_OK = 0,
+    NB_LINK_VALIDATE_NULL,
+    NB_LINK_VALIDATE_TRUNCATED_HEADER,
+    NB_LINK_VALIDATE_BAD_MAGIC,
+    NB_LINK_VALIDATE_BAD_VERSION,
+    NB_LINK_VALIDATE_BAD_CHANNEL,
+    NB_LINK_VALIDATE_BAD_LENGTH,
+    NB_LINK_VALIDATE_BAD_HEADER_CRC,
+    NB_LINK_VALIDATE_TRUNCATED_PAYLOAD,
+    NB_LINK_VALIDATE_BAD_PAYLOAD_CRC,
+} nb_link_validate_result_t;
+
+typedef enum {
+    NB_LINK_SEQUENCE_NEW = 0,
+    NB_LINK_SEQUENCE_RETRY,
+    NB_LINK_SEQUENCE_STALE,
+    NB_LINK_SEQUENCE_NEW_BOOT,
+} nb_link_sequence_result_t;
+
+typedef struct {
+    uint32_t boot_id;
+    uint32_t last_sequence[NB_LINK_CHANNEL_COUNT];
+    bool seen[NB_LINK_CHANNEL_COUNT];
+    bool boot_id_valid;
+} nb_link_sequence_tracker_t;
+
+typedef struct {
+    uint16_t frame_credits;
+    uint32_t byte_credits;
+} nb_link_credit_state_t;
+
+uint16_t nb_link_crc16_ccitt(const void *data, size_t length);
+uint32_t nb_link_crc32_ieee(const void *data, size_t length);
+uint16_t nb_link_header_crc16(const nb_link_frame_header_t *header);
+void nb_link_frame_finalize(nb_link_frame_header_t *header,
+                            const void *payload);
 bool nb_link_header_is_valid(const nb_link_frame_header_t *header);
+nb_link_validate_result_t nb_link_frame_validate(const void *frame,
+                                                 size_t frame_length);
+
+void nb_link_sequence_tracker_reset(nb_link_sequence_tracker_t *tracker);
+nb_link_sequence_result_t nb_link_sequence_track(
+    nb_link_sequence_tracker_t *tracker,
+    uint32_t boot_id,
+    nb_link_channel_t channel,
+    uint32_t sequence);
+
+void nb_link_credit_set(nb_link_credit_state_t *state,
+                        uint16_t frame_credits,
+                        uint32_t byte_credits);
+bool nb_link_credit_try_consume(nb_link_credit_state_t *state,
+                                uint32_t payload_bytes);
+void nb_link_credit_release(nb_link_credit_state_t *state,
+                            uint32_t payload_bytes);
 
 #ifdef __cplusplus
 }

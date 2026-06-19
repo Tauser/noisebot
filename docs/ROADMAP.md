@@ -25,7 +25,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | TTS HTTP no firmware | Removido do roadmap ativo; duplicava o server/bridge atual |
 | Knowledge OS externo | Nao atualizar por enquanto, por decisao do usuario |
 | Maior risco atual | Roadmap acumular itens antigos e perder poder de decisao |
-| Migração dual-MCU | F0 estrutural concluída; alinhamento documental/contrato em fechamento antes da F1 |
+| Migração dual-MCU | DM0 concluída em software; DM1 físico bloqueado por bancada e recabeamento seguro |
 
 ## Como Ler
 
@@ -114,7 +114,7 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 
 | Fase técnica | Etapa do roadmap | Status | Saída |
 | --- | --- | --- | --- |
-| F0 estrutura/contrato | DM0 | `EM ANDAMENTO` | Dois builds, contrato comum e docs sem contradição |
+| F0 estrutura/contrato | DM0 | `FEITO` | Dois builds, contrato comum, CRC/sequence/créditos testados no host e docs alinhadas |
 | F1 enlace | DM1 | `PROXIMO` | SPI/IRQ/reset, heartbeat, créditos e fault injection |
 | F2 display | DM2 | `BACKLOG` | Display/render no head; fallback removível |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main |

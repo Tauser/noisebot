@@ -248,6 +248,10 @@ Nunca atualizar ambos sem uma versão intermediária compatível.
 - alinhar `CLAUDE.md`, hardware, persistência, arquitetura e roadmap;
 - fechar no contrato os tipos de poll, crédito, tempo e storage status.
 
+Status: **concluída em software**. O gate host cobre CRC-16/CRC-32, corrupção,
+truncamento, sequence idempotente, reboot/`boot_id`, wrap de sequence e
+créditos. Isso não autoriza conectar fisicamente o enlace.
+
 ### F1 — enlace
 
 - SPI, IRQ, reset, framing, CRC e heartbeat;

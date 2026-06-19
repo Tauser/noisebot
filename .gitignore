@@ -3,6 +3,7 @@ build/
 build_*/
 firmware/**/build/
 firmware/**/build_*/
+firmware/**/host_build/
 sdkconfig
 sdkconfig.old
 sdkconfig.bak-pre-*
