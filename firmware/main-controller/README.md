@@ -20,3 +20,7 @@ idf.py build
 
 Estado de migração: este projeto ainda mantém os serviços multimídia legados
 até o head-controller substituir cada capability com rollback comprovado.
+
+O adaptador SPI dual-MCU compila em `components/head_link_transport`, mas fica
+desabilitado por padrão (`CONFIG_NB_INTER_MCU_SPI_ENABLED=n`). Não habilitar
+antes dos gates elétricos de `docs/GPIO_DUAL_MCU.md`.

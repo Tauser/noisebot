@@ -5,6 +5,7 @@ idf_component_register(
         infra
         audio_service
         nb_hal
+        nb_main_hal
         driver
         freertos
         log

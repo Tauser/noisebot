@@ -1,0 +1,11 @@
+menu "NoiseBot inter-MCU SPI transport"
+
+    config NB_INTER_MCU_SPI_ENABLED
+        bool "Enable dual-MCU SPI transport on Freenove head"
+        default n
+        help
+            Keep disabled until audio, servo, robot LEDs and body touch are
+            physically moved to the Waveshare main and GPIO 1/2/14/41/42 are
+            confirmed high impedance on the head.
+
+endmenu

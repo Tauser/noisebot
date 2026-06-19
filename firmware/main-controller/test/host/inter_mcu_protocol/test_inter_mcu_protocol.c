@@ -1,4 +1,5 @@
 #include "nb_inter_mcu_protocol.h"
+#include "nb_link_wire.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -169,6 +170,34 @@ static void test_credits(void)
     TEST("credit_release_bytes", credits.byte_credits == 4096U);
 }
 
+static void test_wire_packet(void)
+{
+    test_frame_t source = make_frame();
+    const size_t source_size =
+        sizeof(source.header) + source.header.payload_length;
+    nb_link_wire_packet_t packet;
+    const void *frame = NULL;
+    size_t frame_length = 0U;
+
+    TEST("wire_pack",
+         nb_link_wire_pack(&packet, &source, source_size));
+    TEST("wire_unpack",
+         nb_link_wire_unpack(&packet, &frame, &frame_length));
+    TEST("wire_length", frame_length == source_size);
+    TEST("wire_content", memcmp(frame, &source, source_size) == 0);
+
+    packet.magic = 0U;
+    TEST("wire_bad_magic",
+         !nb_link_wire_unpack(&packet, &frame, &frame_length));
+    nb_link_wire_clear(&packet);
+    packet.reserved = 1U;
+    TEST("wire_reserved_rejected",
+         !nb_link_wire_unpack(&packet, &frame, &frame_length));
+    TEST("wire_oversize_rejected",
+         !nb_link_wire_pack(&packet, &source,
+                            NB_LINK_MAX_FRAME_BYTES + 1U));
+}
+
 int main(void)
 {
     test_crc_vectors();
@@ -177,6 +206,7 @@ int main(void)
     test_sequence_idempotency();
     test_sequence_wraparound();
     test_credits();
+    test_wire_packet();
 
     printf("%d/%d testes passaram\n", s_pass, s_pass + s_fail);
     return s_fail == 0 ? 0 : 1;

@@ -131,7 +131,8 @@ firmware/main-controller/components/
 firmware/head-controller/
 ├── main/                         # boot e composição do head
 └── components/                   # entram por DM1-DM5:
-    ├── link_server/              # SPI slave, IRQ, créditos e heartbeat
+    ├── nb_head_hal/              # pinout/capacidades da Freenove
+    ├── head_link_transport/      # SPI slave e HEAD_IRQ
     ├── display/                  # LovyanGFX/display HAL
     ├── render/                   # face, gaze visual e overlays
     ├── camera/                   # DVP, preview e captura sob demanda
@@ -141,6 +142,17 @@ firmware/head-controller/
 firmware/shared/components/
 └── nb_inter_mcu_protocol/        # framing e tipos C17 compartilhados
 ```
+
+Na implementação DM1, `head_link_transport` existe nos dois firmwares:
+
+- main: SPI2 master, `HEAD_IRQ` input e `HEAD_RESET` com rate limit;
+- head: SPI3 slave e `HEAD_IRQ` output;
+- `nb_link_engine` permanece C17 puro e recebe transporte por callback;
+- `nb_link_wire` define a transação física fixa e validada;
+- ambos os adaptadores ficam desabilitados por Kconfig até a bancada.
+
+O pinout alvo fica em componentes próprios (`nb_main_hal` e `nb_head_hal`), sem
+fazer o transporte depender do HAL monolítico legado.
 
 ### Perfil Offline-First
 

@@ -15,6 +15,10 @@ Responsabilidades finais:
 O scaffold inicial implementa somente boot, identidade e validação do contrato
 compartilhado. Hardware real entra em fases independentes e reversíveis.
 
+O adaptador SPI slave compila em `components/head_link_transport`, mas fica
+desabilitado por padrão (`CONFIG_NB_INTER_MCU_SPI_ENABLED=n`). O boot atual não
+inicializa os GPIOs do enlace.
+
 Build:
 
 ```powershell

@@ -7,5 +7,6 @@ idf_component_register(
         driver
         freertos
         log
+        nb_head_hal
         nb_inter_mcu_protocol
 )

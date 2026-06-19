@@ -2,6 +2,7 @@ add_executable(
     test_inter_mcu_protocol
     test_inter_mcu_protocol.c
     ../../../../shared/components/nb_inter_mcu_protocol/nb_inter_mcu_protocol.c
+    ../../../../shared/components/nb_inter_mcu_protocol/nb_link_wire.c
 )
 target_include_directories(
     test_inter_mcu_protocol

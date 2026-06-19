@@ -265,7 +265,14 @@ Status: **núcleo lógico em andamento**. A FSM C17 testável no host implementa
 `HELLO/HELLO_ACK`, snapshot confirmado, heartbeat, `READY/DEGRADED`,
 retransmissão idempotente, ACK, timeout explícito, prioridade de
 `CONTROL/EVENT` sobre `BULK` e aborto de pendências após novo `boot_id`.
-Adaptadores ESP-IDF de SPI/IRQ/reset e validação elétrica continuam pendentes.
+Wiring das tasks, ativação controlada e validação elétrica continuam pendentes.
+
+Adaptadores ESP-IDF master/slave já compilam atrás de
+`CONFIG_NB_INTER_MCU_SPI_ENABLED=n`. Eles usam uma transação física fixa de
+4.124 bytes, buffers DMA estáticos e fila DM1 limitada a frames de 256 bytes.
+Isso cobre controle, handshake e diagnóstico; BULK grande ainda não está
+liberado e receberá pool dedicado em DM5. Nenhum adaptador é inicializado no
+boot atual.
 
 ### F2 — display remoto
 

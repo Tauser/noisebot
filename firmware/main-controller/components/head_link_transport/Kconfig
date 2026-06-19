@@ -1,0 +1,11 @@
+menu "NoiseBot inter-MCU SPI transport"
+
+    config NB_INTER_MCU_SPI_ENABLED
+        bool "Enable dual-MCU SPI transport on Waveshare main"
+        default n
+        help
+            Keep disabled until the N32R16V board variant is confirmed in
+            bench, the Freenove legacy peripherals are rewired, and GPIO
+            1/2/14/41/42 on the head are proven high impedance.
+
+endmenu
