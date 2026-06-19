@@ -147,6 +147,7 @@ typedef struct {
     uint8_t handshake_retries;
     bool peer_boot_id_valid;
     uint32_t peer_boot_id;
+    uint32_t peer_capability_bits;
     uint8_t negotiated_minor;
     uint32_t tx_sequence[NB_LINK_CHANNEL_COUNT];
     nb_link_sequence_tracker_t rx_tracker;
@@ -183,6 +184,8 @@ bool nb_link_engine_send(nb_link_engine_t *engine,
 nb_link_state_t nb_link_engine_state(const nb_link_engine_t *engine);
 bool nb_link_engine_is_operational(const nb_link_engine_t *engine);
 const nb_link_engine_stats_t *nb_link_engine_stats(const nb_link_engine_t *engine);
+bool nb_link_engine_peer_has_capability(const nb_link_engine_t *engine,
+                                        uint32_t capability);
 
 /* Define a janela de créditos do canal BULK (reabastecida via CREDIT_UPDATE). */
 void nb_link_engine_set_bulk_credits(nb_link_engine_t *engine,

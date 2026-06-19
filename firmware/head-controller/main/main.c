@@ -5,6 +5,7 @@
 #include "nb_inter_mcu_protocol.h"
 #include "nb_hw_config_head.h"
 #include "nb_head_link_service.h"
+#include "nb_head_display_service.h"
 
 static const char *TAG = "nb_head";
 
@@ -23,6 +24,12 @@ void app_main(void)
              NB_HEAD_PIN_LINK_MOSI,
              NB_HEAD_PIN_LINK_MISO,
              NB_HEAD_PIN_HEAD_IRQ);
+
+    const esp_err_t display_err = nb_head_display_service_init();
+    if (display_err != ESP_OK && display_err != ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGE(TAG, "head display service init failed: %s",
+                 esp_err_to_name(display_err));
+    }
 
     const esp_err_t link_err = nb_head_link_service_init();
     if (link_err == ESP_ERR_NOT_SUPPORTED) {

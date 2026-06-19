@@ -1,14 +1,9 @@
 idf_component_register(
-    SRCS "nb_head_link_service.c"
+    SRCS "nb_head_display_service.c"
     INCLUDE_DIRS "."
     REQUIRES
-        esp_system
-        esp_timer
-        freertos
+        esp_common
         log
-        head_link_transport
-        nb_head_display_service
-        nb_head_hal
         nb_inter_mcu_protocol
 )
 

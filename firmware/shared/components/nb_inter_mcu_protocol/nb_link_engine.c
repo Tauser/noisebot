@@ -332,6 +332,7 @@ static void handle_control(nb_link_engine_t *e,
         }
         e->negotiated_minor = negotiate_minor(e, header->version_minor);
         adopt_peer_boot_id(e, hello.boot_id);
+        e->peer_capability_bits = hello.capability_bits;
         send_hello(e, NB_LINK_MSG_HELLO_ACK, NB_LINK_FLAG_RESPONSE);
         set_state(e, NB_LINK_STATE_SNAPSHOT);
         break;
@@ -350,6 +351,7 @@ static void handle_control(nb_link_engine_t *e,
         }
         e->negotiated_minor = negotiate_minor(e, header->version_minor);
         adopt_peer_boot_id(e, hello.boot_id);
+        e->peer_capability_bits = hello.capability_bits;
         e->handshake_retries = 0U;
         e->last_handshake_tx_ms = e->now_ms;
         set_state(e, NB_LINK_STATE_SNAPSHOT);
@@ -579,6 +581,14 @@ bool nb_link_engine_is_operational(const nb_link_engine_t *engine)
 const nb_link_engine_stats_t *nb_link_engine_stats(const nb_link_engine_t *engine)
 {
     return &engine->stats;
+}
+
+bool nb_link_engine_peer_has_capability(const nb_link_engine_t *engine,
+                                        uint32_t capability)
+{
+    return engine != NULL && engine->peer_boot_id_valid &&
+           capability != 0U &&
+           (engine->peer_capability_bits & capability) == capability;
 }
 
 void nb_link_engine_set_bulk_credits(nb_link_engine_t *engine,

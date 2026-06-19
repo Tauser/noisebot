@@ -8,7 +8,9 @@
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
+#include "nb_display_protocol.h"
 #include "nb_inter_mcu_protocol.h"
 #include "nb_main_spi_transport.h"
 #include "nb_task_config.h"
@@ -20,11 +22,13 @@
 #define NB_MAIN_LINK_LOOP_MS 5U
 #define NB_MAIN_LINK_POLL_MS 20U
 #define NB_MAIN_LINK_TELEMETRY_MS 5000U
+#define NB_MAIN_DISPLAY_QUEUE_DEPTH 8U
 
 static const char *TAG = "nb_main_link";
 static nb_link_engine_t s_engine;
 static bool s_initialized;
 static uint32_t s_spi_errors;
+static QueueHandle_t s_display_queue;
 
 static uint32_t monotonic_ms(void)
 {
@@ -98,6 +102,20 @@ static void link_task(void *arg)
         const uint32_t now_ms = monotonic_ms();
         nb_link_engine_tick(&s_engine, now_ms);
 
+        nb_display_command_t display_command;
+        while (xQueuePeek(s_display_queue, &display_command, 0U) == pdTRUE) {
+            if (!nb_link_engine_send(&s_engine,
+                                     NB_LINK_CHANNEL_CONTROL,
+                                     NB_LINK_MSG_DISPLAY_COMMAND,
+                                     &display_command,
+                                     sizeof(display_command))) {
+                ESP_LOGW(TAG,
+                         "display command preserved during link backpressure");
+                break;
+            }
+            (void)xQueueReceive(s_display_queue, &display_command, 0U);
+        }
+
         if (nb_main_spi_transport_head_irq_active() ||
             (uint32_t)(now_ms - last_poll_ms) >= NB_MAIN_LINK_POLL_MS) {
             const esp_err_t err = nb_main_spi_transport_poll();
@@ -149,6 +167,11 @@ esp_err_t nb_main_link_service_init(void)
     }
 
     memset(&s_engine, 0, sizeof(s_engine));
+    s_display_queue = xQueueCreate(NB_MAIN_DISPLAY_QUEUE_DEPTH,
+                                   sizeof(nb_display_command_t));
+    if (s_display_queue == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
     const nb_link_engine_config_t engine_config = {
         .role = NB_LINK_ROLE_MAIN,
         .boot_id = esp_random() | 1U,
@@ -172,6 +195,8 @@ esp_err_t nb_main_link_service_init(void)
     };
     esp_err_t err = nb_main_spi_transport_init(&transport_config);
     if (err != ESP_OK) {
+        vQueueDelete(s_display_queue);
+        s_display_queue = NULL;
         return err;
     }
 
@@ -187,6 +212,8 @@ esp_err_t nb_main_link_service_init(void)
     if (created != pdPASS) {
         s_initialized = false;
         (void)nb_main_spi_transport_deinit();
+        vQueueDelete(s_display_queue);
+        s_display_queue = NULL;
         return ESP_ERR_NO_MEM;
     }
 
@@ -198,4 +225,23 @@ nb_link_state_t nb_main_link_service_state(void)
 {
     return s_initialized ? nb_link_engine_state(&s_engine)
                          : NB_LINK_STATE_RESET;
+}
+
+esp_err_t nb_main_link_service_queue_display(
+    const nb_display_command_t *command)
+{
+    if (!nb_display_command_is_valid(command, sizeof(*command))) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_initialized || s_display_queue == NULL ||
+        nb_link_engine_state(&s_engine) != NB_LINK_STATE_READY) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!nb_link_engine_peer_has_capability(
+            &s_engine, NB_LINK_CAP_DISPLAY_SEMANTIC)) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    return xQueueSend(s_display_queue, command, 0U) == pdTRUE
+               ? ESP_OK
+               : ESP_ERR_TIMEOUT;
 }

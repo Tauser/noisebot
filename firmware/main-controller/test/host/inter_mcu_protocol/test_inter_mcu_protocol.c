@@ -1,4 +1,5 @@
 #include "nb_inter_mcu_protocol.h"
+#include "nb_display_protocol.h"
 #include "nb_link_wire.h"
 
 #include <stdio.h>
@@ -198,6 +199,40 @@ static void test_wire_packet(void)
                             NB_LINK_MAX_FRAME_BYTES + 1U));
 }
 
+static void test_display_command(void)
+{
+    nb_display_command_t command = {
+        .version = NB_DISPLAY_COMMAND_VERSION,
+        .opcode = NB_DISPLAY_OP_SET_SCENE,
+        .expression = 2U,
+        .brightness = 180U,
+        .gaze_x_milli = -250,
+        .gaze_y_milli = 400,
+        .overlay_flags = 0x0003U,
+        .reserved = 0U,
+        .generation = 7U,
+    };
+
+    TEST("display_valid",
+         nb_display_command_is_valid(&command, sizeof(command)));
+    TEST("display_null",
+         !nb_display_command_is_valid(NULL, sizeof(command)));
+    TEST("display_bad_size",
+         !nb_display_command_is_valid(&command, sizeof(command) - 1U));
+
+    command.version++;
+    TEST("display_bad_version",
+         !nb_display_command_is_valid(&command, sizeof(command)));
+    command.version = NB_DISPLAY_COMMAND_VERSION;
+    command.gaze_x_milli = NB_DISPLAY_GAZE_MAX + 1;
+    TEST("display_bad_gaze",
+         !nb_display_command_is_valid(&command, sizeof(command)));
+    command.gaze_x_milli = 0;
+    command.reserved = 1U;
+    TEST("display_reserved",
+         !nb_display_command_is_valid(&command, sizeof(command)));
+}
+
 int main(void)
 {
     test_crc_vectors();
@@ -207,6 +242,7 @@ int main(void)
     test_sequence_wraparound();
     test_credits();
     test_wire_packet();
+    test_display_command();
 
     printf("%d/%d testes passaram\n", s_pass, s_pass + s_fail);
     return s_fail == 0 ? 0 : 1;

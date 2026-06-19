@@ -198,6 +198,7 @@ static void fixture_init(fixture_t *fx, uint32_t main_boot, uint32_t head_boot)
         .boot_id = head_boot,
         .version_major = 1U,
         .version_minor = 1U,
+        .capability_bits = NB_LINK_CAP_DISPLAY_SEMANTIC,
         .transport = {.send = sim_send, .ctx = &fx->ep_b},
         .on_message = on_message,
         .on_tx_result = on_tx_result,
@@ -259,6 +260,12 @@ static void test_handshake(void)
          nb_link_engine_stats(&fx.main_e)->ready_transitions == 1U);
     TEST("head_ready_once",
          nb_link_engine_stats(&fx.head_e)->ready_transitions == 1U);
+    TEST("main_sees_head_display_capability",
+         nb_link_engine_peer_has_capability(
+             &fx.main_e, NB_LINK_CAP_DISPLAY_SEMANTIC));
+    TEST("head_does_not_invent_main_display_capability",
+         !nb_link_engine_peer_has_capability(
+             &fx.head_e, NB_LINK_CAP_DISPLAY_SEMANTIC));
 }
 
 static void test_heartbeat_keeps_alive(void)

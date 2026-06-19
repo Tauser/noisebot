@@ -8,6 +8,7 @@ idf_component_register(
         freertos
         log
         nb_head_hal
+        nb_head_display_service
         nb_head_link_service
         nb_inter_mcu_protocol
 )

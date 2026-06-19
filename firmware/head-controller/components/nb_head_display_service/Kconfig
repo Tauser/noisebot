@@ -1,0 +1,11 @@
+menu "NoiseBot head display"
+
+    config NB_HEAD_DISPLAY_ENABLED
+        bool "Enable DM2 head display service"
+        default n
+        help
+            Keep disabled while DM1 soak and fault injection are pending.
+            This enables only the semantic receiver scaffold. LovyanGFX and
+            physical display bring-up enter through the DM2 hardware gate.
+
+endmenu
