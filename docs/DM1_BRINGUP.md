@@ -252,8 +252,8 @@ handshake/snapshot.
 
 | Verificação | Esperado | Resultado |
 | --- | --- | --- |
-| EN do head em repouso | pull-up, sem 5 V | confirmado pelo operador antes do flash (sem osciloscópio para medição elétrica independente) |
-| pulso main GPIO8→EN | LOW por aproximadamente 20 ms | não medido eletricamente; aplicado por código (`NB_HEAD_RESET_LOW_MS=20`) e corroborado pelo log: `READY -> DEGRADED` em seguida ao reset |
+| EN do head em repouso | pull-up, sem 5 V | aprovado com FNIRSI 2C23T: aproximadamente 2,4–3,0 V em DC, sem presença de 5 V |
+| pulso main GPIO8→EN | LOW por aproximadamente 20 ms | aprovado eletricamente quanto à amplitude e retorno: onda quadrada observada de ~2,4 V para próximo de 0 V e volta; largura exata não congelada por cursor, valor de 20 ms permanece definido por `NB_HEAD_RESET_LOW_MS` |
 | retomada | espera de aproximadamente 100 ms | não medido eletricamente; aplicado por código (`NB_HEAD_RESET_SETTLE_MS=100`) |
 | rate limit | segundo pedido antes de 10 s rejeitado | aprovado: log mostra `E6 primeiro HEAD_RESET: ESP_OK` seguido imediatamente de `E6 segundo HEAD_RESET imediato: ESP_ERR_INVALID_STATE` |
 | recuperação | novo `boot_id`, handshake e snapshot | aprovado: `READY -> DEGRADED -> SNAPSHOT -> READY` em 313 ms entre degradação e retorno; telemetria pós-recuperação com `invalid=0 retry=0 timeout=0 spi_err=0` por 15 s |
@@ -386,10 +386,11 @@ Achados:
   na telemetria de 15 s seguinte;
 - main permaneceu ativa durante todo o probe, sem reboot — apenas o link
   transitou de estado, confirmando isolamento do reset ao head;
-- duração real do pulso LOW e do intervalo de retomada não foram medidas com
-  osciloscópio nesta sessão; ambas seguem o valor fixo no código
+- o FNIRSI 2C23T confirmou EN em aproximadamente 2,4–3,0 V e a transição
+  elétrica para próximo de 0 V com retorno. A largura exata não foi congelada
+  por cursor; o pulso e o settle seguem os valores fixos no código
   (`NB_HEAD_RESET_LOW_MS=20`, `NB_HEAD_RESET_SETTLE_MS=100`).
 
 Resultado do Gate E6: **aprovado por evidência de log** (estado, rate limit,
-recuperação). Medição elétrica direta do pulso com osciloscópio fica como
-verificação complementar, não bloqueante para o aceite funcional.
+recuperação) e por observação elétrica de amplitude/retorno. Medição por cursor
+da largura exata fica como verificação complementar, não bloqueante.
