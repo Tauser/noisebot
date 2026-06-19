@@ -607,6 +607,8 @@ static void test_peer_reboot_rehandshake(void)
          nb_link_engine_stats(&fx.head_e)->peer_reboots >= 1U);
     TEST("relinked_main", nb_link_engine_is_operational(&fx.main_e));
     TEST("relinked_head", nb_link_engine_is_operational(&fx.head_e));
+    TEST("main_reboot_recovery_metric_bounded",
+         nb_link_engine_stats(&fx.head_e)->handshake_last_ms <= 1000U);
 }
 
 static void test_head_reboot_rehandshake(void)

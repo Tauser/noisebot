@@ -214,7 +214,7 @@ Pré-condições:
 | E5.3 | SCLK ausente por 2 s | degrada e recupera `READY` | parcial: boot sem SCLK estável; após power-cycle e restauração, `READY`, erros=0; main 3.295 ms, head 237 ms |
 | E5.4 | IRQ ausente | polling mantém heartbeat/tráfego | aprovado: ambos `READY`, TX/RX crescente, erros=0 |
 | E5.5 | reset manual do head | novo `boot_id`, snapshot refeito | aprovado após correção: ambos `READY`, erros=0; telemetria de duração corrigida em seguida |
-| E5.6 | reset manual do main | novo `boot_id`, snapshot aceito | pendente |
+| E5.6 | reset manual do main | novo `boot_id`, snapshot aceito | aprovado: ambos `READY`, erros=0; telemetria de duração corrigida em seguida |
 | E5.7 | MISO ausente | timeout limitado, sem falsa conclusão | pendente |
 | E5.8 | bit flip controlado | `invalid` cresce, payload não entregue | adiado sem injetor |
 

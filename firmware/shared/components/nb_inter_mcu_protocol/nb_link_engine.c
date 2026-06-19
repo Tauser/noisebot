@@ -346,6 +346,9 @@ static void handle_control(nb_link_engine_t *e,
             ++e->stats.dropped_invalid;
             return;
         }
+        if (e->peer_boot_id_valid && e->peer_boot_id != hello.boot_id) {
+            e->handshake_start_ms = e->now_ms;
+        }
         e->negotiated_minor = negotiate_minor(e, header->version_minor);
         adopt_peer_boot_id(e, hello.boot_id);
         e->peer_capability_bits = hello.capability_bits;
