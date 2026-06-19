@@ -66,6 +66,7 @@
 #include "camera_service.h"
 #include "vision_service.h"
 #include "vision_preview_service.h"
+#include "nb_main_link_service.h"
 #include "esp_ota_ops.h"
 #include "nb_hw_config.h"
 #include "nb_config_keys.h"
@@ -1161,6 +1162,14 @@ static esp_err_t phase_services(void)
 
     /* Event bus já inicializado em PHASE_EARLY — disponível desde o boot. */
     esp_err_t err;
+
+    err = nb_main_link_service_init();
+    if (err == ESP_ERR_NOT_SUPPORTED) {
+        NB_LOGI(TAG, "enlace dual-MCU desabilitado por configuração");
+    } else if (err != ESP_OK) {
+        NB_LOGW(TAG, "nb_main_link_service_init falhou: %s — head degradado",
+                esp_err_to_name(err));
+    }
 
     if (s_status.safe_mode) {
         phase_skip(NB_BOOT_PHASE_SERVICES, "safe mode ativo — servicos de dominio pulados");

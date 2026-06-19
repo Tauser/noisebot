@@ -28,12 +28,14 @@ typedef struct {
 
 typedef struct {
     bool initialized;
+    bool tx_pending;
     spi_device_handle_t device;
     QueueHandle_t tx_queue;
     StaticQueue_t tx_queue_storage;
     uint8_t tx_queue_bytes[NB_MAIN_SPI_TX_QUEUE_DEPTH *
                            sizeof(nb_spi_tx_item_t)];
     nb_main_spi_transport_config_t config;
+    nb_spi_tx_item_t pending_tx;
     bool reset_seen;
     uint32_t last_reset_ms;
 } nb_main_spi_context_t;
@@ -157,9 +159,14 @@ esp_err_t nb_main_spi_transport_poll(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    nb_spi_tx_item_t item;
-    if (xQueueReceive(s_ctx.tx_queue, &item, 0U) == pdTRUE) {
-        if (!nb_link_wire_pack(&s_tx_packet, item.frame, item.length)) {
+    if (!s_ctx.tx_pending &&
+        xQueueReceive(s_ctx.tx_queue, &s_ctx.pending_tx, 0U) == pdTRUE) {
+        s_ctx.tx_pending = true;
+    }
+    if (s_ctx.tx_pending) {
+        if (!nb_link_wire_pack(&s_tx_packet,
+                               s_ctx.pending_tx.frame,
+                               s_ctx.pending_tx.length)) {
             return ESP_ERR_INVALID_SIZE;
         }
     } else {
@@ -176,6 +183,7 @@ esp_err_t nb_main_spi_transport_poll(void)
     if (err != ESP_OK) {
         return err;
     }
+    s_ctx.tx_pending = false;
 
     const void *frame = NULL;
     size_t frame_length = 0U;

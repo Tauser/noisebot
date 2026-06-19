@@ -23,11 +23,13 @@ typedef struct {
 
 typedef struct {
     bool initialized;
+    bool tx_pending;
     QueueHandle_t tx_queue;
     StaticQueue_t tx_queue_storage;
     uint8_t tx_queue_bytes[NB_HEAD_SPI_TX_QUEUE_DEPTH *
                            sizeof(nb_spi_tx_item_t)];
     nb_head_spi_transport_config_t config;
+    nb_spi_tx_item_t pending_tx;
 } nb_head_spi_context_t;
 
 static nb_head_spi_context_t s_ctx;
@@ -135,9 +137,14 @@ esp_err_t nb_head_spi_transport_service(TickType_t timeout_ticks)
         return ESP_ERR_INVALID_STATE;
     }
 
-    nb_spi_tx_item_t item;
-    if (xQueueReceive(s_ctx.tx_queue, &item, 0U) == pdTRUE) {
-        if (!nb_link_wire_pack(&s_tx_packet, item.frame, item.length)) {
+    if (!s_ctx.tx_pending &&
+        xQueueReceive(s_ctx.tx_queue, &s_ctx.pending_tx, 0U) == pdTRUE) {
+        s_ctx.tx_pending = true;
+    }
+    if (s_ctx.tx_pending) {
+        if (!nb_link_wire_pack(&s_tx_packet,
+                               s_ctx.pending_tx.frame,
+                               s_ctx.pending_tx.length)) {
             return ESP_ERR_INVALID_SIZE;
         }
     } else {
@@ -156,8 +163,9 @@ esp_err_t nb_head_spi_transport_service(TickType_t timeout_ticks)
     if (err != ESP_OK) {
         return err;
     }
+    s_ctx.tx_pending = false;
 
-    if (uxQueueMessagesWaiting(s_ctx.tx_queue) == 0U) {
+    if (!s_ctx.tx_pending && uxQueueMessagesWaiting(s_ctx.tx_queue) == 0U) {
         gpio_set_level(NB_HEAD_PIN_HEAD_IRQ, 0);
     }
 

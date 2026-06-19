@@ -11,6 +11,7 @@
  *  -----|------------------|------|--------|-------------------
  *   24  | wdog_task        |  0   |  2048  | watchdog_service
  *   23  | safety_task      |  1   |  4096  | motion_safety
+ *    9  | nb_main_link     |  0   |  4096  | nb_main_link_service
  *    8  | event_task       |  *   |  4096  | event_bus
  *    7  | nb_render_task   |  1   |  4096  | render_service
  *    7  | nb_push_task     |  1   |  4096  | render_service
@@ -40,6 +41,11 @@
 #define NB_TASK_SAFETY_PRIORITY   23U
 #define NB_TASK_SAFETY_STACK      4096U
 #define NB_TASK_SAFETY_CORE       1
+
+/* ── Inter-MCU link ──────────────────────────────────────────────────────── */
+#define NB_TASK_MAIN_LINK_PRIORITY 9U
+#define NB_TASK_MAIN_LINK_STACK    4096U
+#define NB_TASK_MAIN_LINK_CORE     0
 
 /* ── Event Bus dispatcher ────────────────────────────────────────────────── */
 #define NB_TASK_EVENT_PRIORITY    8U

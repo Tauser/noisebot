@@ -13,6 +13,7 @@ idf_component_register(
         "web_service.c"
         "web_ota.c"
         "bridge_service.c"
+        "nb_main_link_service.c"
         "boot_manager.c"
     INCLUDE_DIRS "."
     REQUIRES
@@ -73,6 +74,8 @@ idf_component_register(
         camera_service
         vision_service
         vision_preview_service
+        head_link_transport
+        nb_inter_mcu_protocol
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)
