@@ -269,6 +269,11 @@ As tasks Layer 2 de main/head já envolvem a FSM, executam polling/serviço SPI
 e preservam frames pendentes quando uma transação falha ou expira. Ativação
 controlada e validação elétrica continuam pendentes.
 
+A telemetria DM1 registra duração do handshake, RTT de ACK
+(`last/avg/max`), latência ponta a ponta incluindo retries, frames TX/RX,
+CRC/frame inválido, retries, timeouts e erros/timeouts do transporte. Main e
+head emitem um resumo a cada 5 segundos somente quando o enlace está habilitado.
+
 Adaptadores ESP-IDF master/slave já compilam atrás de
 `CONFIG_NB_INTER_MCU_SPI_ENABLED=n`. Eles usam uma transação física fixa de
 4.124 bytes, buffers DMA estáticos e fila DM1 limitada a frames de 256 bytes.

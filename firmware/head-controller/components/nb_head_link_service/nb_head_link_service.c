@@ -18,10 +18,13 @@
 #endif
 
 #define NB_HEAD_LINK_SERVICE_TIMEOUT_MS 20U
+#define NB_HEAD_LINK_TELEMETRY_MS 5000U
 
 static const char *TAG = "nb_head_link";
 static nb_link_engine_t s_engine;
 static bool s_initialized;
+static uint32_t s_spi_timeouts;
+static uint32_t s_spi_errors;
 
 static uint32_t monotonic_ms(void)
 {
@@ -85,15 +88,48 @@ static void on_tx_result(void *ctx,
 static void link_task(void *arg)
 {
     (void)arg;
+    uint32_t last_telemetry_ms = 0U;
     nb_link_engine_start(&s_engine, monotonic_ms());
 
     for (;;) {
-        nb_link_engine_tick(&s_engine, monotonic_ms());
+        const uint32_t now_ms = monotonic_ms();
+        nb_link_engine_tick(&s_engine, now_ms);
         const esp_err_t err = nb_head_spi_transport_service(
             pdMS_TO_TICKS(NB_HEAD_LINK_SERVICE_TIMEOUT_MS));
-        if (err != ESP_OK && err != ESP_ERR_TIMEOUT) {
+        if (err == ESP_ERR_TIMEOUT) {
+            ++s_spi_timeouts;
+        } else if (err != ESP_OK) {
+            ++s_spi_errors;
             ESP_LOGW(TAG, "SPI slave falhou: %s", esp_err_to_name(err));
             vTaskDelay(pdMS_TO_TICKS(5U));
+        }
+
+        if ((uint32_t)(now_ms - last_telemetry_ms) >=
+            NB_HEAD_LINK_TELEMETRY_MS) {
+            const nb_link_engine_stats_t *stats =
+                nb_link_engine_stats(&s_engine);
+            const uint32_t ack_avg_ms =
+                stats->ack_rtt_samples == 0U
+                    ? 0U
+                    : (uint32_t)(stats->ack_rtt_total_ms /
+                                 stats->ack_rtt_samples);
+            ESP_LOGI(TAG,
+                     "telemetry state=%s tx=%lu rx=%lu invalid=%lu "
+                     "retry=%lu timeout=%lu spi_to=%lu spi_err=%lu "
+                     "hs=%lums ack_last/avg/max=%lu/%lu/%lums",
+                     state_name(nb_link_engine_state(&s_engine)),
+                     (unsigned long)stats->frames_tx,
+                     (unsigned long)stats->frames_rx,
+                     (unsigned long)stats->dropped_invalid,
+                     (unsigned long)stats->ack_retries_tx,
+                     (unsigned long)stats->ack_timeouts,
+                     (unsigned long)s_spi_timeouts,
+                     (unsigned long)s_spi_errors,
+                     (unsigned long)stats->handshake_last_ms,
+                     (unsigned long)stats->ack_rtt_last_ms,
+                     (unsigned long)ack_avg_ms,
+                     (unsigned long)stats->ack_rtt_max_ms);
+            last_telemetry_ms = now_ms;
         }
     }
 }

@@ -115,7 +115,7 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 | Fase técnica | Etapa do roadmap | Status | Saída |
 | --- | --- | --- | --- |
 | F0 estrutura/contrato | DM0 | `FEITO` | Dois builds, contrato comum, CRC/sequence/créditos testados no host e docs alinhadas |
-| F1 enlace | DM1 | `EM ANDAMENTO` | FSM, tasks e adaptadores SPI protegidos por flag; faltam bancada e fault injection físico |
+| F1 enlace | DM1 | `EM ANDAMENTO` | FSM, tasks, telemetria e adaptadores protegidos por flag; faltam bancada e fault injection físico |
 | F2 display | DM2 | `BACKLOG` | Display/render no head; fallback removível |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main |
 | F4 câmera | DM4 | `BACKLOG` | DVP/preview no head, análise canônica no server |

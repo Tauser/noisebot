@@ -45,6 +45,16 @@ static void set_state(nb_link_engine_t *e, nb_link_state_t next)
         ++e->stats.ready_transitions;
         e->last_hb_tx_ms = e->now_ms;
         e->last_hb_rx_ms = e->now_ms;
+        if (prev == NB_LINK_STATE_SNAPSHOT ||
+            prev == NB_LINK_STATE_HANDSHAKE) {
+            const uint32_t duration_ms =
+                (uint32_t)(e->now_ms - e->handshake_start_ms);
+            e->stats.handshake_last_ms = duration_ms;
+            if (duration_ms > e->stats.handshake_max_ms) {
+                e->stats.handshake_max_ms = duration_ms;
+            }
+            ++e->stats.handshake_samples;
+        }
     }
     if (prev == NB_LINK_STATE_READY) {
         ++e->stats.link_drops;
@@ -230,6 +240,8 @@ static void pump_tx(nb_link_engine_t *e)
         if (slot->sent) {
             ++slot->retries;
             ++e->stats.ack_retries_tx;
+        } else {
+            slot->first_tx_ms = e->now_ms;
         }
         slot->sent = true;
         slot->last_tx_ms = e->now_ms;
@@ -257,6 +269,7 @@ void nb_link_engine_start(nb_link_engine_t *engine, uint32_t now_ms)
     engine->last_hb_rx_ms = now_ms;
     engine->last_hb_tx_ms = now_ms;
     engine->last_handshake_tx_ms = now_ms;
+    engine->handshake_start_ms = now_ms;
     engine->handshake_retries = 0U;
     set_state(engine, NB_LINK_STATE_HANDSHAKE);
     if (engine->cfg.role == NB_LINK_ROLE_MAIN) {
@@ -386,6 +399,20 @@ static void handle_control(nb_link_engine_t *e,
                     slot->channel == ack.channel &&
                     slot->message_type == ack.message_type &&
                     slot->sequence == ack.sequence) {
+                    const uint32_t rtt_ms =
+                        (uint32_t)(e->now_ms - slot->last_tx_ms);
+                    const uint32_t e2e_ms =
+                        (uint32_t)(e->now_ms - slot->first_tx_ms);
+                    e->stats.ack_rtt_last_ms = rtt_ms;
+                    e->stats.ack_rtt_total_ms += rtt_ms;
+                    if (rtt_ms > e->stats.ack_rtt_max_ms) {
+                        e->stats.ack_rtt_max_ms = rtt_ms;
+                    }
+                    e->stats.ack_e2e_last_ms = e2e_ms;
+                    if (e2e_ms > e->stats.ack_e2e_max_ms) {
+                        e->stats.ack_e2e_max_ms = e2e_ms;
+                    }
+                    ++e->stats.ack_rtt_samples;
                     complete_tx_slot(e, slot, NB_LINK_TX_ACKED);
                     ++e->stats.acked_tx;
                     return;
@@ -531,6 +558,7 @@ bool nb_link_engine_send(nb_link_engine_t *engine,
     slot->sent = false;
     slot->ack_required = true;
     slot->retries = 0U;
+    slot->first_tx_ms = 0U;
     slot->last_tx_ms = 0U;
     slot->used = true;
 

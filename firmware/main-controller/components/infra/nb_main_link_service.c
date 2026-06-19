@@ -19,10 +19,12 @@
 
 #define NB_MAIN_LINK_LOOP_MS 5U
 #define NB_MAIN_LINK_POLL_MS 20U
+#define NB_MAIN_LINK_TELEMETRY_MS 5000U
 
 static const char *TAG = "nb_main_link";
 static nb_link_engine_t s_engine;
 static bool s_initialized;
+static uint32_t s_spi_errors;
 
 static uint32_t monotonic_ms(void)
 {
@@ -88,6 +90,7 @@ static void link_task(void *arg)
     (void)arg;
     TickType_t last_wake = xTaskGetTickCount();
     uint32_t last_poll_ms = 0U;
+    uint32_t last_telemetry_ms = 0U;
 
     nb_link_engine_start(&s_engine, monotonic_ms());
 
@@ -99,9 +102,37 @@ static void link_task(void *arg)
             (uint32_t)(now_ms - last_poll_ms) >= NB_MAIN_LINK_POLL_MS) {
             const esp_err_t err = nb_main_spi_transport_poll();
             if (err != ESP_OK) {
+                ++s_spi_errors;
                 ESP_LOGW(TAG, "SPI poll falhou: %s", esp_err_to_name(err));
             }
             last_poll_ms = now_ms;
+        }
+
+        if ((uint32_t)(now_ms - last_telemetry_ms) >=
+            NB_MAIN_LINK_TELEMETRY_MS) {
+            const nb_link_engine_stats_t *stats =
+                nb_link_engine_stats(&s_engine);
+            const uint32_t ack_avg_ms =
+                stats->ack_rtt_samples == 0U
+                    ? 0U
+                    : (uint32_t)(stats->ack_rtt_total_ms /
+                                 stats->ack_rtt_samples);
+            ESP_LOGI(TAG,
+                     "telemetry state=%s tx=%lu rx=%lu invalid=%lu "
+                     "retry=%lu timeout=%lu spi_err=%lu hs=%lums "
+                     "ack_last/avg/max=%lu/%lu/%lums",
+                     state_name(nb_link_engine_state(&s_engine)),
+                     (unsigned long)stats->frames_tx,
+                     (unsigned long)stats->frames_rx,
+                     (unsigned long)stats->dropped_invalid,
+                     (unsigned long)stats->ack_retries_tx,
+                     (unsigned long)stats->ack_timeouts,
+                     (unsigned long)s_spi_errors,
+                     (unsigned long)stats->handshake_last_ms,
+                     (unsigned long)stats->ack_rtt_last_ms,
+                     (unsigned long)ack_avg_ms,
+                     (unsigned long)stats->ack_rtt_max_ms);
+            last_telemetry_ms = now_ms;
         }
 
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(NB_MAIN_LINK_LOOP_MS));

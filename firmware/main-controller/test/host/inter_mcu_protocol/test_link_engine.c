@@ -371,6 +371,36 @@ static void test_app_delivery_and_dedup(void)
          nb_link_engine_stats(&fx.head_e)->retries_rx >= 1U);
 }
 
+static void test_ack_latency_telemetry(void)
+{
+    fixture_t fx;
+    fixture_init(&fx, 21U, 22U);
+    fixture_start(&fx);
+
+    const uint8_t body = 0x42U;
+    TEST("latency_send_accepted",
+         nb_link_engine_send(&fx.main_e, NB_LINK_CHANNEL_CONTROL,
+                             NB_LINK_MSG_DISPLAY_COMMAND,
+                             &body, sizeof(body)));
+
+    sim_frame_t app;
+    TEST("latency_app_queued", fifo_pop(&fx.wire.to_b, &app));
+    nb_link_engine_on_frame(&fx.head_e, app.data, app.len);
+
+    fx.clock += 37U;
+    nb_link_engine_tick(&fx.main_e, fx.clock);
+    nb_link_engine_tick(&fx.head_e, fx.clock);
+    wire_step(&fx.wire, &fx.main_e, &fx.head_e);
+
+    const nb_link_engine_stats_t *stats =
+        nb_link_engine_stats(&fx.main_e);
+    TEST("ack_latency_sampled", stats->ack_rtt_samples == 1U);
+    TEST("ack_latency_last", stats->ack_rtt_last_ms == 37U);
+    TEST("ack_latency_max", stats->ack_rtt_max_ms == 37U);
+    TEST("ack_latency_total", stats->ack_rtt_total_ms == 37U);
+    TEST("ack_latency_e2e", stats->ack_e2e_last_ms == 37U);
+}
+
 static void test_lost_ack_retries_same_sequence(void)
 {
     fixture_t fx;
@@ -603,6 +633,7 @@ int main(void)
     test_snapshot_loss_retries_before_ready();
     test_timeout_then_recover();
     test_app_delivery_and_dedup();
+    test_ack_latency_telemetry();
     test_lost_ack_retries_same_sequence();
     test_pending_aborted_on_peer_reboot();
     test_ack_timeout_is_explicit();

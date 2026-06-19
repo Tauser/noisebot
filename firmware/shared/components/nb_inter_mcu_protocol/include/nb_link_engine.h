@@ -111,6 +111,15 @@ typedef struct {
     uint32_t ready_transitions; /* quantas vezes chegou a READY     */
     uint32_t link_drops;        /* READY → DEGRADED/RESET           */
     uint32_t peer_reboots;      /* novo boot_id do peer detectado   */
+    uint32_t handshake_last_ms; /* HANDSHAKE → primeiro READY       */
+    uint32_t handshake_max_ms;
+    uint32_t handshake_samples;
+    uint32_t ack_rtt_last_ms;   /* RTT desde a tentativa confirmada */
+    uint32_t ack_rtt_max_ms;
+    uint64_t ack_rtt_total_ms;
+    uint32_t ack_rtt_samples;
+    uint32_t ack_e2e_last_ms;   /* envio inicial → ACK, inclui retry */
+    uint32_t ack_e2e_max_ms;
 } nb_link_engine_stats_t;
 
 typedef struct {
@@ -122,6 +131,7 @@ typedef struct {
     uint16_t message_type;
     uint16_t length; /* header + payload */
     uint32_t sequence;
+    uint32_t first_tx_ms;
     uint32_t last_tx_ms;
     uint8_t bytes[sizeof(nb_link_frame_header_t) + NB_LINK_ENGINE_SLOT_BYTES];
 } nb_link_tx_slot_t;
@@ -133,6 +143,7 @@ typedef struct {
     uint32_t last_hb_tx_ms;
     uint32_t last_hb_rx_ms;
     uint32_t last_handshake_tx_ms;
+    uint32_t handshake_start_ms;
     uint8_t handshake_retries;
     bool peer_boot_id_valid;
     uint32_t peer_boot_id;
