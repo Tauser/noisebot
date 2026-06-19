@@ -313,7 +313,28 @@ Checkpoint após observação do operador por mais de 30 minutos:
 - head: handshake 40 ms, `invalid=0`, `timeout=0`, `spi_to=0`, `spi_err=0`;
 - TX/RX voltou a crescer nos dois sentidos.
 
-Este checkpoint valida boot e recuperação limpa, mas não substitui o soak
-instrumentado de 8 horas.
+Este checkpoint valida boot e recuperação limpa.
 
-Pendentes: fault injection E5, `HEAD_RESET` E6 e soak instrumentado de 8 horas.
+Soak instrumentado encerrado após aproximadamente 8 h 02 min, ainda em
+10 MHz e com `HEAD_RESET` desconectado:
+
+| Métrica | Main | Head |
+| --- | ---: | ---: |
+| Estado | `READY` | `READY` |
+| Uptime observado | 28.940 s | 28.938 s |
+| TX | 115.761 | 109.192 |
+| RX | 109.199 | 115.752 |
+| Frames inválidos | 0 | 0 |
+| Retries | 0 | 0 |
+| ACK timeout | 0 | 0 |
+| Erros SPI | 0 | 0 |
+| Timeout SPI slave | — | 0 |
+| Handshake inicial | 535 ms | 40 ms |
+
+Durante o período, o operador confirmou estabilidade e ausência de aquecimento,
+travamentos, resets visíveis ou comportamento anormal. A captura serial final
+não reiniciou as placas e preservou os contadores acumulados.
+
+Resultado do soak de 8 horas: **APROVADO em 10 MHz**.
+
+Pendentes: fault injection E5 e `HEAD_RESET` E6.
