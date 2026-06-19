@@ -86,9 +86,6 @@ tools/piper/
 
 # Documentação gerada
 docs/_build/
-docs/archive/
-docs/history/
-docs/modules/
 
 # microSD content (assets não versionados)
 assets/*

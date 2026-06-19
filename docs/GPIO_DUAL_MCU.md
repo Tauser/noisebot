@@ -91,8 +91,8 @@ Direção: `→` saída do MCU, `←` entrada no MCU, `↔` bidirecional, `A` an
 
 Áudio INMP441 (RX) + MAX98357A (TX) em **I2S0 full-duplex**, 16 kHz; BCLK/WS
 compartilhados. Servo a 1 Mbps via FE-TTLinker (TX/RX separados lado MCU). O
-servo **sai do par USB (19/20)** — encerra a contenção WiFi/USB-PHY de
-`GPIO_REORGANIZATION.md`.
+servo **sai do par USB (19/20)** — encerrando a antiga contenção entre
+WiFi e USB-PHY.
 
 GPIOs realmente disponíveis (limpos) na main: **1, 6, 9, 15, 16** sobrando após a
 alocação acima — folga confortável para expansão.

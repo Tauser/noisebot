@@ -95,7 +95,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | Feedback visual de voice/bridge | `FEITO` como base de produto | `firmware/main-controller/components/services/ui_overlay_service/` |
 | Camera + presence + face recognition | `FEITO` — preview no display a 5 FPS, gaze tracking, enrollment e reconhecimento via Ollama, away detection | `firmware/main-controller/components/services/vision_preview_service/`, `server/noisebot_server/internal/vision/` |
 | Perfil local de usuario/persona | `FEITO` — cadastro declarativo + reconhecimento biometrico via camera; ativa perfil automaticamente ao identificar usuario | `firmware/main-controller/components/persona/persona_service/`, `server/noisebot_server/internal/vision/{analysis,client,face_loop}.py` |
-| Organizacao documental inicial | `EM ANDAMENTO` | `docs/README.md`, `docs/PROJECT_CLEANUP_AUDIT.md` |
+| Organizacao documental inicial | `FEITO` | `docs/README.md` |
 | Touch sensibilidade e confiabilidade (2.2A) | `FEITO` — default 100 (20% threshold) calibrado com log real: proximidade fraw ~6%, toque real 130–200% acima do baseline; TAP_HOLD_MIN_MS=100ms como backup; legados 5/8/10/15/25 migrados; toque não silencia áudio | `firmware/main-controller/components/services/touch_service/`, `firmware/main-controller/components/infra/nb_config_keys.h` |
 | LLM tools pipeline (Fases 9–15) | `FEITO` — two-step loop, gateway, sandbox, tools (set_expression, show_message, list_agenda, create_timer, create_reminder, analyze_vision, remember_fact, forget_fact, recall_user_preferences), memória longa persistida | `server/noisebot_server/internal/agent/tools/` |
 | Primeiro ciclo multimodal do dashboard | `FEITO` — JPEG/PNG/WebP ate 5 MB, previa, imagem no chat, ampliacao, cache autenticado em memoria (12 imagens/30 min), resposta silenciosa ou falada e isolamento total do firmware | `server/noisebot_server/internal/ops/http.py`, `app/`, `docs/LOCAL_AGENT_PRODUCT_VISION.md` |
@@ -321,28 +321,6 @@ Nao entra:
 - Parser SVG, PNG ou JPG no firmware para esses icones.
 - Gesto de puxar barra pela tela enquanto nao houver touch no display.
 - Painel permanente no topo durante `IDLE`.
-
-### Etapa D.1 - Limpeza de Roadmap e Documentacao
-
-Status: `AGORA`
-
-Objetivo: separar decisao ativa de historico, para o projeto voltar a ser facil
-de navegar no VS Code e no git.
-
-Escopo:
-
-- Manter `docs/ROADMAP.md` como painel ativo.
-- Manter `docs/README.md` como indice curto de documentacao.
-- Consolidar achados em `docs/PROJECT_CLEANUP_AUDIT.md`.
-- Remover duplicacoes obsoletas do git quando virarem historico local.
-- Preservar evidencias importantes sem poluir a estrutura versionada.
-
-Criterios de aceite:
-
-- A raiz de `docs/` mostra poucos arquivos de decisao.
-- Roadmap antigo e logs nao competem com o roadmap ativo.
-- Itens feitos aparecem consolidados, nao repetidos como pendencia.
-- O usuario consegue abrir o roadmap e entender o proximo passo em menos de um minuto.
 
 ## Regras De Atualizacao
 

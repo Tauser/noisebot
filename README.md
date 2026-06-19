@@ -58,14 +58,9 @@ Noisebot/
 |   +-- main-controller/ # Waveshare: comportamento, voz, rede, safety e perifericos
 |   +-- head-controller/ # Freenove: display, touch, camera e microSD
 |   +-- shared/          # Contratos binarios compartilhados
-+-- models/              # Modelos locais quando aplicavel
 +-- server/              # Companion server local e API operacional
-+-- tools/               # Scripts auxiliares
 +-- dev.ps1              # Sobe server + dashboard local
 ```
-
-Pastas locais como `docs/archive/`, `docs/history/` e `docs/modules/` podem ser
-usadas durante limpezas ou auditorias, mas nao sao versionadas por padrao.
 
 ## Arquitetura Em Camadas
 
