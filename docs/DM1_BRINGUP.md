@@ -209,11 +209,11 @@ Pré-condições:
 
 | Caso | Injeção | Evidência obrigatória | Resultado |
 | --- | --- | --- | --- |
-| E5.1 | head ausente no boot | main vivo, sem bloqueio de safety | pendente |
-| E5.2 | main ausente no boot | head vivo aguardando handshake | pendente |
-| E5.3 | SCLK ausente por 2 s | degrada e recupera `READY` | pendente |
-| E5.4 | IRQ ausente | polling mantém heartbeat/tráfego | pendente |
-| E5.5 | reset manual do head | novo `boot_id`, snapshot refeito | pendente |
+| E5.1 | head ausente no boot | main vivo, sem bloqueio de safety | aprovado: `HANDSHAKE`, TX=17 limitado, RX=0, erros=0 |
+| E5.2 | main ausente no boot | head vivo aguardando handshake | aprovado: `HANDSHAKE`, TX/RX=0, `spi_err=0`, sem reboot |
+| E5.3 | SCLK ausente por 2 s | degrada e recupera `READY` | parcial: boot sem SCLK estável; após power-cycle e restauração, `READY`, erros=0; main 3.295 ms, head 237 ms |
+| E5.4 | IRQ ausente | polling mantém heartbeat/tráfego | aprovado: ambos `READY`, TX/RX crescente, erros=0 |
+| E5.5 | reset manual do head | novo `boot_id`, snapshot refeito | aprovado após correção: ambos `READY`, erros=0; telemetria de duração corrigida em seguida |
 | E5.6 | reset manual do main | novo `boot_id`, snapshot aceito | pendente |
 | E5.7 | MISO ausente | timeout limitado, sem falsa conclusão | pendente |
 | E5.8 | bit flip controlado | `invalid` cresce, payload não entregue | adiado sem injetor |

@@ -299,6 +299,22 @@ void nb_link_engine_tick(nb_link_engine_t *engine, uint32_t now_ms)
         }
     }
 
+    /*
+     * O head reiniciado volta para HANDSHAKE e, por ser slave, não inicia a
+     * negociação. Enquanto DEGRADED, o main precisa reenviar HELLO
+     * periodicamente; heartbeat sozinho não permite descobrir o novo boot_id.
+     * Não aplicar o limite do boot inicial aqui: um head pode permanecer
+     * desligado por tempo arbitrário e ainda deve recuperar ao retornar.
+     */
+    if (engine->state == NB_LINK_STATE_DEGRADED &&
+        engine->cfg.role == NB_LINK_ROLE_MAIN &&
+        elapsed(now_ms, engine->last_handshake_tx_ms,
+                NB_LINK_HANDSHAKE_RETRY_MS)) {
+        engine->handshake_start_ms = now_ms;
+        send_hello(engine, NB_LINK_MSG_HELLO, NB_LINK_FLAG_ACK_REQUIRED);
+        engine->last_handshake_tx_ms = now_ms;
+    }
+
     if (engine->state == NB_LINK_STATE_READY ||
         engine->state == NB_LINK_STATE_DEGRADED) {
         if (elapsed(now_ms, engine->last_hb_tx_ms, interval_ms(engine))) {

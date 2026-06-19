@@ -609,6 +609,41 @@ static void test_peer_reboot_rehandshake(void)
     TEST("relinked_head", nb_link_engine_is_operational(&fx.head_e));
 }
 
+static void test_head_reboot_rehandshake(void)
+{
+    fixture_t fx;
+    fixture_init(&fx, 300U, 400U);
+    fixture_start(&fx);
+    fixture_run(&fx, 250U, 4);
+    TEST("ready_before_head_reboot",
+         nb_link_engine_is_operational(&fx.main_e));
+
+    /* Head reinicia e volta a aguardar HELLO, sem iniciar tráfego. */
+    nb_link_engine_config_t head_cfg = {
+        .role = NB_LINK_ROLE_HEAD,
+        .boot_id = 401U,
+        .version_major = 1U,
+        .version_minor = 1U,
+        .transport = {.send = sim_send, .ctx = &fx.ep_b},
+        .on_message = on_message,
+        .on_tx_result = on_tx_result,
+        .user_ctx = &fx.head_sink,
+    };
+    nb_link_engine_init(&fx.head_e, &head_cfg);
+    nb_link_engine_start(&fx.head_e, fx.clock);
+
+    fixture_run(&fx, 250U, 8);
+
+    TEST("head_reboot_detected",
+         nb_link_engine_stats(&fx.main_e)->peer_reboots >= 1U);
+    TEST("relinked_main_after_head_reboot",
+         nb_link_engine_is_operational(&fx.main_e));
+    TEST("relinked_head_after_head_reboot",
+         nb_link_engine_is_operational(&fx.head_e));
+    TEST("head_reboot_recovery_metric_bounded",
+         nb_link_engine_stats(&fx.main_e)->handshake_last_ms <= 1000U);
+}
+
 static void test_version_major_mismatch(void)
 {
     fixture_t fx;
@@ -649,6 +684,7 @@ int main(void)
     test_send_before_ready();
     test_corrupt_frame_dropped();
     test_peer_reboot_rehandshake();
+    test_head_reboot_rehandshake();
     test_version_major_mismatch();
 
     printf("%d/%d testes passaram\n", s_pass, s_pass + s_fail);
