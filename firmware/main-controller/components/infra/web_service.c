@@ -4074,13 +4074,10 @@ static void format_local_time(char *dst, size_t dst_len)
         if (dst_len > 0u) dst[0] = '\0';
         return;
     }
-    snprintf(dst, dst_len, "%04d-%02d-%02d %02d:%02d:%02d",
-             tm_now.tm_year + 1900,
-             tm_now.tm_mon + 1,
-             tm_now.tm_mday,
-             tm_now.tm_hour,
-             tm_now.tm_min,
-             tm_now.tm_sec);
+    if (strftime(dst, dst_len, "%Y-%m-%d %H:%M:%S", &tm_now) == 0U &&
+        dst_len > 0U) {
+        dst[0] = '\0';
+    }
 }
 
 static esp_err_t send_time_object(httpd_req_t *req, bool wrap)
