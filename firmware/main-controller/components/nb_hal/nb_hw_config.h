@@ -1,9 +1,12 @@
 /*
  * nb_hw_config.h — Mapa de hardware do NoiseBot
  *
- * Fonte de verdade única para todos os GPIOs, hosts SPI/I2S/UART e parâmetros
- * elétricos fixos do hardware. Nenhum outro arquivo deve hardcodar números de
- * pino ou constantes de barramento.
+ * Fonte de verdade do baseline monolítico Freenove. Este arquivo permanece
+ * compatível até a remoção do legado em DM6.
+ *
+ * O estado-alvo da Waveshare está em nb_hw_config_main.h. O firmware não deve
+ * selecionar silenciosamente o mapa novo: a troca exige recabeamento, flags de
+ * build explícitas e o gate elétrico de docs/GPIO_DUAL_MCU.md.
  *
  * ATENÇÃO: Verificar cada valor contra o schematic da placa Freenove
  * ESP32-S3-WROOM CAM N16R8 antes de alimentar qualquer periférico.

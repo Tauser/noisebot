@@ -15,7 +15,21 @@ firmware head.
 O mapa definitivo da Waveshare será fechado somente após conferência do modelo
 exato e validação elétrica em bancada. Até isso ocorrer, nenhum GPIO de áudio,
 servo, LED, sensores ou enlace SPI da main é considerado aprovado. Ver
-`DUAL_MCU_ARCHITECTURE_PLAN.md`.
+`DUAL_MCU_ARCHITECTURE_PLAN.md`. A proposta pino a pino, incluindo direção,
+níveis elétricos e exposição nos headers, está em `GPIO_DUAL_MCU.md`.
+
+Restrições confirmadas para a variante Waveshare N32R16V:
+
+- GPIO38 possui WS2812 onboard e não é GPIO limpo;
+- GPIO35/36/37 aparecem no header, mas são NC no módulo;
+- GPIO47/48 têm high-level de 1,8V no domínio VDD_SPI e são proibidos para
+  lógica 3,3V;
+- GPIO19/20 permanecem reservados ao USB nativo;
+- GPIO43/44 permanecem reservados ao console/programação.
+
+O enlace físico só pode ser conectado após remover da Freenove as ligações
+legadas de áudio/servo/LED/touch e confirmar que GPIO1/2/14/41/42 não estão
+sendo dirigidos pelo firmware monolítico.
 
 ### Matriz de propriedade final
 

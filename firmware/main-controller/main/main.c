@@ -11,6 +11,7 @@
 
 #include "boot_manager.h"
 #include "watchdog_service.h"
+#include "nb_hw_config_main.h"
 
 static const char *TAG = "nb_main";
 

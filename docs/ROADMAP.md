@@ -122,9 +122,11 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 | F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados |
 | F6 limpeza | DM6 | `BACKLOG` | Legado multimídia removido do main |
 
-DM1 não começa antes de: pinout elétrico aprovado, teste host do contrato e
-definição dos GPIOs SPI/IRQ/reset. DM5 possui gates próprios de underrun de
-áudio, primeiro som, saturação da fila LTM e power-loss.
+DM1 de software não começa antes de: pinout elétrico aprovado, teste host do
+contrato e definição dos GPIOs SPI/IRQ/reset. O bring-up físico do enlace exige
+também recabeamento de áudio/servo/LED/touch corporal para a main e prova de que
+GPIO1/2/14/41/42 do head estão em alta impedância. DM5 possui gates próprios de
+underrun de áudio, primeiro som, saturação da fila LTM e power-loss.
 
 ### Etapa 2.2A - Touch: Sensibilidade e Confiabilidade
 

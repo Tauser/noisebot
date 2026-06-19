@@ -321,6 +321,7 @@ GET autenticado; nunca são persistidos em disco.
 | `docs/DUAL_MCU_ARCHITECTURE_PLAN.md` | Arquitetura Waveshare/Freenove, protocolo, falhas e migração |
 | `docs/ROADMAP.md`      | Blocos e etapas detalhadas com critérios        |
 | `docs/HARDWARE.md`     | Pinos, barramentos, restrições de GPIO          |
+| `docs/GPIO_DUAL_MCU.md` | Mapa pino a pino e gate elétrico das duas placas |
 | `docs/PERSISTENCE.md`  | NVS vs SD, estrutura de diretórios, políticas   |
 | `docs/ENERGY.md`       | Orçamento de energia, barramento 5V, brownout   |
 | `docs/SERVO_SAFETY.md` | Parâmetros de safety, protocolo de liberação    |

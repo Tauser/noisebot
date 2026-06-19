@@ -4,6 +4,7 @@ idf_component_register(
     REQUIRES
         esp_system
         esp_timer
+        driver
         freertos
         log
         nb_inter_mcu_protocol
