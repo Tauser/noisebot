@@ -25,6 +25,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | TTS HTTP no firmware | Removido do roadmap ativo; duplicava o server/bridge atual |
 | Knowledge OS externo | Nao atualizar por enquanto, por decisao do usuario |
 | Maior risco atual | Roadmap acumular itens antigos e perder poder de decisao |
+| Migração dual-MCU | F0 estrutural concluída; alinhamento documental/contrato em fechamento antes da F1 |
 
 ## Como Ler
 
@@ -62,6 +63,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | 15.x - Voice polish | Melhorias pontuais em feedback, erros e telemetria apos estabilizar base |
 | C3-C6 - Voz, Obsidian, progresso e backup | Entra apos o historico e o contexto persistente do dashboard estarem estaveis |
 | V4-V5 - TTS inglês e integração de estudos | Entra após STT/LLM bilíngues estarem medidos; preserva Piper PT-BR e Voice Audio v2 |
+| DM1 - Enlace dual-MCU | Entra após fechamento de F0 e validação do pinout; implementa SPI/IRQ/reset sem migrar periféricos |
 
 ### P2 - Backlog
 
@@ -103,6 +105,26 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | Plano de voz bilíngue e Whisper | `PLANEJADO` — corpus dourado PT/EN, WER/CER, STT contextual, retry sob baixa confiança, correção manual, LLM por idioma e TTS Piper roteado por voz | `docs/BILINGUAL_VOICE_STT_PLAN.md` |
 
 ## Etapas Ativas
+
+### Programa DM — Migração dual-MCU
+
+O programa usa as fases técnicas F0-F6 de
+`docs/DUAL_MCU_ARCHITECTURE_PLAN.md`. Elas não substituem as etapas de produto
+deste roadmap; cada fase é mapeada para uma etapa DM:
+
+| Fase técnica | Etapa do roadmap | Status | Saída |
+| --- | --- | --- | --- |
+| F0 estrutura/contrato | DM0 | `EM ANDAMENTO` | Dois builds, contrato comum e docs sem contradição |
+| F1 enlace | DM1 | `PROXIMO` | SPI/IRQ/reset, heartbeat, créditos e fault injection |
+| F2 display | DM2 | `BACKLOG` | Display/render no head; fallback removível |
+| F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main |
+| F4 câmera | DM4 | `BACKLOG` | DVP/preview no head, análise canônica no server |
+| F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados |
+| F6 limpeza | DM6 | `BACKLOG` | Legado multimídia removido do main |
+
+DM1 não começa antes de: pinout elétrico aprovado, teste host do contrato e
+definição dos GPIOs SPI/IRQ/reset. DM5 possui gates próprios de underrun de
+áudio, primeiro som, saturação da fila LTM e power-loss.
 
 ### Etapa 2.2A - Touch: Sensibilidade e Confiabilidade
 

@@ -37,19 +37,26 @@ A direção estratégica dessa integração está registrada em
 | Estado interno modula | Emotion model (valência × ativação) influi sutilmente em toda expressão.    |
 | Identidade local      | O robot mantém um perfil offline-first do usuário atual; reconhecimento de voz/face não é requisito para saber com quem está interagindo. |
 
-## Hardware (Fase Inicial)
+## Hardware e migração dual-MCU
 
 Ver `docs/HARDWARE.md` para especificações completas e mapa de pinos.
 
-**Ativos:** ESP32-S3 N16R8, ST7789 2", WS2812×2, INMP441, MAX98357A, SCS0009×2 (via FE-TTLinker), touch (fita de cobre), microSD.
+**Estado-alvo:** Waveshare ESP32-S3 N32R16 como main-controller para áudio,
+comportamento, safety, servos, LEDs e touch corporal; Freenove ESP32-S3 CAM
+N16R8 como head-controller para ST7789, touchscreen futuro, OV2640 e o único
+microSD.
 
-**Adiados (não removidos):** OV2640 câmera, MPU-6050 IMU, LiPo + bq25185 + MAX17048 + TPS61088.
+**Migração:** o baseline monolítico ainda funciona na Freenove. Periféricos são
+movidos por DM1-DM6, com rollback por fase. A OV2640 entra em DM4; análise
+semântica e reconhecimento continuam no server.
+
+**Adiados:** MPU-6050 IMU, LiPo + bq25185 + MAX17048 + TPS61088.
 
 ## Plataforma Técnica
 
-- **MCU:** Freenove ESP32-S3-WROOM CAM N16R8
+- **MCUs:** Waveshare ESP32-S3 N32R16 + Freenove ESP32-S3-WROOM CAM N16R8
 - **Framework:** ESP-IDF (não Arduino)
-- **Linguagem:** C17 (exceto `nb_hal/display`: C++ para LovyanGFX)
+- **Linguagem:** C17 (exceto display/render LovyanGFX no head)
 - **RTOS:** FreeRTOS (incluso no ESP-IDF)
 - **Stack gráfica:** LovyanGFX (contrato arquitetural, ver `docs/ARCHITECTURE.md`)
 - **Build:** CMake via `idf.py`

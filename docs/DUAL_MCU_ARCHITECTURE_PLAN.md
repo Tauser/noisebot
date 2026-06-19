@@ -71,6 +71,33 @@ Regras:
 - versões major incompatíveis bloqueiam operação; minor usa negociação;
 - payload externo é validado antes de alterar estado.
 
+### 4.1 Transações SPI e controle de fluxo
+
+Como o main é master, toda transferência é iniciada por ele:
+
+- `HEAD_IRQ=1` significa que o head possui ao menos um frame pendente;
+- o main executa `POLL` quando o IRQ sobe e também em intervalo de recuperação;
+- resposta sem dados usa frame `IDLE`, nunca bytes indefinidos;
+- cada lado anuncia créditos livres por canal;
+- `CONTROL` e `EVENT` têm reserva própria e nunca consomem créditos de `BULK`;
+- `BULK` usa janela inicial de 4 chunks e só avança após `CREDIT_UPDATE`;
+- reboot/novo `boot_id` zera janelas, créditos, handles e transfers em curso.
+
+Crédito significa capacidade de receber e enfileirar, não confirmação de
+processamento ou persistência. ACK de frame, resposta da operação e confirmação
+durável são estados diferentes.
+
+### 4.2 Tempo e timestamps
+
+O main é a fonte de tempo oficial:
+
+- `TIME_SYNC` leva monotonic time e, quando disponível, Unix time;
+- eventos do head carregam contador monotônico local e sequence;
+- o main converte/carimba o evento no recebimento;
+- decisões de comportamento, deadlines e logs canônicos usam tempo do main;
+- p95 de touch/visual é medido por relógio monotônico do main, sem comparar
+  diretamente clocks livres dos dois MCUs.
+
 ## 5. Boot e recuperação
 
 1. Cada MCU inicializa watchdog, NVS e console independentemente.
@@ -113,6 +140,50 @@ Políticas:
 - nenhum caminho vindo do link pode escapar dos diretórios permitidos;
 - handles incluem geração/boot ID para impedir uso após reboot;
 - operações SD nunca rodam em task de alta prioridade.
+
+### 6.1 Áudio armazenado no head
+
+I2S, wake, VAD e playback permanecem no main. Assets do SD nunca são
+reproduzidos diretamente do link:
+
+- leitura remota preenche um ring buffer no main antes de iniciar I2S;
+- baseline inicial: 96KB de ring buffer em PSRAM e prebuffer de 64KB;
+- blocos são copiados para buffers DMA em SRAM pela task de áudio;
+- abaixo de 32KB livres, o cliente solicita refill com prioridade de bulk
+  `AUDIO`;
+- `CONTROL`/`EVENT` continuam preemptivos, mas bulk de áudio preempta JPEG,
+  logs e LTM enquanto há playback;
+- underrun encerra o asset com fade curto, publica diagnóstico e nunca bloqueia
+  a task I2S;
+- sons críticos pequenos de wake/erro devem ter fallback em flash no main.
+
+Os tamanhos são baseline de F5 e podem mudar somente com medição registrada.
+
+### 6.2 Backpressure de LTM e indisponibilidade prolongada
+
+O main mantém uma fila limitada por bytes e prioridade:
+
+1. alterações críticas de persona/configuração: espelhadas em NVS e nunca
+   descartadas silenciosamente;
+2. marcos de interação: preservados antes de telemetria repetitiva;
+3. métricas/logs diagnósticos: descartáveis primeiro.
+
+Baseline: 128KB ou 256 registros, o que ocorrer primeiro. Ao atingir 80%, o
+main agrega eventos repetitivos. Em 100%, descarta o item de menor prioridade e
+incrementa contador persistente em NVS. Após reconexão, replay é idempotente e
+ordenado. Leituras de LTM indisponíveis retornam estado explícito; persona
+continua com o snapshot NVS, sem inventar memória ausente.
+
+### 6.3 Caminhos de visão
+
+- câmera local do head é a fonte canônica de frames físicos do robô;
+- preview, frame rate e overlays de captura ficam locais no head;
+- análise semântica e reconhecimento continuam no server/bridge;
+- o main solicita JPEG sob demanda e o encaminha, sem manter pipeline DVP;
+- câmera de dashboard/upload é uma entrada separada e nunca substitui
+  silenciosamente a câmera física;
+- ausência de head/câmera desabilita presença visual, sem inferir ausência do
+  usuário por falta de sensor.
 
 ## 7. Modos degradados
 
@@ -174,6 +245,8 @@ Nunca atualizar ambos sem uma versão intermediária compatível.
 - versionar contrato compartilhado;
 - builds independentes;
 - nenhuma mudança funcional no robô.
+- alinhar `CLAUDE.md`, hardware, persistência, arquitetura e roadmap;
+- fechar no contrato os tipos de poll, crédito, tempo e storage status.
 
 ### F1 — enlace
 
@@ -205,6 +278,7 @@ Nunca atualizar ambos sem uma versão intermediária compatível.
 - storage server no head e client assíncrono no main;
 - migrar logs, LTM, assets de áudio e diagnósticos;
 - validar power-loss e recuperação.
+- validar prebuffer/refill de áudio e política de overflow da LTM.
 
 ### F6 — remoção do legado
 
@@ -224,6 +298,13 @@ Cada fase exige:
 - CRC corrompido e frame truncado;
 - SD removido, cheio e com erro de escrita;
 - bulk concorrente com touch e comandos visuais;
+- playback remoto sob link saturado: zero underrun em 30 minutos de assets
+  contínuos, com JPEG, logs e LTM concorrentes;
+- latência até o primeiro som: p95 menor que 150 ms para asset em cache e menor
+  que 500 ms para asset frio no SD;
+- fila LTM saturada e head ausente por 8 horas, comprovando descarte por
+  prioridade e continuidade da persona via NVS;
+- exaustão/restituição de créditos por canal sem deadlock;
 - confirmação de que falha do head não interfere em `motion_safety`;
 - rollback documentado e testado.
 

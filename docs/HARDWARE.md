@@ -7,12 +7,29 @@
 - Freenove ESP32-S3-WROOM CAM N16R8: controlador de cabeça para display,
   touchscreen, câmera e microSD único.
 
-O mapa abaixo documenta a placa Freenove e continua válido para os periféricos
-fixos. O mapa definitivo da Waveshare será fechado somente após conferência do
-modelo exato e validação elétrica em bancada. Ver
+O mapa abaixo documenta a placa Freenove no papel de **head-controller**. As
+ligações antigas de áudio, servos, LEDs e touch corporal nessa placa descrevem
+o baseline monolítico e não o estado final. Não devem ser copiadas para o novo
+firmware head.
+
+O mapa definitivo da Waveshare será fechado somente após conferência do modelo
+exato e validação elétrica em bancada. Até isso ocorrer, nenhum GPIO de áudio,
+servo, LED, sensores ou enlace SPI da main é considerado aprovado. Ver
 `DUAL_MCU_ARCHITECTURE_PLAN.md`.
 
-## MCU
+### Matriz de propriedade final
+
+| Domínio | Main — Waveshare | Head — Freenove |
+| --- | --- | --- |
+| Safety, servos, comportamento | Autoridade e hardware | Proibido |
+| Áudio I2S, wake, VAD | Autoridade e hardware | Proibido |
+| LEDs e touch corporal | Autoridade e hardware | Proibido |
+| Display e touchscreen | Intenção semântica | Autoridade e hardware |
+| OV2640 | Solicita métricas/JPEG | DVP, captura e preview |
+| microSD | Cliente assíncrono | Único mount FATFS/SDMMC |
+| Tempo oficial | Fonte canônica | Relógio local sincronizado |
+
+## MCU do head
 
 **Freenove ESP32-S3-WROOM CAM N16R8**
 
@@ -25,22 +42,26 @@ modelo exato e validação elétrica em bancada. Ver
 | USB               | OTG (nativo) + CP2102 (UART0 debug)       |
 | Alimentação placa | 3.3V (regulado interno do 5V USB/externo) |
 
-### Recursos de Periféricos Relevantes
+### Recursos de Periféricos Relevantes do head
 
 | Periférico | Qtd disponível                          | Uso no NoiseBot                              |
 | ---------- | --------------------------------------- | -------------------------------------------- |
 | SPI        | 4 (SPI0/1 internos, SPI2/3 disponíveis) | SPI2: display                                |
 | SDMMC      | 1                                       | SDMMC 1-bit: microSD (onboard)              |
-| I2S        | 2                                       | I2S0: mic + speaker (full-duplex); I2S1: livre |
-| UART       | 3                                       | UART0: debug, UART1: FE-TTLinker            |
-| RMT        | 8 canais                                | 1 canal: WS2812                              |
-| Touch      | 14 canais                               | T2 (GPIO 2): fita de cobre                  |
-| I2C        | 2                                       | Reservado: câmera SCCB + IMU (adiados)      |
+| I2S        | 2                                       | Livres no estado final do head               |
+| UART       | 3                                       | UART0: debug; demais livres                  |
+| RMT        | 8 canais                                | Livre no estado final do head                |
+| Touch      | 14 canais                               | Touchscreen futuro usa contrato próprio      |
+| I2C        | 2                                       | SCCB da câmera; touchscreen se compatível    |
 | LEDC/PWM   | 8 canais                                | Disponível (backlight caso ILI9342)         |
 
 ---
 
-## Mapa de GPIOs
+## Mapa de GPIOs da Freenove
+
+As marcações de áudio/servo/LED/touch abaixo são **legado monolítico** até a
+migração física. No estado final só display, câmera, SD, enlace inter-MCU,
+console e touchscreen podem permanecer na Freenove.
 
 | GPIO  | Status            | Periférico / Função                                      |
 | ----- | ----------------- | -------------------------------------------------------- |
@@ -85,7 +106,7 @@ modelo exato e validação elétrica em bancada. Ver
 
 ---
 
-## Periféricos Ativos
+## Periféricos da Freenove
 
 ### Display — ST7789 2" (SPI2)
 
@@ -117,7 +138,7 @@ Frequência SPI: 60MHz (80MHz instável no bring-up). Testado e validado em hard
 Interface: **SDMMC** (não SPI). SD onboard da placa Freenove, 1-bit mode.
 GPIO 39/40 também são pinos JTAG (TCK/TDO) — JTAG externo incompatível com SD ativo.
 
-### WS2812 LEDs (RMT)
+### WS2812 LEDs (RMT) — legado a remover do head
 
 | Sinal | GPIO | Notas                        |
 | ----- | ---- | ---------------------------- |
@@ -133,7 +154,7 @@ Alimentação: 5V direto. Corrente máxima: ~120mA a 100% RGB (não usar 100% em
 > LEDs. GPIO 3 não tem essa restrição. GPIO 19 foi realocado para UART1 RX (servo),
 > onde o risco de contenção com WiFi PHY é menor (UART tem maior tolerância a glitches).
 
-### INMP441 — Microfone + MAX98357A — Amplificador (I2S0 full-duplex)
+### INMP441 + MAX98357A — legado a migrar para main
 
 Mic (RX) e speaker (TX) **compartilham I2S0** em modo full-duplex.
 BCLK e WS em GPIO 41/42 (sem função touch nem strapping).
@@ -153,7 +174,7 @@ GPIO 14 e 1 usados para dados — sacrificam TOUCH\_PAD\_NUM14 e T1.
 Controle de volume: divisão digital do sinal PCM (MAX98357A não tem I2C).
 GPIO 48: LED onboard azul da placa Freenove — reservado para status visual, não repurposear.
 
-### SCS0009 Servos (UART1 via FE-TTLinker Mini V2)
+### SCS0009 — legado a migrar para main
 
 | Lado ESP32 | GPIO | Pino TTLinker | Notas                             |
 | ---------- | ---- | ------------- | --------------------------------- |
@@ -192,7 +213,7 @@ IDs de servo: NECK\_PAN = 1, NECK\_TILT = 2.
 Alimentação servos: 5V direto (linha separada, capacitor bulk obrigatório).
 Alimentação TTLinker: 5V (mesmo barramento dos servos).
 
-### Touch — Fita de Cobre (Touch Peripheral)
+### Touch corporal — legado a migrar para main
 
 | Sinal    | GPIO | Notas                              |
 | -------- | ---- | ---------------------------------- |
@@ -280,7 +301,7 @@ Validação: leitura bate com multímetro ±5% (critério F49).
 
 ## Hardware Adiado (Pinos Reservados)
 
-### OV2640 — Câmera (DVP, ADIADA)
+### OV2640 — câmera fixa do head, ativação em F4
 
 A câmera OV2640 usa a interface DVP (parallel) com os pinos abaixo.
 **ESTES PINOS NÃO PODEM SER REUSADOS.** Estão no header da placa E no conector FPC da câmera.
@@ -308,7 +329,9 @@ Confirmado pelo pinout oficial (docs/ESP32S3\_Pinout.png).
 > I2C da câmera (GPIO 4/5) pode ser compartilhado com MPU-6050 (0x68),
 > bq25185 (0x6B) e MAX17048 (0x36) — endereços não colidem com OV2640 (0x3C).
 
-Ao reativar a câmera: alocar 300KB de PSRAM para frame buffer (manter headroom desde já).
+Ao ativar a câmera: framebuffer somente na PSRAM do head. Manter no mínimo
+300KB livres além dos buffers ativos; o requisito não se aplica à PSRAM da
+main após F4.
 
 ### MPU-6050 — IMU (I2C0, ADIADO)
 

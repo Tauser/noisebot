@@ -18,9 +18,15 @@ O projeto usa este CLAUDE.md + `docs/ROADMAP.md` como fontes de verdade operacio
 
 ## Projeto
 
-**NoiseBot** é um companion robot desktop expressivo baseado em ESP32-S3.
-O firmware é C17 puro, salvo o componente `nb_hal/display` (C++ para LovyanGFX).
-A stack é ESP-IDF + FreeRTOS. **Nunca usar Arduino.**
+**NoiseBot** é um companion robot desktop expressivo baseado em dois ESP32-S3:
+Waveshare N32R16 como controlador principal e Freenove CAM N16R8 como
+controlador de cabeça. A migração é incremental; durante F0-F5 o firmware
+principal ainda contém capacidades multimídia legadas.
+
+O firmware é C17 puro, salvo display/render no head-controller (C++ para
+LovyanGFX). Enquanto existir fallback local de F2, esses componentes C++ também
+podem permanecer compiláveis no main-controller. A stack é ESP-IDF + FreeRTOS.
+**Nunca usar Arduino.**
 
 ---
 
@@ -50,7 +56,7 @@ A stack é ESP-IDF + FreeRTOS. **Nunca usar Arduino.**
 
 ```
 Layer 0: ESP-IDF / FreeRTOS / Hardware
-Layer 1: HAL        (nb_hal/display, nb_hal/servo, nb_hal/audio, nb_hal/led, nb_hal/touch, nb_hal/sd)
+Layer 1: HAL        (main: servo/audio/led/touch; head: display/camera/touchscreen/sd)
 Layer 2: Infra      (event_bus, logger, config_manager, persistence_mgr, watchdog, boot_manager)
 Layer 3: Safety     (motion_safety, power_monitor, error_policy)
 Layer 4: Services   (render_service, motion_service, audio_service, led_service, touch_service)
@@ -70,16 +76,25 @@ Layer 8: Futuro     (camera, imu, battery)
 
 ### Memória
 
-- **Nenhum framebuffer de display em SRAM.** Sprites LovyanGFX alocam em PSRAM.
+- **Nenhum framebuffer de display/câmera em SRAM.** No estado final, sprites
+  LovyanGFX e framebuffers OV2640 alocam na PSRAM do head-controller.
 - Buffers de áudio DMA: SRAM (verificar se DMA I2S alcança PSRAM no S3).
 - Nenhum `malloc()` em caminho crítico (ISR, task de safety, render loop).
 - Estruturas estáticas para event bus e pools de objetos frequentes.
-- Monitorar `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)` — manter >300KB livres (headroom câmera).
+- Monitorar `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)` nos dois MCUs.
+- No head-controller, manter no mínimo 300KB livres além dos buffers ativos
+  para recuperação e captura. O requisito de headroom de câmera não pertence
+  mais ao main-controller após F4.
 
 ### Persistência e I/O
 
+- Existe **um único microSD**, fisicamente ligado e exclusivamente montado pelo
+  head-controller. No estado final o main-controller nunca monta FATFS/SDMMC.
 - **Nunca escrever em SD de forma síncrona em task com prioridade ≥ 10.**
-- Toda escrita não-urgente vai para a fila da `persistence_task` (prioridade 5).
+- No main, toda escrita não-urgente entra na fila do cliente de persistência;
+  no head, é executada pelo storage worker de prioridade baixa.
+- Enfileirar uma requisição remota não significa que ela foi persistida. Apenas
+  resposta de commit/sync confirmada encerra uma operação durável.
 - Exceção: crash dump usa escrita síncrona direta (sistema já em falha).
 - NVS para configuração crítica e flags de safety. SD para logs, assets, memória longa.
 
@@ -136,6 +151,13 @@ firmware/main-controller/components/
 ├── behavior/       # Layer 6: behavior_engine, state_machine, emotion_model,
 │                   #           boredom_service, voice_controller
 └── persona/        # Layer 7: persona_service, long_term_memory
+
+firmware/head-controller/
+├── main/            # boot mínimo; capacidades entram por fase
+└── components/      # futuro: link server, display/render, câmera e storage
+
+firmware/shared/components/
+└── nb_inter_mcu_protocol/ # contrato C17 comum; sem dependência de HAL
 ```
 
 ---
@@ -150,23 +172,23 @@ firmware/main-controller/components/
 
 ---
 
-## Hardware Ativo (fase inicial)
+## Hardware Ativo e estado-alvo dual-MCU
 
-| Periférico        | Interface   | Status     |
-| ----------------- | ----------- | ---------- |
-| ESP32-S3 N16R8    | —           | Ativo      |
-| ST7789 2" display | SPI2        | Ativo      |
-| WS2812 × 2        | RMT         | Ativo      |
-| INMP441 mic       | I2S0 (RX)   | Ativo      |
-| MAX98357A speaker | I2S1 (TX)   | Ativo      |
-| SCS0009 × 2       | UART/FE-TTL | Ativo      |
-| Touch (cobre)     | Touch GPIO  | Ativo      |
-| microSD           | SPI3        | Ativo      |
-| OV2640 câmera     | DVP         | **Adiado** (hardware); visão via server/bridge: **Feito** |
-| MPU-6050 IMU      | I2C0        | **Adiado** |
-| LiPo + circuito   | —           | **Adiado** |
+| Recurso | Dono final | Interface | Estado |
+| --- | --- | --- | --- |
+| Waveshare ESP32-S3 N32R16 | Main | — | Scaffold/build ativo; pinout pendente de bancada |
+| Freenove ESP32-S3 CAM N16R8 | Head | — | Baseline legado ativo; scaffold head criado |
+| ST7789 2" display | Head | SPI2 | Migra em F2 |
+| Touchscreen futuro | Head | A definir | Migra/entra em F3 |
+| OV2640 onboard | Head | DVP fixo | Entra em F4; preview local |
+| microSD onboard | Head | SDMMC 1-bit | Migra em F5; único SD |
+| INMP441 + MAX98357A | Main | I2S | Migra fisicamente para Waveshare |
+| SCS0009 × 2 | Main | UART/FE-TTL | Migra fisicamente; sempre sob `motion_safety` |
+| WS2812 × 2 e touch corporal | Main | RMT/Touch | Migram fisicamente |
+| MPU-6050 / LiPo | Main | A definir | Adiados |
 
-**Pinos DVP da câmera estão fisicamente conectados na placa. Nunca realocar esses GPIOs.**
+**Os pinos DVP estão fixos exclusivamente na placa Freenove/head. Nunca
+realocar esses GPIOs no head; eles não restringem o pinout da Waveshare/main.**
 Ver `docs/HARDWARE.md` para o mapa completo de pinos.
 
 ---

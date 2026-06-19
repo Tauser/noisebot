@@ -2,7 +2,10 @@
 
 ## Visão Geral
 
-O sistema usa dois mecanismos de persistência com papeis distintos e complementares:
+O sistema usa dois mecanismos de persistência com papeis distintos e
+complementares. Na topologia final, o microSD é montado exclusivamente pelo
+head-controller; o main-controller usa um cliente assíncrono sobre o enlace
+inter-MCU.
 
 | Mecanismo               | Capacidade       | Velocidade              | Uso                                             |
 | ----------------------- | ---------------- | ----------------------- | ----------------------------------------------- |
@@ -102,7 +105,7 @@ SQLite é a fonte de verdade operacional. A futura projeção para Obsidian ser�
 derivada e não substituirá o banco. O módulo é síncrono; chamadas feitas pelo
 event loop devem usar `asyncio.to_thread`.
 
-### microSD
+### microSD único no head-controller
 
 Todos os dados com volume alto, append-only, ou que podem ser regenerados:
 
@@ -198,23 +201,43 @@ Exemplos de entradas significativas:
 
 ### Escrita Assíncrona (padrão)
 
-Toda escrita não-urgente segue o caminho:
+Toda escrita não-urgente segue o caminho final:
 
 ```
-chamador → persistence_mgr_enqueue() → [fila FreeRTOS] → persistence_task → SD
+chamador main
+  → persistence_mgr_enqueue()
+  → fila local limitada
+  → storage client/BULK
+  → enlace SPI
+  → storage worker do head
+  → FATFS/SDMMC
+  → resposta de commit ao main
 ```
 
-- `persistence_task`: Core 0, prioridade 5. Processa a fila continuamente.
-- Fila: 32 slots de mensagens (mensagem = tipo de escrita + payload pequeno).
+- Enfileiramento local não confirma durabilidade.
+- `persistence_task` do main nunca chama FATFS/SDMMC no estado final.
+- `storage_worker` do head opera em prioridade baixa e serializa FATFS.
+- Fila baseline: 128KB ou 256 registros, o que ocorrer primeiro.
+- Em 80%, eventos repetitivos são agregados; em 100%, descarta-se primeiro
+  telemetria/log repetitivo, depois eventos comuns. Configuração/persona crítica
+  é espelhada em NVS e nunca descartada silenciosamente.
 - Timeout de flush: se fila parada por >60s, força flush.
-- Ao entrar em SLEEPING: flush síncrono antes de reduzir atividade.
+- Ao entrar em SLEEPING: solicitar `sync` e aguardar resposta com deadline; se
+  head estiver ausente, registrar pendência em NVS sem bloquear indefinidamente.
+
+Retries reutilizam a mesma sequence e são idempotentes. Reboot do head invalida
+handles e transferências; o main reabre e repete apenas operações cujo estado
+durável foi reconciliado.
 
 ### Escrita Síncrona (exceções)
 
-Usada apenas quando:
+No main, escrita síncrona direta no SD deixa de existir após F5. Operações
+bloqueantes são permitidas apenas quando:
 
-- Crash dump (sistema já em falha, não há task de fila)
-- Config backup ao entrar em SLEEPING (bloqueante intencional)
+- crash dump local em partição/flash reservada, se implementado;
+- espera limitada pela confirmação de `sync` ao entrar em SLEEPING.
+
+O crash dump não pode depender do head estar operacional.
 
 ### Throttling
 
@@ -270,6 +293,28 @@ O sistema deve funcionar em modo degradado sem SD:
 | Touch                  | ✅     | ✅                                     |
 
 SD-degradado é loggado em UART. Nenhum comportamento crítico depende do SD.
+
+### Head indisponível e LTM
+
+- Persona continua pelo snapshot NVS do main.
+- Leituras de LTM retornam `UNAVAILABLE`; ausência de dados não equivale a
+  “nenhuma memória”.
+- Escritas entram na fila limitada e seguem a política de prioridade acima.
+- Contadores de descarte ficam em NVS e são enviados aos diagnósticos após
+  reconexão.
+- Replay é ordenado e idempotente.
+
+### Assets de áudio remotos
+
+Áudio continua fisicamente no main. Assets no SD do head são lidos antes e
+durante o playback para um ring buffer na PSRAM do main:
+
+- baseline: 96KB de buffer, prebuffer de 64KB e refill abaixo de 32KB;
+- I2S DMA usa buffers em SRAM;
+- bulk de áudio tem prioridade sobre JPEG, logs e LTM, abaixo de
+  `CONTROL`/`EVENT`;
+- wake/error essenciais possuem cópia curta em flash;
+- underrun publica diagnóstico e encerra com fade, sem bloquear I2S.
 
 ### Re-mount Periódico
 

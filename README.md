@@ -42,7 +42,7 @@ dashboard `app/`.
 | Camada | Tecnologias |
 | --- | --- |
 | Firmware | ESP-IDF, FreeRTOS, C17, CMake, LovyanGFX no display |
-| Hardware | ESP32-S3 N16R8, ST7789, WS2812, INMP441, MAX98357A, touch capacitivo, microSD |
+| Hardware | Waveshare ESP32-S3 N32R16 main + Freenove CAM N16R8 head; ST7789, OV2640 e microSD único no head |
 | Server | Python 3.10+, `aiohttp`, adapters locais para voz/LLM/operacao |
 | Dashboard | React, TypeScript, Vite, Tailwind, lucide-react |
 | Testes | Pytest para server; `idf.py build` para firmware |

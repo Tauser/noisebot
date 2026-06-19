@@ -6,6 +6,25 @@
 > `DUAL_MCU_ARCHITECTURE_PLAN.md`. Até a conclusão da F2/F5, alguns serviços
 > multimídia permanecem temporariamente no firmware principal.
 
+## Topologia física e autoridade
+
+| Domínio | Main-controller — Waveshare N32R16 | Head-controller — Freenove N16R8 |
+| --- | --- | --- |
+| Estado/FSM/persona | Autoridade canônica | Replica somente estado visual |
+| Safety e movimento | Autoridade; independente do link | Nenhuma autoridade |
+| Áudio/wake/VAD/I2S | Autoridade e execução | Fornece assets remotos pelo SD |
+| Display/render | Facade semântica após F2 | Autoridade de render e LovyanGFX |
+| Touchscreen | Decide significado | Debounce/calibração e evento cru |
+| Câmera | Solicita JPEG/métricas | DVP, captura e preview local |
+| Visão semântica | Encaminha ao bridge | Não interpreta identidade |
+| microSD | Cliente assíncrono | Único mount FATFS/SDMMC |
+| Tempo | Fonte oficial | Contador local sincronizado |
+
+A câmera física do head é a fonte canônica de frames do robô. Reconhecimento,
+presença semântica e análise continuam no server/bridge. O main carimba eventos
+recebidos e nenhuma decisão comportamental usa diretamente o relógio livre do
+head.
+
 ## Camadas do Sistema
 
 ```
@@ -60,7 +79,7 @@ firmware/main-controller/components/
 │   ├── nb_events.h              # Tipos de evento (enum + payload union)
 │   ├── config_manager.c / .h    # Abstração sobre NVS
 │   ├── nb_config_keys.h         # Todas as chaves de configuração
-│   ├── persistence_mgr.c / .h   # Abstração sobre NVS + SD
+│   ├── persistence_mgr.c / .h   # NVS + cliente assíncrono do storage remoto
 │   ├── watchdog_service.c / .h  # TWDT e HW WDT
 │   ├── error_policy.h           # Macros de assert e política de erro
 │   ├── wifi_service.c / .h      # WiFi STA + mDNS noisebot.local (Etapa 9.6)
@@ -69,7 +88,7 @@ firmware/main-controller/components/
 │
 ├── nb_hal/
 │   ├── CMakeLists.txt
-│   ├── display_hal.cpp / .h     # LovyanGFX + wrapper C (extern "C")
+│   ├── display_hal.cpp / .h     # LEGADO F2: LovyanGFX + wrapper C
 │   ├── display_lgfx_config.hpp  # Configuração do panel ST7789
 │   ├── servo_hal.c / .h         # UART + protocolo SCSCL Feetech
 │   ├── audio_hal.c / .h         # I2S0 (mic) + I2S1 (speaker)
@@ -77,7 +96,7 @@ firmware/main-controller/components/
 │   ├── led_hal.c / .h           # RMT + WS2812
 │   ├── touch_hal.c / .h         # Touch peripheral ESP32-S3 (fita provisória)
 │   ├── touch_zone_hal.*         # FUTURO: controlador I2C MPR121/CAP1203 (3 zonas)
-│   ├── sd_hal.c / .h            # SPI3 + FATFS + mount
+│   ├── sd_hal.c / .h            # LEGADO F5: mount local, removido em DM6
 │   └── nb_hw_config.h           # GPIO, limites HW, constantes de hardware
 │                                # (safety/ não existe como diretório separado:
 │                                #  motion_safety e power_monitor vivem em infra/)
@@ -86,7 +105,7 @@ firmware/main-controller/components/
 │   ├── CMakeLists.txt
 │   ├── render_service.cpp / .h  # Render loop, layer system, FPS control (C++)
 │   ├── motion_service.c / .h    # Interpolação, primitivos de pescoço
-│   ├── audio_service.c / .h     # Playback WAV do SD
+│   ├── audio_service.c / .h     # Playback local; asset remoto via buffer em F5
 │   ├── led_service.c / .h       # Animações de LED
 │   ├── touch_service.c / .h     # Detecção TAP/LONG/SUSTAINED + eventos
 │   ├── touch_zone_service.*     # FUTURO: press/release/swipe de carinho multi-zona
@@ -108,6 +127,19 @@ firmware/main-controller/components/
     ├── CMakeLists.txt
     ├── persona_service.c / .h   # Persona seed, perfil de usuario, preferencias, modulacao
     └── long_term_memory.c / .h  # interaction_history, event_journal, stats
+
+firmware/head-controller/
+├── main/                         # boot e composição do head
+└── components/                   # entram por DM1-DM5:
+    ├── link_server/              # SPI slave, IRQ, créditos e heartbeat
+    ├── display/                  # LovyanGFX/display HAL
+    ├── render/                   # face, gaze visual e overlays
+    ├── camera/                   # DVP, preview e captura sob demanda
+    ├── touch_display/            # calibração/debounce; eventos crus
+    └── storage_server/           # único dono de FATFS/SDMMC
+
+firmware/shared/components/
+└── nb_inter_mcu_protocol/        # framing e tipos C17 compartilhados
 ```
 
 ### Perfil Offline-First
@@ -268,6 +300,11 @@ esp_err_t event_bus_unsubscribe(nb_event_type_t type,
 
 **Regra:** Tasks de safety (prioridade ≥ 20) nunca preemptadas por tasks de comportamento (prioridade ≤ 15).
 
+Na arquitetura final, `nb_persist_task` e `nb_logger_task` do main enfileiram
+operações para o cliente remoto; não chamam FATFS. O head executa filesystem em
+`nb_storage_worker` de baixa prioridade. Link RX/TX fica abaixo de safety e
+acima de persistência, com reservas de fila para `CONTROL` e `EVENT`.
+
 ---
 
 ## Arquitetura de Voz e Listening
@@ -360,15 +397,19 @@ Todos os pinos `NB_PIN_*` definidos em `nb_hal/nb_hw_config.h`.
 
 ## Política de Memória
 
-| Recurso      | Regra                                                                                                          |
-| ------------ | -------------------------------------------------------------------------------------------------------------- |
-| SRAM (512KB) | FreeRTOS kernel, stacks de tasks, I2S DMA buffers (DMA não alcança PSRAM via I2S), variáveis de estado crítico |
-| PSRAM (8MB)  | Framebuffers de display, buffers de áudio secundários, circular buffer de LTM, futuro frame buffer de câmera   |
-| Flash/NVS    | Config crítica, flags de safety, calibração, persona seed                                                      |
-| microSD      | Logs, assets de áudio, memória de longo prazo                                                                  |
+| Recurso | Main — Waveshare N32R16 | Head — Freenove N16R8 |
+| --- | --- | --- |
+| SRAM | Kernel, stacks, safety e I2S DMA | Kernel, stacks, SPI DMA e filas críticas |
+| PSRAM | Buffers de áudio, fila LTM e caches não-DMA | Sprites, framebuffers da câmera e cache de assets |
+| Flash/NVS | Safety, identidade, config e snapshot de persona | Config local, boot/recovery e calibração do head |
+| microSD | Sem mount direto | Logs, assets e memória longa |
 
-**Headroom obrigatório em PSRAM:** manter ≥300KB livres para futuro frame buffer da câmera.
-Monitorar em produção: `heap_caps_get_free_size(MALLOC_CAP_SPIRAM)`.
+No head, nenhum framebuffer usa SRAM e devem restar pelo menos 300KB de PSRAM
+além dos buffers ativos. No main, o antigo headroom de câmera deixa de ser
+requisito após F4; ainda se monitora PSRAM para fila de persistência e áudio.
+
+Para asset de áudio remoto, o baseline de F5 é ring buffer de 96KB na PSRAM do
+main, prebuffer de 64KB e refill abaixo de 32KB. I2S DMA permanece em SRAM.
 
 ---
 
@@ -404,8 +445,9 @@ app_main()
             │
             ├── PHASE_EARLY      UART, HW WDT, NVS init, reset reason
             ├── PHASE_POWER      brownout callback, power_monitor init
-            ├── PHASE_STORAGE    microSD mount, persistence_mgr init
-            ├── PHASE_HAL        display, LEDs, touch, servo PING (sem movimento)
+            ├── PHASE_HEAD_LINK  link opcional; nunca bloqueia safety/áudio
+            ├── PHASE_STORAGE    cliente remoto; degrada se head/SD ausente
+            ├── PHASE_HAL        áudio, LEDs, touch corporal, servo PING
             ├── PHASE_SAFETY     motion_safety init, safety checks
             ├── PHASE_SERVICES   render, audio, behavior, gaze, conductor
             ├── PHASE_MOTION     servos ARMED (só após safety confirmado)
@@ -413,4 +455,6 @@ app_main()
 ```
 
 Falha em fase crítica (EARLY, POWER, SAFETY) → safe mode (motion desabilitado).
-Falha em fase não-crítica (STORAGE) → modo degradado (SD absent).
+Falha em fase não-crítica (HEAD_LINK/STORAGE) → modo degradado, sem UI e/ou SD.
+O head possui boot independente: watchdog/NVS, display neutro, SD, link e
+snapshot visual. Reconexão sempre exige novo handshake e invalida handles.
