@@ -61,8 +61,6 @@ desktop.ini
 *.log
 *.dmp
 *.core
-bridge_v2/*.wav
-bridge_v2/pytest-cache-files-*/
 voice_samples/
 voice_samples-v1/
 server/.env
@@ -83,9 +81,6 @@ app/.flutter-plugins-dependencies
 *.elf
 *.map
 
-# Modelos locais do bridge/TTS
-bridge/*.onnx
-bridge/*.onnx.json
 models/
 tools/piper/
 
@@ -108,6 +103,4 @@ assets/ui/icons/*
 
 # Credenciais locais de dev — nunca commitar
 .env
-bridge/.env
-bridge_v2/.env
 firmware/main-controller/components/infra/wifi_creds.h

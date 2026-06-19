@@ -74,7 +74,7 @@ Implicacao no roadmap vivo:
 
 ### Bridge, Server e Produto de Voz
 
-Origem: `docs/BRIDGE_V2.md`, `docs/VOICE_PIPELINE.md` e `docs/ROADMAP.md`.
+Origem: `docs/VOICE_PIPELINE.md`, `docs/ROADMAP.md` e historico Git.
 
 - Bridge/server ja cobre STT, LLM, TTS, intents locais, device commands,
   feedback visual de sessao, metricas e harness de regressao.
@@ -188,7 +188,6 @@ Manter documentacao operacional curta:
 - `docs/ARCHITECTURE.md`: arquitetura viva do firmware/server/bridge.
 - `docs/ROADMAP.md`: somente roadmap ativo e proximo estagio.
 - `docs/CAMERA_INTEGRATION.md`: plano vivo de camera/visao.
-- `docs/BRIDGE_V2.md`: referencia consolidada do bridge/server.
 - `docs/VOICE_AUDIO_V2_ARCHITECTURE.md`: contrato atual de voice audio v2,
   reduzido para estado final e invariantes.
 

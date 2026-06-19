@@ -91,7 +91,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | --- | --- | --- |
 | Display/render | `FEITO` como base; ainda pode receber polish | `docs/ARCHITECTURE.md` |
 | Event bus e camadas | `FEITO` como diretriz estrutural | `docs/ARCHITECTURE.md` |
-| Voice/bridge base | `FEITO` como base funcional | `bridge/`, `server/`, `docs/PROJECT.md` |
+| Voice/server base | `FEITO` como base funcional | `server/`, `firmware/main-controller/components/infra/bridge_service.c`, `docs/PROJECT.md` |
 | Feedback visual de voice/bridge | `FEITO` como base de produto | `firmware/main-controller/components/services/ui_overlay_service/` |
 | Camera + presence + face recognition | `FEITO` — preview no display a 5 FPS, gaze tracking, enrollment e reconhecimento via Ollama, away detection | `firmware/main-controller/components/services/vision_preview_service/`, `server/noisebot_server/internal/vision/` |
 | Perfil local de usuario/persona | `FEITO` — cadastro declarativo + reconhecimento biometrico via camera; ativa perfil automaticamente ao identificar usuario | `firmware/main-controller/components/persona/persona_service/`, `server/noisebot_server/internal/vision/{analysis,client,face_loop}.py` |
