@@ -215,7 +215,7 @@ Pré-condições:
 | E5.4 | IRQ ausente | polling mantém heartbeat/tráfego | aprovado: ambos `READY`, TX/RX crescente, erros=0 |
 | E5.5 | reset manual do head | novo `boot_id`, snapshot refeito | aprovado após correção: ambos `READY`, erros=0; telemetria de duração corrigida em seguida |
 | E5.6 | reset manual do main | novo `boot_id`, snapshot aceito | aprovado: ambos `READY`, erros=0; telemetria de duração corrigida em seguida |
-| E5.7 | MISO ausente | timeout limitado, sem falsa conclusão | pendente |
+| E5.7 | MISO ausente | timeout limitado, sem falsa conclusão | parcial: boot sem MISO mantém main em `HANDSHAKE` (TX=17 limitado) e head em `SNAPSHOT`; sem crash/erro e sem falso `READY`; timeout de operação após `READY` ainda não injetado |
 | E5.8 | bit flip controlado | `invalid` cresce, payload não entregue | adiado sem injetor |
 
 E5.8 não deve ser improvisado por curto, ruído manual ou contato intermitente.
