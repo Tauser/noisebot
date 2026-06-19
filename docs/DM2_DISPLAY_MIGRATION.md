@@ -31,6 +31,27 @@ O perfil não inicializa LovyanGFX, SPI do ST7789, backlight ou framebuffer.
 Ele existe para provar capability, fila, ACK, validação e aplicação ponta a
 ponta antes do gate físico do display.
 
+## Evidência DM2.1 — 2026-06-19
+
+Perfis `build-dm2` gravados na Waveshare COM5 e Freenove COM12, com o enlace
+mantido em 10 MHz. Resultado:
+
+- ambos permaneceram em `READY`;
+- main enfileirou `SET_SCENE`, geração 1;
+- head aplicou uma única cena: `display=1/0/0 gen=1`
+  (`accepted/rejected/ignored`);
+- ACK RTT da main: 5 ms;
+- `invalid=0`, `retry=0`, `timeout=0`, `spi_err=0`;
+- LovyanGFX, ST7789, backlight e framebuffer permaneceram desativados.
+
+A tentativa de reiniciar a main por RTS para repetir fisicamente a geração 1
+não produziu reboot nessa execução. A rejeição de geração duplicada, stale e
+o wrap-around permanecem aprovados nos testes host; repetição física fica para
+o próximo gate.
+
+Resultado DM2.1: **aprovado para rota semântica ponta a ponta**. Isso não
+aprova ainda o display físico nem a paridade visual.
+
 ## Ordem de implementação
 
 1. Fechar DM1: soak, E5 e E6.

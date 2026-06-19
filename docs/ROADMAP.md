@@ -116,7 +116,7 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 | --- | --- | --- | --- |
 | F0 estrutura/contrato | DM0 | `FEITO` | Dois builds, contrato comum, CRC/sequence/créditos testados no host e docs alinhadas |
 | F1 enlace | DM1 | `FEITO` | Soak 8 h em 10 MHz, fault injection segura, reboot dos peers e HEAD_RESET aprovados; bit flip físico segue como laboratório não bloqueante |
-| F2 display | DM2 | `EM ANDAMENTO` | DM2.1 prova capability/fila/ACK/aplicação semântica sem tocar no display físico |
+| F2 display | DM2 | `EM ANDAMENTO` | DM2.1 aprovado em hardware: cena geração 1 aplicada uma vez, ACK 5 ms e zero erro; próximo gate porta HAL/LovyanGFX sem remover fallback local |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main |
 | F4 câmera | DM4 | `BACKLOG` | DVP/preview no head, análise canônica no server |
 | F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados |
