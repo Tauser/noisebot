@@ -1,0 +1,4 @@
+# Perfil opt-in de bancada E6. Requer GPIO8 da main conectado ao EN do head.
+CONFIG_NB_INTER_MCU_SPI_ENABLED=y
+CONFIG_NB_DM1_BENCH_PROFILE=y
+CONFIG_NB_DM1_HEAD_RESET_PROBE=y

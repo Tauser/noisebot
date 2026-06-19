@@ -11,6 +11,7 @@
  */
 esp_err_t nb_main_link_service_init(void);
 nb_link_state_t nb_main_link_service_state(void);
+esp_err_t nb_main_link_service_reset_head(void);
 esp_err_t nb_main_link_service_queue_display(
     const nb_display_command_t *command);
 

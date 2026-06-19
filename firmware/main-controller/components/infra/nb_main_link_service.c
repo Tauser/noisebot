@@ -227,6 +227,14 @@ nb_link_state_t nb_main_link_service_state(void)
                          : NB_LINK_STATE_RESET;
 }
 
+esp_err_t nb_main_link_service_reset_head(void)
+{
+    if (!s_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return nb_main_spi_transport_reset_head();
+}
+
 esp_err_t nb_main_link_service_queue_display(
     const nb_display_command_t *command)
 {

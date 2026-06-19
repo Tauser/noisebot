@@ -16,4 +16,13 @@ menu "NoiseBot inter-MCU SPI transport"
             Bypass the legacy monolithic boot and initialize only the
             inter-MCU link task. Use only with the isolated build-dm1 profile.
 
+    config NB_DM1_HEAD_RESET_PROBE
+        bool "Run one-shot HEAD_RESET bench probe"
+        depends on NB_DM1_BENCH_PROFILE
+        default n
+        help
+            After the link reaches READY, pulse HEAD_RESET once and immediately
+            request a second reset to validate the 10-second rate limit. Enable
+            only in the isolated build-e6 profile with GPIO8 wired to head EN.
+
 endmenu

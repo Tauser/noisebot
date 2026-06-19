@@ -18,6 +18,13 @@
 #define CONFIG_NB_DM1_BENCH_PROFILE 0
 #endif
 
+#ifndef CONFIG_NB_DM1_HEAD_RESET_PROBE
+#define CONFIG_NB_DM1_HEAD_RESET_PROBE 0
+#endif
+
+#define NB_E6_READY_TIMEOUT_MS 10000U
+#define NB_E6_READY_POLL_MS 20U
+
 static const char *TAG = "nb_main";
 
 void app_main(void)
@@ -29,6 +36,24 @@ void app_main(void)
         if (link_err != ESP_OK) {
             ESP_LOGE(TAG, "enlace DM1 falhou: %s",
                      esp_err_to_name(link_err));
+        }
+        if (link_err == ESP_OK && CONFIG_NB_DM1_HEAD_RESET_PROBE) {
+            uint32_t waited_ms = 0U;
+            while (nb_main_link_service_state() != NB_LINK_STATE_READY &&
+                   waited_ms < NB_E6_READY_TIMEOUT_MS) {
+                vTaskDelay(pdMS_TO_TICKS(NB_E6_READY_POLL_MS));
+                waited_ms += NB_E6_READY_POLL_MS;
+            }
+            if (nb_main_link_service_state() != NB_LINK_STATE_READY) {
+                ESP_LOGE(TAG, "E6 probe abortado: enlace nao chegou a READY");
+            } else {
+                const esp_err_t first = nb_main_link_service_reset_head();
+                ESP_LOGI(TAG, "E6 primeiro HEAD_RESET: %s",
+                         esp_err_to_name(first));
+                const esp_err_t second = nb_main_link_service_reset_head();
+                ESP_LOGI(TAG, "E6 segundo HEAD_RESET imediato: %s",
+                         esp_err_to_name(second));
+            }
         }
         for (;;) {
             vTaskDelay(pdMS_TO_TICKS(1000));

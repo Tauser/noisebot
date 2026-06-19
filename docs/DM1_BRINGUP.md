@@ -229,11 +229,21 @@ Somente depois de E3–E5:
 1. Desligar as placas.
 2. Conectar main GPIO8 ao pino EN do head.
 3. Confirmar que EN possui pull-up da placa e não recebe 5 V.
-4. Energizar head e main.
-5. Acionar um único reset comandado e observar pulso LOW de aproximadamente
-   20 ms.
+4. Compilar e gravar somente a main com o perfil isolado:
+
+```powershell
+idf.py -B build-e6 -D SDKCONFIG=sdkconfig.e6 `
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.e6.defaults" build flash
+```
+
+5. Energizar head e main. O probe aguarda `READY`, aciona um único reset
+   comandado e registra o pulso LOW de aproximadamente 20 ms.
 6. Confirmar espera de aproximadamente 100 ms antes da retomada.
-7. Repetição antes de 10 segundos deve ser rejeitada pelo rate limit.
+7. O segundo pedido imediato deve retornar `ESP_ERR_INVALID_STATE`, provando o
+   rate limit de 10 segundos.
+
+O perfil E6 é separado de `sdkconfig.dm1`: o firmware normal de bancada nunca
+reseta o head automaticamente.
 
 Aceite E6: apenas o head reinicia; main permanece operacional e refaz
 handshake/snapshot.
