@@ -267,5 +267,17 @@ Durante o primeiro ensaio foram corrigidos dois problemas de software:
 2. Timeout de 20 ms no slave corria em fase com o poll de 20 ms do master. A
    janela do slave foi ampliada para 100 ms.
 
-Pendentes: observação de 30 minutos, fault injection E5, `HEAD_RESET` E6 e soak
-de 8 horas.
+Checkpoint após observação do operador por mais de 30 minutos:
+
+- placas permaneceram energizadas, estáveis e sem aquecimento percebido;
+- a abertura simultânea das portas CH343 reiniciou os dois MCUs, portanto os
+  contadores acumulados anteriores não puderam ser coletados;
+- após o reset simultâneo, ambos recuperaram `READY` automaticamente;
+- main: handshake 535 ms, `invalid=0`, `timeout=0`, `spi_err=0`;
+- head: handshake 40 ms, `invalid=0`, `timeout=0`, `spi_to=0`, `spi_err=0`;
+- TX/RX voltou a crescer nos dois sentidos.
+
+Este checkpoint valida boot e recuperação limpa, mas não substitui o soak
+instrumentado de 8 horas.
+
+Pendentes: fault injection E5, `HEAD_RESET` E6 e soak instrumentado de 8 horas.
