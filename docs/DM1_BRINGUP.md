@@ -197,6 +197,31 @@ Depois de cada caso, restaurar o cabeamento com as duas placas desligadas.
 Aceite E5: recuperação sem reboot em loop, deadlock, crescimento ilimitado de
 fila ou impacto em `motion_safety`.
 
+### Folha de execução E5
+
+Pré-condições:
+
+- soak de 8 horas encerrado e telemetria final coletada;
+- placas desligadas antes de remover ou recolocar qualquer fio;
+- `HEAD_RESET` ainda desconectado;
+- executar somente um defeito por energização;
+- após cada caso, desligar, restaurar o cabeamento e repetir continuidade.
+
+| Caso | Injeção | Evidência obrigatória | Resultado |
+| --- | --- | --- | --- |
+| E5.1 | head ausente no boot | main vivo, sem bloqueio de safety | pendente |
+| E5.2 | main ausente no boot | head vivo aguardando handshake | pendente |
+| E5.3 | SCLK ausente por 2 s | degrada e recupera `READY` | pendente |
+| E5.4 | IRQ ausente | polling mantém heartbeat/tráfego | pendente |
+| E5.5 | reset manual do head | novo `boot_id`, snapshot refeito | pendente |
+| E5.6 | reset manual do main | novo `boot_id`, snapshot aceito | pendente |
+| E5.7 | MISO ausente | timeout limitado, sem falsa conclusão | pendente |
+| E5.8 | bit flip controlado | `invalid` cresce, payload não entregue | adiado sem injetor |
+
+E5.8 não deve ser improvisado por curto, ruído manual ou contato intermitente.
+Sem analisador/injetor apropriado, manter como gate de laboratório e usar o
+teste host de CRC como cobertura provisória.
+
 ## Gate E6 — HEAD_RESET
 
 Somente depois de E3–E5:
@@ -212,6 +237,17 @@ Somente depois de E3–E5:
 
 Aceite E6: apenas o head reinicia; main permanece operacional e refaz
 handshake/snapshot.
+
+### Registro E6
+
+| Verificação | Esperado | Resultado |
+| --- | --- | --- |
+| EN do head em repouso | pull-up, sem 5 V | pendente |
+| pulso main GPIO8→EN | LOW por aproximadamente 20 ms | pendente |
+| retomada | espera de aproximadamente 100 ms | pendente |
+| rate limit | segundo pedido antes de 10 s rejeitado | pendente |
+| recuperação | novo `boot_id`, handshake e snapshot | pendente |
+| isolamento | main não reinicia | pendente |
 
 ## Soak e promoção
 

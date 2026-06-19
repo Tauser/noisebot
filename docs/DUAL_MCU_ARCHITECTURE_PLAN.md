@@ -291,6 +291,10 @@ flag desligada eles retornam `ESP_ERR_NOT_SUPPORTED` antes de tocar GPIO/SPI.
 - manter fallback local por flag até validação;
 - mover LovyanGFX para o head ao final.
 
+Scaffold preparado em `docs/DM2_DISPLAY_MIGRATION.md`: contrato visual
+semântico, fila limitada no main e receptor validado no head. O driver físico
+permanece desabilitado até o fechamento dos gates de DM1.
+
 ### F3 — touch do display
 
 - head publica eventos crus normalizados;

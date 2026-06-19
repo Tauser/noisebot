@@ -116,7 +116,7 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 | --- | --- | --- | --- |
 | F0 estrutura/contrato | DM0 | `FEITO` | Dois builds, contrato comum, CRC/sequence/créditos testados no host e docs alinhadas |
 | F1 enlace | DM1 | `EM ANDAMENTO` | Bring-up 10 MHz chegou a READY sem erros; faltam soak, fault injection e HEAD_RESET |
-| F2 display | DM2 | `BACKLOG` | Display/render no head; fallback removível |
+| F2 display | DM2 | `PREPARADO` | Contrato semântico 1.3, fila main e receptor head; hardware aguarda DM1 |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main |
 | F4 câmera | DM4 | `BACKLOG` | DVP/preview no head, análise canônica no server |
 | F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados |

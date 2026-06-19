@@ -14,6 +14,7 @@ validacao. Use este indice para saber por onde comecar.
 | `ROADMAP.md` | Painel ativo: decisoes atuais, fila P0/P1/P2, feito consolidado e criterios de aceite. |
 | `ARCHITECTURE.md` | Arquitetura do firmware/server, camadas, event bus e tasks. |
 | `DUAL_MCU_ARCHITECTURE_PLAN.md` | Plano da arquitetura dual-MCU, storage remoto, protocolo, falhas e rollout. |
+| `DM2_DISPLAY_MIGRATION.md` | Plano executável da migração do display/render para o head. |
 | `HARDWARE.md` | Mapa de hardware, pinos e restricoes fisicas. |
 
 ## Referencias Tecnicas Mantidas
