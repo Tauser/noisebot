@@ -1,5 +1,10 @@
 #include "nb_display_protocol.h"
 
+bool nb_display_generation_is_newer(uint32_t candidate, uint32_t current)
+{
+    return (int32_t)(candidate - current) > 0;
+}
+
 bool nb_display_command_is_valid(const nb_display_command_t *command,
                                  size_t length)
 {

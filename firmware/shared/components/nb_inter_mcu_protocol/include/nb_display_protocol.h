@@ -41,6 +41,7 @@ _Static_assert(sizeof(nb_display_command_t) == 16U,
 
 bool nb_display_command_is_valid(const nb_display_command_t *command,
                                  size_t length);
+bool nb_display_generation_is_newer(uint32_t candidate, uint32_t current);
 
 #ifdef __cplusplus
 }

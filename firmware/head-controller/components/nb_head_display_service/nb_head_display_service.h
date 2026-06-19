@@ -12,6 +12,7 @@ typedef struct {
     bool scene_valid;
     uint32_t accepted;
     uint32_t rejected;
+    uint32_t ignored;
     nb_display_command_t scene;
 } nb_head_display_status_t;
 

@@ -1,0 +1,3 @@
+# Perfil opt-in DM2.1: receptor semântico ativo, display físico ainda desligado.
+CONFIG_NB_INTER_MCU_SPI_ENABLED=y
+CONFIG_NB_HEAD_DISPLAY_ENABLED=y

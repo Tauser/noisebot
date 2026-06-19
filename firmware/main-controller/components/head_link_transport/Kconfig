@@ -25,4 +25,13 @@ menu "NoiseBot inter-MCU SPI transport"
             request a second reset to validate the 10-second rate limit. Enable
             only in the isolated build-e6 profile with GPIO8 wired to head EN.
 
+    config NB_DM2_DISPLAY_PROBE
+        bool "Send one-shot DM2 semantic display command"
+        depends on NB_DM1_BENCH_PROFILE
+        default n
+        help
+            After READY, enqueue one semantic SET_SCENE command and log the
+            result. This validates main-to-head routing without enabling the
+            physical display. Use only with the isolated build-dm2 profile.
+
 endmenu

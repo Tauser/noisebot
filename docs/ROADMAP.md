@@ -25,7 +25,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | TTS HTTP no firmware | Removido do roadmap ativo; duplicava o server/bridge atual |
 | Knowledge OS externo | Nao atualizar por enquanto, por decisao do usuario |
 | Maior risco atual | Roadmap acumular itens antigos e perder poder de decisao |
-| Migração dual-MCU | DM1 lógica em andamento; enlace físico bloqueado por bancada e recabeamento seguro |
+| Migração dual-MCU | DM1 aprovado em 10 MHz; DM2 iniciou prova semântica antes do display físico |
 
 ## Como Ler
 
@@ -63,7 +63,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | 15.x - Voice polish | Melhorias pontuais em feedback, erros e telemetria apos estabilizar base |
 | C3-C6 - Voz, Obsidian, progresso e backup | Entra apos o historico e o contexto persistente do dashboard estarem estaveis |
 | V4-V5 - TTS inglês e integração de estudos | Entra após STT/LLM bilíngues estarem medidos; preserva Piper PT-BR e Voice Audio v2 |
-| DM1 - Enlace dual-MCU | Entra após fechamento de F0 e validação do pinout; implementa SPI/IRQ/reset sem migrar periféricos |
+| DM2 - Display remoto | Entra após DM1; valida contrato semântico e depois porta render/LovyanGFX para o head |
 
 ### P2 - Backlog
 
@@ -115,8 +115,8 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 | Fase técnica | Etapa do roadmap | Status | Saída |
 | --- | --- | --- | --- |
 | F0 estrutura/contrato | DM0 | `FEITO` | Dois builds, contrato comum, CRC/sequence/créditos testados no host e docs alinhadas |
-| F1 enlace | DM1 | `EM ANDAMENTO` | Bring-up 10 MHz chegou a READY sem erros; faltam soak, fault injection e HEAD_RESET |
-| F2 display | DM2 | `PREPARADO` | Contrato semântico 1.3, fila main e receptor head; hardware aguarda DM1 |
+| F1 enlace | DM1 | `FEITO` | Soak 8 h em 10 MHz, fault injection segura, reboot dos peers e HEAD_RESET aprovados; bit flip físico segue como laboratório não bloqueante |
+| F2 display | DM2 | `EM ANDAMENTO` | DM2.1 prova capability/fila/ACK/aplicação semântica sem tocar no display físico |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main |
 | F4 câmera | DM4 | `BACKLOG` | DVP/preview no head, análise canônica no server |
 | F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados |

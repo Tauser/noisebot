@@ -17,6 +17,20 @@ antes da validação.
 - `CONFIG_NB_HEAD_DISPLAY_ENABLED=n` por padrão;
 - nenhuma alteração de GPIO ou flash durante o soak DM1.
 
+## DM2.1 — prova semântica sem display físico
+
+Perfis isolados `sdkconfig.dm2.defaults` habilitam:
+
+- main em boot mínimo, enviando uma única cena após `READY`;
+- head anunciando `NB_LINK_CAP_DISPLAY_SEMANTIC`;
+- receptor idempotente por `generation`, com contadores
+  `accepted/rejected/ignored`;
+- telemetria da última geração aplicada.
+
+O perfil não inicializa LovyanGFX, SPI do ST7789, backlight ou framebuffer.
+Ele existe para provar capability, fila, ACK, validação e aplicação ponta a
+ponta antes do gate físico do display.
+
 ## Ordem de implementação
 
 1. Fechar DM1: soak, E5 e E6.

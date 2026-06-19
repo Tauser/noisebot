@@ -126,6 +126,45 @@
       "problemMatcher": []
     },
     {
+      "label": "DM2: build main-controller",
+      "type": "shell",
+      "command": "idf.py",
+      "args": [
+        "-B", "build-dm2",
+        "-D", "SDKCONFIG=sdkconfig.dm2",
+        "-D", "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.dm2.defaults",
+        "build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/firmware/main-controller"
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "DM2: build head-controller",
+      "type": "shell",
+      "command": "idf.py",
+      "args": [
+        "-B", "build-dm2",
+        "-D", "SDKCONFIG=sdkconfig.dm2",
+        "-D", "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.dm2.defaults",
+        "build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/firmware/head-controller"
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "DM2: build ambos",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "DM2: build main-controller",
+        "DM2: build head-controller"
+      ],
+      "problemMatcher": []
+    },
+    {
       "label": "Firmware: fullclean main-controller",
       "type": "shell",
       "command": "idf.py",

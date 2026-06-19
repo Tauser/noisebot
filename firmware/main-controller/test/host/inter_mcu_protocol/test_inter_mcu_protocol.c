@@ -231,6 +231,15 @@ static void test_display_command(void)
     command.reserved = 1U;
     TEST("display_reserved",
          !nb_display_command_is_valid(&command, sizeof(command)));
+
+    TEST("display_generation_newer",
+         nb_display_generation_is_newer(8U, 7U));
+    TEST("display_generation_duplicate",
+         !nb_display_generation_is_newer(7U, 7U));
+    TEST("display_generation_stale",
+         !nb_display_generation_is_newer(6U, 7U));
+    TEST("display_generation_wrap",
+         nb_display_generation_is_newer(0U, UINT32_MAX));
 }
 
 int main(void)

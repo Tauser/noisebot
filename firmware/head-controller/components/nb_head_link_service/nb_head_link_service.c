@@ -118,6 +118,8 @@ static void link_task(void *arg)
             NB_HEAD_LINK_TELEMETRY_MS) {
             const nb_link_engine_stats_t *stats =
                 nb_link_engine_stats(&s_engine);
+            nb_head_display_status_t display_status;
+            nb_head_display_service_get_status(&display_status);
             const uint32_t ack_avg_ms =
                 stats->ack_rtt_samples == 0U
                     ? 0U
@@ -126,7 +128,8 @@ static void link_task(void *arg)
             ESP_LOGI(TAG,
                      "telemetry state=%s tx=%lu rx=%lu invalid=%lu "
                      "retry=%lu timeout=%lu spi_to=%lu spi_err=%lu "
-                     "hs=%lums ack_last/avg/max=%lu/%lu/%lums",
+                     "hs=%lums ack_last/avg/max=%lu/%lu/%lums "
+                     "display=%lu/%lu/%lu gen=%lu",
                      state_name(nb_link_engine_state(&s_engine)),
                      (unsigned long)stats->frames_tx,
                      (unsigned long)stats->frames_rx,
@@ -138,7 +141,13 @@ static void link_task(void *arg)
                      (unsigned long)stats->handshake_last_ms,
                      (unsigned long)stats->ack_rtt_last_ms,
                      (unsigned long)ack_avg_ms,
-                     (unsigned long)stats->ack_rtt_max_ms);
+                     (unsigned long)stats->ack_rtt_max_ms,
+                     (unsigned long)display_status.accepted,
+                     (unsigned long)display_status.rejected,
+                     (unsigned long)display_status.ignored,
+                     (unsigned long)(display_status.scene_valid
+                                         ? display_status.scene.generation
+                                         : 0U));
             last_telemetry_ms = now_ms;
         }
     }
