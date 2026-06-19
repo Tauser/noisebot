@@ -11,7 +11,7 @@ extern "C" {
 
 #define NB_LINK_MAGIC                  0x4E42U
 #define NB_LINK_PROTOCOL_VERSION_MAJOR 1U
-#define NB_LINK_PROTOCOL_VERSION_MINOR 1U
+#define NB_LINK_PROTOCOL_VERSION_MINOR 2U
 #define NB_LINK_MAX_PAYLOAD_BYTES      4096U
 #define NB_LINK_BULK_WINDOW_CHUNKS      4U
 #define NB_LINK_CHANNEL_COUNT           5U
@@ -35,6 +35,7 @@ typedef enum {
     NB_LINK_MSG_IDLE,
     NB_LINK_MSG_CREDIT_UPDATE,
     NB_LINK_MSG_TIME_SYNC,
+    NB_LINK_MSG_ACK,
     NB_LINK_MSG_DISPLAY_COMMAND = 0x100,
     NB_LINK_MSG_TOUCH_EVENT,
     NB_LINK_MSG_CAMERA_COMMAND,
@@ -96,6 +97,13 @@ typedef struct __attribute__((packed)) {
     uint32_t head_monotonic_ms;
     uint32_t source_sequence;
 } nb_link_event_timestamp_t;
+
+typedef struct __attribute__((packed)) {
+    uint32_t sequence;
+    uint16_t message_type;
+    uint8_t channel;
+    uint8_t reserved;
+} nb_link_ack_t;
 
 typedef enum {
     NB_LINK_VALIDATE_OK = 0,

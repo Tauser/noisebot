@@ -66,6 +66,9 @@ Regras:
 - comandos mutadores possuem sequence e resposta idempotente;
 - retries reutilizam a mesma sequence;
 - timeout nunca implica que a operação não ocorreu;
+- ACK confirma recebimento/aceitação pelo peer, não commit de domínio;
+- timeout de ACK e reboot do peer são reportados ao chamador como resultado
+  ambíguo para reconciliação explícita;
 - payload máximo inicial de 4096 bytes;
 - transferências maiores usam `BEGIN/CHUNK/END/ABORT`;
 - versões major incompatíveis bloqueiam operação; minor usa negociação;
@@ -257,6 +260,12 @@ créditos. Isso não autoriza conectar fisicamente o enlace.
 - SPI, IRQ, reset, framing, CRC e heartbeat;
 - fault injection para bit flip, timeout e reboot;
 - telemetria de latência e retries.
+
+Status: **núcleo lógico em andamento**. A FSM C17 testável no host implementa
+`HELLO/HELLO_ACK`, snapshot confirmado, heartbeat, `READY/DEGRADED`,
+retransmissão idempotente, ACK, timeout explícito, prioridade de
+`CONTROL/EVENT` sobre `BULK` e aborto de pendências após novo `boot_id`.
+Adaptadores ESP-IDF de SPI/IRQ/reset e validação elétrica continuam pendentes.
 
 ### F2 — display remoto
 

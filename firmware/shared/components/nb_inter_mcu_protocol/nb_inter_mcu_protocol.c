@@ -11,6 +11,8 @@ _Static_assert(sizeof(nb_link_time_sync_t) == 24U,
                "wire time payload size changed");
 _Static_assert(sizeof(nb_link_event_timestamp_t) == 8U,
                "wire event timestamp size changed");
+_Static_assert(sizeof(nb_link_ack_t) == 8U,
+               "wire ack payload size changed");
 
 uint16_t nb_link_crc16_ccitt(const void *data, size_t length)
 {
