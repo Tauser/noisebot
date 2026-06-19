@@ -1,0 +1,25 @@
+{
+  "folders": [
+    {
+      "name": "NoiseBot Repository",
+      "path": "."
+    },
+    {
+      "name": "Firmware Main",
+      "path": "firmware/main-controller"
+    },
+    {
+      "name": "Firmware Head",
+      "path": "firmware/head-controller"
+    }
+  ],
+  "settings": {
+    "idf.customExtraVars": {
+      "IDF_TARGET": "esp32s3"
+    },
+    "files.exclude": {
+      "**/build": true,
+      "**/managed_components": true
+    }
+  }
+}

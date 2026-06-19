@@ -14,7 +14,7 @@ dashboard `app/`.
 
 | Area | Estado |
 | --- | --- |
-| Firmware ESP-IDF | Base ativa em C17, com componentes organizados por camadas |
+| Firmware ESP-IDF | Dois projetos em `firmware/`; migração dual-MCU incremental |
 | Display/face | Pipeline LovyanGFX, render service e overlays visuais em evolucao |
 | Voz/server | Base funcional com server local e pipeline de voz em refinamento |
 | Touch | Ativo, mas em revisao de sensibilidade e confiabilidade |
@@ -53,21 +53,15 @@ dashboard `app/`.
 Noisebot/
 +-- app/                 # Dashboard externo em React/Vite
 +-- assets/              # Assets do produto e recursos visuais/sonoros
-+-- components/          # Componentes ESP-IDF do firmware
-|   +-- infra/           # Boot, config, event bus, persistence, watchdog, safety
-|   +-- hal/          # HAL de display, audio, servo, LED, touch, SD
-|   +-- services/        # Render, audio, touch, camera, agenda, overlay, voice
-|   +-- behavior/        # State machine, behavior engine, emotion model
-|   +-- persona/         # Persona e memoria de longo prazo
 +-- docs/                # Projeto, arquitetura, hardware, roadmap e referencias
-+-- main/                # app_main do firmware ESP-IDF
++-- firmware/
+|   +-- main-controller/ # Waveshare: comportamento, voz, rede, safety e perifericos
+|   +-- head-controller/ # Freenove: display, touch, camera e microSD
+|   +-- shared/          # Contratos binarios compartilhados
 +-- models/              # Modelos locais quando aplicavel
 +-- server/              # Companion server local e API operacional
 +-- tools/               # Scripts auxiliares
-+-- CMakeLists.txt       # Projeto ESP-IDF
 +-- dev.ps1              # Sobe server + dashboard local
-+-- partitions.csv       # Tabela de particoes do firmware
-+-- sdkconfig.defaults   # Configuracao base do ESP-IDF
 ```
 
 Pastas locais como `docs/archive/`, `docs/history/` e `docs/modules/` podem ser
@@ -154,12 +148,14 @@ instalacao local.
 
 ```cmd
 call C:\esp\v5.5.4\esp-idf\export.bat
+cd firmware\main-controller
 idf.py build
 ```
 
 Flash, ajustando a porta conforme o dispositivo:
 
 ```cmd
+cd firmware\main-controller
 idf.py -p COM12 flash monitor
 ```
 
@@ -175,6 +171,14 @@ python -m pytest
 Build do firmware:
 
 ```cmd
+cd firmware\main-controller
+idf.py build
+```
+
+Build independente do controlador de cabeça:
+
+```cmd
+cd firmware\head-controller
 idf.py build
 ```
 
@@ -189,6 +193,7 @@ de `-Wall -Wextra -Werror`.
 | `docs/PROJECT.md` | Visao de produto, principios e plataforma tecnica |
 | `docs/ROADMAP.md` | Painel ativo: decisoes atuais, fila P0/P1/P2 e criterios |
 | `docs/ARCHITECTURE.md` | Camadas, contratos, event bus, services e memoria |
+| `docs/DUAL_MCU_ARCHITECTURE_PLAN.md` | Divisao entre MCUs, protocolo, storage e rollout |
 | `docs/HARDWARE.md` | Pinos, perifericos e restricoes fisicas |
 | `docs/SERVO_SAFETY.md` | Protocolo para liberar movimento real |
 | `docs/CAMERA_INTEGRATION.md` | Estrategia e achados de camera/visao |

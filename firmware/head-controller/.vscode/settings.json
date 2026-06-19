@@ -1,0 +1,7 @@
+{
+  "idf.projectDir": "${workspaceFolder}",
+  "idf.buildPath": "${workspaceFolder}/build",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s3"
+  }
+}

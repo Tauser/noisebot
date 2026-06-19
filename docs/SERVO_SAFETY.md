@@ -189,7 +189,7 @@ Cada item tem campo de medição — preencher com evidência real antes de marc
 
 **G3 — Veto de safety no choke point (F07)**
 - [ ] `servo_hal_write.h` presente; protótipos de escrita removidos de `servo_hal.h`
-- [ ] `grep -r "servo_hal_write.h" components/` retorna apenas `motion_service.c` e `motion_safety.c`
+- [ ] busca por `servo_hal_write.h` em `firmware/main-controller/components/` retorna apenas `motion_service.c` e `motion_safety.c`
 - Evidência: _______________
 
 **G4 — EMI do bus mensurável (F08)**
@@ -199,7 +199,7 @@ Cada item tem campo de medição — preencher com evidência real antes de marc
 - Medição: _______________ % erro (WiFi ativo, 1 h)
 
 **G5 — servo_test removido de main (F01)**
-- [ ] `servo_test.h` não incluído em `main/main.c`
+- [ ] `servo_test.h` não incluído em `firmware/main-controller/main/main.c`
 - [ ] Build limpo sem tráfego no UART1 no boot (log de TX vazio)
 - Evidência: _______________
 

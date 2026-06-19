@@ -1,0 +1,50 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Firmware: build main-controller",
+      "type": "shell",
+      "command": "idf.py",
+      "args": ["build"],
+      "options": {
+        "cwd": "${workspaceFolder}/firmware/main-controller"
+      },
+      "problemMatcher": ["$gcc"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Firmware: build head-controller",
+      "type": "shell",
+      "command": "idf.py",
+      "args": ["build"],
+      "options": {
+        "cwd": "${workspaceFolder}/firmware/head-controller"
+      },
+      "problemMatcher": ["$gcc"],
+      "group": "build"
+    },
+    {
+      "label": "Firmware: fullclean main-controller",
+      "type": "shell",
+      "command": "idf.py",
+      "args": ["fullclean"],
+      "options": {
+        "cwd": "${workspaceFolder}/firmware/main-controller"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Firmware: fullclean head-controller",
+      "type": "shell",
+      "command": "idf.py",
+      "args": ["fullclean"],
+      "options": {
+        "cwd": "${workspaceFolder}/firmware/head-controller"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

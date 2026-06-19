@@ -1,5 +1,17 @@
 # NoiseBot — Hardware
 
+## Arquitetura dual-MCU em migração
+
+- Waveshare ESP32-S3 N32R16: controlador principal de comportamento, áudio,
+  rede, safety, servos, LEDs, touch corporal e sensores.
+- Freenove ESP32-S3-WROOM CAM N16R8: controlador de cabeça para display,
+  touchscreen, câmera e microSD único.
+
+O mapa abaixo documenta a placa Freenove e continua válido para os periféricos
+fixos. O mapa definitivo da Waveshare será fechado somente após conferência do
+modelo exato e validação elétrica em bancada. Ver
+`DUAL_MCU_ARCHITECTURE_PLAN.md`.
+
 ## MCU
 
 **Freenove ESP32-S3-WROOM CAM N16R8**

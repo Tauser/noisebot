@@ -1,5 +1,11 @@
 # NoiseBot — Arquitetura
 
+> Migração dual-MCU: o baseline atual está em
+> `firmware/main-controller/`; o scaffold da Freenove está em
+> `firmware/head-controller/`. A divisão final, protocolo e gates estão em
+> `DUAL_MCU_ARCHITECTURE_PLAN.md`. Até a conclusão da F2/F5, alguns serviços
+> multimídia permanecem temporariamente no firmware principal.
+
 ## Camadas do Sistema
 
 ```
@@ -45,7 +51,7 @@ Comunicação entre layers não adjacentes é sempre via event bus.
 ## Estrutura de Componentes ESP-IDF
 
 ```
-components/
+firmware/main-controller/components/
 ├── infra/
 │   ├── CMakeLists.txt
 │   ├── boot_manager.c / .h      # Sequência de boot com fases

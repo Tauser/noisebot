@@ -10,6 +10,7 @@ list(APPEND EXTRA_COMPONENT_DIRS
     "components/services"
     "components/behavior"
     "components/persona"
+    "../shared/components"
 )
 
 project(noisebot)

@@ -1,13 +1,20 @@
 # ESP-IDF build artifacts
 build/
 build_*/
+firmware/**/build/
+firmware/**/build_*/
 sdkconfig
 sdkconfig.old
 sdkconfig.bak-pre-*
 sdkconfig.yuv422_*
+firmware/**/sdkconfig
+firmware/**/sdkconfig.old
+firmware/**/sdkconfig.bak-pre-*
 .idf_build_apps.json
 dependencies.lock
 managed_components/
+firmware/**/dependencies.lock
+firmware/**/managed_components/
 .cache/
 
 
@@ -24,7 +31,14 @@ htmlcov/
 venv/
 
 # IDE
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+!firmware/main-controller/.vscode/
+!firmware/main-controller/.vscode/settings.json
+!firmware/head-controller/.vscode/
+!firmware/head-controller/.vscode/settings.json
 .idea/
 .claude/settings.local.json
 .claude/*.lock
@@ -92,4 +106,4 @@ assets/ui/icons/*
 .env
 bridge/.env
 bridge_v2/.env
-components/infra/wifi_creds.h
+firmware/main-controller/components/infra/wifi_creds.h

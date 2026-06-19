@@ -1888,7 +1888,7 @@ def test_server_agent_sentencizer_splits_on_sentence_boundaries() -> None:
     assert sentences == ["Ola. Tudo bem?"]
 
 def test_firmware_render_metrics_contract_is_exposed() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     render_h = (
         root
         / "components"
@@ -1903,7 +1903,12 @@ def test_firmware_render_metrics_contract_is_exposed() -> None:
         / "render_service"
         / "render_service.cpp"
     ).read_text(encoding="utf-8")
-    web_c = (root / "components" / "infra" / "web_service.c").read_text(encoding="utf-8")
+    web_c = (
+        root
+        / "components"
+        / "infra"
+        / "web_service.c"
+    ).read_text(encoding="utf-8")
 
     assert "nb_render_metrics_t" in render_h
     assert "render_service_get_metrics" in render_h
@@ -1912,7 +1917,7 @@ def test_firmware_render_metrics_contract_is_exposed() -> None:
     assert '"/api/render/status"' in web_c
 
 def test_firmware_overlay_icons_use_generated_masks() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     icons_dir = (
         root
         / "components"

@@ -109,7 +109,7 @@ Layer 8: Futuro     (camera, imu, battery)
 ## Estrutura de Componentes
 
 ```
-components/
+firmware/main-controller/components/
 ├── infra/          # Layer 2+3: boot_manager, logger, event_bus,
 │                   #            config_manager, nvs_hal, persistence_mgr,
 │                   #            watchdog_service, error_policy, nb_events.h,
@@ -296,6 +296,7 @@ GET autenticado; nunca são persistidos em disco.
 | ---------------------- | ----------------------------------------------- |
 | `docs/PROJECT.md`      | Visão geral, objetivos, princípios de produto   |
 | `docs/ARCHITECTURE.md` | Camadas, componentes, event bus, tasks, memória |
+| `docs/DUAL_MCU_ARCHITECTURE_PLAN.md` | Arquitetura Waveshare/Freenove, protocolo, falhas e migração |
 | `docs/ROADMAP.md`      | Blocos e etapas detalhadas com critérios        |
 | `docs/HARDWARE.md`     | Pinos, barramentos, restrições de GPIO          |
 | `docs/PERSISTENCE.md`  | NVS vs SD, estrutura de diretórios, políticas   |

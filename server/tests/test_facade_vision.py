@@ -71,7 +71,7 @@ def test_server_vision_face_center_normalization() -> None:
     assert analysis.face_center_norm_y == -0.25
 
 def test_firmware_vision_presence_contract_is_exposed() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     events_h = (root / "components" / "infra" / "nb_events.h").read_text(encoding="utf-8")
     vision_h = (
         root
@@ -133,7 +133,7 @@ def test_firmware_vision_presence_contract_is_exposed() -> None:
     assert '"/api/vision/poll/stop"' in web_c
 
 def test_firmware_camera_hal_reports_honest_native_resolution() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     camera_h = (
         root
         / "components"
@@ -179,7 +179,7 @@ def test_firmware_camera_hal_reports_honest_native_resolution() -> None:
     assert "ioctl(fd, VIDIOC_G_SENSOR_FMT, &sensor_fmt)" in camera_c
 
 def test_firmware_camera_sensor_returns_to_validated_yuv422_baseline() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     defaults = (root / "sdkconfig.defaults").read_text(encoding="utf-8")
 
     # 2026-06-07 high-resolution experiment: native JPEG modes
@@ -198,7 +198,7 @@ def test_firmware_camera_sensor_returns_to_validated_yuv422_baseline() -> None:
     assert active_resolution_lines == ["CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y"]
 
 def test_firmware_camera_service_uses_snapshot_only_quality() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     camera_h = (
         root
         / "components"
@@ -234,7 +234,7 @@ def test_firmware_camera_service_uses_snapshot_only_quality() -> None:
     assert ".quality = quality" in camera_c
 
 def test_firmware_camera_service_exposes_no_jpeg_scene_observation() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     camera_h = (
         root
         / "components"
@@ -259,7 +259,7 @@ def test_firmware_camera_service_exposes_no_jpeg_scene_observation() -> None:
     assert "camera_service_hold_arm(CAMERA_SVC_SESSION_HOLD_US)" in camera_c
 
 def test_firmware_camera_status_reports_last_real_frame() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     camera_h = (
         root
         / "components"
@@ -321,7 +321,7 @@ def test_server_and_app_do_not_expose_camera_monitoring_stream() -> None:
         assert "Monitoramento ao vivo" not in text
 
 def test_firmware_camera_stream_endpoint_is_removed() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     camera_h = (
         root
         / "components"
@@ -340,7 +340,7 @@ def test_firmware_camera_stream_endpoint_is_removed() -> None:
     assert "camera_service_set_stream_active" not in camera_h
 
 def test_firmware_idle_suppresses_pose_tilt_while_camera_active() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     idle_h = (
         root
         / "components"
@@ -370,7 +370,7 @@ def test_firmware_idle_suppresses_pose_tilt_while_camera_active() -> None:
     assert "idle_service_set_camera_active(false);" in boot_c
 
 def test_firmware_camera_active_overlay_contract_is_exposed() -> None:
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[2] / "firmware" / "main-controller"
     camera_h = (
         root
         / "components"
