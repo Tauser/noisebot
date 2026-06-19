@@ -115,6 +115,11 @@ CONFIG_NB_INTER_MCU_SPI_ENABLED=y
 O build normal usa `build/` e `sdkconfig`; o DM1 usa `build-dm1/` e
 `sdkconfig.dm1`. Não substituir o baseline.
 
+No main, o perfil também habilita `CONFIG_NB_DM1_BENCH_PROFILE=y`. Esse modo
+ignora integralmente o boot monolítico legado e sobe somente o serviço do
+enlace. Isso impede display/SD/câmera/touch/áudio legados de disputarem GPIOs
+ou o SPI2 durante a bancada.
+
 ## Gate E3 — link sem reset
 
 Com tudo desligado:
@@ -164,6 +169,10 @@ Critérios iniciais em 10 MHz:
 
 `spi_to` no head é esperado quando o main não fornece clock; avaliar tendência,
 não usar esse contador isoladamente como falha.
+
+O slave mantém uma transação armada por até 100 ms; o main consulta a cada
+20 ms. Essa margem evita corrida de fase entre timeouts iguais sem transformar
+ausência do main em falha do head.
 
 ## Gate E5 — fault injection
 
@@ -230,3 +239,33 @@ Antes de considerar DM1 fisicamente verde:
 
 DM1 só muda para `FEITO` após evidência de E0–E6 e soak. Build aprovado não é
 evidência elétrica.
+
+## Registro de bancada — 2026-06-19
+
+Hardware identificado pelo esptool:
+
+- main Waveshare, COM5, MAC `90:e5:b1:cc:3d:58`, PSRAM octal 16 MB/1,8 V;
+- head Freenove, COM12, MAC `20:6e:f1:b2:3c:f4`, PSRAM octal 8 MB/3,3 V.
+
+Evidência inicial em 10 MHz, `HEAD_RESET` desconectado:
+
+| Gate | Resultado |
+| --- | --- |
+| E0 placas isoladas | aprovado pelo operador |
+| E1 periféricos legados removidos | aprovado pelo operador |
+| E2 GND comum | 0 V medido |
+| E3 handshake/heartbeat | aprovado |
+| Main | `READY`, handshake 535 ms |
+| Head | `READY`, handshake 98 ms |
+| Integridade | `invalid=0`, `timeout=0`, `spi_err=0` |
+| Tráfego | TX/RX crescente nos dois sentidos |
+
+Durante o primeiro ensaio foram corrigidos dois problemas de software:
+
+1. O main ainda executava o boot monolítico e o display ocupava SPI2 antes do
+   enlace. O perfil `NB_DM1_BENCH_PROFILE` passou a ignorar todo legado.
+2. Timeout de 20 ms no slave corria em fase com o poll de 20 ms do master. A
+   janela do slave foi ampliada para 100 ms.
+
+Pendentes: observação de 30 minutos, fault injection E5, `HEAD_RESET` E6 e soak
+de 8 horas.

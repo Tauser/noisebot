@@ -12,11 +12,29 @@
 #include "boot_manager.h"
 #include "watchdog_service.h"
 #include "nb_hw_config_main.h"
+#include "nb_main_link_service.h"
+
+#ifndef CONFIG_NB_DM1_BENCH_PROFILE
+#define CONFIG_NB_DM1_BENCH_PROFILE 0
+#endif
 
 static const char *TAG = "nb_main";
 
 void app_main(void)
 {
+    if (CONFIG_NB_DM1_BENCH_PROFILE) {
+        ESP_LOGW(TAG,
+                 "DM1 bench profile ativo — boot monolitico legado ignorado");
+        const esp_err_t link_err = nb_main_link_service_init();
+        if (link_err != ESP_OK) {
+            ESP_LOGE(TAG, "enlace DM1 falhou: %s",
+                     esp_err_to_name(link_err));
+        }
+        for (;;) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+
     esp_err_t err = boot_manager_run();
 
     if (err != ESP_OK) {

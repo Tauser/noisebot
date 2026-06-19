@@ -17,7 +17,7 @@
 #define CONFIG_NB_INTER_MCU_SPI_ENABLED 0
 #endif
 
-#define NB_HEAD_LINK_SERVICE_TIMEOUT_MS 20U
+#define NB_HEAD_LINK_SERVICE_TIMEOUT_MS 100U
 #define NB_HEAD_LINK_TELEMETRY_MS 5000U
 
 static const char *TAG = "nb_head_link";

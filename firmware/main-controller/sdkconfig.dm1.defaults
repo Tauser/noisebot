@@ -1,3 +1,4 @@
 # Perfil opt-in de bancada DM1. Nunca usar antes dos gates elétricos descritos
 # em docs/DM1_BRINGUP.md.
 CONFIG_NB_INTER_MCU_SPI_ENABLED=y
+CONFIG_NB_DM1_BENCH_PROFILE=y
