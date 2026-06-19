@@ -322,6 +322,7 @@ GET autenticado; nunca são persistidos em disco.
 | `docs/ROADMAP.md`      | Blocos e etapas detalhadas com critérios        |
 | `docs/HARDWARE.md`     | Pinos, barramentos, restrições de GPIO          |
 | `docs/GPIO_DUAL_MCU.md` | Mapa pino a pino e gate elétrico das duas placas |
+| `docs/DM1_BRINGUP.md` | Procedimento de bancada, fault injection e rollback do enlace |
 | `docs/PERSISTENCE.md`  | NVS vs SD, estrutura de diretórios, políticas   |
 | `docs/ENERGY.md`       | Orçamento de energia, barramento 5V, brownout   |
 | `docs/SERVO_SAFETY.md` | Parâmetros de safety, protocolo de liberação    |

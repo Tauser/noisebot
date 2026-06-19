@@ -261,6 +261,9 @@ créditos. Isso não autoriza conectar fisicamente o enlace.
 - fault injection para bit flip, timeout e reboot;
 - telemetria de latência e retries.
 
+Procedimento físico, gates elétricos, fault injection, soak e rollback:
+`docs/DM1_BRINGUP.md`.
+
 Status: **núcleo lógico em andamento**. A FSM C17 testável no host implementa
 `HELLO/HELLO_ACK`, snapshot confirmado, heartbeat, `READY/DEGRADED`,
 retransmissão idempotente, ACK, timeout explícito, prioridade de

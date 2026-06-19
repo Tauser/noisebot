@@ -127,6 +127,8 @@ contrato e definição dos GPIOs SPI/IRQ/reset. O bring-up físico do enlace exi
 também recabeamento de áudio/servo/LED/touch corporal para a main e prova de que
 GPIO1/2/14/41/42 do head estão em alta impedância. DM5 possui gates próprios de
 underrun de áudio, primeiro som, saturação da fila LTM e power-loss.
+O procedimento executável e os critérios de aceite de bancada estão em
+`docs/DM1_BRINGUP.md`.
 
 ### Etapa 2.2A - Touch: Sensibilidade e Confiabilidade
 

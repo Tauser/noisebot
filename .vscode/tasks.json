@@ -27,6 +27,105 @@
       "group": "build"
     },
     {
+      "label": "Firmware: build ambos",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Firmware: build main-controller",
+        "Firmware: build head-controller"
+      ],
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Firmware: host configure",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-S", "firmware/main-controller/test",
+        "-B", "firmware/main-controller/test/host_build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "hide": true
+    },
+    {
+      "label": "Firmware: host build",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build", "firmware/main-controller/test/host_build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": ["Firmware: host configure"],
+      "problemMatcher": [],
+      "hide": true
+    },
+    {
+      "label": "Firmware: host run",
+      "type": "shell",
+      "command": "ctest",
+      "args": [
+        "--test-dir", "firmware/main-controller/test/host_build",
+        "--output-on-failure"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": ["Firmware: host build"],
+      "problemMatcher": [],
+      "hide": true
+    },
+    {
+      "label": "Firmware: testes host",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Firmware: host run"],
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "DM1: build main-controller",
+      "type": "shell",
+      "command": "idf.py",
+      "args": [
+        "-B", "build-dm1",
+        "-D", "SDKCONFIG=sdkconfig.dm1",
+        "-D", "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.dm1.defaults",
+        "build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/firmware/main-controller"
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "DM1: build head-controller",
+      "type": "shell",
+      "command": "idf.py",
+      "args": [
+        "-B", "build-dm1",
+        "-D", "SDKCONFIG=sdkconfig.dm1",
+        "-D", "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.dm1.defaults",
+        "build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/firmware/head-controller"
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "DM1: build ambos",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "DM1: build main-controller",
+        "DM1: build head-controller"
+      ],
+      "problemMatcher": []
+    },
+    {
       "label": "Firmware: fullclean main-controller",
       "type": "shell",
       "command": "idf.py",
