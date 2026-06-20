@@ -1,5 +1,7 @@
 idf_component_register(
-    SRCS "nb_head_display_hal.cpp"
+    SRCS
+        "nb_head_display_hal.cpp"
+        "nb_head_emo_renderer.cpp"
     INCLUDE_DIRS "."
     REQUIRES
         esp_common

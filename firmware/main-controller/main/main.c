@@ -87,6 +87,20 @@ void app_main(void)
                      "DM2 display probe generation=%lu result=%s",
                      (unsigned long)command.generation,
                      esp_err_to_name(probe_err));
+            for (uint32_t frame = 1U; frame <= 80U; ++frame) {
+                nb_display_command_t animated = command;
+                animated.expression =
+                    (uint8_t)((frame / 8U) % NB_DISPLAY_EXPRESSION_COUNT);
+                animated.gaze_x_milli =
+                    (int16_t)(((int32_t)(frame % 20U) * 100) - 950);
+                animated.gaze_y_milli =
+                    (int16_t)(((frame / 20U) & 1U) ? 350 : -350);
+                animated.overlay_flags = 0U;
+                animated.generation = frame + 1U;
+                (void)nb_main_link_service_queue_display(&animated);
+                vTaskDelay(pdMS_TO_TICKS(125));
+            }
+            ESP_LOGI(TAG, "DM2 remote EMO probe concluido");
         }
         for (;;) {
             vTaskDelay(pdMS_TO_TICKS(1000));

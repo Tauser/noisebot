@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "nb_head_emo_renderer.hpp"
 #include "nb_head_lgfx_config.hpp"
 
 #ifndef CONFIG_NB_HEAD_DISPLAY_HW_ENABLED
@@ -47,35 +48,15 @@ static esp_err_t reset_panel(void)
     return ESP_OK;
 }
 
-static int gaze_offset(int16_t milli, int radius)
-{
-    return std::clamp((int)milli * radius / NB_DISPLAY_GAZE_MAX,
-                      -radius, radius);
-}
-
 static void draw_face(int16_t gaze_x_milli,
                       int16_t gaze_y_milli,
                       uint8_t expression,
                       uint16_t accent)
 {
-    const int center_x = s_frame.width() / 2;
-    const int center_y = s_frame.height() / 2;
-    const int gaze_x = gaze_offset(gaze_x_milli, 12);
-    const int gaze_y = gaze_offset(gaze_y_milli, 8);
-
     s_display.startWrite();
     s_frame.fillScreen(TFT_BLACK);
-    s_frame.fillCircle(center_x - 55 + gaze_x,
-                       center_y - 35 + gaze_y, 12, accent);
-    s_frame.fillCircle(center_x + 55 + gaze_x,
-                       center_y - 35 + gaze_y, 12, accent);
-    if ((expression & 1U) != 0U) {
-        s_frame.drawArc(center_x, center_y + 35, 48, 40,
-                        20, 160, accent);
-    } else {
-        s_frame.fillRect(center_x - 42, center_y + 40,
-                         84, 4, accent);
-    }
+    nb_head_emo_draw(s_frame, expression,
+                     gaze_x_milli, gaze_y_milli, accent);
     s_frame.pushSprite(0, 0);
     s_display.endWrite();
 }
@@ -175,13 +156,10 @@ esp_err_t nb_head_display_hal_apply(const nb_display_command_t *command)
         return ESP_OK;
     }
 
-    const uint16_t accent =
-        command->overlay_flags == 0U ? TFT_WHITE : TFT_CYAN;
-
     draw_face(command->gaze_x_milli,
               command->gaze_y_milli,
               command->expression,
-              accent);
+              TFT_WHITE);
     ESP_LOGD(TAG, "frame desenhado generation=%lu",
              (unsigned long)command->generation);
     xSemaphoreGive(s_display_mutex);

@@ -25,7 +25,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | TTS HTTP no firmware | Removido do roadmap ativo; duplicava o server/bridge atual |
 | Knowledge OS externo | Nao atualizar por enquanto, por decisao do usuario |
 | Maior risco atual | Roadmap acumular itens antigos e perder poder de decisao |
-| Migração dual-MCU | DM1 aprovado em 10 MHz; gate físico DM2.2 aprovado a 40 MHz, próximo passo é paridade do render remoto |
+| Migração dual-MCU | DM1 aprovado em 10 MHz; DM2.3 aprovou render procedural remoto e animação sem retries, próximo passo é ligar a facade ao estado real |
 
 ## Como Ler
 
@@ -63,7 +63,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | 15.x - Voice polish | Melhorias pontuais em feedback, erros e telemetria apos estabilizar base |
 | C3-C6 - Voz, Obsidian, progresso e backup | Entra apos o historico e o contexto persistente do dashboard estarem estaveis |
 | V4-V5 - TTS inglês e integração de estudos | Entra após STT/LLM bilíngues estarem medidos; preserva Piper PT-BR e Voice Audio v2 |
-| DM2 - Display remoto | Gate físico aprovado: ST7789 a 40 MHz, reset GPIO3, framebuffer PSRAM sem piscar; próxima etapa porta render, expressões e overlays |
+| DM2 - Display remoto | DM2.3 aprovado: dez expressões e gaze remotas, fila assíncrona e animação sem retries; próxima etapa liga facade, overlays e fallback ao runtime real |
 
 ### P2 - Backlog
 
@@ -116,7 +116,7 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 | --- | --- | --- | --- |
 | F0 estrutura/contrato | DM0 | `FEITO` | Dois builds, contrato comum, CRC/sequence/créditos testados no host e docs alinhadas |
 | F1 enlace | DM1 | `FEITO` | Soak 8 h em 10 MHz, fault injection segura, reboot dos peers e HEAD_RESET aprovados; bit flip físico segue como laboratório não bloqueante |
-| F2 display | DM2 | `EM ANDAMENTO` | DM2.1 e gate físico DM2.2 aprovados; ST7789 a 40 MHz, reset GPIO3 e framebuffer PSRAM validados; próximo corte porta render, expressões, gaze e overlays sem remover fallback local |
+| F2 display | DM2 | `EM ANDAMENTO` | DM2.1–DM2.3 aprovados; render procedural remoto, gaze e animação validados; próximo corte integra facade e overlays ao estado real sem remover fallback local |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main |
 | F4 câmera | DM4 | `BACKLOG` | DVP/preview no head, análise canônica no server |
 | F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados |

@@ -29,5 +29,9 @@ bool nb_display_command_is_valid(const nb_display_command_t *command,
         command->expression > NB_DISPLAY_POWER_ON) {
         return false;
     }
+    if (command->opcode == NB_DISPLAY_OP_SET_SCENE &&
+        command->expression >= NB_DISPLAY_EXPRESSION_COUNT) {
+        return false;
+    }
     return true;
 }

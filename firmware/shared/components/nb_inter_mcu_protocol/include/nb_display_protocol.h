@@ -10,6 +10,7 @@ extern "C" {
 #endif
 
 #define NB_DISPLAY_COMMAND_VERSION 1U
+#define NB_DISPLAY_EXPRESSION_COUNT 10U
 #define NB_DISPLAY_GAZE_MIN       (-1000)
 #define NB_DISPLAY_GAZE_MAX       1000
 

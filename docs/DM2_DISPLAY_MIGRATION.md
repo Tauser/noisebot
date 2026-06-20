@@ -97,6 +97,36 @@ Resultado DM2.2: **gate físico aprovado**. A fase DM2 permanece em andamento
 para portar o render real, expressões, gaze e overlays, mantendo fallback local
 até a validação de paridade.
 
+## DM2.3 — render procedural remoto
+
+O primeiro renderer procedural do head cobre dez expressões, gaze nos dois
+eixos e framebuffer RGB565 em PSRAM. O probe da main envia 80 cenas a 8 FPS
+após o snapshot inicial, percorrendo todas as expressões e a faixa horizontal
+de gaze.
+
+O recebimento semântico e o desenho físico foram desacoplados:
+
+- a task do enlace valida e substitui uma fila estática de um snapshot;
+- o ACK não aguarda desenho nem `pushSprite`;
+- a task de display roda no core 1, prioridade 7, abaixo da task de enlace;
+- snapshot novo substitui o pendente, sem alocação por frame.
+
+### Evidência DM2.3 — 2026-06-20
+
+- `build-dm2` gravado na Waveshare COM5 e `build-dm2-hw` na Freenove COM12;
+- duas execuções consecutivas chegaram a `READY` e concluíram o probe;
+- head aplicou `display=81/0/0 gen=81`, sem rejeição ou geração ignorada;
+- main terminou ambas com `retry=0`, `timeout=0` e `spi_err=0`;
+- ACK médio de 8 ms e último ACK de 10 ms; o máximo acumulado de 54 ms ocorreu
+  durante a subida inicial do enlace, antes do tráfego estável do probe;
+- ST7789 permaneceu a 40 MHz e a PSRAM livre estável em 8.230.504 bytes;
+- validação visual do operador: animação completa, sem piscar, corrupção ou
+  deformação.
+
+Resultado DM2.3: **aprovado para render procedural e animação remota**. O
+próximo corte liga a facade remota ao estado visual real da main, incluindo
+overlays, e valida fallback local antes de retirar qualquer caminho legado.
+
 ### Gate de bancada DM2.2
 
 1. Manter a main no perfil `build-dm2`.
