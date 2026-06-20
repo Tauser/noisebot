@@ -228,6 +228,11 @@ static void test_display_command(void)
     TEST("display_bad_gaze",
          !nb_display_command_is_valid(&command, sizeof(command)));
     command.gaze_x_milli = 0;
+    command.overlay_flags = NB_DISPLAY_OVERLAY_ALL | (1U << 8);
+    TEST("display_bad_overlay",
+         !nb_display_command_is_valid(&command, sizeof(command)));
+    command.overlay_flags = NB_DISPLAY_OVERLAY_LISTENING |
+                            NB_DISPLAY_OVERLAY_SPEAKING;
     command.reserved = 1U;
     TEST("display_reserved",
          !nb_display_command_is_valid(&command, sizeof(command)));

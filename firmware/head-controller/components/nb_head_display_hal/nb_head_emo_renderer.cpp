@@ -148,6 +148,7 @@ void nb_head_emo_draw(LGFX_Sprite &canvas,
                       uint8_t expression,
                       int16_t gaze_x_milli,
                       int16_t gaze_y_milli,
+                      uint16_t overlay_flags,
                       uint32_t color)
 {
     const Face &face = kExpressions[expression];
@@ -180,4 +181,34 @@ void nb_head_emo_draw(LGFX_Sprite &canvas,
              face.tl_r, face.tr_r, face.bl_r, face.br_r,
              face.squint_r, face.rt_top, face.rb_bot,
              face.cv_top, face.cv_bot, color);
+
+    if ((overlay_flags & NB_DISPLAY_OVERLAY_BLUSH) != 0U) {
+        canvas.fillCircle(left_x, 182, 9, 0xff5577U);
+        canvas.fillCircle(right_x, 182, 9, 0xff5577U);
+    }
+    if ((overlay_flags & NB_DISPLAY_OVERLAY_HEART) != 0U) {
+        canvas.fillCircle(153, 199, 8, 0xff4060U);
+        canvas.fillCircle(167, 199, 8, 0xff4060U);
+        canvas.fillTriangle(145, 201, 175, 201, 160, 222, 0xff4060U);
+    }
+    if ((overlay_flags & NB_DISPLAY_OVERLAY_SPEAKING) != 0U) {
+        canvas.drawArc(160, 202, 30, 18, 15, 165, color);
+    }
+    if ((overlay_flags & NB_DISPLAY_OVERLAY_LISTENING) != 0U) {
+        canvas.drawCircle(160, 28, 8, 0x36d9ffU);
+        canvas.drawCircle(160, 28, 14, 0x36d9ffU);
+    }
+    if ((overlay_flags & NB_DISPLAY_OVERLAY_SLEEPING) != 0U) {
+        canvas.setTextColor(color, 0x000000U);
+        canvas.setTextSize(2);
+        canvas.drawString("Zzz", 250, 28);
+    }
+    if ((overlay_flags & NB_DISPLAY_OVERLAY_ALERT) != 0U) {
+        canvas.drawRect(2, 2, canvas.width() - 4, canvas.height() - 4,
+                        0xff3030U);
+    }
+    if ((overlay_flags & (NB_DISPLAY_OVERLAY_MESSAGE |
+                          NB_DISPLAY_OVERLAY_TIMER)) != 0U) {
+        canvas.fillCircle(160, 226, 4, 0x36d9ffU);
+    }
 }

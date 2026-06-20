@@ -31,6 +31,7 @@
 #include "render_service.h"
 #include "expression_service.h"
 #include "ui_overlay_service.h"
+#include "visual_state_facade.h"
 #include "led_service.h"
 #include "touch_service.h"
 #include "audio_service.h"
@@ -1169,6 +1170,14 @@ static esp_err_t phase_services(void)
     } else if (err != ESP_OK) {
         NB_LOGW(TAG, "nb_main_link_service_init falhou: %s — head degradado",
                 esp_err_to_name(err));
+    }
+    if (err == ESP_OK) {
+        const esp_err_t facade_err =
+            visual_state_facade_init(nb_main_link_service_queue_display);
+        if (facade_err != ESP_OK) {
+            NB_LOGW(TAG, "visual_state_facade_init falhou: %s",
+                    esp_err_to_name(facade_err));
+        }
     }
 
     if (s_status.safe_mode) {

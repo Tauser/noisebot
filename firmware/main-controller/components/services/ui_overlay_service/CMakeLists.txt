@@ -11,4 +11,5 @@ idf_component_register(
         nb_hal
         LovyanGFX
         render_service
+        visual_state_facade
 )

@@ -13,6 +13,7 @@
 #include "watchdog_service.h"
 #include "nb_hw_config_main.h"
 #include "nb_main_link_service.h"
+#include "visual_state_facade.h"
 
 #ifndef CONFIG_NB_DM1_BENCH_PROFILE
 #define CONFIG_NB_DM1_BENCH_PROFILE 0
@@ -42,6 +43,14 @@ void app_main(void)
             ESP_LOGE(TAG, "enlace DM1 falhou: %s",
                      esp_err_to_name(link_err));
         }
+        if (link_err == ESP_OK && CONFIG_NB_DM2_DISPLAY_PROBE) {
+            const esp_err_t facade_err =
+                visual_state_facade_init(nb_main_link_service_queue_display);
+            if (facade_err != ESP_OK) {
+                ESP_LOGE(TAG, "DM2 facade init falhou: %s",
+                         esp_err_to_name(facade_err));
+            }
+        }
         if (link_err == ESP_OK && CONFIG_NB_DM1_HEAD_RESET_PROBE) {
             uint32_t waited_ms = 0U;
             while (nb_main_link_service_state() != NB_LINK_STATE_READY &&
@@ -70,34 +79,29 @@ void app_main(void)
                 vTaskDelay(pdMS_TO_TICKS(NB_E6_READY_POLL_MS));
                 waited_ms += NB_E6_READY_POLL_MS;
             }
-            const nb_display_command_t command = {
-                .version = NB_DISPLAY_COMMAND_VERSION,
-                .opcode = NB_DISPLAY_OP_SET_SCENE,
-                .expression = 2U,
-                .brightness = 180U,
-                .gaze_x_milli = -250,
-                .gaze_y_milli = 400,
-                .overlay_flags = 0x0003U,
-                .reserved = 0U,
-                .generation = 1U,
-            };
-            const esp_err_t probe_err =
-                nb_main_link_service_queue_display(&command);
-            ESP_LOGI(TAG,
-                     "DM2 display probe generation=%lu result=%s",
-                     (unsigned long)command.generation,
-                     esp_err_to_name(probe_err));
+            visual_state_facade_set_brightness(180U);
+            visual_state_facade_set_expression(2U);
+            visual_state_facade_set_gaze(-0.25f, 0.4f);
+            visual_state_facade_set_overlay(
+                NB_DISPLAY_OVERLAY_LISTENING, true);
+            ESP_LOGI(TAG, "DM2 facade probe iniciado");
             for (uint32_t frame = 1U; frame <= 80U; ++frame) {
-                nb_display_command_t animated = command;
-                animated.expression =
-                    (uint8_t)((frame / 8U) % NB_DISPLAY_EXPRESSION_COUNT);
-                animated.gaze_x_milli =
-                    (int16_t)(((int32_t)(frame % 20U) * 100) - 950);
-                animated.gaze_y_milli =
-                    (int16_t)(((frame / 20U) & 1U) ? 350 : -350);
-                animated.overlay_flags = 0U;
-                animated.generation = frame + 1U;
-                (void)nb_main_link_service_queue_display(&animated);
+                visual_state_facade_set_expression(
+                    (uint8_t)((frame / 8U) %
+                              NB_DISPLAY_EXPRESSION_COUNT));
+                visual_state_facade_set_gaze(
+                    ((float)(frame % 20U) * 0.1f) - 0.95f,
+                    ((frame / 20U) & 1U) ? 0.35f : -0.35f);
+                visual_state_facade_set_overlay(
+                    NB_DISPLAY_OVERLAY_LISTENING, frame < 20U);
+                visual_state_facade_set_overlay(
+                    NB_DISPLAY_OVERLAY_SPEAKING,
+                    frame >= 20U && frame < 40U);
+                visual_state_facade_set_overlay(
+                    NB_DISPLAY_OVERLAY_HEART,
+                    frame >= 40U && frame < 60U);
+                visual_state_facade_set_overlay(
+                    NB_DISPLAY_OVERLAY_SLEEPING, frame >= 60U);
                 vTaskDelay(pdMS_TO_TICKS(125));
             }
             ESP_LOGI(TAG, "DM2 remote EMO probe concluido");

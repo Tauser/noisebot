@@ -76,6 +76,7 @@ idf_component_register(
         vision_preview_service
         head_link_transport
         nb_inter_mcu_protocol
+        visual_state_facade
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wall -Wextra -Werror)

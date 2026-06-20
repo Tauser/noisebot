@@ -22,6 +22,7 @@
  */
 
 #include "expression_service.h"
+#include "visual_state_facade.h"
 #include "render_service.h"
 #include "ui_overlay_service.h"
 #include "led_service.h"
@@ -954,6 +955,7 @@ static void draw_blush_overlay(LGFX_Sprite *spr, int64_t now_us,
     if (overlay_alpha(now_us, s_blush_overlay.start_us,
                       s_blush_overlay.duration_ms) <= 0.0f) {
         s_blush_overlay.active = false;
+        visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_BLUSH, false);
         return;
     }
 
@@ -981,6 +983,7 @@ static void draw_heart_overlay(LGFX_Sprite *spr, int64_t now_us,
     if (overlay_alpha(now_us, s_heart_overlay.start_us,
                       s_heart_overlay.duration_ms) <= 0.0f) {
         s_heart_overlay.active = false;
+        visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_HEART, false);
         return;
     }
 
@@ -1891,6 +1894,7 @@ void expression_service_set(nb_expression_t expr, float transition_ms)
     s_pending_trans_ms   = transition_ms < 0.0f ? 0.0f : transition_ms;
     s_new_target_pending = true;
     xSemaphoreGive(s_set_mutex);
+    visual_state_facade_set_expression((uint8_t)expr);
 
     ESP_LOGD(TAG, "set expr=%d trans=%.0fms", (int)expr, (double)transition_ms);
 }
@@ -1933,6 +1937,7 @@ void expression_service_set_gaze(float x, float y)
 {
     s_gaze_x = x;
     s_gaze_y = y;
+    visual_state_facade_set_gaze(x, y);
 }
 
 void expression_service_set_idle_overlay(float dy_l, float dy_r,
@@ -2023,6 +2028,7 @@ void expression_service_overlay_blush(uint8_t intensity, uint32_t duration_ms)
     s_blush_overlay.duration_ms = duration_ms;
     s_blush_overlay.start_us    = esp_timer_get_time();
     xSemaphoreGive(s_set_mutex);
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_BLUSH, true);
 }
 
 void expression_service_overlay_heart(uint32_t duration_ms)
@@ -2033,6 +2039,7 @@ void expression_service_overlay_heart(uint32_t duration_ms)
     s_heart_overlay.duration_ms = duration_ms;
     s_heart_overlay.start_us    = esp_timer_get_time();
     xSemaphoreGive(s_set_mutex);
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_HEART, true);
 }
 
 void expression_service_set_breath_enabled(bool enabled)
@@ -2051,6 +2058,7 @@ void expression_service_set_sleep_anim_enabled(bool enabled)
         s_sleep_anim_start_us = esp_timer_get_time();
     }
     s_sleep_anim_enabled = enabled;
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_SLEEPING, enabled);
 }
 
 void expression_service_set_speaking_mouth_enabled(bool enabled)
@@ -2072,6 +2080,7 @@ void expression_service_set_speaking_mouth_enabled(bool enabled)
         s_speaking_mouth_next_tick_us  = 0;
     }
     s_speaking_mouth_enabled = enabled;
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_SPEAKING, enabled);
 }
 
 } /* extern "C" */

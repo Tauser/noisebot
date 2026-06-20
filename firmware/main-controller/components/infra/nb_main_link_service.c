@@ -22,7 +22,7 @@
 #define NB_MAIN_LINK_LOOP_MS 5U
 #define NB_MAIN_LINK_POLL_MS 10U
 #define NB_MAIN_LINK_TELEMETRY_MS 5000U
-#define NB_MAIN_DISPLAY_QUEUE_DEPTH 8U
+#define NB_MAIN_DISPLAY_QUEUE_DEPTH 1U
 
 static const char *TAG = "nb_main_link";
 static nb_link_engine_t s_engine;
@@ -281,7 +281,7 @@ esp_err_t nb_main_link_service_queue_display(
         return ESP_ERR_NOT_SUPPORTED;
     }
 
-    return xQueueSend(s_display_queue, command, 0U) == pdTRUE
+    return xQueueOverwrite(s_display_queue, command) == pdPASS
                ? ESP_OK
                : ESP_ERR_TIMEOUT;
 }

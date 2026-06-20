@@ -9,6 +9,7 @@
 #include "icons/generated/nb_ui_overlay_icons.h"
 #include "ui_overlay_assets.h"
 #include "render_service.h"
+#include "visual_state_facade.h"
 #include "display_hal.h"
 #include "display_lgfx_config.hpp"
 
@@ -904,6 +905,8 @@ static void render_layer_cb(nb_display_sprite_t canvas, void *ctx)
             visible = true;
         } else if (s_state.kind != OVERLAY_NONE && now_us >= s_state.expires_us) {
             s_state.kind = OVERLAY_NONE;
+            visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_MESSAGE, false);
+            visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_ALERT, false);
         }
         xSemaphoreGive(s_mutex);
     }
@@ -1058,6 +1061,8 @@ extern "C" void ui_overlay_show_volume(uint8_t percent, uint32_t duration_ms)
 
     ESP_LOGI(TAG, "volume overlay: %u%%", (unsigned)percent);
     render_service_force_full_refresh();
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_ALERT, false);
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_MESSAGE, true);
 }
 
 extern "C" void ui_overlay_show_text(const char *text, uint32_t duration_ms)
@@ -1087,6 +1092,8 @@ extern "C" void ui_overlay_show_text(const char *text, uint32_t duration_ms)
 
     ESP_LOGI(TAG, "text overlay: %s", s_state.text);
     render_service_force_full_refresh();
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_ALERT, false);
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_MESSAGE, true);
 }
 
 extern "C" void ui_overlay_clear_text(void)
@@ -1105,6 +1112,7 @@ extern "C" void ui_overlay_clear_text(void)
 
     if (changed) {
         render_service_force_full_refresh();
+        visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_MESSAGE, false);
     }
 }
 
@@ -1128,6 +1136,9 @@ extern "C" void ui_overlay_show_toast(const char *text,
 
     ESP_LOGI(TAG, "toast overlay: %s", text);
     render_service_force_full_refresh();
+    const bool alert = tone == NB_UI_OVERLAY_ERROR;
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_ALERT, alert);
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_MESSAGE, !alert);
 }
 
 extern "C" void ui_overlay_clear(void)
@@ -1141,6 +1152,8 @@ extern "C" void ui_overlay_clear(void)
     xSemaphoreGive(s_mutex);
 
     render_service_force_full_refresh();
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_MESSAGE, false);
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_ALERT, false);
 }
 
 extern "C" void ui_overlay_show_quick_status(const nb_ui_quick_status_t *status,
@@ -1170,6 +1183,8 @@ extern "C" void ui_overlay_show_quick_status(const nb_ui_quick_status_t *status,
 
     ESP_LOGI(TAG, "quick status overlay");
     render_service_force_full_refresh();
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_ALERT, false);
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_MESSAGE, true);
 }
 
 extern "C" void ui_overlay_status_icon_set(nb_ui_status_icon_t icon, bool enabled)
@@ -1187,6 +1202,7 @@ extern "C" void ui_overlay_status_icon_set(nb_ui_status_icon_t icon, bool enable
 extern "C" void ui_overlay_listening_set(bool enabled)
 {
     ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_ACTIVE, enabled);
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_LISTENING, enabled);
 }
 
 extern "C" void ui_overlay_camera_set(bool enabled)
@@ -1199,6 +1215,7 @@ extern "C" void ui_overlay_timer_badge_set(bool enabled, uint32_t remaining_ms)
     s_timer_badge_remaining_ms = remaining_ms;
     s_timer_badge_active = enabled;
     render_service_force_full_refresh();
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_TIMER, enabled);
 }
 
 extern "C" void ui_overlay_set_eye_frame(int16_t left_cx, int16_t right_cx, int16_t eye_cy)
@@ -1214,4 +1231,5 @@ extern "C" void ui_overlay_sleep_bubble_set(bool enabled)
         s_sleep_bubble_start_us = esp_timer_get_time();
     }
     s_sleep_bubble_active = enabled;
+    visual_state_facade_set_overlay(NB_DISPLAY_OVERLAY_SLEEPING, enabled);
 }

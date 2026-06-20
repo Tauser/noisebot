@@ -48,19 +48,6 @@ static esp_err_t reset_panel(void)
     return ESP_OK;
 }
 
-static void draw_face(int16_t gaze_x_milli,
-                      int16_t gaze_y_milli,
-                      uint8_t expression,
-                      uint16_t accent)
-{
-    s_display.startWrite();
-    s_frame.fillScreen(TFT_BLACK);
-    nb_head_emo_draw(s_frame, expression,
-                     gaze_x_milli, gaze_y_milli, accent);
-    s_frame.pushSprite(0, 0);
-    s_display.endWrite();
-}
-
 extern "C" {
 
 esp_err_t nb_head_display_hal_init(void)
@@ -156,10 +143,16 @@ esp_err_t nb_head_display_hal_apply(const nb_display_command_t *command)
         return ESP_OK;
     }
 
-    draw_face(command->gaze_x_milli,
-              command->gaze_y_milli,
-              command->expression,
-              TFT_WHITE);
+    const uint8_t level = command->brightness;
+    const uint32_t color = ((uint32_t)level << 16) |
+                           ((uint32_t)level << 8) | level;
+    s_display.startWrite();
+    s_frame.fillScreen(TFT_BLACK);
+    nb_head_emo_draw(s_frame, command->expression,
+                     command->gaze_x_milli, command->gaze_y_milli,
+                     command->overlay_flags, color);
+    s_frame.pushSprite(0, 0);
+    s_display.endWrite();
     ESP_LOGD(TAG, "frame desenhado generation=%lu",
              (unsigned long)command->generation);
     xSemaphoreGive(s_display_mutex);

@@ -12,4 +12,5 @@ idf_component_register(
         render_service
         ui_overlay_service
         led_service
+        visual_state_facade
 )

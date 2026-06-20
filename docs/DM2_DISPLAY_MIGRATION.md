@@ -127,6 +127,38 @@ Resultado DM2.3: **aprovado para render procedural e animação remota**. O
 próximo corte liga a facade remota ao estado visual real da main, incluindo
 overlays, e valida fallback local antes de retirar qualquer caminho legado.
 
+## DM2.4 — facade de estado visual
+
+A main passou a manter um snapshot semântico único, independente do destino de
+render. `expression_service`, gaze e overlays locais atualizam a
+`visual_state_facade`; a facade publica no máximo a 8 Hz e injeta o snapshot no
+enlace sem depender de `infra`. O render local continua recebendo exatamente as
+mesmas chamadas e permanece como fallback.
+
+O contrato ganhou flags compactas para listening, speaking, sleeping, alerta,
+coração, blush, mensagem e timer. O head desenha os sinais essenciais sem
+receber pixels, texto ou decisões de comportamento.
+
+### Evidência técnica DM2.4 — 2026-06-20
+
+- probe `build-dm2` alterado para usar a mesma facade do runtime, sem montar
+  `nb_display_command_t` diretamente;
+- sequência remota confirmou overlays `0x0001`, `0x0002`, `0x0010` e `0x0004`
+  para listening, speaking, heart e sleeping;
+- head aplicou `display=81/0/0`, geração final 90, brilho 180;
+- main terminou com `retry=0`, `timeout=0`, `spi_err=0` e ACK
+  último/médio/máximo de 5/7/10 ms;
+- head terminou com `invalid=0`, `retry=0`, `timeout=0`, `spi_err=0`,
+  `hw=1/0` e 8.230.504 bytes de PSRAM livres;
+- fila visual pendente da main reduzida a um item com overwrite: estado novo
+  substitui estado ainda não enviado;
+- builds main/head sem warnings e testes host de protocolo verdes.
+
+Resultado DM2.4: **gate técnico aprovado**. A confirmação visual do operador
+para os quatro overlays permanece como evidência final de bancada. O próximo
+corte valida reboot isolado do head, restauração do último snapshot e fallback
+local quando o enlace fica indisponível.
+
 ### Gate de bancada DM2.2
 
 1. Manter a main no perfil `build-dm2`.

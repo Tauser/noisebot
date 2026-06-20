@@ -33,5 +33,8 @@ bool nb_display_command_is_valid(const nb_display_command_t *command,
         command->expression >= NB_DISPLAY_EXPRESSION_COUNT) {
         return false;
     }
+    if ((command->overlay_flags & ~NB_DISPLAY_OVERLAY_ALL) != 0U) {
+        return false;
+    }
     return true;
 }
