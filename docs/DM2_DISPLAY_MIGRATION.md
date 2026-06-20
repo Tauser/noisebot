@@ -57,7 +57,8 @@ aprova ainda o display físico nem a paridade visual.
 - LovyanGFX movido para `firmware/shared/components/LovyanGFX`, evitando duas
   cópias durante o fallback main/head;
 - HAL ST7789 exclusivo do head em `nb_head_display_hal`;
-- SPI2 a 60 MHz: GPIO47 SCLK, GPIO21 MOSI e GPIO45 DC;
+- SPI2 em 40 MHz no gate animado com jumpers: GPIO47 SCLK, GPIO21 MOSI e
+  GPIO45 DC; rollback direto para 20 MHz em qualquer instabilidade;
 - CS em GND, reset por software e sem backlight controlável;
 - render mínimo sem framebuffer ou alocação dinâmica no caminho de frame;
 - telemetria de hardware, erros e PSRAM livre;
@@ -66,6 +67,19 @@ aprova ainda o display físico nem a paridade visual.
 
 O perfil `build-dm2` continua sem tocar no painel. O primeiro teste elétrico e
 visual usa exclusivamente `build-dm2-hw`.
+
+O soak local de bancada foi removido após o gate. O perfil físico final inicia
+o painel em preto e só desenha comandos semânticos recebidos da Waveshare.
+O acesso ao LovyanGFX permanece serializado por mutex.
+
+### Evidência de frequência — 2026-06-19
+
+- 50 MHz: rejeitado por erros visuais observados em bancada;
+- 40 MHz: aprovado com 3.000 frames em 5 minutos a 10 FPS;
+- zero erros de HAL/enlace e PSRAM estável em 8.386.156 bytes;
+- após resets isolados do head, a cena `generation=1` foi reaplicada
+  automaticamente sem reiniciar a main;
+- 20 MHz permanece como rollback elétrico conservador.
 
 ### Gate de bancada DM2.2
 

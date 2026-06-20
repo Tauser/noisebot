@@ -134,7 +134,8 @@ console e touchscreen podem permanecer na Freenove.
 | RST   | —    | Software reset (sem pino físico neste módulo)      |
 | BL    | —    | Sem backlight no módulo ST7789 atual               |
 
-Frequência SPI: 60MHz (80MHz instável no bring-up). Testado e validado em hardware.
+Frequência SPI do gate animado DM2.2: 40 MHz com jumpers. O perfil deve voltar
+a 20 MHz se houver corrupção, escurecimento, travamento ou erro durante o soak.
 
 > ⚠ **GPIO 45 (DC) é strapping pin** (VDD\_SPI voltage). O estado ao ligar
 > depende do driver LovyanGFX, que inicializa DC como OUTPUT HIGH antes do
