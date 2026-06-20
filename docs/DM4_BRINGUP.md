@@ -95,6 +95,54 @@ Aceite C3: 5/5 capturas reais com `status=0` e `length` plausível para
 YUV422 240×240 (≈115200 bytes não comprimidos, ou bem menor se cair no
 fallback JPEG).
 
+### Execução C0–C3 — 2026-06-20
+
+OV2640 físico testado pela primeira vez nesta sessão, MACs confirmados por
+`esptool chip_id` (main `90:e5:b1:cc:3d:58` COM5, head `20:6e:f1:b2:3c:f4`
+COM12 — a nota de memória anterior tinha as portas trocadas, corrigida).
+
+**Achado real de C0:** `nb_head_i2c_hal_scan()` (probe genérico
+`i2c_master_probe`) não detecta o OV2640 — `E (807) i2c.master: probe
+device timeout`, `SCCB 0x3C ausente`. Apesar disso, o driver `ov2640`
+embutido no backend esp_video detecta o sensor segundos depois pelo seu
+próprio protocolo SCCB: `I (827) ov2640: Detected Camera sensor PID=0x26`
+(PID correto). **Gate C0 é um falso negativo conhecido**: o probe genérico
+de 0 bytes não é compatível com o SCCB do OV2640; usar a detecção do driver
+(`PID=0x26` no log) como critério real de aceite, não o scan genérico.
+
+**Gates C1/C2 aprovados de primeira**, sem iteração: `esp_video_init` e
+`VIDIOC_QUERYCAP` sem erro; `VIDIOC_S_FMT` aceito na primeira tentativa com
+`CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS` (mesmo perfil do main
+legado). `camera pronta esp_video 240x240 fmt=0x50323234
+PSRAM=8189KB->7963KB`.
+
+**Bug real encontrado e corrigido em C3:** a primeira tentativa do probe deu
+2/5 capturas OK e 3 timeouts, com a telemetria do enlace mostrando
+`retry=6 timeout=1` — a causa era `nb_head_camera_service_apply()` chamando
+`nb_head_camera_hal_capture()` (bloqueante, ioctls V4L2) **dentro da própria
+task do enlace** (via `on_message`), atrasando ACK/heartbeat o suficiente
+para o main esgotar o timeout de 2 s em chamadas subsequentes. Corrigido
+desacoplando a câmera para uma task dedicada (`nb_head_camera`, prioridade
+6, abaixo do enlace) com fila própria — a task do enlace só enfileira o
+comando (`nb_head_camera_service_apply`) e a resposta volta por uma fila
+separada (`nb_head_link_service_send_camera_event`), consumida só pela task
+do enlace (o `nb_link_engine` não tem lock interno; é single-thread por
+design).
+
+**Resultado após a correção:** 5/5 capturas reais no log do head —
+`request_id=1..5 status=0 width=240 height=240 length=115200` — com a
+telemetria do enlace limpa (`invalid=0 retry=0 timeout=0`) durante toda a
+sequência. A confirmação linha-a-linha no log da main não foi capturada de
+forma limpa nesta sessão (limitação de timing do script de captura serial
+usado, não do firmware); a telemetria da main no mesmo intervalo mostrou
+`invalid=0 retry=0 timeout=0`, consistente com sucesso. Recomenda-se
+reconfirmar o log da main na próxima sessão antes de marcar C3 como
+definitivamente fechado.
+
+Gates C0 (com a ressalva do falso negativo), C1, C2 e C3 (lado head)
+**aprovados**. C4 (headroom com display físico simultâneo) e o soak ainda
+não foram executados.
+
 ## Gate C4 — headroom de memória
 
 1. Repetir o probe com display físico também ativo (`sdkconfig.dm2-hw` +

@@ -170,6 +170,20 @@ esp_err_t nb_head_camera_hal_init(void)
         return ESP_ERR_INVALID_STATE;
     }
 
+    /* Gate C0 (docs/DM4_BRINGUP.md): scan diagnostico antes do esp_video_init
+     * tomar o barramento. OV2640/SCCB esperado em 0x3C. */
+    uint8_t found_addrs[16] = {0};
+    size_t found_count = 0;
+    (void)nb_head_i2c_hal_scan(found_addrs, sizeof(found_addrs), &found_count);
+    bool sccb_seen = false;
+    for (size_t i = 0; i < found_count && i < sizeof(found_addrs); ++i) {
+        if (found_addrs[i] == 0x3CU) {
+            sccb_seen = true;
+        }
+    }
+    ESP_LOGI(TAG, "scan I2C pre-esp_video: %u dispositivo(s), SCCB 0x3C %s",
+             (unsigned)found_count, sccb_seen ? "presente" : "ausente");
+
     s_mutex = xSemaphoreCreateMutex();
     if (!s_mutex) {
         ESP_LOGE(TAG, "falha ao criar mutex da camera");

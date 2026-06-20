@@ -118,7 +118,7 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 | F1 enlace | DM1 | `FEITO` | Soak 8 h em 10 MHz, fault injection segura, reboot dos peers e HEAD_RESET aprovados; bit flip físico segue como laboratório não bloqueante |
 | F2 display | DM2 | `FEITO` | DM2.1–DM2.5 aprovados; main degrada sem head e restaura snapshot atual ao retorno; escopo fechado em oito overlays (paridade de ícones/texto adiada para 16.2/DM6) |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main; permanece em backlog até a troca física da tela atual por um painel com touchscreen |
-| F4 câmera | DM4 | `EM ANDAMENTO` | DM4.1–DM4.5 concluídas em software: contrato semântico, round trip, cliente no main, probe ponta a ponta e `nb_head_camera_hal`/`nb_head_i2c_hal` (porte de `camera_hal.c`/`i2c_hal.c`) com build físico validado (`-Werror`, `CONFIG_NB_HEAD_CAMERA_HW_ENABLED=y`). Ver `docs/DM4_CAMERA_MIGRATION.md` e `docs/DM4_BRINGUP.md` (gates C0–C4, bring-up elétrico real ainda pendente de bancada). Falta testar o OV2640 físico, preview local e wirear a um consumidor de produto |
+| F4 câmera | DM4 | `EM ANDAMENTO` | DM4.1–DM4.6: primeira bancada real do OV2640 aprovada (gates C0–C3) — câmera detectada e capturando de verdade (5/5 `status=0` no log do head); um bug real de bloqueio (captura V4L2 dentro da task do enlace) foi achado e corrigido com fila dedicada. Ver `docs/DM4_CAMERA_MIGRATION.md` e `docs/DM4_BRINGUP.md`. Falta confirmar pelo log da main, gate C4 (headroom com display físico), soak, preview local e wirear a um consumidor de produto |
 | F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados; entra após DM4 |
 | F6 limpeza | DM6 | `BACKLOG` | Legado multimídia removido do main; último corte, após DM5 |
 

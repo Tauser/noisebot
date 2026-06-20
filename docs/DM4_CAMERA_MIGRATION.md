@@ -143,10 +143,37 @@ Build validado (sem flash): `idf.py -B build-dm4-hw -D SDKCONFIG=sdkconfig.dm4-h
 -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.dm4-hw.defaults" build`
 limpo com `-Werror`, exercitando o branch físico completo (ioctls V4L2,
 `select CAMERA_OV2640` resolvido, `CONFIG_NB_HEAD_CAMERA_HW_ENABLED=y`
-confirmado no sdkconfig gerado). **Nenhuma câmera real foi testada** — isso
-prova só que o código compila e linka corretamente com o backend V4L2 real,
-não que o OV2640 físico responde. Procedimento de bring-up físico (gates
-C0–C4 e soak) documentado em `docs/DM4_BRINGUP.md`.
+confirmado no sdkconfig gerado).
+
+## DM4.6 — bring-up físico real, bug de bloqueio encontrado e corrigido
+
+Primeira bancada real desta etapa (2026-06-20): OV2640 detectado
+(`PID=0x26`), formato negociado de primeira (`YUV422 240x240`), gates C0–C2
+de `docs/DM4_BRINGUP.md` aprovados.
+
+Em C3, a primeira tentativa do probe DM4.4 revelou um bug real: 2/5
+capturas OK e 3 timeouts, com `retry=6 timeout=1` na telemetria do enlace.
+Causa: `nb_head_camera_service_apply()` chamava `nb_head_camera_hal_capture()`
+(bloqueante, ioctls V4L2) dentro da própria task do enlace, atrasando
+ACK/heartbeat. Corrigido desacoplando a câmera para uma task dedicada
+(`nb_head_camera`, prioridade 6) com fila própria nos dois sentidos —
+`nb_head_camera_service_apply()` agora só enfileira e retorna; e a resposta
+volta por uma fila intermediária (`nb_head_link_service_send_camera_event`)
+consumida exclusivamente pela task do enlace, já que `nb_link_engine` não
+tem lock interno (single-thread por design).
+
+Após a correção: 5/5 capturas reais confirmadas no log do head
+(`request_id=1..5 status=0 width=240 height=240 length=115200`), telemetria
+do enlace limpa (`invalid=0 retry=0 timeout=0`) durante toda a sequência.
+Detalhe completo, incluindo o achado de que o scan I2C genérico (gate C0)
+dá falso negativo para o SCCB do OV2640, em
+`docs/DM4_BRINGUP.md#execução-c0c3--2026-06-20`.
+
+**Pendência para a próxima sessão:** confirmar a mesma sequência através do
+log da própria main (não só do head) — a captura serial desta sessão não
+pegou essa confirmação de forma limpa por limitação de timing do script,
+não do firmware. Gate C4 (headroom com display físico simultâneo) e soak
+também ainda não foram executados.
 
 ## Ordem de implementação
 

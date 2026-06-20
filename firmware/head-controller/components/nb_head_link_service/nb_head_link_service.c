@@ -8,6 +8,7 @@
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "nb_camera_protocol.h"
 #include "nb_head_camera_service.h"
@@ -30,6 +31,17 @@ static bool s_display_capable;
 static bool s_camera_capable;
 static uint32_t s_spi_timeouts;
 static uint32_t s_spi_errors;
+
+/*
+ * Ponte entre a task da câmera (produtor, via nb_head_link_service_send_camera_event)
+ * e a task do enlace (único consumidor que chama nb_link_engine_send — o
+ * engine não tem lock interno, por design é single-threaded por task).
+ */
+#define NB_HEAD_CAMERA_EVENT_QUEUE_DEPTH 4U
+static QueueHandle_t s_camera_event_queue;
+static StaticQueue_t s_camera_event_queue_storage;
+static uint8_t s_camera_event_queue_bytes[
+    NB_HEAD_CAMERA_EVENT_QUEUE_DEPTH * sizeof(nb_camera_link_event_t)];
 
 static uint32_t monotonic_ms(void)
 {
@@ -82,19 +94,14 @@ static void on_message(void *ctx,
     }
     if (channel == NB_LINK_CHANNEL_CONTROL &&
         message_type == NB_LINK_MSG_CAMERA_COMMAND) {
-        nb_camera_link_event_t event;
-        const esp_err_t err =
-            nb_head_camera_service_apply(payload, length, &event);
+        /* Apenas enfileira: a captura V4L2 roda na task dedicada da câmera,
+         * nunca aqui — ver docs/DM4_BRINGUP.md sobre por que isso é
+         * obrigatório (captura síncrona na task do enlace atrasou ACK em
+         * bancada). A resposta chega depois via camera_event_sink(). */
+        const esp_err_t err = nb_head_camera_service_apply(payload, length);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, "camera command rejected: %s",
                      esp_err_to_name(err));
-            return;
-        }
-        if (!nb_link_engine_send(&s_engine, NB_LINK_CHANNEL_EVENT,
-                                 NB_LINK_MSG_CAMERA_EVENT, &event,
-                                 sizeof(event))) {
-            ESP_LOGW(TAG, "camera event enqueue failed request_id=%lu",
-                     (unsigned long)event.request_id);
         }
         return;
     }
@@ -116,6 +123,20 @@ static void on_tx_result(void *ctx,
     }
 }
 
+esp_err_t nb_head_link_service_send_camera_event(
+    const nb_camera_link_event_t *event)
+{
+    if (event == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (s_camera_event_queue == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return xQueueSend(s_camera_event_queue, event, 0U) == pdPASS
+               ? ESP_OK
+               : ESP_ERR_TIMEOUT;
+}
+
 static void link_task(void *arg)
 {
     (void)arg;
@@ -125,6 +146,19 @@ static void link_task(void *arg)
     for (;;) {
         const uint32_t now_ms = monotonic_ms();
         nb_link_engine_tick(&s_engine, now_ms);
+
+        nb_camera_link_event_t camera_event;
+        while (xQueuePeek(s_camera_event_queue, &camera_event, 0U) == pdTRUE) {
+            if (!nb_link_engine_send(&s_engine, NB_LINK_CHANNEL_EVENT,
+                                     NB_LINK_MSG_CAMERA_EVENT, &camera_event,
+                                     sizeof(camera_event))) {
+                ESP_LOGW(TAG,
+                         "camera event preserved during link backpressure");
+                break;
+            }
+            (void)xQueueReceive(s_camera_event_queue, &camera_event, 0U);
+        }
+
         const esp_err_t err = nb_head_spi_transport_service(
             pdMS_TO_TICKS(NB_HEAD_LINK_SERVICE_TIMEOUT_MS));
         if (err == ESP_ERR_TIMEOUT) {
@@ -188,6 +222,14 @@ esp_err_t nb_head_link_service_init(void)
     }
 
     memset(&s_engine, 0, sizeof(s_engine));
+    s_camera_event_queue = xQueueCreateStatic(
+        NB_HEAD_CAMERA_EVENT_QUEUE_DEPTH,
+        sizeof(nb_camera_link_event_t),
+        s_camera_event_queue_bytes,
+        &s_camera_event_queue_storage);
+    if (s_camera_event_queue == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
     nb_head_display_status_t display_status;
     nb_head_display_service_get_status(&display_status);
     s_display_capable = display_status.enabled;

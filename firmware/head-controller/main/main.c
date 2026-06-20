@@ -32,7 +32,8 @@ void app_main(void)
                  esp_err_to_name(display_err));
     }
 
-    const esp_err_t camera_err = nb_head_camera_service_init();
+    const esp_err_t camera_err =
+        nb_head_camera_service_init(nb_head_link_service_send_camera_event);
     if (camera_err != ESP_OK && camera_err != ESP_ERR_NOT_SUPPORTED) {
         ESP_LOGE(TAG, "head camera service init failed: %s",
                  esp_err_to_name(camera_err));
