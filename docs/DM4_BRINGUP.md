@@ -140,8 +140,35 @@ reconfirmar o log da main na próxima sessão antes de marcar C3 como
 definitivamente fechado.
 
 Gates C0 (com a ressalva do falso negativo), C1, C2 e C3 (lado head)
-**aprovados**. C4 (headroom com display físico simultâneo) e o soak ainda
-não foram executados.
+**aprovados**. C4 aprovado (ver abaixo). Soak não executado nesta sessão.
+
+### Tentativa de reconfirmação C3 e achado de ferramenta — 2026-06-20 (madrugada)
+
+Tentei reconfirmar o log da main de forma automatizada (sem o usuário, que
+estava dormindo) usando scripts PowerShell com `System.IO.Ports.SerialPort`
+para resetar e capturar. Os resultados foram inconsistentes entre tentativas
+(variando de 1/5 a 5/5 sucessos na mesma combinação de firmwares, sem
+reflash), incluindo casos de `state=DEGRADED` seguido de boot completo do
+head sem que eu tivesse enviado um reset explícito naquele momento.
+
+Diagnóstico: a ferramenta de captura usada (abrir/fechar a porta repetidas
+vezes via scripts ad-hoc, sem `idf.py monitor` real — que exige TTY e não
+está disponível neste ambiente sandboxed) não é confiável para esse tipo de
+teste. Há evidência de boot espúrio do head ao simplesmente abrir a porta
+COM12 em alguns casos, e de dados antigos ainda não lidos ficando no buffer
+do driver USB-serial entre uma chamada e outra, contaminando capturas
+seguintes com texto de uma execução anterior. **Não há evidência conclusiva
+de que o bug de DM4.6 (bloqueio da captura na task do enlace) tenha
+retornado** — os 5/5 limpos vistos com o buffer explicitamente esvaziado
+(`DiscardInBuffer()`) antes da captura são consistentes com a correção
+continuando válida — mas também não há uma reconfirmação 100% limpa sem
+ambiguidade de ferramenta.
+
+**Recomendação para a próxima sessão:** reconfirmar com `idf.py -p COM5
+monitor` e `idf.py -p COM12 monitor` reais, em dois terminais físicos
+separados, em vez de scripts de captura ad-hoc. Não foi feita nenhuma
+alteração de firmware nesta tentativa de reconfirmação — apenas
+diagnóstico via porta serial.
 
 ## Gate C4 — headroom de memória
 
@@ -152,6 +179,23 @@ não foram executados.
 
 Aceite C4: nenhum `ESP_ERR_NO_MEM` em `nb_head_camera_hal_init()` com os dois
 subsistemas ativos.
+
+### Execução C4 — 2026-06-20 (madrugada)
+
+Perfil `sdkconfig.dm4-c4.defaults` criado (display ST7789 físico +
+`CONFIG_NB_HEAD_CAMERA_HW_ENABLED=y` juntos). Build e flash limpos, boot
+único capturado (sem reset manual posterior, evitando a ambiguidade de
+ferramenta descrita acima):
+
+- `ST7789 pronto SPI2=40000kHz 320x240 PSRAM=8230504 bytes` (display init);
+- `camera pronta esp_video 240x240 ... PSRAM=8037KB->7811KB` (câmera init,
+  já com o framebuffer do display alocado);
+- telemetria final: `hw=1/0` (display hardware_ready=1, hardware_errors=0),
+  `spiram=7998544` bytes livres;
+- zero erros, zero panic, link `READY` em 85 ms.
+
+**Aceite C4 aprovado**: ~7,8 MB de PSRAM livre com os dois subsistemas
+físicos ativos — muito acima do mínimo de 300 KB exigido pelo CLAUDE.md.
 
 ## Soak
 

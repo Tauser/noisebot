@@ -169,11 +169,24 @@ Detalhe completo, incluindo o achado de que o scan I2C genérico (gate C0)
 dá falso negativo para o SCCB do OV2640, em
 `docs/DM4_BRINGUP.md#execução-c0c3--2026-06-20`.
 
-**Pendência para a próxima sessão:** confirmar a mesma sequência através do
-log da própria main (não só do head) — a captura serial desta sessão não
-pegou essa confirmação de forma limpa por limitação de timing do script,
-não do firmware. Gate C4 (headroom com display físico simultâneo) e soak
-também ainda não foram executados.
+**Pendência para a próxima sessão:** confirmar a sequência através do log da
+própria main com `idf.py monitor` real (dois terminais, não scripts ad-hoc
+de porta serial) — uma tentativa de reconfirmação automatizada nesta mesma
+madrugada deu resultados inconsistentes (1/5 a 5/5 sem reflash), atribuídos
+à ferramenta de captura usada (boot espúrio do head ao abrir a porta,
+buffer USB-serial não esvaziado entre capturas), não a uma regressão
+confirmada do firmware. Detalhe em
+`docs/DM4_BRINGUP.md#tentativa-de-reconfirmação-c3-e-achado-de-ferramenta--2026-06-20-madrugada`.
+
+**Gate C4 aprovado** nesta mesma madrugada: perfil `sdkconfig.dm4-c4.defaults`
+(display ST7789 + câmera físicos juntos) — ~7,8 MB de PSRAM livre após os
+dois inits, zero erros. Detalhe em
+`docs/DM4_BRINGUP.md#execução-c4--2026-06-20-madrugada`. Soak ainda não
+executado.
+
+Ao final desta sessão os dois MCUs foram regravados com os perfis padrão
+(enlace dual-MCU desabilitado, sem bench profile) para não deixar o hardware
+num perfil de bancada sem supervisão.
 
 ## Ordem de implementação
 

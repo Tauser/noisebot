@@ -19,6 +19,7 @@ firmware/**/sdkconfig.dm2
 firmware/**/sdkconfig.dm2-hw
 firmware/**/sdkconfig.dm4
 firmware/**/sdkconfig.dm4-hw
+firmware/**/sdkconfig.dm4-c4
 .idf_build_apps.json
 dependencies.lock
 managed_components/

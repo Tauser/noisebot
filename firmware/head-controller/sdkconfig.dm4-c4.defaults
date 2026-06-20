@@ -1,0 +1,9 @@
+# Perfil de bancada Gate C4: display ST7789 fisico + camera OV2640 fisica
+# juntos, para medir headroom de PSRAM com os dois subsistemas ativos
+# (docs/DM4_BRINGUP.md, Gate C4). Nao e um perfil de uso continuo.
+CONFIG_NB_INTER_MCU_SPI_ENABLED=y
+CONFIG_NB_HEAD_DISPLAY_ENABLED=y
+CONFIG_NB_HEAD_DISPLAY_HW_ENABLED=y
+CONFIG_NB_HEAD_CAMERA_ENABLED=y
+CONFIG_NB_HEAD_CAMERA_HW_ENABLED=y
+CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y
