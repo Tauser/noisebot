@@ -18,6 +18,7 @@
 
 static const char *TAG = "nb_head_disp_hal";
 static NBHeadLGFX s_display;
+static LGFX_Sprite s_frame(&s_display);
 static bool s_ready;
 static SemaphoreHandle_t s_display_mutex;
 
@@ -57,24 +58,25 @@ static void draw_face(int16_t gaze_x_milli,
                       uint8_t expression,
                       uint16_t accent)
 {
-    const int center_x = s_display.width() / 2;
-    const int center_y = s_display.height() / 2;
+    const int center_x = s_frame.width() / 2;
+    const int center_y = s_frame.height() / 2;
     const int gaze_x = gaze_offset(gaze_x_milli, 12);
     const int gaze_y = gaze_offset(gaze_y_milli, 8);
 
     s_display.startWrite();
-    s_display.fillScreen(TFT_BLACK);
-    s_display.fillCircle(center_x - 55 + gaze_x,
-                         center_y - 35 + gaze_y, 12, accent);
-    s_display.fillCircle(center_x + 55 + gaze_x,
-                         center_y - 35 + gaze_y, 12, accent);
+    s_frame.fillScreen(TFT_BLACK);
+    s_frame.fillCircle(center_x - 55 + gaze_x,
+                       center_y - 35 + gaze_y, 12, accent);
+    s_frame.fillCircle(center_x + 55 + gaze_x,
+                       center_y - 35 + gaze_y, 12, accent);
     if ((expression & 1U) != 0U) {
-        s_display.drawArc(center_x, center_y + 35, 48, 40,
-                          20, 160, accent);
+        s_frame.drawArc(center_x, center_y + 35, 48, 40,
+                        20, 160, accent);
     } else {
-        s_display.fillRect(center_x - 42, center_y + 40,
-                           84, 4, accent);
+        s_frame.fillRect(center_x - 42, center_y + 40,
+                         84, 4, accent);
     }
+    s_frame.pushSprite(0, 0);
     s_display.endWrite();
 }
 
@@ -119,6 +121,24 @@ esp_err_t nb_head_display_hal_init(void)
         return ESP_FAIL;
     }
     s_display.setRotation(0);
+    s_frame.setColorDepth(16);
+    s_frame.setPsram(true);
+    if (!s_frame.createSprite(s_display.width(), s_display.height())) {
+        ESP_LOGE(TAG, "falha ao alocar framebuffer %dx%d em PSRAM",
+                 s_display.width(), s_display.height());
+        vSemaphoreDelete(s_display_mutex);
+        s_display_mutex = nullptr;
+        return ESP_ERR_NO_MEM;
+    }
+    if (nb_head_display_hal_spiram_free() <
+        NB_HEAD_DISPLAY_MIN_SPIRAM_FREE) {
+        ESP_LOGE(TAG, "PSRAM headroom insuficiente apos framebuffer: %lu",
+                 (unsigned long)nb_head_display_hal_spiram_free());
+        s_frame.deleteSprite();
+        vSemaphoreDelete(s_display_mutex);
+        s_display_mutex = nullptr;
+        return ESP_ERR_NO_MEM;
+    }
     s_display.fillScreen(TFT_BLACK);
     s_ready = true;
 

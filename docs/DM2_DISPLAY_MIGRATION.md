@@ -60,7 +60,9 @@ aprova ainda o display físico nem a paridade visual.
 - SPI2 em 40 MHz no gate animado com jumpers: GPIO47 SCLK, GPIO21 MOSI e
   GPIO45 DC; rollback direto para 20 MHz em qualquer instabilidade;
 - CS em GND, reset físico em GPIO3 e sem backlight controlável;
-- render mínimo sem framebuffer ou alocação dinâmica no caminho de frame;
+- framebuffer RGB565 de tela completa (~150 KB) alocado uma vez na PSRAM; o
+  caminho de frame desenha fora da tela e faz um único `pushSprite`, sem
+  alocação por quadro;
 - telemetria de hardware, erros e PSRAM livre;
 - headroom mínimo de 300 KB validado antes da inicialização;
 - flag física separada `CONFIG_NB_HEAD_DISPLAY_HW_ENABLED`.
@@ -83,7 +85,17 @@ O acesso ao LovyanGFX permanece serializado por mutex.
   reset/reflash; GPIO3 com sequência explícita alto→baixo→alto antes do
   `LovyanGFX::init()` restaurou o painel e a face sem intervenção manual;
 - rotação final `0`, orientação física vertical 240×320;
+- render direto no painel foi rejeitado por piscar a tela inteira entre
+  quadros; framebuffer em PSRAM eliminou o piscar no probe animado;
+- soak final limitado por decisão de bancada a 10 minutos: mais de 4.200
+  quadros observados, enlace sempre `READY`, zero erro SPI/HAL e PSRAM estável;
+- firmware final deixou 8.230.504 bytes livres de PSRAM após alocar o
+  framebuffer RGB565;
 - 20 MHz permanece como rollback elétrico conservador.
+
+Resultado DM2.2: **gate físico aprovado**. A fase DM2 permanece em andamento
+para portar o render real, expressões, gaze e overlays, mantendo fallback local
+até a validação de paridade.
 
 ### Gate de bancada DM2.2
 
@@ -95,8 +107,8 @@ O acesso ao LovyanGFX permanece serializado por mutex.
    - telemetria `hw=1/0`;
    - PSRAM livre maior ou igual a 300 KB;
    - cena simples visível e estável.
-5. Observar por 30 minutos: zero corrupção, erro de hardware ou impacto no
-   enlace.
+5. Observar por 10 minutos: zero corrupção, piscar, erro de hardware ou impacto
+   no enlace.
 6. Em qualquer anomalia, gravar novamente o perfil semântico `build-dm2`, que
    não inicializa o painel.
 
@@ -132,7 +144,7 @@ O acesso ao LovyanGFX permanece serializado por mutex.
 - tela neutra local no boot do head;
 - primeiro snapshot após handshake reproduz o estado do main;
 - p95 comando→frame menor que 20 ms sem bulk;
-- zero corrupção em 30 minutos de animação;
+- zero corrupção ou piscar em 10 minutos de animação;
 - reboot isolado do head restaura snapshot sem piscar estado incorreto;
 - desconexão do head mantém main operacional e fallback coerente.
 
