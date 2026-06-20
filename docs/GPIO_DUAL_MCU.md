@@ -110,7 +110,7 @@ recabeados para a main.
 | 0 | BOOT (←) | — | Não usar | Strapping boot | — | 3.3V, PU | sim |
 | 1 | `LINK_CS` (←) | `spi_slave` SPI3 | — | — | **Link SPI** | 3.3V | sim |
 | 2 | `HEAD_IRQ` (→) | `gpio` | → main GPIO14 | — | Link (evento) | 3.3V | sim |
-| 3 | Touchscreen INT (←) futuro | `gpio` ISR | Livre p/ F3 | Strapping (JTAG sel) | — | 3.3V | sim |
+| 3 | Display RST (→) | `gpio` / LovyanGFX | ST7789 | Strapping (JTAG sel) | Display SPI2 | 3.3V | sim |
 | 4 | Câmera SIOD / I2C SDA (↔) | `i2c_master` + SCCB | **DVP fixo** | — | **I2C câmera + touch** | 3.3V, PU | sim |
 | 5 | Câmera SIOC / I2C SCL (↔) | `i2c_master` + SCCB | **DVP fixo** | — | **I2C câmera + touch** | 3.3V, PU | sim |
 | 6 | Câmera VSYNC (←) | `esp_cam`/DVP | **DVP fixo** | — | Câmera | 3.3V | sim |

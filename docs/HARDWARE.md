@@ -131,11 +131,17 @@ console e touchscreen podem permanecer na Freenove.
 | MISO  | —    | Não usado pelo ST7789 (sem leitura)                |
 | CS    | GND  | Tied GND — display sempre selecionado              |
 | DC    | 45   | Data/Command ⚠ strapping pin (VDD_SPI); ver nota  |
-| RST   | —    | Software reset (sem pino físico neste módulo)      |
+| RST   | 3    | Reset físico controlado pelo head                  |
 | BL    | —    | Sem backlight no módulo ST7789 atual               |
 
 Frequência SPI do gate animado DM2.2: 40 MHz com jumpers. O perfil deve voltar
 a 20 MHz se houver corrupção, escurecimento, travamento ou erro durante o soak.
+Orientação final validada: rotação LovyanGFX `0`, 240×320 vertical.
+
+O RST do ST7789 deve permanecer em GPIO3, não em 3,3 V. Com RST fixo em nível
+alto, o controlador do painel pode permanecer travado após reset ou reflash da
+Freenove; o firmware inicia o painel corretamente somente quando pode aplicar
+o pulso de reset físico.
 
 > ⚠ **GPIO 45 (DC) é strapping pin** (VDD\_SPI voltage). O estado ao ligar
 > depende do driver LovyanGFX, que inicializa DC como OUTPUT HIGH antes do
@@ -161,7 +167,9 @@ GPIO 39/40 também são pinos JTAG (TCK/TDO) — JTAG externo incompatível com 
 
 Alimentação: 5V direto. Corrente máxima: ~120mA a 100% RGB (não usar 100% em operação normal).
 
-> **GPIO 3** sacrifica Touch T3 e JTAG. Câmera DVP não usa GPIO 3 — seguro para uso permanente.
+> **GPIO 3** sacrifica Touch T3 e JTAG e agora pertence ao reset físico do
+> ST7789. Câmera DVP não usa GPIO 3 — seguro para uso permanente. O touchscreen
+> futuro deverá usar outro GPIO para INT.
 >
 > **Por que não GPIO 19:** GPIO 19 = USB D+ do ESP32-S3. O stack WiFi usa
 > `CONFIG_SOC_WIFI_PHY_NEEDS_USB_WORKAROUND` que reconfigura o bloco USB PHY ao

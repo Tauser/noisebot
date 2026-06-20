@@ -29,7 +29,7 @@ public:
         {
             auto cfg = panel_.config();
             cfg.pin_cs = NB_HEAD_PIN_DISP_CS;
-            cfg.pin_rst = NB_HEAD_PIN_DISP_RST;
+            cfg.pin_rst = -1;
             cfg.pin_busy = -1;
             cfg.memory_width = NB_HEAD_DISP_WIDTH;
             cfg.memory_height = NB_HEAD_DISP_HEIGHT;

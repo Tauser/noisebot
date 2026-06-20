@@ -59,7 +59,7 @@ aprova ainda o display físico nem a paridade visual.
 - HAL ST7789 exclusivo do head em `nb_head_display_hal`;
 - SPI2 em 40 MHz no gate animado com jumpers: GPIO47 SCLK, GPIO21 MOSI e
   GPIO45 DC; rollback direto para 20 MHz em qualquer instabilidade;
-- CS em GND, reset por software e sem backlight controlável;
+- CS em GND, reset físico em GPIO3 e sem backlight controlável;
 - render mínimo sem framebuffer ou alocação dinâmica no caminho de frame;
 - telemetria de hardware, erros e PSRAM livre;
 - headroom mínimo de 300 KB validado antes da inicialização;
@@ -79,6 +79,10 @@ O acesso ao LovyanGFX permanece serializado por mutex.
 - zero erros de HAL/enlace e PSRAM estável em 8.386.156 bytes;
 - após resets isolados do head, a cena `generation=1` foi reaplicada
   automaticamente sem reiniciar a main;
+- RST preso em 3,3 V foi rejeitado: o painel podia permanecer preto após
+  reset/reflash; GPIO3 com sequência explícita alto→baixo→alto antes do
+  `LovyanGFX::init()` restaurou o painel e a face sem intervenção manual;
+- rotação final `0`, orientação física vertical 240×320;
 - 20 MHz permanece como rollback elétrico conservador.
 
 ### Gate de bancada DM2.2

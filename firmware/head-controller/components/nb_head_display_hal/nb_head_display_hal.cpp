@@ -4,7 +4,9 @@
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "nb_head_lgfx_config.hpp"
 
@@ -18,6 +20,31 @@ static const char *TAG = "nb_head_disp_hal";
 static NBHeadLGFX s_display;
 static bool s_ready;
 static SemaphoreHandle_t s_display_mutex;
+
+static esp_err_t reset_panel(void)
+{
+    const gpio_num_t reset_pin =
+        static_cast<gpio_num_t>(NB_HEAD_PIN_DISP_RST);
+    const gpio_config_t config = {
+        .pin_bit_mask = 1ULL << reset_pin,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    esp_err_t err = gpio_config(&config);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    gpio_set_level(reset_pin, 1);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    gpio_set_level(reset_pin, 0);
+    vTaskDelay(pdMS_TO_TICKS(20));
+    gpio_set_level(reset_pin, 1);
+    vTaskDelay(pdMS_TO_TICKS(150));
+    return ESP_OK;
+}
 
 static int gaze_offset(int16_t milli, int radius)
 {
@@ -35,6 +62,7 @@ static void draw_face(int16_t gaze_x_milli,
     const int gaze_x = gaze_offset(gaze_x_milli, 12);
     const int gaze_y = gaze_offset(gaze_y_milli, 8);
 
+    s_display.startWrite();
     s_display.fillScreen(TFT_BLACK);
     s_display.fillCircle(center_x - 55 + gaze_x,
                          center_y - 35 + gaze_y, 12, accent);
@@ -47,6 +75,7 @@ static void draw_face(int16_t gaze_x_milli,
         s_display.fillRect(center_x - 42, center_y + 40,
                            84, 4, accent);
     }
+    s_display.endWrite();
 }
 
 extern "C" {
@@ -74,12 +103,22 @@ esp_err_t nb_head_display_hal_init(void)
         return ESP_ERR_NO_MEM;
     }
 
+    const esp_err_t reset_err = reset_panel();
+    if (reset_err != ESP_OK) {
+        ESP_LOGE(TAG, "falha no reset fisico do ST7789: %s",
+                 esp_err_to_name(reset_err));
+        vSemaphoreDelete(s_display_mutex);
+        s_display_mutex = nullptr;
+        return reset_err;
+    }
+
     if (!s_display.init()) {
         ESP_LOGE(TAG, "LovyanGFX falhou ao inicializar ST7789");
         vSemaphoreDelete(s_display_mutex);
         s_display_mutex = nullptr;
         return ESP_FAIL;
     }
+    s_display.setRotation(0);
     s_display.fillScreen(TFT_BLACK);
     s_ready = true;
 

@@ -46,7 +46,7 @@
 #define NB_HEAD_PIN_DISP_SCLK        47
 #define NB_HEAD_PIN_DISP_DC          45
 #define NB_HEAD_PIN_DISP_CS          (-1)
-#define NB_HEAD_PIN_DISP_RST         (-1)
+#define NB_HEAD_PIN_DISP_RST         3
 #define NB_HEAD_DISP_SPI_FREQ_KHZ    40000
 #define NB_HEAD_DISP_WIDTH           240
 #define NB_HEAD_DISP_HEIGHT          320
