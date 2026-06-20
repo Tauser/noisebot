@@ -26,17 +26,23 @@ Criado `nb_camera_protocol.h`/`.c` em
 `firmware/shared/components/nb_inter_mcu_protocol`, espelhando o desenho de
 `nb_display_protocol.h`:
 
-- `nb_camera_command_t` (16 bytes): opcode (`REQUEST_SNAPSHOT`, `SET_PREVIEW`,
-  `SET_MODE`), preview on/off, modo (`SAFE_QQVGA`/`BETTER_QVGA`) e
+- `nb_camera_link_command_t` (16 bytes): opcode (`REQUEST_SNAPSHOT`,
+  `SET_PREVIEW`, `SET_MODE`), preview on/off, modo (`QQVGA`/`QVGA`) e
   `request_id` para correlacionar resposta;
-- `nb_camera_event_t` (16 bytes): status (`OK`/`ERROR`/`BUSY`/`UNAVAILABLE`),
-  modo, dimensões e `length` do frame disponível — nunca carrega pixels;
+- `nb_camera_link_event_t` (16 bytes): status (`OK`/`ERROR`/`BUSY`/
+  `UNAVAILABLE`), modo, dimensões e `length` do frame disponível — nunca
+  carrega pixels;
 - capability `NB_LINK_CAP_CAMERA_SEMANTIC`;
 - pixels reais (JPEG) trafegam depois pelo canal `BULK`, sob demanda,
   identificados pelo mesmo `request_id` — igual ao desenho de áudio/LTM do
   plano dual-MCU;
 - 66/66 testes de host verdes (`test/host/inter_mcu_protocol`), cobrindo
   validação de versão, opcode, preview, modo e campos reservados.
+
+Prefixo `nb_camera_link_*` em vez de `nb_camera_*`: o main-controller já tem
+`nb_camera_mode_t`/`nb_camera_event_t` locais no `camera_hal`/`camera_service`
+legado (passo 7 abaixo remove esse caminho). Os dois coexistem até lá; o
+prefixo extra evita colisão de símbolo nesse meio-tempo.
 
 Este corte não toca GPIO, não move `camera_hal.c` e não altera
 `vision_preview_service`. Prova apenas que o contrato compila, valida e
@@ -62,32 +68,50 @@ Build validado localmente (sem flash): `idf.py build` limpo com `-Werror` no
 main-controller, no head-controller (perfil padrão) e no head-controller com
 o perfil `sdkconfig.dm4.defaults`. Nenhum board foi flasheado nesta etapa.
 
-O main-controller ainda não tem cliente de câmera (passo 5 abaixo) — não há
-hoje quem envie `NB_LINK_MSG_CAMERA_COMMAND` em runtime. A prova ponta a ponta
-real (main envia comando → head responde evento) fica para a próxima
-sub-etapa, junto com a primeira validação de bancada com o enlace conectado.
+## DM4.3 — cliente de câmera no main (concluído, sem hardware)
+
+Adicionado ao `nb_main_link_service` (infra, Layer 2):
+
+- `nb_main_link_service_request_camera(const nb_camera_link_command_t *)`:
+  envia o comando pelo canal `CONTROL` sob demanda (fire-once, sem fila de
+  estado persistente como o display); exige `READY` e a capability do peer;
+- `nb_main_link_service_get_last_camera_event(nb_camera_link_event_t *)`:
+  copia o último evento recebido do head pelo canal `EVENT`;
+- `on_message` do main passa a validar e armazenar `NB_LINK_MSG_CAMERA_EVENT`.
+
+Nenhum consumidor de produto chama essas funções ainda — não há Layer 4/5
+publicando `NB_EVT_*` a partir do evento de câmera, nem qualquer serviço
+decidindo quando solicitar um snapshot. Isso é deliberado: o cliente existe,
+mas a decisão de quando/por que capturar (presença, reconhecimento, bbox)
+fica para quando `vision_preview_service`/`camera_service` migrarem (passo 7).
+
+Build validado (sem flash): `idf.py build` limpo com `-Werror` no
+main-controller com o perfil padrão e com `sdkconfig.dm2.defaults` (enlace
+habilitado, exercitando os caminhos novos), e no head-controller com o
+perfil padrão e `sdkconfig.dm4.defaults`.
 
 ## Ordem de implementação
 
 1. ~~Definir contrato semântico de câmera (DM4.1)~~ — `FEITO`.
 2. ~~Round trip semântico no head, sem hardware (DM4.2)~~ — `FEITO`.
-3. Criar `nb_head_camera_hal` no head-controller, exclusivo dos pinos DVP da
+3. ~~Cliente de câmera no main, sem hardware (DM4.3)~~ — `FEITO`.
+4. Criar `nb_head_camera_hal` no head-controller, exclusivo dos pinos DVP da
    Freenove, espelhando a separação física já usada por `nb_head_display_hal`.
-4. Portar `camera_hal_init/capture/release` para o head; manter a mesma
+5. Portar `camera_hal_init/capture/release` para o head; manter a mesma
    interface de frame (`nb_camera_frame_t`) internamente ao componente.
-5. Estender `nb_head_camera_service` para acionar o HAL real (hoje só
+6. Estender `nb_head_camera_service` para acionar o HAL real (hoje só
    responde semântica sem hardware) e manter o preview local (renderizado no
    próprio display do head, sem depender do main).
-6. Adicionar cliente no main: solicita snapshot sob demanda, recebe metadados
-   pelo `CONTROL`, e busca os bytes JPEG pelo canal `BULK` apenas quando o
-   server/bridge realmente precisar (presença, reconhecimento).
-7. Remover `camera_hal.c`/`camera_service` do main e mover a responsabilidade
+7. Wirear `nb_main_link_service_request_camera`/`get_last_camera_event` a um
+   consumidor real (presença/reconhecimento) e buscar os bytes JPEG pelo
+   canal `BULK` sob demanda.
+8. Remover `camera_hal.c`/`camera_service` do main e mover a responsabilidade
    de preview/overlay de bbox para o head (`vision_preview_service` deixa de
    desenhar localmente; bbox passa a ser parâmetro do estado visual remoto via
    `visual_state_facade`, análogo aos overlays de DM2).
-8. Validar headroom de PSRAM no head com câmera + display simultâneos (mínimo
+9. Validar headroom de PSRAM no head com câmera + display simultâneos (mínimo
    de 300 KB livres, conforme CLAUDE.md).
-9. Só depois remover qualquer caminho de câmera do main em DM6.
+10. Só depois remover qualquer caminho de câmera do main em DM6.
 
 ## Invariantes
 
@@ -108,11 +132,11 @@ sub-etapa, junto com a primeira validação de bancada com o enlace conectado.
 - soak de captura sem corrupção de frame nem impacto no enlace de display;
 - desconexão/reconexão da câmera não derruba o enlace nem o display.
 
-## Fora do corte DM4.1/DM4.2
+## Fora do corte DM4.1/DM4.2/DM4.3
 
 - driver físico DVP no head (`nb_head_camera_hal`);
 - preview local no head;
 - transferência BULK de JPEG;
-- cliente de câmera no main (quem envia `NB_LINK_MSG_CAMERA_COMMAND` em
-  runtime);
+- qualquer consumidor de produto (presença, reconhecimento) chamando o
+  cliente de câmera do main em runtime;
 - remoção de `camera_hal`/`camera_service` do main.

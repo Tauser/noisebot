@@ -28,13 +28,14 @@ esp_err_t nb_head_camera_service_init(void)
 }
 
 esp_err_t nb_head_camera_service_apply(const void *payload, uint16_t length,
-                                       nb_camera_event_t *out_event)
+                                       nb_camera_link_event_t *out_event)
 {
     if (!s_status.enabled) {
         return ESP_ERR_NOT_SUPPORTED;
     }
-    const nb_camera_command_t *command = (const nb_camera_command_t *)payload;
-    if (!nb_camera_command_is_valid(command, length)) {
+    const nb_camera_link_command_t *command =
+        (const nb_camera_link_command_t *)payload;
+    if (!nb_camera_link_command_is_valid(command, length)) {
         taskENTER_CRITICAL(&s_status_lock);
         ++s_status.rejected;
         taskEXIT_CRITICAL(&s_status_lock);
@@ -50,8 +51,8 @@ esp_err_t nb_head_camera_service_apply(const void *payload, uint16_t length,
 
     if (out_event != NULL) {
         memset(out_event, 0, sizeof(*out_event));
-        out_event->version = NB_CAMERA_EVENT_VERSION;
-        out_event->status = NB_CAMERA_EVENT_UNAVAILABLE;
+        out_event->version = NB_CAMERA_LINK_EVENT_VERSION;
+        out_event->status = NB_CAMERA_LINK_STATUS_UNAVAILABLE;
         out_event->mode = command->mode;
         out_event->request_id = command->request_id;
     }

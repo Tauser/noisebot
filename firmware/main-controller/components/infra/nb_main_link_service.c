@@ -10,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "nb_camera_protocol.h"
 #include "nb_display_protocol.h"
 #include "nb_inter_mcu_protocol.h"
 #include "nb_main_spi_transport.h"
@@ -32,6 +33,9 @@ static QueueHandle_t s_display_queue;
 static portMUX_TYPE s_display_snapshot_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool s_display_snapshot_valid;
 static nb_display_command_t s_display_snapshot;
+static portMUX_TYPE s_camera_event_lock = portMUX_INITIALIZER_UNLOCKED;
+static bool s_camera_event_valid;
+static nb_camera_link_event_t s_camera_event;
 
 static uint32_t monotonic_ms(void)
 {
@@ -93,6 +97,19 @@ static void on_message(void *ctx,
                        uint16_t length)
 {
     (void)ctx;
+    if (channel == NB_LINK_CHANNEL_EVENT &&
+        message_type == NB_LINK_MSG_CAMERA_EVENT) {
+        if (nb_camera_link_event_is_valid(
+                (const nb_camera_link_event_t *)payload, length)) {
+            taskENTER_CRITICAL(&s_camera_event_lock);
+            memcpy(&s_camera_event, payload, sizeof(s_camera_event));
+            s_camera_event_valid = true;
+            taskEXIT_CRITICAL(&s_camera_event_lock);
+        } else {
+            ESP_LOGW(TAG, "camera event invalid bytes=%u", (unsigned)length);
+        }
+        return;
+    }
     (void)payload;
     ESP_LOGD(TAG, "application message deferred channel=%u type=%u bytes=%u",
              (unsigned)channel, (unsigned)message_type, (unsigned)length);
@@ -284,4 +301,44 @@ esp_err_t nb_main_link_service_queue_display(
     return xQueueOverwrite(s_display_queue, command) == pdPASS
                ? ESP_OK
                : ESP_ERR_TIMEOUT;
+}
+
+esp_err_t nb_main_link_service_request_camera(
+    const nb_camera_link_command_t *command)
+{
+    if (!nb_camera_link_command_is_valid(command, sizeof(*command))) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (nb_link_engine_state(&s_engine) != NB_LINK_STATE_READY) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!nb_link_engine_peer_has_capability(
+            &s_engine, NB_LINK_CAP_CAMERA_SEMANTIC)) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    return nb_link_engine_send(&s_engine, NB_LINK_CHANNEL_CONTROL,
+                               NB_LINK_MSG_CAMERA_COMMAND, command,
+                               sizeof(*command))
+               ? ESP_OK
+               : ESP_ERR_TIMEOUT;
+}
+
+esp_err_t nb_main_link_service_get_last_camera_event(
+    nb_camera_link_event_t *out_event)
+{
+    if (out_event == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_err_t result = ESP_ERR_NOT_FOUND;
+    taskENTER_CRITICAL(&s_camera_event_lock);
+    if (s_camera_event_valid) {
+        *out_event = s_camera_event;
+        result = ESP_OK;
+    }
+    taskEXIT_CRITICAL(&s_camera_event_lock);
+    return result;
 }

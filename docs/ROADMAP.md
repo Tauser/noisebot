@@ -118,7 +118,7 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 | F1 enlace | DM1 | `FEITO` | Soak 8 h em 10 MHz, fault injection segura, reboot dos peers e HEAD_RESET aprovados; bit flip físico segue como laboratório não bloqueante |
 | F2 display | DM2 | `FEITO` | DM2.1–DM2.5 aprovados; main degrada sem head e restaura snapshot atual ao retorno; escopo fechado em oito overlays (paridade de ícones/texto adiada para 16.2/DM6) |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main; permanece em backlog até a troca física da tela atual por um painel com touchscreen |
-| F4 câmera | DM4 | `EM ANDAMENTO` | DM4.1+DM4.2 concluídas: contrato semântico, `nb_head_camera_service` e round trip command/event no head, sem hardware; builds main/head verdes com `-Werror`. Ver `docs/DM4_CAMERA_MIGRATION.md`. Falta cliente no main, HAL DVP físico e preview local |
+| F4 câmera | DM4 | `EM ANDAMENTO` | DM4.1+DM4.2+DM4.3 concluídas: contrato semântico, round trip command/event no head e cliente no main (`nb_main_link_service_request_camera`), tudo sem hardware; builds main/head verdes com `-Werror`. Ver `docs/DM4_CAMERA_MIGRATION.md`. Falta wirear a um consumidor real, HAL DVP físico e preview local |
 | F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados; entra após DM4 |
 | F6 limpeza | DM6 | `BACKLOG` | Legado multimídia removido do main; último corte, após DM5 |
 

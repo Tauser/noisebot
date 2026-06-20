@@ -82,7 +82,7 @@ static void on_message(void *ctx,
     }
     if (channel == NB_LINK_CHANNEL_CONTROL &&
         message_type == NB_LINK_MSG_CAMERA_COMMAND) {
-        nb_camera_event_t event;
+        nb_camera_link_event_t event;
         const esp_err_t err =
             nb_head_camera_service_apply(payload, length, &event);
         if (err != ESP_OK) {
