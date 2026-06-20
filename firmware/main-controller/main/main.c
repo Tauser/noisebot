@@ -11,6 +11,7 @@
 
 #include "boot_manager.h"
 #include "watchdog_service.h"
+#include "nb_camera_protocol.h"
 #include "nb_hw_config_main.h"
 #include "nb_main_link_service.h"
 #include "visual_state_facade.h"
@@ -26,6 +27,14 @@
 #ifndef CONFIG_NB_DM2_DISPLAY_PROBE
 #define CONFIG_NB_DM2_DISPLAY_PROBE 0
 #endif
+
+#ifndef CONFIG_NB_DM4_CAMERA_PROBE
+#define CONFIG_NB_DM4_CAMERA_PROBE 0
+#endif
+
+#define NB_DM4_CAMERA_PROBE_REQUESTS 5U
+#define NB_DM4_CAMERA_PROBE_WAIT_MS 50U
+#define NB_DM4_CAMERA_PROBE_TIMEOUT_MS 2000U
 
 #define NB_E6_READY_TIMEOUT_MS 10000U
 #define NB_E6_READY_POLL_MS 20U
@@ -105,6 +114,60 @@ void app_main(void)
                 vTaskDelay(pdMS_TO_TICKS(125));
             }
             ESP_LOGI(TAG, "DM2 remote EMO probe concluido");
+        }
+        if (link_err == ESP_OK && CONFIG_NB_DM4_CAMERA_PROBE) {
+            uint32_t waited_ms = 0U;
+            while (nb_main_link_service_state() != NB_LINK_STATE_READY &&
+                   waited_ms < NB_E6_READY_TIMEOUT_MS) {
+                vTaskDelay(pdMS_TO_TICKS(NB_E6_READY_POLL_MS));
+                waited_ms += NB_E6_READY_POLL_MS;
+            }
+            if (nb_main_link_service_state() != NB_LINK_STATE_READY) {
+                ESP_LOGE(TAG, "DM4 camera probe abortado: enlace nao chegou a READY");
+            } else {
+                ESP_LOGI(TAG, "DM4 camera probe iniciado");
+                for (uint32_t i = 0U; i < NB_DM4_CAMERA_PROBE_REQUESTS; ++i) {
+                    const nb_camera_link_command_t command = {
+                        .version = NB_CAMERA_LINK_COMMAND_VERSION,
+                        .opcode = NB_CAMERA_LINK_OP_REQUEST_SNAPSHOT,
+                        .mode = NB_CAMERA_LINK_MODE_QQVGA,
+                        .request_id = i + 1U,
+                    };
+                    const esp_err_t req_err =
+                        nb_main_link_service_request_camera(&command);
+                    if (req_err != ESP_OK) {
+                        ESP_LOGW(TAG, "DM4 camera request %lu falhou: %s",
+                                 (unsigned long)command.request_id,
+                                 esp_err_to_name(req_err));
+                        vTaskDelay(pdMS_TO_TICKS(NB_DM4_CAMERA_PROBE_WAIT_MS));
+                        continue;
+                    }
+
+                    nb_camera_link_event_t event;
+                    uint32_t event_wait_ms = 0U;
+                    esp_err_t evt_err;
+                    do {
+                        vTaskDelay(pdMS_TO_TICKS(NB_DM4_CAMERA_PROBE_WAIT_MS));
+                        event_wait_ms += NB_DM4_CAMERA_PROBE_WAIT_MS;
+                        evt_err =
+                            nb_main_link_service_get_last_camera_event(&event);
+                    } while (evt_err != ESP_OK &&
+                            event_wait_ms < NB_DM4_CAMERA_PROBE_TIMEOUT_MS);
+
+                    if (evt_err == ESP_OK && event.request_id == command.request_id) {
+                        ESP_LOGI(TAG,
+                                 "DM4 camera event request_id=%lu status=%u mode=%u",
+                                 (unsigned long)event.request_id,
+                                 (unsigned)event.status,
+                                 (unsigned)event.mode);
+                    } else {
+                        ESP_LOGW(TAG, "DM4 camera request %lu sem resposta em %u ms",
+                                 (unsigned long)command.request_id,
+                                 (unsigned)NB_DM4_CAMERA_PROBE_TIMEOUT_MS);
+                    }
+                }
+                ESP_LOGI(TAG, "DM4 camera probe concluido");
+            }
         }
         for (;;) {
             vTaskDelay(pdMS_TO_TICKS(1000));

@@ -34,4 +34,16 @@ menu "NoiseBot inter-MCU SPI transport"
             result. This validates main-to-head routing without enabling the
             physical display. Use only with the isolated build-dm2 profile.
 
+    config NB_DM4_CAMERA_PROBE
+        bool "Send repeated DM4 semantic camera snapshot requests"
+        depends on NB_DM1_BENCH_PROFILE
+        default n
+        help
+            After READY, send a few NB_CAMERA_LINK_OP_REQUEST_SNAPSHOT
+            commands and log the resulting nb_camera_link_event_t (or
+            timeout). The head still has no DVP driver, so the expected
+            reply is status=UNAVAILABLE; this only validates main-to-head
+            camera routing end to end. Use only with an isolated build-dm4
+            profile, paired with the head's sdkconfig.dm4.defaults.
+
 endmenu

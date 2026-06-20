@@ -90,28 +90,55 @@ main-controller com o perfil padrão e com `sdkconfig.dm2.defaults` (enlace
 habilitado, exercitando os caminhos novos), e no head-controller com o
 perfil padrão e `sdkconfig.dm4.defaults`.
 
+## DM4.4 — primeira prova de consumo real (concluída, sem hardware)
+
+`app_main` ganhou um probe opt-in (`CONFIG_NB_DM4_CAMERA_PROBE`, dependente de
+`CONFIG_NB_DM1_BENCH_PROFILE`), mesmo padrão do `CONFIG_NB_DM2_DISPLAY_PROBE`:
+após o enlace chegar a `READY`, envia 5 `NB_CAMERA_LINK_OP_REQUEST_SNAPSHOT`
+reais via `nb_main_link_service_request_camera()`, espera até 2 s por
+`nb_main_link_service_get_last_camera_event()` correlacionado pelo
+`request_id`, e loga o resultado.
+
+Isso é o primeiro "consumidor real" do cliente de câmera — não é mais só uma
+chamada direta de teste, é o mesmo caminho que um futuro `vision_service`
+remoto usaria. Como o head ainda não inicializa o driver DVP, a resposta
+esperada em bancada é `status=UNAVAILABLE` para as 5 requisições; isso prova
+o roteamento ponta a ponta (`main → CONTROL → head → EVENT → main`) sem
+qualquer hardware de câmera.
+
+Perfil `sdkconfig.dm4.defaults` (main) criado, espelhando o do head: liga
+`CONFIG_NB_INTER_MCU_SPI_ENABLED` + `CONFIG_NB_DM1_BENCH_PROFILE` +
+`CONFIG_NB_DM4_CAMERA_PROBE`. Para o próximo teste de bancada, gravar
+`build-dm4` (perfil `sdkconfig.dm4.defaults`) nos dois MCUs e confirmar 5
+linhas `DM4 camera event request_id=N status=3` no log da main.
+
+Build validado (sem flash): `idf.py build` limpo com `-Werror` no
+main-controller com o perfil padrão e com `sdkconfig.dm4.defaults`. Nenhum
+board foi flasheado.
+
 ## Ordem de implementação
 
 1. ~~Definir contrato semântico de câmera (DM4.1)~~ — `FEITO`.
 2. ~~Round trip semântico no head, sem hardware (DM4.2)~~ — `FEITO`.
 3. ~~Cliente de câmera no main, sem hardware (DM4.3)~~ — `FEITO`.
-4. Criar `nb_head_camera_hal` no head-controller, exclusivo dos pinos DVP da
+4. ~~Primeira prova de consumo real, sem hardware (DM4.4)~~ — `FEITO`.
+5. Criar `nb_head_camera_hal` no head-controller, exclusivo dos pinos DVP da
    Freenove, espelhando a separação física já usada por `nb_head_display_hal`.
-5. Portar `camera_hal_init/capture/release` para o head; manter a mesma
+6. Portar `camera_hal_init/capture/release` para o head; manter a mesma
    interface de frame (`nb_camera_frame_t`) internamente ao componente.
-6. Estender `nb_head_camera_service` para acionar o HAL real (hoje só
+7. Estender `nb_head_camera_service` para acionar o HAL real (hoje só
    responde semântica sem hardware) e manter o preview local (renderizado no
    próprio display do head, sem depender do main).
-7. Wirear `nb_main_link_service_request_camera`/`get_last_camera_event` a um
-   consumidor real (presença/reconhecimento) e buscar os bytes JPEG pelo
-   canal `BULK` sob demanda.
-8. Remover `camera_hal.c`/`camera_service` do main e mover a responsabilidade
+8. Wirear `nb_main_link_service_request_camera`/`get_last_camera_event` a um
+   consumidor de produto real (presença/reconhecimento) e buscar os bytes
+   JPEG pelo canal `BULK` sob demanda.
+9. Remover `camera_hal.c`/`camera_service` do main e mover a responsabilidade
    de preview/overlay de bbox para o head (`vision_preview_service` deixa de
    desenhar localmente; bbox passa a ser parâmetro do estado visual remoto via
    `visual_state_facade`, análogo aos overlays de DM2).
-9. Validar headroom de PSRAM no head com câmera + display simultâneos (mínimo
-   de 300 KB livres, conforme CLAUDE.md).
-10. Só depois remover qualquer caminho de câmera do main em DM6.
+10. Validar headroom de PSRAM no head com câmera + display simultâneos
+    (mínimo de 300 KB livres, conforme CLAUDE.md).
+11. Só depois remover qualquer caminho de câmera do main em DM6.
 
 ## Invariantes
 
@@ -132,11 +159,25 @@ perfil padrão e `sdkconfig.dm4.defaults`.
 - soak de captura sem corrupção de frame nem impacto no enlace de display;
 - desconexão/reconexão da câmera não derruba o enlace nem o display.
 
-## Fora do corte DM4.1/DM4.2/DM4.3
+### Gate de bancada DM4.4 (round trip semântico, sem DVP)
+
+1. Gravar `build-dm4` com `sdkconfig.dm4.defaults` na Waveshare (porta da
+   main).
+2. Gravar `build-dm4-hw`-equivalente (perfil padrão + `sdkconfig.dm4.defaults`
+   do head) na Freenove.
+3. Observar o log da main: 5 linhas
+   `DM4 camera event request_id=N status=3` (3 = `NB_CAMERA_LINK_STATUS_UNAVAILABLE`).
+4. Confirmar no head: `accepted` incrementando, `rejected=0`, sem reboot nem
+   impacto na telemetria do enlace (`retry=0`, `timeout=0`, `spi_err=0`).
+5. Qualquer `status` diferente de 3, timeout sem resposta, ou queda do enlace
+   é falha do gate — investigar antes de avançar para o driver DVP físico.
+
+## Fora do corte DM4.1/DM4.2/DM4.3/DM4.4
 
 - driver físico DVP no head (`nb_head_camera_hal`);
 - preview local no head;
 - transferência BULK de JPEG;
 - qualquer consumidor de produto (presença, reconhecimento) chamando o
-  cliente de câmera do main em runtime;
+  cliente de câmera do main em runtime — o probe da DM4.4 não conta como
+  consumidor de produto, é só validação de bancada;
 - remoção de `camera_hal`/`camera_service` do main.

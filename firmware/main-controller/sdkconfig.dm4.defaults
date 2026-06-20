@@ -1,0 +1,6 @@
+# Perfil opt-in DM4.4: enlace minimo + prova de consumo real de camera.
+# Cabe com sdkconfig.dm4.defaults do head (CONFIG_NB_HEAD_CAMERA_ENABLED=y);
+# o head ainda nao tem driver DVP, entao a resposta esperada e UNAVAILABLE.
+CONFIG_NB_INTER_MCU_SPI_ENABLED=y
+CONFIG_NB_DM1_BENCH_PROFILE=y
+CONFIG_NB_DM4_CAMERA_PROBE=y
