@@ -29,6 +29,9 @@ static nb_link_engine_t s_engine;
 static bool s_initialized;
 static uint32_t s_spi_errors;
 static QueueHandle_t s_display_queue;
+static portMUX_TYPE s_display_snapshot_lock = portMUX_INITIALIZER_UNLOCKED;
+static bool s_display_snapshot_valid;
+static nb_display_command_t s_display_snapshot;
 
 static uint32_t monotonic_ms(void)
 {
@@ -61,6 +64,26 @@ static void on_state_change(void *ctx,
     (void)ctx;
     ESP_LOGI(TAG, "state %s -> %s",
              state_name(previous), state_name(current));
+
+    if (current == NB_LINK_STATE_READY && s_display_queue != NULL) {
+        nb_display_command_t snapshot;
+        bool snapshot_valid;
+        taskENTER_CRITICAL(&s_display_snapshot_lock);
+        snapshot_valid = s_display_snapshot_valid;
+        snapshot = s_display_snapshot;
+        taskEXIT_CRITICAL(&s_display_snapshot_lock);
+
+        if (snapshot_valid) {
+            (void)xQueueReset(s_display_queue);
+            if (xQueueSendToFront(s_display_queue, &snapshot, 0U) == pdTRUE) {
+                ESP_LOGI(TAG,
+                         "snapshot visual restaurado generation=%lu",
+                         (unsigned long)snapshot.generation);
+            } else {
+                ESP_LOGE(TAG, "falha ao restaurar snapshot visual");
+            }
+        }
+    }
 }
 
 static void on_message(void *ctx,
@@ -241,14 +264,23 @@ esp_err_t nb_main_link_service_queue_display(
     if (!nb_display_command_is_valid(command, sizeof(*command))) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (!s_initialized || s_display_queue == NULL ||
-        nb_link_engine_state(&s_engine) != NB_LINK_STATE_READY) {
+    if (!s_initialized || s_display_queue == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    taskENTER_CRITICAL(&s_display_snapshot_lock);
+    s_display_snapshot = *command;
+    s_display_snapshot_valid = true;
+    taskEXIT_CRITICAL(&s_display_snapshot_lock);
+
+    if (nb_link_engine_state(&s_engine) != NB_LINK_STATE_READY) {
         return ESP_ERR_INVALID_STATE;
     }
     if (!nb_link_engine_peer_has_capability(
             &s_engine, NB_LINK_CAP_DISPLAY_SEMANTIC)) {
         return ESP_ERR_NOT_SUPPORTED;
     }
+
     return xQueueSend(s_display_queue, command, 0U) == pdTRUE
                ? ESP_OK
                : ESP_ERR_TIMEOUT;

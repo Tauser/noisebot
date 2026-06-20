@@ -80,7 +80,7 @@ esp_err_t nb_main_spi_transport_init(
     };
     gpio_config_t reset = {
         .pin_bit_mask = 1ULL << NB_MAIN_PIN_HEAD_RESET,
-        .mode = GPIO_MODE_OUTPUT,
+        .mode = GPIO_MODE_OUTPUT_OD,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
@@ -94,6 +94,9 @@ esp_err_t nb_main_spi_transport_init(
     if (err != ESP_OK) {
         return err;
     }
+    /* Open-drain + nivel 1 = liberado (hi-Z), sustentado pelo pull-up do
+     * proprio EN do head. Evita disputa com o circuito de auto-reset do
+     * USB-serial do head durante flash/monitor enquanto o fio fica conectado. */
     gpio_set_level(NB_MAIN_PIN_HEAD_RESET, 1);
 
     err = spi_bus_initialize(NB_MAIN_LINK_SPI_HOST, &bus, SPI_DMA_CH_AUTO);

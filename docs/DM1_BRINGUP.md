@@ -394,3 +394,32 @@ Achados:
 Resultado do Gate E6: **aprovado por evidência de log** (estado, rate limit,
 recuperação) e por observação elétrica de amplitude/retorno. Medição por cursor
 da largura exata fica como verificação complementar, não bloqueante.
+
+## Correção — contenção em EN com `HEAD_RESET` permanente
+
+Com o fio GPIO8(main)→EN(head) deixado conectado fora de uma sessão E6 (uso
+contínuo, não apenas o probe isolado), o flash/monitor do head pelo USB-serial
+parou de funcionar (`esptool`: "No serial data received"). Causa: o GPIO8 da
+main estava configurado como saída push-pull (`GPIO_MODE_OUTPUT`) e idle em
+nível alto — disputando o pino EN com o próprio circuito de auto-reset
+DTR/RTS do conversor USB-serial do head durante a entrada em bootloader.
+
+Correção em `nb_main_spi_transport.c` (`nb_main_spi_transport_init`): o pino
+`NB_MAIN_PIN_HEAD_RESET` passou para `GPIO_MODE_OUTPUT_OD` (open-drain).
+Nível 1 agora significa liberado (hi-Z), sustentado apenas pelo pull-up
+próprio do EN do head (já confirmado presente no Gate E6); nível 0 continua
+puxando ativamente para reset. Isso elimina a disputa: o circuito de
+auto-reset do head consegue puxar EN para baixo livremente quando a main não
+está pedindo reset, e o pulso de `nb_main_spi_transport_reset_head()`
+continua funcionando como antes (mesma lógica de nível, apenas o modo do
+driver mudou).
+
+Com essa correção, o fio de `HEAD_RESET` pode ficar conectado permanentemente
+sem bloquear flash/monitor normal do head — não é mais exclusivo de sessão
+E6 isolada.
+
+Confirmado em bancada (2026-06-19): main reflashada (COM5, perfil `build-e6`
+com a correção) e, na sequência, head reflasheada normalmente (COM12,
+`build-dm2-hw`) com o fio ainda conectado — sem erro de conexão do esptool.
+Boot do head limpo (`reset_reason=1`), display pronto, enlace
+`HANDSHAKE → SNAPSHOT → READY` em ~160 ms, telemetria sem erros.
