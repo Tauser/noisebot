@@ -42,26 +42,52 @@ Este corte não toca GPIO, não move `camera_hal.c` e não altera
 `vision_preview_service`. Prova apenas que o contrato compila, valida e
 serializa corretamente nos dois lados.
 
+## DM4.2 — round trip semântico no head (concluído, sem hardware)
+
+Criado `nb_head_camera_service` no head-controller, espelhando
+`nb_head_display_service`:
+
+- `CONFIG_NB_HEAD_CAMERA_ENABLED` (default `n`) liga apenas o receptor
+  semântico; nenhum driver DVP é tocado;
+- `nb_head_link_service` despacha `NB_LINK_MSG_CAMERA_COMMAND` (canal
+  `CONTROL`) para o serviço e responde `NB_LINK_MSG_CAMERA_EVENT` (canal
+  `EVENT`) com `status=UNAVAILABLE`, já que o hardware está deferido;
+- capability `NB_LINK_CAP_CAMERA_SEMANTIC` somada à `NB_LINK_CAP_DISPLAY_SEMANTIC`
+  no `HELLO` do head;
+- perfil `sdkconfig.dm4.defaults` (head) habilita
+  `CONFIG_NB_INTER_MCU_SPI_ENABLED` + `CONFIG_NB_HEAD_CAMERA_ENABLED` para o
+  próximo teste de bancada, mesmo padrão de `sdkconfig.dm2.defaults`.
+
+Build validado localmente (sem flash): `idf.py build` limpo com `-Werror` no
+main-controller, no head-controller (perfil padrão) e no head-controller com
+o perfil `sdkconfig.dm4.defaults`. Nenhum board foi flasheado nesta etapa.
+
+O main-controller ainda não tem cliente de câmera (passo 5 abaixo) — não há
+hoje quem envie `NB_LINK_MSG_CAMERA_COMMAND` em runtime. A prova ponta a ponta
+real (main envia comando → head responde evento) fica para a próxima
+sub-etapa, junto com a primeira validação de bancada com o enlace conectado.
+
 ## Ordem de implementação
 
 1. ~~Definir contrato semântico de câmera (DM4.1)~~ — `FEITO`.
-2. Criar `nb_head_camera_hal` no head-controller, exclusivo dos pinos DVP da
+2. ~~Round trip semântico no head, sem hardware (DM4.2)~~ — `FEITO`.
+3. Criar `nb_head_camera_hal` no head-controller, exclusivo dos pinos DVP da
    Freenove, espelhando a separação física já usada por `nb_head_display_hal`.
-3. Portar `camera_hal_init/capture/release` para o head; manter a mesma
+4. Portar `camera_hal_init/capture/release` para o head; manter a mesma
    interface de frame (`nb_camera_frame_t`) internamente ao componente.
-4. Criar `nb_head_camera_service` no head: aplica `nb_camera_command_t`
-   recebido do main, responde `nb_camera_event_t`, e mantém o preview local
-   (renderizado no próprio display do head, sem depender do main).
-5. Adicionar cliente no main: solicita snapshot sob demanda, recebe metadados
+5. Estender `nb_head_camera_service` para acionar o HAL real (hoje só
+   responde semântica sem hardware) e manter o preview local (renderizado no
+   próprio display do head, sem depender do main).
+6. Adicionar cliente no main: solicita snapshot sob demanda, recebe metadados
    pelo `CONTROL`, e busca os bytes JPEG pelo canal `BULK` apenas quando o
    server/bridge realmente precisar (presença, reconhecimento).
-6. Remover `camera_hal.c`/`camera_service` do main e mover a responsabilidade
+7. Remover `camera_hal.c`/`camera_service` do main e mover a responsabilidade
    de preview/overlay de bbox para o head (`vision_preview_service` deixa de
    desenhar localmente; bbox passa a ser parâmetro do estado visual remoto via
    `visual_state_facade`, análogo aos overlays de DM2).
-7. Validar headroom de PSRAM no head com câmera + display simultâneos (mínimo
+8. Validar headroom de PSRAM no head com câmera + display simultâneos (mínimo
    de 300 KB livres, conforme CLAUDE.md).
-8. Só depois remover qualquer caminho de câmera do main em DM6.
+9. Só depois remover qualquer caminho de câmera do main em DM6.
 
 ## Invariantes
 
@@ -82,9 +108,11 @@ serializa corretamente nos dois lados.
 - soak de captura sem corrupção de frame nem impacto no enlace de display;
 - desconexão/reconexão da câmera não derruba o enlace nem o display.
 
-## Fora do corte DM4.1
+## Fora do corte DM4.1/DM4.2
 
 - driver físico DVP no head (`nb_head_camera_hal`);
 - preview local no head;
 - transferência BULK de JPEG;
+- cliente de câmera no main (quem envia `NB_LINK_MSG_CAMERA_COMMAND` em
+  runtime);
 - remoção de `camera_hal`/`camera_service` do main.

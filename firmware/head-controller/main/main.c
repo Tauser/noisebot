@@ -6,6 +6,7 @@
 #include "nb_hw_config_head.h"
 #include "nb_head_link_service.h"
 #include "nb_head_display_service.h"
+#include "nb_head_camera_service.h"
 
 static const char *TAG = "nb_head";
 
@@ -29,6 +30,12 @@ void app_main(void)
     if (display_err != ESP_OK && display_err != ESP_ERR_NOT_SUPPORTED) {
         ESP_LOGE(TAG, "head display service init failed: %s",
                  esp_err_to_name(display_err));
+    }
+
+    const esp_err_t camera_err = nb_head_camera_service_init();
+    if (camera_err != ESP_OK && camera_err != ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGE(TAG, "head camera service init failed: %s",
+                 esp_err_to_name(camera_err));
     }
 
     const esp_err_t link_err = nb_head_link_service_init();

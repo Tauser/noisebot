@@ -1,0 +1,11 @@
+menu "NoiseBot head camera"
+
+    config NB_HEAD_CAMERA_ENABLED
+        bool "Enable DM4 head camera semantic receiver"
+        default n
+        help
+            Enables only the semantic command/event round trip
+            (nb_camera_protocol). The DVP driver and OV2640 GPIO remain
+            deferred until the DM4 hardware gate.
+
+endmenu
