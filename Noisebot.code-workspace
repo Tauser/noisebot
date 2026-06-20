@@ -1,19 +1,22 @@
 {
   "folders": [
     {
-      "name": "NoiseBot Repository",
-      "path": "."
-    },
-    {
       "name": "Firmware Main",
       "path": "firmware/main-controller"
     },
     {
       "name": "Firmware Head",
       "path": "firmware/head-controller"
+    },
+    {
+      "name": "NoiseBot Repository",
+      "path": "."
     }
   ],
   "settings": {
+    "idf.extensionActivationMode": "always",
+    "idf.enableStatusBar": true,
+    "idf.currentSetup": "C:\\esp\\v5.5.4\\esp-idf",
     "idf.customExtraVars": {
       "IDF_TARGET": "esp32s3"
     },

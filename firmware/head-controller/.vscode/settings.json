@@ -1,6 +1,11 @@
 {
-  "idf.projectDir": "${workspaceFolder}",
-  "idf.buildPath": "${workspaceFolder}/build",
+  "idf.buildPathWin": "${workspaceFolder}\\build",
+  "idf.sdkconfigFilePath": "${workspaceFolder}\\sdkconfig",
+  "idf.sdkconfigDefaults": ["sdkconfig.defaults"],
+  "idf.portWin": "COM12",
+  "idf.flashType": "UART",
+  "idf.openOcdConfigs": ["board/esp32s3-builtin.cfg"],
+  "idf.currentSetup": "C:\\esp\\v5.5.4\\esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"
   }

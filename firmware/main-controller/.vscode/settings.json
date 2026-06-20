@@ -1,7 +1,23 @@
 {
-  "idf.projectDir": "${workspaceFolder}",
-  "idf.buildPath": "${workspaceFolder}/build",
+  "idf.buildPathWin": "${workspaceFolder}\\build",
+  "idf.sdkconfigFilePath": "${workspaceFolder}\\sdkconfig",
+  "idf.sdkconfigDefaults": [
+    "sdkconfig.defaults"
+  ],
+  "idf.portWin": "COM5",
+  "idf.flashType": "UART",
+  "idf.openOcdConfigs": [
+    "board/esp32s3-builtin.cfg"
+  ],
   "idf.customExtraVars": {
-    "IDF_TARGET": "esp32s3"
-  }
+    "IDF_TARGET": "esp32s3",
+    "OPENOCD_USB_ADAPTER_LOCATION": "3-1.2.1"
+  },
+  "idf.currentSetup": "C:\\esp\\v5.5.4\\esp-idf",
+  "clangd.path": "C:\\Espressif\\tools\\esp-clang\\esp-19.1.2_20250312\\esp-clang\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=d:\\Projetos\\Noisebot\\firmware\\main-controller\\build"
+  ]
 }

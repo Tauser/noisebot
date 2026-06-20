@@ -1,14 +1,13 @@
 {
-  "idf.projectDir": "${workspaceFolder}/firmware/main-controller",
-  "idf.buildPath": "${workspaceFolder}/firmware/main-controller/build",
-  "idf.openOcdConfigs": [
-    "board/esp32s3-builtin.cfg"
-  ],
+  "idf.openOcdConfigs": ["board/esp32s3-builtin.cfg"],
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"
   },
   "idf.flashType": "UART",
   "files.associations": {
     "nb_inter_mcu_protocol.h": "c"
-  }
+  },
+  "idf.extensionActivationMode": "always",
+  "idf.currentSetup": "C:\\esp\\v5.5.4\\esp-idf",
+  "idf.portWin": "COM5"
 }
