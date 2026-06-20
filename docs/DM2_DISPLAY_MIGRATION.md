@@ -159,6 +159,22 @@ para os quatro overlays permanece como evidência final de bancada. O próximo
 corte valida reboot isolado do head, restauração do último snapshot e fallback
 local quando o enlace fica indisponível.
 
+## Evidência de recuperação — 2026-06-20
+
+Com a geração 90 (`NEUTRAL`, gaze `-950,-350`, brilho 180 e sleeping) ativa, a
+Freenove foi reiniciada isoladamente pela COM12:
+
+- main transitou `READY → DEGRADED → SNAPSHOT → READY`;
+- handshake de recuperação da main fechou em 25 ms;
+- log `snapshot visual restaurado generation=90`;
+- head aplicou uma única cena após o reboot, exatamente a geração 90;
+- `display=1/0/0`, `retry=0`, `timeout=0`, `spi_err=0`, `hw=1/0`;
+- PSRAM livre permaneceu em 8.230.504 bytes.
+
+O gate técnico de restauração após reboot do head está aprovado. Permanece
+pendente apenas confirmar visualmente que a tela voltou diretamente ao mesmo
+estado sleeping, sem quadro semântico incorreto.
+
 ### Gate de bancada DM2.2
 
 1. Manter a main no perfil `build-dm2`.
