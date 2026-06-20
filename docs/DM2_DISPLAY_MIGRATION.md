@@ -255,9 +255,24 @@ compilado e não foi removido.
 - reboot isolado do head restaura snapshot sem piscar estado incorreto;
 - desconexão do head mantém main operacional e fallback coerente.
 
-## Fora do corte DM2.2
+## Decisão de escopo — paridade de DM2 (2026-06-20)
+
+O contrato remoto (`nb_display_command_t`) cobre expressão, gaze, brilho e oito
+flags de overlay (`listening/speaking/sleeping/alert/heart/blush/message/timer`).
+O `ui_overlay_service` local desenha, além disso, cerca de trinta ícones de
+status (wifi, bateria, volume, mic, câmera, bridge, alarme etc.), texto livre e
+a barra de status rápido — nenhum desses chega ao head pela facade hoje.
+
+Decisão: DM2 fecha com o escopo atual de oito overlays. Estender o protocolo
+para ícones de status e texto livre **não entra neste corte**; fica vinculado à
+Etapa 16.2 (status rail) e/ou à DM6, quando o render local for removido e o
+head precisar assumir a paridade completa. Até lá, o fallback local do main
+continua sendo a única superfície que mostra o status rail completo.
+
+## Fora do corte DM2
 
 - touch do display;
 - preview de câmera;
-- paridade completa do render legado;
+- paridade completa do render legado (ícones de status, texto livre, barra de
+  status rápido) — adiada para 16.2/DM6;
 - remoção do render local no main.

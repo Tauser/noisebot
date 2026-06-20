@@ -116,7 +116,7 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 | --- | --- | --- | --- |
 | F0 estrutura/contrato | DM0 | `FEITO` | Dois builds, contrato comum, CRC/sequence/créditos testados no host e docs alinhadas |
 | F1 enlace | DM1 | `FEITO` | Soak 8 h em 10 MHz, fault injection segura, reboot dos peers e HEAD_RESET aprovados; bit flip físico segue como laboratório não bloqueante |
-| F2 display | DM2 | `EM ANDAMENTO` | DM2.1–DM2.5 técnicos aprovados; main degrada sem head e restaura snapshot atual ao retorno; próximo corte fecha confirmação visual e paridade ampliada |
+| F2 display | DM2 | `EM ANDAMENTO` | DM2.1–DM2.5 técnicos aprovados; main degrada sem head e restaura snapshot atual ao retorno; escopo fechado em oito overlays (paridade de ícones/texto adiada para 16.2/DM6); falta só a confirmação visual final do operador |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main; permanece em backlog até a troca física da tela atual por um painel com touchscreen |
 | F4 câmera | DM4 | `BACKLOG` | DVP/preview no head, análise canônica no server; próximo da fila DM após DM2 fechar |
 | F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados; entra após DM4 |
@@ -229,6 +229,11 @@ Status: `AGORA`
 Objetivo: criar um trilho invisivel no `ui_overlay_service` para organizar icones
 pequenos e persistentes sem disputar espaco com a face do robo, e adicionar uma
 barra temporaria de status quando o usuario pedir um resumo do sistema.
+
+Pendencia herdada de DM2: hoje o trilho so desenha no render local do main; o
+contrato remoto (`nb_display_command_t`) so leva oito overlay flags. Levar
+icones/texto ao head fica fora deste corte e fica registrado aqui como
+trabalho futuro vinculado a DM2/DM6.
 
 Decisoes de design:
 
