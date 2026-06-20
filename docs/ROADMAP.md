@@ -25,7 +25,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | TTS HTTP no firmware | Removido do roadmap ativo; duplicava o server/bridge atual |
 | Knowledge OS externo | Nao atualizar por enquanto, por decisao do usuario |
 | Maior risco atual | Roadmap acumular itens antigos e perder poder de decisao |
-| Migração dual-MCU | DM1 aprovado em 10 MHz; DM2.5 aprovou head ausente no boot, modo degradado e restauração do snapshot final |
+| Migração dual-MCU | DM1 aprovado em 10 MHz; DM2 fechada (display remoto, fallback e recuperação); DM4 (câmera) iniciada com contrato semântico |
 
 ## Como Ler
 
@@ -116,9 +116,9 @@ deste roadmap; cada fase é mapeada para uma etapa DM:
 | --- | --- | --- | --- |
 | F0 estrutura/contrato | DM0 | `FEITO` | Dois builds, contrato comum, CRC/sequence/créditos testados no host e docs alinhadas |
 | F1 enlace | DM1 | `FEITO` | Soak 8 h em 10 MHz, fault injection segura, reboot dos peers e HEAD_RESET aprovados; bit flip físico segue como laboratório não bloqueante |
-| F2 display | DM2 | `EM ANDAMENTO` | DM2.1–DM2.5 técnicos aprovados; main degrada sem head e restaura snapshot atual ao retorno; escopo fechado em oito overlays (paridade de ícones/texto adiada para 16.2/DM6); falta só a confirmação visual final do operador |
+| F2 display | DM2 | `FEITO` | DM2.1–DM2.5 aprovados; main degrada sem head e restaura snapshot atual ao retorno; escopo fechado em oito overlays (paridade de ícones/texto adiada para 16.2/DM6) |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main; permanece em backlog até a troca física da tela atual por um painel com touchscreen |
-| F4 câmera | DM4 | `BACKLOG` | DVP/preview no head, análise canônica no server; próximo da fila DM após DM2 fechar |
+| F4 câmera | DM4 | `EM ANDAMENTO` | DM4.1 concluída: contrato semântico (`nb_camera_protocol`), capability e testes host; ver `docs/DM4_CAMERA_MIGRATION.md`. HAL/driver físico ainda não migrado do main para o head |
 | F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados; entra após DM4 |
 | F6 limpeza | DM6 | `BACKLOG` | Legado multimídia removido do main; último corte, após DM5 |
 

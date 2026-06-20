@@ -255,6 +255,14 @@ compilado e não foi removido.
 - reboot isolado do head restaura snapshot sem piscar estado incorreto;
 - desconexão do head mantém main operacional e fallback coerente.
 
+## Resultado final DM2 — 2026-06-20
+
+DM2 está **fechada**: facade visual, render procedural remoto, overlays, fallback
+local, recuperação de reboot isolado e head ausente no boot estão aprovados nos
+gates técnicos descritos acima. O escopo de paridade fica definido na seção
+seguinte; status rail completo (ícones, texto livre) é trabalho futuro fora
+deste corte.
+
 ## Decisão de escopo — paridade de DM2 (2026-06-20)
 
 O contrato remoto (`nb_display_command_t`) cobre expressão, gaze, brilho e oito

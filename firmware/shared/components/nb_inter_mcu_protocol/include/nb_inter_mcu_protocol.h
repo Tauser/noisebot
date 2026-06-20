@@ -17,6 +17,7 @@ extern "C" {
 #define NB_LINK_CHANNEL_COUNT           5U
 
 #define NB_LINK_CAP_DISPLAY_SEMANTIC    (1UL << 0)
+#define NB_LINK_CAP_CAMERA_SEMANTIC     (1UL << 1)
 
 typedef enum {
     NB_LINK_CHANNEL_CONTROL = 0,

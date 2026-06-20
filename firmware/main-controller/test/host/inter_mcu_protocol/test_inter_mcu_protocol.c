@@ -1,5 +1,6 @@
 #include "nb_inter_mcu_protocol.h"
 #include "nb_display_protocol.h"
+#include "nb_camera_protocol.h"
 #include "nb_link_wire.h"
 
 #include <stdio.h>
@@ -247,6 +248,93 @@ static void test_display_command(void)
          nb_display_generation_is_newer(0U, UINT32_MAX));
 }
 
+static void test_camera_command(void)
+{
+    nb_camera_command_t command = {
+        .version = NB_CAMERA_COMMAND_VERSION,
+        .opcode = NB_CAMERA_OP_REQUEST_SNAPSHOT,
+        .preview = 0U,
+        .mode = NB_CAMERA_MODE_SAFE_QQVGA,
+        .request_id = 5U,
+    };
+
+    TEST("camera_cmd_valid",
+         nb_camera_command_is_valid(&command, sizeof(command)));
+    TEST("camera_cmd_null",
+         !nb_camera_command_is_valid(NULL, sizeof(command)));
+    TEST("camera_cmd_bad_size",
+         !nb_camera_command_is_valid(&command, sizeof(command) - 1U));
+
+    command.version++;
+    TEST("camera_cmd_bad_version",
+         !nb_camera_command_is_valid(&command, sizeof(command)));
+    command.version = NB_CAMERA_COMMAND_VERSION;
+
+    command.opcode = NB_CAMERA_OP_SET_PREVIEW;
+    command.preview = NB_CAMERA_PREVIEW_ON;
+    TEST("camera_cmd_preview_on",
+         nb_camera_command_is_valid(&command, sizeof(command)));
+    command.preview = NB_CAMERA_PREVIEW_ON + 1U;
+    TEST("camera_cmd_bad_preview",
+         !nb_camera_command_is_valid(&command, sizeof(command)));
+
+    command.opcode = NB_CAMERA_OP_SET_MODE;
+    command.preview = 0U;
+    command.mode = NB_CAMERA_MODE_BETTER_QVGA;
+    TEST("camera_cmd_mode_qvga",
+         nb_camera_command_is_valid(&command, sizeof(command)));
+    command.mode = NB_CAMERA_MODE_BETTER_QVGA + 1U;
+    TEST("camera_cmd_bad_mode",
+         !nb_camera_command_is_valid(&command, sizeof(command)));
+    command.mode = NB_CAMERA_MODE_SAFE_QQVGA;
+    command.reserved[0] = 1U;
+    TEST("camera_cmd_reserved",
+         !nb_camera_command_is_valid(&command, sizeof(command)));
+}
+
+static void test_camera_event(void)
+{
+    nb_camera_event_t event = {
+        .version = NB_CAMERA_EVENT_VERSION,
+        .status = NB_CAMERA_EVENT_OK,
+        .mode = NB_CAMERA_MODE_SAFE_QQVGA,
+        .reserved = 0U,
+        .width = 160U,
+        .height = 120U,
+        .length = 4096U,
+        .request_id = 5U,
+    };
+
+    TEST("camera_evt_valid",
+         nb_camera_event_is_valid(&event, sizeof(event)));
+    TEST("camera_evt_null",
+         !nb_camera_event_is_valid(NULL, sizeof(event)));
+    TEST("camera_evt_bad_size",
+         !nb_camera_event_is_valid(&event, sizeof(event) - 1U));
+
+    event.reserved = 1U;
+    TEST("camera_evt_reserved",
+         !nb_camera_event_is_valid(&event, sizeof(event)));
+    event.reserved = 0U;
+
+    event.status = NB_CAMERA_EVENT_UNAVAILABLE + 1U;
+    TEST("camera_evt_bad_status",
+         !nb_camera_event_is_valid(&event, sizeof(event)));
+    event.status = NB_CAMERA_EVENT_OK;
+
+    event.mode = NB_CAMERA_MODE_BETTER_QVGA + 1U;
+    TEST("camera_evt_bad_mode",
+         !nb_camera_event_is_valid(&event, sizeof(event)));
+    event.mode = NB_CAMERA_MODE_SAFE_QQVGA;
+
+    event.length = 0U;
+    TEST("camera_evt_ok_needs_length",
+         !nb_camera_event_is_valid(&event, sizeof(event)));
+    event.status = NB_CAMERA_EVENT_UNAVAILABLE;
+    TEST("camera_evt_unavailable_zero_length",
+         nb_camera_event_is_valid(&event, sizeof(event)));
+}
+
 int main(void)
 {
     test_crc_vectors();
@@ -257,6 +345,8 @@ int main(void)
     test_credits();
     test_wire_packet();
     test_display_command();
+    test_camera_command();
+    test_camera_event();
 
     printf("%d/%d testes passaram\n", s_pass, s_pass + s_fail);
     return s_fail == 0 ? 0 : 1;
