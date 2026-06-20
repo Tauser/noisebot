@@ -1,0 +1,7 @@
+# Perfil opt-in DM4 fisico: link + receptor semantico + OV2640 DVP fisico.
+# Mesma resolucao/formato validados no main legado (camera_hal.c):
+# YUV422 240x240 25fps, indice de formato 4.
+CONFIG_NB_INTER_MCU_SPI_ENABLED=y
+CONFIG_NB_HEAD_CAMERA_ENABLED=y
+CONFIG_NB_HEAD_CAMERA_HW_ENABLED=y
+CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS=y

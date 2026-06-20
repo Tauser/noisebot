@@ -8,4 +8,15 @@ menu "NoiseBot head camera"
             (nb_camera_protocol). The DVP driver and OV2640 GPIO remain
             deferred until the DM4 hardware gate.
 
+    config NB_HEAD_CAMERA_HW_ENABLED
+        bool "Enable physical OV2640 DVP camera on head"
+        depends on NB_HEAD_CAMERA_ENABLED
+        select CAMERA_OV2640
+        default n
+        help
+            Initializes the esp_video/V4L2 DVP backend on the Freenove's own
+            pins (NB_HEAD_PIN_CAM_*) and the I2C/SCCB bus. Enable only after
+            the DM4 electrical/bring-up gate. The regular DM4 semantic
+            profile keeps this disabled.
+
 endmenu

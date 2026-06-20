@@ -17,9 +17,12 @@ typedef struct {
 esp_err_t nb_head_camera_service_init(void);
 
 /*
- * Valida o comando e preenche *out_event com a resposta semântica. DM4.1 não
- * inicializa o driver DVP: hardware_ready permanece falso e o evento sempre
- * responde NB_CAMERA_LINK_STATUS_UNAVAILABLE quando o comando é válido.
+ * Valida o comando e preenche *out_event com a resposta semântica. Quando
+ * CONFIG_NB_HEAD_CAMERA_HW_ENABLED está desligado (ou o driver DVP falhou
+ * ao iniciar), hardware_ready permanece falso e o evento sempre responde
+ * NB_CAMERA_LINK_STATUS_UNAVAILABLE. Com hardware pronto e opcode
+ * REQUEST_SNAPSHOT, tenta capturar e responde OK/ERROR com as dimensões e o
+ * tamanho do frame — nunca os pixels (isso é trabalho do canal BULK futuro).
  */
 esp_err_t nb_head_camera_service_apply(const void *payload, uint16_t length,
                                        nb_camera_link_event_t *out_event);

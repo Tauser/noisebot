@@ -1,0 +1,3 @@
+## IDF Component Manager — nb_head_camera_hal
+dependencies:
+  espressif/esp_video: "==1.3.1"

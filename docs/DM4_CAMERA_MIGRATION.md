@@ -116,29 +116,62 @@ Build validado (sem flash): `idf.py build` limpo com `-Werror` no
 main-controller com o perfil padrão e com `sdkconfig.dm4.defaults`. Nenhum
 board foi flasheado.
 
+## DM4.5 — HAL físico portado, build validado (aguardando bancada)
+
+Criados no head-controller, porte de `camera_hal.c`/`i2c_hal.c` (main
+legado):
+
+- `nb_head_i2c_hal`: bus I2C/SCCB único em `NB_HEAD_PIN_I2C_SDA/SCL`, mesmo
+  desenho do `i2c_hal` do main;
+- `nb_head_camera_hal`: driver DVP via esp_video/V4L2 nos pinos
+  `NB_HEAD_PIN_CAM_*` de `nb_hw_config_head.h`, preservando a negociação de
+  formato que funcionou no main (struct de `VIDIOC_G_FMT` reaproveitada em
+  `VIDIOC_S_FMT`, fallback JPEG, warmup de 2 frames). As funções de
+  diagnóstico puramente informativas do original (`VIDIOC_ENUM_FRAMESIZES`,
+  `VIDIOC_G_SENSOR_FMT`, sweep de `VIDIOC_TRY_FMT`) não foram portadas —
+  não afetam a inicialização;
+- `CONFIG_NB_HEAD_CAMERA_HW_ENABLED` (depende de `NB_HEAD_CAMERA_ENABLED`,
+  `select CAMERA_OV2640`), mesmo padrão de `CONFIG_NB_HEAD_DISPLAY_HW_ENABLED`;
+- `nb_head_camera_service` aciona o HAL real em `REQUEST_SNAPSHOT` quando
+  `hardware_ready`: captura de verdade e responde `OK`/`ERROR` com
+  dimensões e tamanho do frame — nunca os pixels;
+- `sdkconfig.dm4-hw.defaults` (head): liga o enlace, o receptor semântico e
+  o hardware, com a mesma resolução do main (`YUV422 240x240 25fps`,
+  `CONFIG_CAMERA_OV2640_DVP_YUV422_240X240_25FPS`).
+
+Build validado (sem flash): `idf.py -B build-dm4-hw -D SDKCONFIG=sdkconfig.dm4-hw
+-D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.dm4-hw.defaults" build`
+limpo com `-Werror`, exercitando o branch físico completo (ioctls V4L2,
+`select CAMERA_OV2640` resolvido, `CONFIG_NB_HEAD_CAMERA_HW_ENABLED=y`
+confirmado no sdkconfig gerado). **Nenhuma câmera real foi testada** — isso
+prova só que o código compila e linka corretamente com o backend V4L2 real,
+não que o OV2640 físico responde. Procedimento de bring-up físico (gates
+C0–C4 e soak) documentado em `docs/DM4_BRINGUP.md`.
+
 ## Ordem de implementação
 
 1. ~~Definir contrato semântico de câmera (DM4.1)~~ — `FEITO`.
 2. ~~Round trip semântico no head, sem hardware (DM4.2)~~ — `FEITO`.
 3. ~~Cliente de câmera no main, sem hardware (DM4.3)~~ — `FEITO`.
 4. ~~Primeira prova de consumo real, sem hardware (DM4.4)~~ — `FEITO`.
-5. Criar `nb_head_camera_hal` no head-controller, exclusivo dos pinos DVP da
-   Freenove, espelhando a separação física já usada por `nb_head_display_hal`.
-6. Portar `camera_hal_init/capture/release` para o head; manter a mesma
-   interface de frame (`nb_camera_frame_t`) internamente ao componente.
-7. Estender `nb_head_camera_service` para acionar o HAL real (hoje só
-   responde semântica sem hardware) e manter o preview local (renderizado no
-   próprio display do head, sem depender do main).
-8. Wirear `nb_main_link_service_request_camera`/`get_last_camera_event` a um
+5. ~~Criar `nb_head_camera_hal` e `nb_head_i2c_hal`, portar
+   `camera_hal_init/capture/release` e acionar o HAL real em
+   `nb_head_camera_service` (DM4.5)~~ — `FEITO` em software/build. Bring-up
+   físico (`docs/DM4_BRINGUP.md`, gates C0–C4 e soak) ainda pendente de
+   bancada — sem isso DM4.5 não pode ser considerada validada eletricamente.
+6. Manter o preview local no head (renderizado no próprio display, sem
+   depender do main) — ainda não implementado.
+7. Wirear `nb_main_link_service_request_camera`/`get_last_camera_event` a um
    consumidor de produto real (presença/reconhecimento) e buscar os bytes
    JPEG pelo canal `BULK` sob demanda.
-9. Remover `camera_hal.c`/`camera_service` do main e mover a responsabilidade
+8. Remover `camera_hal.c`/`camera_service` do main e mover a responsabilidade
    de preview/overlay de bbox para o head (`vision_preview_service` deixa de
    desenhar localmente; bbox passa a ser parâmetro do estado visual remoto via
    `visual_state_facade`, análogo aos overlays de DM2).
-10. Validar headroom de PSRAM no head com câmera + display simultâneos
-    (mínimo de 300 KB livres, conforme CLAUDE.md).
-11. Só depois remover qualquer caminho de câmera do main em DM6.
+9. Validar headroom de PSRAM no head com câmera + display simultâneos
+   (mínimo de 300 KB livres, conforme CLAUDE.md) — gate C4 de
+   `docs/DM4_BRINGUP.md`.
+10. Só depois remover qualquer caminho de câmera do main em DM6.
 
 ## Invariantes
 
@@ -172,9 +205,11 @@ board foi flasheado.
 5. Qualquer `status` diferente de 3, timeout sem resposta, ou queda do enlace
    é falha do gate — investigar antes de avançar para o driver DVP físico.
 
-## Fora do corte DM4.1/DM4.2/DM4.3/DM4.4
+## Fora do corte DM4.1/DM4.2/DM4.3/DM4.4/DM4.5
 
-- driver físico DVP no head (`nb_head_camera_hal`);
+- bring-up elétrico/funcional real do OV2640 (gates C0–C4 de
+  `docs/DM4_BRINGUP.md`) — DM4.5 só portou e compilou o driver, não testou
+  a câmera física;
 - preview local no head;
 - transferência BULK de JPEG;
 - qualquer consumidor de produto (presença, reconhecimento) chamando o
