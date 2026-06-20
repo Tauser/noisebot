@@ -175,6 +175,35 @@ O gate técnico de restauração após reboot do head está aprovado. Permanece
 pendente apenas confirmar visualmente que a tela voltou diretamente ao mesmo
 estado sleeping, sem quadro semântico incorreto.
 
+## DM2.5 — head indisponível desde o boot
+
+O primeiro ensaio revelou que a main permanecia indefinidamente em
+`HANDSHAKE` quando as 16 tentativas iniciais de HELLO terminavam antes de o
+head subir. A FSM foi corrigida para entrar em `DEGRADED` após esse limite,
+mantendo a main operacional e emitindo HELLO periódico sem limite até o peer
+aparecer. Um teste host cobre explicitamente o head que inicia tarde.
+
+### Evidência DM2.5 — 2026-06-20
+
+- Freenove mantida em reset durante todo o boot e probe visual da Waveshare;
+- main transitou `RESET → HANDSHAKE → DEGRADED` em aproximadamente 4,3 s;
+- probe da facade completou expressão, gaze e overlays enquanto o head estava
+  ausente, sem panic, abort ou reboot da main;
+- após 23 s, o head foi liberado e o enlace transitou
+  `DEGRADED → SNAPSHOT → READY`;
+- recuperação da main em 20 ms;
+- snapshot final restaurado diretamente: expressão neutral, gaze `-950,-350`,
+  brilho 180 e sleeping (`Zzz`);
+- head aplicou gerações 192/193 com o mesmo estado final;
+- `retry=0`, `timeout=0`, `spi_err=0`, `invalid=0`, `hw=1/0`;
+- PSRAM do head permaneceu em 8.230.504 bytes;
+- testes host: 3/3 verdes, incluindo peer ausente no boot.
+
+Resultado DM2.5: **fallback e recuperação tardia tecnicamente aprovados**. A
+main continua operando sem head, preserva o estado mais recente e converge ao
+snapshot atual quando o head retorna. O render local legado permanece
+compilado e não foi removido.
+
 ### Gate de bancada DM2.2
 
 1. Manter a main no perfil `build-dm2`.

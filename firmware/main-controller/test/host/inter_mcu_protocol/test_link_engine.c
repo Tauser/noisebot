@@ -342,6 +342,29 @@ static void test_timeout_then_recover(void)
     TEST("head_recovered", nb_link_engine_is_operational(&fx.head_e));
 }
 
+static void test_head_absent_at_boot_then_recovers(void)
+{
+    fixture_t fx;
+    fixture_init(&fx, 11U, 12U);
+
+    fx.wire.partition = true;
+    nb_link_engine_start(&fx.main_e, fx.clock);
+    fixture_run(&fx, NB_LINK_HANDSHAKE_RETRY_MS,
+                NB_LINK_HANDSHAKE_MAX_RETRIES + 2);
+
+    TEST("main_degraded_when_head_absent_at_boot",
+         nb_link_engine_state(&fx.main_e) == NB_LINK_STATE_DEGRADED);
+
+    nb_link_engine_start(&fx.head_e, fx.clock);
+    fx.wire.partition = false;
+    fixture_run(&fx, NB_LINK_HANDSHAKE_RETRY_MS, 4);
+
+    TEST("main_recovers_when_late_head_appears",
+         nb_link_engine_is_operational(&fx.main_e));
+    TEST("late_head_reaches_ready",
+         nb_link_engine_is_operational(&fx.head_e));
+}
+
 static void test_app_delivery_and_dedup(void)
 {
     fixture_t fx;
@@ -676,6 +699,7 @@ int main(void)
     test_heartbeat_keeps_alive();
     test_snapshot_loss_retries_before_ready();
     test_timeout_then_recover();
+    test_head_absent_at_boot_then_recovers();
     test_app_delivery_and_dedup();
     test_ack_latency_telemetry();
     test_lost_ack_retries_same_sequence();

@@ -284,9 +284,18 @@ void nb_link_engine_tick(nb_link_engine_t *engine, uint32_t now_ms)
     if ((engine->state == NB_LINK_STATE_HANDSHAKE ||
          engine->state == NB_LINK_STATE_SNAPSHOT) &&
         engine->cfg.role == NB_LINK_ROLE_MAIN) {
-        if (engine->handshake_retries < NB_LINK_HANDSHAKE_MAX_RETRIES &&
-            elapsed(now_ms, engine->last_handshake_tx_ms,
-                    NB_LINK_HANDSHAKE_RETRY_MS)) {
+        if (elapsed(now_ms, engine->last_handshake_tx_ms,
+                    NB_LINK_HANDSHAKE_RETRY_MS) &&
+            engine->handshake_retries >= NB_LINK_HANDSHAKE_MAX_RETRIES) {
+            /*
+             * Peer pode estar desligado desde o boot. DEGRADED mantém a main
+             * operacional e ativa o HELLO periódico sem limite abaixo.
+             */
+            set_state(engine, NB_LINK_STATE_DEGRADED);
+        } else if (engine->handshake_retries <
+                       NB_LINK_HANDSHAKE_MAX_RETRIES &&
+                   elapsed(now_ms, engine->last_handshake_tx_ms,
+                           NB_LINK_HANDSHAKE_RETRY_MS)) {
             if (engine->state == NB_LINK_STATE_HANDSHAKE) {
                 send_hello(engine, NB_LINK_MSG_HELLO,
                            NB_LINK_FLAG_ACK_REQUIRED);
