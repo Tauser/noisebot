@@ -13,7 +13,7 @@
 #include "motion_service.h"
 #include "servo_hal.h"
 #include "servo_hal_write.h"
-#include "nb_hw_config.h"
+#include "nb_hw_config_profile.h"
 
 #include "esp_log.h"
 #include "esp_err.h"

@@ -17,7 +17,7 @@
  */
 
 #include "servo_hal.h"
-#include "nb_hw_config.h"
+#include "nb_hw_config_profile.h"
 
 #include "driver/uart.h"
 #include "driver/gpio.h"

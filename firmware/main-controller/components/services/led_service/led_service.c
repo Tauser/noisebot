@@ -24,7 +24,7 @@
 
 #include "led_service.h"
 #include "led_hal.h"
-#include "nb_hw_config.h"
+#include "nb_hw_config_profile.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"

@@ -3,6 +3,7 @@
  */
 
 #include "i2c_hal.h"
+#include "nb_hw_config_profile.h"
 #include "esp_log.h"
 
 static const char *TAG = "nb_i2c_hal";

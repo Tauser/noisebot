@@ -11,7 +11,7 @@
  */
 
 #include "audio_hal.h"
-#include "nb_hw_config.h"
+#include "nb_hw_config_profile.h"
 #include "esp_log.h"
 
 #include "driver/i2s_std.h"

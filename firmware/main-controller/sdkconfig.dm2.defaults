@@ -1,4 +1,5 @@
 # Perfil opt-in DM2.1: enlace mínimo + prova semântica, sem display físico.
+CONFIG_NB_BOARD_PROFILE_WAVESHARE=y
 CONFIG_NB_INTER_MCU_SPI_ENABLED=y
 CONFIG_NB_DM1_BENCH_PROFILE=y
 CONFIG_NB_DM2_DISPLAY_PROBE=y

@@ -1,0 +1,4 @@
+# Perfil DMM: Waveshare main-controller em boot normal completo (sem bench
+# DM1/probe DM2) — wifi_service e web_service ativos para validar telemetria
+# de bordo (power.*, health, diag) end-to-end.
+CONFIG_NB_BOARD_PROFILE_WAVESHARE=y

@@ -3,7 +3,7 @@
  */
 
 #include "led_hal.h"
-#include "nb_hw_config.h"
+#include "nb_hw_config_profile.h"
 
 #include "led_strip.h"
 #include "esp_log.h"

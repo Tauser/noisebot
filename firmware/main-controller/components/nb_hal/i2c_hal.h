@@ -22,7 +22,7 @@
 
 #include "esp_err.h"
 #include "driver/i2c_master.h"
-#include "nb_hw_config.h"
+#include "nb_hw_config_profile.h"
 #include <stdint.h>
 #include <stdbool.h>
 

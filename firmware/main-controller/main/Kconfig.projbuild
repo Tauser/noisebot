@@ -1,5 +1,22 @@
 menu "NoiseBot"
 
+    choice NB_BOARD_PROFILE
+        prompt "NoiseBot board profile"
+        default NB_BOARD_PROFILE_LEGACY
+        help
+            Selects the board profile explicitly in Kconfig/build. Legacy keeps
+            the current Freenove-first mapping. Waveshare selects the target
+            main-controller profile and disables the head-local HALs in this
+            cut.
+
+        config NB_BOARD_PROFILE_LEGACY
+            bool "Legacy Freenove"
+
+        config NB_BOARD_PROFILE_WAVESHARE
+            bool "Waveshare main"
+
+    endchoice
+
     menu "Audio"
 
         config NB_BOARD_HAS_AUDIO_REFERENCE
