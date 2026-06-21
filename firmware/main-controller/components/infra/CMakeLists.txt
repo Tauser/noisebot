@@ -22,6 +22,7 @@ idf_component_register(
         esp_system
         esp_hw_support
         esp_timer
+        esp_adc
         freertos
         esp_wifi
         esp_netif

@@ -10,6 +10,7 @@
 #include "emotion_model.h"
 #include "attention_service.h"
 #include "diagnostics_service.h"
+#include "power_monitor.h"
 #include "persona_service.h"
 #include "config_manager.h"
 #include "conductor.h"
@@ -1365,6 +1366,28 @@ static void send_health_object(httpd_req_t *req, bool wrap)
         snprintf(sd_total_buf, sizeof(sd_total_buf), "null");
     }
 
+    uint32_t power_adc_mv = 0;
+    uint32_t power_bus_mv = 0;
+    const bool power_adc_available = power_monitor_has_5v_adc();
+    const bool power_adc_ok = power_monitor_read_5v_adc_mv(&power_adc_mv) == ESP_OK;
+    const bool power_bus_ok = power_monitor_read_5v_bus_mv(&power_bus_mv) == ESP_OK;
+    const bool power_warn = power_bus_ok && power_monitor_is_5v_warn();
+    const bool power_critical = power_bus_ok && power_monitor_is_5v_critical();
+    char power_adc_mv_buf[24];
+    char power_bus_mv_buf[24];
+    snprintf(power_adc_mv_buf, sizeof(power_adc_mv_buf), "%s",
+             power_adc_ok ? "" : "null");
+    snprintf(power_bus_mv_buf, sizeof(power_bus_mv_buf), "%s",
+             power_bus_ok ? "" : "null");
+    if (power_adc_ok) {
+        snprintf(power_adc_mv_buf, sizeof(power_adc_mv_buf), "%lu",
+                 (unsigned long)power_adc_mv);
+    }
+    if (power_bus_ok) {
+        snprintf(power_bus_mv_buf, sizeof(power_bus_mv_buf), "%lu",
+                 (unsigned long)power_bus_mv);
+    }
+
     char buf[768];
     snprintf(buf, sizeof(buf),
         "%s\"heap_dram_free\":%lu,\"heap_dram_min\":%lu,"
@@ -1374,6 +1397,8 @@ static void send_health_object(httpd_req_t *req, bool wrap)
         "\"heap_psram_free\":%lu,\"heap_psram_min\":%lu,"
         "\"heap_psram_largest\":%lu,"
         "\"heap_psram_total\":%lu,"
+        "\"power\":{\"adc_available\":%s,\"adc_mv\":%s,\"bus_5v_mv\":%s,"
+                  "\"warn\":%s,\"critical\":%s},"
         "\"storage\":{\"sd_mounted\":%s,\"sd_free_bytes\":%s,"
                     "\"sd_total_bytes\":%s},"
         "\"task_count\":%lu,\"uptime_s\":%lu,\"cpu_percent\":%.1f,"
@@ -1391,6 +1416,11 @@ static void send_health_object(httpd_req_t *req, bool wrap)
         (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
         (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
         (unsigned long)heap_caps_get_total_size(MALLOC_CAP_SPIRAM),
+        power_adc_available ? "true" : "false",
+        power_adc_mv_buf,
+        power_bus_mv_buf,
+        power_warn ? "true" : "false",
+        power_critical ? "true" : "false",
         sd_mounted ? "true" : "false",
         sd_free_buf,
         sd_total_buf,
@@ -4467,6 +4497,14 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
     presence_diag_t pdiag = presence_semantic_get_diag();
     uint32_t ping_total = 0U, ping_suppressed = 0U, ping_hour = 0U;
     behavior_engine_get_ping_stats(&ping_total, &ping_suppressed, &ping_hour);
+    uint32_t power_bus_mv = 0U;
+    const bool power_bus_ok = power_monitor_read_5v_bus_mv(&power_bus_mv) == ESP_OK;
+    char power_bus_buf[16];
+    if (power_bus_ok) {
+        snprintf(power_bus_buf, sizeof(power_bus_buf), "%lu", (unsigned long)power_bus_mv);
+    } else {
+        snprintf(power_bus_buf, sizeof(power_bus_buf), "null");
+    }
 
     static const char * const k_pstate[7] = {
         "NO_ONE","MAYBE_SOMEONE","PRESENT","ENGAGED",
@@ -4485,6 +4523,7 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
         "\"wake\":{\"active\":%s,\"model\":\"WakeNet9/Hi ESP\","
                   "\"threshold\":%.2f,\"detections\":%lu},"
         "\"audio\":{\"rms\":%.4f,\"listening\":%s},"
+        "\"power\":{\"bus_5v_mv\":%s,\"warn\":%s,\"critical\":%s},"
         "\"memory\":{\"psram_free\":%lu,\"dram_free\":%lu},"
         "\"cpu_percent\":%.1f,"
         "\"fps\":%.1f,"
@@ -4518,6 +4557,9 @@ static esp_err_t handle_api_diag(httpd_req_t *req)
         (unsigned long)wake_service_get_detect_count(),
         (double)sound_analysis_get_rms(),
         audio_service_is_listening() ? "true" : "false",
+        power_bus_buf,
+        (power_bus_ok && power_monitor_is_5v_warn()) ? "true" : "false",
+        (power_bus_ok && power_monitor_is_5v_critical()) ? "true" : "false",
         (unsigned long)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
         (unsigned long)esp_get_free_heap_size(),
         (double)diagnostics_get_cpu_percent(),

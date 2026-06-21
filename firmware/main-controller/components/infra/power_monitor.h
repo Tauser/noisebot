@@ -5,8 +5,8 @@
  *   - Detectar reset por brownout via esp_reset_reason() e manter contador
  *     persistente em NVS (namespace "nb_sys", chave "brn_count").
  *   - Activar safe_mode no NVS quando brn_count >= NB_POWER_BROWNOUT_SAFE_THRESHOLD.
- *   - Registrar callback de brownout em runtime (ISR-safe, detalhe abaixo).
  *   - Gerenciar o modo de operação do sistema (nb_power_mode_t).
+ *   - Ler o barramento de 5 V via ADC quando o perfil de placa o suportar.
  *
  * Integração com boot_manager:
  *   - power_monitor_init() é chamado em PHASE_POWER.
@@ -42,6 +42,8 @@ typedef enum {
 
 /** Número de brownouts consecutivos antes de forçar safe_mode no próximo boot. */
 #define NB_POWER_BROWNOUT_SAFE_THRESHOLD  3U
+#define NB_POWER_5V_WARN_MV              4700U
+#define NB_POWER_5V_CRITICAL_MV          4500U
 
 /* ── API ─────────────────────────────────────────────────────────────────── */
 
@@ -55,9 +57,10 @@ typedef enum {
  *   2. Se brownout: incrementa "brn_count" em NVS "nb_sys".
  *      Se brn_count >= threshold: seta "safe_mode"=1 (boot_manager lê no
  *      próximo boot via boot_nvs_load_and_update).
- *   3. Registra callback de brownout (ESP_EARLY_LOGE — ISR-safe).
- *
  * Falhas de NVS são não-fatais: loggadas e execução continua.
+ * A instrumentação ADC de 5 V é best-effort: se a calibração falhar, o
+ * monitor continua com conversão aproximada; se o perfil não expuser ADC,
+ * a API retorna ESP_ERR_NOT_SUPPORTED.
  *
  * @return ESP_OK em sucesso ou ESP_FAIL se já inicializado.
  */
@@ -92,5 +95,34 @@ bool power_monitor_is_brownout_reset(void);
  * Se não foi brownout, reflete o valor armazenado antes deste boot.
  */
 uint8_t power_monitor_get_brownout_count(void);
+
+/**
+ * @brief Retorna true quando o perfil atual expõe um ADC válido para 5 V.
+ */
+bool power_monitor_has_5v_adc(void);
+
+/**
+ * @brief Lê a tensão no pino ADC do divisor resistivo em milivolts.
+ *
+ * Retorna o valor no ponto médio do divisor, não a tensão real do barramento.
+ */
+esp_err_t power_monitor_read_5v_adc_mv(uint32_t *adc_mv);
+
+/**
+ * @brief Lê a tensão estimada do barramento de 5 V em milivolts.
+ *
+ * Usa o divisor 68k/56k documentado para reconstruir a tensão do barramento.
+ */
+esp_err_t power_monitor_read_5v_bus_mv(uint32_t *bus_mv);
+
+/**
+ * @brief Retorna true se a leitura atual do barramento 5 V está em aviso.
+ */
+bool power_monitor_is_5v_warn(void);
+
+/**
+ * @brief Retorna true se a leitura atual do barramento 5 V está em nível crítico.
+ */
+bool power_monitor_is_5v_critical(void);
 
 #endif /* NB_POWER_MONITOR_H */
