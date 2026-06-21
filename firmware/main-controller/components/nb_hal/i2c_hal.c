@@ -8,8 +8,12 @@
 
 static const char *TAG = "nb_i2c_hal";
 
+#define NB_I2C_SCAN_CACHE_MAX 16
+
 static i2c_master_bus_handle_t s_bus_handle = NULL;
 static bool s_initialized = false;
+static uint8_t s_last_scan[NB_I2C_SCAN_CACHE_MAX];
+static size_t s_last_scan_count = 0;
 
 esp_err_t nb_i2c_hal_init(void)
 {
@@ -66,9 +70,16 @@ esp_err_t nb_i2c_hal_scan(uint8_t *found, size_t max_found, size_t *count)
             if (found != NULL && found_count < max_found) {
                 found[found_count] = addr;
             }
+            if (found_count < NB_I2C_SCAN_CACHE_MAX) {
+                s_last_scan[found_count] = addr;
+            }
             found_count++;
         }
     }
+
+    s_last_scan_count = (found_count < NB_I2C_SCAN_CACHE_MAX)
+                             ? found_count
+                             : NB_I2C_SCAN_CACHE_MAX;
 
     if (found_count == 0) {
         ESP_LOGW(TAG, "nenhum dispositivo I2C encontrado");
@@ -80,6 +91,19 @@ esp_err_t nb_i2c_hal_scan(uint8_t *found, size_t max_found, size_t *count)
         *count = found_count;
     }
     return ESP_OK;
+}
+
+void nb_i2c_hal_get_last_scan(uint8_t *found, size_t max_found, size_t *count)
+{
+    size_t n = (s_last_scan_count < max_found) ? s_last_scan_count : max_found;
+    if (found != NULL) {
+        for (size_t i = 0; i < n; i++) {
+            found[i] = s_last_scan[i];
+        }
+    }
+    if (count != NULL) {
+        *count = s_last_scan_count;
+    }
 }
 
 void nb_i2c_hal_deinit(void)

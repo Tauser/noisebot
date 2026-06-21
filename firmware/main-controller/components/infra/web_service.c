@@ -51,6 +51,7 @@
 #include "audio_service.h"
 #include "ui_overlay_service.h"
 #include "touch_service.h"
+#include "i2c_hal.h"
 #include "time_service.h"
 #include "agenda_service.h"
 #include "camera_service.h"
@@ -4088,6 +4089,45 @@ static void send_touch_object(httpd_req_t *req, bool wrap)
     httpd_resp_sendstr_chunk(req, buf);
 }
 
+static const char *i2c_known_device_name(uint8_t addr)
+{
+    switch (addr) {
+        case 0x36: return "MAX17048 (fuel gauge)";
+        case 0x39: return "APDS-9960 (proximidade)";
+        case 0x3C: return "OV2640 (SCCB)";
+        case 0x44: return "SHT40 (temp/umidade)";
+        case 0x68: return "MPU-6050 (IMU)";
+        case 0x6B: return "bq25185 (charger)";
+        default:   return "desconhecido";
+    }
+}
+
+static esp_err_t handle_api_i2c_get(httpd_req_t *req)
+{
+    uint8_t found[16];
+    size_t count = 0;
+    nb_i2c_hal_get_last_scan(found, sizeof(found), &count);
+
+    httpd_resp_set_type(req, "application/json");
+    char head[64];
+    snprintf(head, sizeof(head), "{\"bus_ready\":%s,\"devices\":[",
+             nb_i2c_hal_is_ready() ? "true" : "false");
+    httpd_resp_sendstr_chunk(req, head);
+
+    for (size_t i = 0; i < count; i++) {
+        char item[80];
+        snprintf(item, sizeof(item), "%s{\"addr\":\"0x%02X\",\"name\":\"%s\"}",
+                 (i == 0) ? "" : ",", (unsigned)found[i],
+                 i2c_known_device_name(found[i]));
+        httpd_resp_sendstr_chunk(req, item);
+    }
+
+    char tail[32];
+    snprintf(tail, sizeof(tail), "],\"count\":%u}", (unsigned)count);
+    httpd_resp_sendstr_chunk(req, tail);
+    return httpd_resp_sendstr_chunk(req, NULL);
+}
+
 static esp_err_t handle_api_touch_get(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "application/json");
@@ -4877,6 +4917,7 @@ static const httpd_uri_t k_uris[] = {
     { .uri = "/api/ltm",            .method = HTTP_GET,    .handler = handle_api_ltm_get },
     { .uri = "/api/persona",        .method = HTTP_DELETE, .handler = handle_api_persona_delete },
     { .uri = "/api/touch",          .method = HTTP_GET,    .handler = handle_api_touch_get },
+    { .uri = "/api/i2c",            .method = HTTP_GET,    .handler = handle_api_i2c_get },
     /* Agenda local */
     { .uri = "/api/time",            .method = HTTP_GET,  .handler = handle_api_time_get },
     { .uri = "/api/time/config",     .method = HTTP_POST, .handler = handle_api_time_config },

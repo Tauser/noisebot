@@ -270,7 +270,7 @@ head e seguem DM2–DM5. DMM também não autoriza movimento real antes do gate 
 | DMM.7 | LEDs externos e LED onboard | `FEITO` |
 | DMM.8 | UART/TTLinker e servos com torque bloqueado | `BLOQUEADO` |
 | DMM.9 | Motion safety e liberação controlada dos servos | `BLOQUEADO` |
-| DMM.10 | I2C de sensores e capacidades de placa | `BLOQUEADO` |
+| DMM.10 | I2C de sensores e capacidades de placa | `FEITO` |
 | DMM.11 | Wi-Fi, USB, console e coexistência de periféricos | `BLOQUEADO` |
 | DMM.12 | Boot completo, modos degradados e integração com o head | `BLOQUEADO` |
 | DMM.13 | Soak integrado e cutover da main-controller | `BLOQUEADO` |
@@ -474,16 +474,33 @@ movimento físico.
 Gate: somente o protocolo de liberação de safety autoriza movimento. Esta
 subfase pode permanecer bloqueada sem impedir DMM.10–DMM.13 em modo sem servo.
 
-#### DMM.10 — I2C e capacidades
+#### DMM.10 — I2C e capacidades — `FEITO`
 
-- validar I2C0 GPIO4/5 e pull-ups externos;
-- detectar apenas sensores realmente instalados;
-- tratar IMU, bateria e sensores futuros como capabilities, não pressupostos;
-- atualizar `board_caps` e diagnóstico;
-- nenhum sensor ausente impede voz, link ou safety básico.
+- validar I2C0 GPIO4/5 e pull-ups externos; ✓ `nb_i2c_hal_init()` agora
+  roda na `phase_hal()` do boot (antes só existia o HAL, não era chamado
+  por nada); pull-up interno habilitado via `flags.enable_internal_pullup`,
+  sem pull-up externo nesta bancada (sem sensor instalado para validar
+  carga real);
+- detectar apenas sensores realmente instalados; ✓ `nb_i2c_hal_scan()`
+  varre 0x08–0x77 no boot e cacheia o resultado — sem presumir nada;
+  validado em 2026-06-21: `GET /api/i2c` → `{"bus_ready":true,"devices":
+  [],"count":0}` (nenhum sensor cabeado ainda, como esperado);
+- tratar IMU, bateria e sensores futuros como capabilities, não
+  pressupostos; ✓ `nb_i2c_hal_get_last_scan()` expõe só o que foi
+  detectado; mapeamento de endereço→nome conhecido (MPU-6050, MAX17048,
+  bq25185, APDS-9960, SHT40, OV2640) só aparece se o endereço responder;
+- atualizar `board_caps` e diagnóstico; ✓ `nb_board_caps_t.supports_i2c_bus`
+  (capability do barramento em si, não dos sensores) +
+  `GET /api/i2c` novo endpoint;
+- nenhum sensor ausente impede voz, link ou safety básico. ✓ confirmado —
+  bridge e wake continuaram operando normalmente após o reflash
+  (`GET /api/diag`: bridge conectado, wake ativo, power normal).
 
 Gate: scan e drivers instalados não conflitam; itens adiados permanecem
-desabilitados.
+desabilitados. Fechado em 2026-06-21. Implementação nova nesta sessão (HAL
+já existia mas nunca tinha sido cabeado ao boot): `i2c_hal.h/.c` (cache do
+último scan), `boot_manager.c` (`phase_hal()`), `board_caps.h/.c`
+(`supports_i2c_bus`), `web_service.c` (`GET /api/i2c`).
 
 #### DMM.11 — coexistência
 

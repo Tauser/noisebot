@@ -35,6 +35,7 @@
 #include "visual_state_facade.h"
 #include "led_service.h"
 #include "touch_service.h"
+#include "i2c_hal.h"
 #include "audio_service.h"
 // #include "servo_hal.h"
 // #include "motion_safety.h"
@@ -1131,6 +1132,21 @@ static esp_err_t phase_hal(void)
 
     /* Servo HAL — desativado temporariamente para reduzir uso de memória.
      * Reativar quando motion_service for reintegrado ao boot. */
+
+    /* I2C (DMM.10) — bus compartilhado para sensores opcionais (IMU,
+     * bateria, proximidade...). Nenhum sensor é presumido presente: o scan
+     * só populariza o cache lido por GET /api/i2c, board_caps continua sem
+     * assumir hardware que pode não estar instalado. */
+    err = nb_i2c_hal_init();
+    if (err != ESP_OK) {
+        NB_LOGW(TAG, "nb_i2c_hal_init falhou: %s — I2C desativado",
+                esp_err_to_name(err));
+    } else {
+        size_t i2c_count = 0;
+        nb_i2c_hal_scan(NULL, 0, &i2c_count);
+        NB_LOGI(TAG, "I2C scan: %u dispositivo(s) no barramento",
+                (unsigned)i2c_count);
+    }
 
     phase_ok(NB_BOOT_PHASE_HAL);
     return ESP_OK;

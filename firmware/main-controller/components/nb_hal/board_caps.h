@@ -22,6 +22,7 @@ typedef struct {
     bool supports_device_aec;
     bool supports_wake_word;
     bool supports_camera;
+    bool supports_i2c_bus;
 } nb_board_caps_t;
 
 /**
@@ -30,6 +31,10 @@ typedef struct {
  * AEC no dispositivo exige um canal limpo de referencia do speaker. O hardware
  * atual usa INMP441 + MAX98357A sem loopback/reference channel, portanto
  * supports_device_aec permanece false neste perfil.
+ *
+ * supports_i2c_bus reflete apenas a existencia do barramento (pinos 4/5).
+ * Sensores individuais (IMU, bateria, proximidade...) nao sao presumidos —
+ * ver nb_i2c_hal_get_last_scan()/GET /api/i2c para o que foi detectado.
  */
 const nb_board_caps_t *nb_board_caps_get(void);
 

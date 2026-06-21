@@ -22,7 +22,6 @@
 
 #include "esp_err.h"
 #include "driver/i2c_master.h"
-#include "nb_hw_config_profile.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -62,6 +61,19 @@ bool nb_i2c_hal_is_ready(void);
  * @return ESP_OK mesmo se nenhum dispositivo for encontrado.
  */
 esp_err_t nb_i2c_hal_scan(uint8_t *found, size_t max_found, size_t *count);
+
+/**
+ * @brief Retorna o resultado da última chamada a nb_i2c_hal_scan().
+ *
+ * Não dispara um novo scan — apenas lê o cache do scan de boot. Usado por
+ * diagnóstico (ex: GET /api/i2c) para reportar capabilities detectadas sem
+ * presumir nenhum sensor presente.
+ *
+ * @param[out] found     Buffer para endereços encontrados. Pode ser NULL.
+ * @param[in]  max_found Tamanho do buffer. Ignorado se found == NULL.
+ * @param[out] count     Número de dispositivos do último scan. Pode ser NULL.
+ */
+void nb_i2c_hal_get_last_scan(uint8_t *found, size_t max_found, size_t *count);
 
 /**
  * @brief Desinicializa o barramento I2C e libera recursos.

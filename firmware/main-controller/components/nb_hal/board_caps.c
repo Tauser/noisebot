@@ -32,6 +32,7 @@ const nb_board_caps_t *nb_board_caps_get(void)
 #else
         .supports_camera = false,
 #endif
+        .supports_i2c_bus = true,
     };
 
     return &caps;
