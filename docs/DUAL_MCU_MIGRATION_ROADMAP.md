@@ -604,7 +604,7 @@ e um único dono de render.
 | DM2.3 | Renderer procedural inicial e gaze básica | `FEITO` |
 | DM2.4 | Facade visual e oito overlays compactos | `FEITO` |
 | DM2.5 | Reboot isolado, head ausente e restauração de snapshot | `FEITO` |
-| DM2.6 | Inventário visual congelado e matriz de paridade | `PRONTO` |
+| DM2.6 | Inventário visual congelado e matriz de paridade | `FEITO` |
 | DM2.7 | Contrato visual v2 modular e testes host | `BLOQUEADO` |
 | DM2.8 | Paridade geométrica das faces e expressões | `BLOQUEADO` |
 | DM2.9 | Motor de animação, blink, gaze, tilt e timelines | `BLOQUEADO` |
@@ -615,7 +615,15 @@ e um único dono de render.
 | DM2.14 | Paridade de produto, latência e soak visual | `BLOQUEADO` |
 | DM2.15 | Cutover: head como render padrão; fallback de release | `BLOQUEADO` |
 
-#### DM2.6 — inventário visual congelado
+#### DM2.6 — inventário visual congelado — `FEITO`
+
+Matriz completa em `docs/DM2_VISUAL_INVENTORY.md` (2026-06-21). Achado
+principal: o gargalo não é o renderer do head (já cobre 10 expressões +
+gaze + 8 overlays desde DM2.1-DM2.5) — é o contrato `nb_display_command_t`
+v1 (16 bytes, sem campo de animação/timing). Blink (simples/duplo/
+assimétrico), drift/saccade/tilt, os 11 `NB_STATE_*` e a timeline de wake/
+greeting não têm como atravessar o link hoje, confirmando DM2.7 (contrato
+v2) como pré-requisito real de DM2.8/DM2.9.
 
 Mapear, sem alterar comportamento:
 
