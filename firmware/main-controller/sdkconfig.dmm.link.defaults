@@ -1,0 +1,4 @@
+# Perfil DMM com enlace inter-MCU ativo em boot normal (sem bench DM1) —
+# usado para medir carga combinada com o head conectado (DMM.3, secao 6.3).
+CONFIG_NB_BOARD_PROFILE_WAVESHARE=y
+CONFIG_NB_INTER_MCU_SPI_ENABLED=y

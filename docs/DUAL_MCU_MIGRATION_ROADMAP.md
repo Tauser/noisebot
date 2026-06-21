@@ -263,8 +263,8 @@ head e seguem DM2–DM5. DMM também não autoriza movimento real antes do gate 
 | --- | --- | --- |
 | DMM.1 | Inventário elétrico, variante da placa e matriz de recabeamento | `FEITO` |
 | DMM.2 | Perfil de placa e seleção segura do HAL da Waveshare | `FEITO` |
-| DMM.3 | Alimentação, GND, ADC de 5 V e brownout | `EM ANDAMENTO` |
-| DMM.4 | Áudio físico INMP441/MAX98357A | `BLOQUEADO` |
+| DMM.3 | Alimentação, GND, ADC de 5 V e brownout | `FEITO` |
+| DMM.4 | Áudio físico INMP441/MAX98357A | `PRONTO` |
 | DMM.5 | Voice Audio v2, wake, VAD e playback na Waveshare | `BLOQUEADO` |
 | DMM.6 | Touch corporal e calibração na Waveshare | `BLOQUEADO` |
 | DMM.7 | LEDs externos e LED onboard | `BLOQUEADO` |
@@ -310,18 +310,26 @@ build legado (`firmware/main-controller/build`) e build Waveshare
 `nb_hw_config_profile.h`, e `nb_hw_config_main.h` agora trava conflitos
 explícitos entre link, áudio, servo, LED, touch e USB.
 
-#### DMM.3 — alimentação e brownout
+#### DMM.3 — alimentação e brownout — `FEITO`
 
-- definir fonte 5 V, corrente disponível, GND comum e distribuição;
-- não unir saídas 5 V de fontes independentes;
-- validar divisor externo antes de ligar GPIO7;
-- bancada atual: divisor temporário 100k/100k validado em 2026-06-21;
-- medir 3,3 V/5 V em idle, Wi-Fi TX, áudio e LEDs;
-- testar brownout e desligamento seguro de periféricos;
-- preservar boot da main sem head e sem periféricos externos.
+- definir fonte 5 V, corrente disponível, GND comum e distribuição; ✓
+- não unir saídas 5 V de fontes independentes; ✓
+- validar divisor externo antes de ligar GPIO7; ✓
+- bancada atual: divisor temporário 100k/100k validado em 2026-06-21; ✓
+- medir 3,3 V/5 V em idle, Wi-Fi TX, áudio e LEDs; ✓ (idle, Wi-Fi, amp,
+  LEDs, head conectado e carga combinada — sem sag significativo)
+- testar brownout e desligamento seguro de periféricos; ✓ com gap conhecido
+  (power-loss total testado e seguro; sag parcial do circuito BOD não
+  exercitado — requer fonte ajustável, registrado em
+  `DMM3_ELECTRICAL_GATE_CHECKLIST.md` seção 6.7);
+- preservar boot da main sem head e sem periféricos externos. ✓
 
 Gate: nenhuma linha excede limites, nenhum back-power por GPIO e brownout não
-causa movimento ou corrupção.
+causa movimento ou corrupção. Fechado em 2026-06-21. Correção de calibração
+do ADC de 5V aplicada em `power_monitor.c` (fator empírico ~+2.2%, ver
+checklist seção 5.1) — sem essa correção, `power.warn` disparava falso
+positivo mesmo em idle saudável. Detalhe completo em
+`docs/DMM3_ELECTRICAL_GATE_CHECKLIST.md`.
 
 #### DMM.4 — áudio físico
 

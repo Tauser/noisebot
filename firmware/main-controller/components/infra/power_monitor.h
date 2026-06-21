@@ -45,6 +45,11 @@ typedef enum {
 #define NB_POWER_5V_WARN_MV              4700U
 #define NB_POWER_5V_CRITICAL_MV          4500U
 
+/** Correcao empirica de calibracao do ADC de 5V (DMM.3, bancada 2026-06-21):
+ *  fator ~1.0223 derivado de adc_mv=2317 vs multimetro=2368 em GPIO7. */
+#define NB_POWER_5V_ADC_CAL_NUM          10223U
+#define NB_POWER_5V_ADC_CAL_DEN          10000U
+
 /* ── API ─────────────────────────────────────────────────────────────────── */
 
 /**

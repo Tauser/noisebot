@@ -124,13 +124,15 @@ arquitetura continua em `docs/DUAL_MCU_ARCHITECTURE_PLAN.md`.
 | F5 storage | DM5 | `BLOQUEADO` | Só inicia após DM4.11; SD único remoto, áudio/LTM, power-loss e backpressure têm subfases fixas no roadmap canônico |
 | F6 limpeza | DM6 | `BLOQUEADO` | Legado multimídia removido do main; último corte, somente após DM5.10 |
 
-Próximas ações registradas: **DMM.3** segue em andamento com checklist de gate
-elétrico, leitura ADC do barramento 5 V em `GPIO7` e telemetria `power.*` nos
-endpoints de diagnóstico; a bancada agora usa divisor externo temporário
-`100k/100k`, já validado por multímetro (`5V=4.741 V`, `GPIO7=2.368 V`), e o
-firmware foi alinhado a essa montagem para validar a API antes da solução
-física permanente. **DM2.6**, inventário visual, permanece como a outra frente
-documental autorizada. DMM.1 e DMM.2 já foram
+Próximas ações registradas: **DMM.3** foi fechado em 2026-06-21 — gate
+elétrico aprovado (idle, Wi-Fi, áudio, LEDs, head conectado e carga
+combinada, todos sem sag significativo; 3.3V/5V cruzados com multímetro;
+ADC do barramento 5V em `GPIO7` com correção de calibração aplicada em
+`power_monitor.c`). Gap conhecido: o circuito BOD de sag parcial não foi
+exercitado (só power-loss total), registrado em
+`docs/DMM3_ELECTRICAL_GATE_CHECKLIST.md` seção 6.7. **DMM.4** (áudio físico
+INMP441/MAX98357A) está `PRONTO` para começar. **DM2.6**, inventário visual,
+permanece como a outra frente documental autorizada. DMM.1–DMM.3 já foram
 consolidadas; somente um ID entra em andamento sem autorização explicita para
 paralelismo. DM4 e DM5 continuam pausadas/bloqueadas.
 

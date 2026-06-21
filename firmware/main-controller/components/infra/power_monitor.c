@@ -180,7 +180,14 @@ static esp_err_t read_adc_pin_mv(uint32_t *adc_mv)
         return ESP_ERR_INVALID_RESPONSE;
     }
 
-    *adc_mv = (uint32_t)mv;
+    /* Correcao empirica de calibracao (DMM.3, bancada 2026-06-21): a leitura
+     * crua do ADC ficou ~2.2% abaixo do multimetro em GPIO7 (2.317V vs
+     * 2.368V) e no barramento reconstruido (4.636V vs 4.741V), provavelmente
+     * por falta de ponto de calibracao de fabrica gravado neste chip.
+     * Fator unico derivado dessa amostra; revisitar com mais pontos antes de
+     * confiar nele fora da faixa ~2.3-4.7V testada. */
+    *adc_mv = (uint32_t)(((int64_t)mv * NB_POWER_5V_ADC_CAL_NUM) /
+                         NB_POWER_5V_ADC_CAL_DEN);
     return ESP_OK;
 }
 #endif
