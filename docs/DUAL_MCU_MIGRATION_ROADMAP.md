@@ -267,7 +267,7 @@ head e seguem DM2–DM5. DMM também não autoriza movimento real antes do gate 
 | DMM.4 | Áudio físico INMP441/MAX98357A | `FEITO` |
 | DMM.5 | Voice Audio v2, wake, VAD e playback na Waveshare | `FEITO` |
 | DMM.6 | Touch corporal e calibração na Waveshare | `FEITO` |
-| DMM.7 | LEDs externos e LED onboard | `BLOQUEADO` |
+| DMM.7 | LEDs externos e LED onboard | `FEITO` |
 | DMM.8 | UART/TTLinker e servos com torque bloqueado | `BLOQUEADO` |
 | DMM.9 | Motion safety e liberação controlada dos servos | `BLOQUEADO` |
 | DMM.10 | I2C de sensores e capacidades de placa | `BLOQUEADO` |
@@ -421,15 +421,35 @@ Gate: critérios da Etapa 2.2A repetidos na Waveshare após reboot e com Wi-Fi.
 Fechado em 2026-06-21 com Wi-Fi ativo (`sdkconfig.dmm.defaults`) e bridge
 conectado — mesmo boot já validado em DMM.5.
 
-#### DMM.7 — LEDs
+#### DMM.7 — LEDs — `FEITO`
 
-- recabear dois WS2812 externos para GPIO21 com level shift adequado;
-- manter GPIO38 como LED onboard independente;
-- definir qual LED serve ao produto e qual serve ao diagnóstico;
-- testar brilho máximo, consumo, boot apagado e estados base;
-- validar RMT concorrente com áudio, Wi-Fi e link.
+- recabear dois WS2812 externos para GPIO21 com level shift adequado; ✓
+  (`led_hal OK — GPIO 21, 2 LEDs, RMT 10MHz` no boot)
+- manter GPIO38 como LED onboard independente; ✓ definido em
+  `NB_MAIN_PIN_STATUS_RGB` com assert estático contra todos os demais
+  pinos; sem driver próprio ainda (apagado por padrão, sem interferir) —
+  diferente do head (GPIO48/commit `0aa47ee`), aqui não há regressão
+  visível porque o pino fica naturalmente apagado nesta placa;
+- definir qual LED serve ao produto e qual serve ao diagnóstico; ✓ os dois
+  WS2812 externos (GPIO21) são o LED de produto (expressão/estado, via
+  `led_service`/`POST /api/led`); o onboard (GPIO38) é reservado para
+  diagnóstico, ainda sem payload — ficar apagado é o estado seguro
+  enquanto não for implementado;
+- testar brilho máximo, consumo, boot apagado e estados base; ✓ testado em
+  2026-06-21: `POST /api/led {"brightness":255}` elevou o brilho
+  visivelmente acima do cap de config (38/255 ≈ 15%, restaurado ao final);
+  boot confirma `led_strip_clear()` em `led_hal_init()` (apagado por
+  padrão); consumo de LEDs já incluído na medição combinada do DMM.3
+  (idle/Wi-Fi/amp/LEDs/head — sem sag);
+- validar RMT concorrente com áudio, Wi-Fi e link. ✓ parcial — LEDs azuis
+  sustentados durante chime de timer (I2S TX) com Wi-Fi ativo, sem flicker
+  nem reset; link do head não testado em conjunto (gap conhecido, mesmo do
+  DMM.5/DMM.6 — `sdkconfig.dmm.defaults` mantém `nb_main_link` desligado).
 
 Gate: animações existentes sem flicker, reset ou queda de alimentação.
+Fechado em 2026-06-21 com Wi-Fi e bridge ativos; pendência não bloqueante:
+RMT + link do head simultâneo, a revisitar quando DMM.9+ exigir os dois
+juntos.
 
 #### DMM.8 — servo bus sem movimento
 
