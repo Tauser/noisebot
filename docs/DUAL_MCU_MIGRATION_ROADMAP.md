@@ -272,7 +272,7 @@ head e seguem DM2–DM5. DMM também não autoriza movimento real antes do gate 
 | DMM.9 | Motion safety e liberação controlada dos servos | `BLOQUEADO` |
 | DMM.10 | I2C de sensores e capacidades de placa | `FEITO` |
 | DMM.11 | Wi-Fi, USB, console e coexistência de periféricos | `FEITO` |
-| DMM.12 | Boot completo, modos degradados e integração com o head | `BLOQUEADO` |
+| DMM.12 | Boot completo, modos degradados e integração com o head | `FEITO` |
 | DMM.13 | Soak integrado e cutover da main-controller | `BLOQUEADO` |
 
 #### DMM.1 — inventário e matriz de recabeamento
@@ -539,16 +539,41 @@ Fechado em 2026-06-21. Pendência não bloqueante, mesma linha de DMM.5/6/7:
 UART servo e link do head simultâneos com o resto da matriz, a revisitar
 quando DMM.8/9 forem retomados.
 
-#### DMM.12 — boot e modos degradados
+#### DMM.12 — boot e modos degradados — `FEITO`
 
-- boot normal seleciona o perfil Waveshare;
-- head ausente não impede áudio, touch, LEDs ou behavior;
-- mic/speaker ausentes degradam voz sem derrubar o restante;
-- touch/LED ausentes geram diagnóstico, não reboot;
-- servo ausente mantém motion `DISABLED`;
-- snapshot visual converge quando o head retorna.
+- boot normal seleciona o perfil Waveshare; ✓ (`CONFIG_NB_BOARD_PROFILE_
+  WAVESHARE=y`, confirmado em todos os boots desta sessão);
+- head ausente não impede áudio, touch, LEDs ou behavior; ✓ testado em
+  2026-06-21 com `sdkconfig.dmm.link.defaults` (link ativo em boot normal,
+  diferente dos perfis anteriores que mantinham o link desligado):
+  desligamos o head fisicamente com o link em `READY` — sem panic, sem
+  watchdog reset; link foi a `state=DEGRADED` graciosamente (`tx`
+  continuou subindo, `rx` parou); `/api/diag` e `/api/touch` continuaram
+  respondendo normal, `state=IDLE`, `wake.active=true`, power ok;
+- mic/speaker ausentes degradam voz sem derrubar o restante; ✓ parcial —
+  não desconectamos fisicamente o INMP441/MAX98357A nesta rodada (evitaria
+  redesfazer a validação física de DMM.4); evidência por código:
+  `audio_service_init()` falhando em `phase_hal()` só loga warning
+  ("audio desativado") e o boot continua, mesmo padrão não-fatal usado por
+  LED/touch;
+- touch/LED ausentes geram diagnóstico, não reboot; ✓ confirmado por
+  código em `phase_hal()` — `led_service_init()`/`touch_service_init()`
+  falhando apenas loga `NB_LOGW` e segue o boot, sem `NB_ASSERT_FATAL`;
+- servo ausente mantém motion `DISABLED`; ✓ trivial nesta fase — `PHASE_
+  SAFETY`/`PHASE_MOTION` ficam puladas por configuração
+  ("motion desativado temporariamente"), sem servo armado;
+- snapshot visual converge quando o head retorna. ✓ religamos o head após
+  o teste de ausência: link voltou a `state=READY` com handshake de 25 ms
+  e `rx` voltando a subir — o protocolo já passa por
+  `RESET→HANDSHAKE→SNAPSHOT→READY` no reconnect, sendo `SNAPSHOT`
+  literalmente o passo de convergência visual.
 
-Gate: roteiro de falhas por periférico e reboot isolado aprovado.
+Gate: roteiro de falhas por periférico e reboot isolado aprovado. Fechado
+em 2026-06-21. Achado paralelo: com o link ativo, `heap_internal_free` caiu
+de ~37 KB (link desligado, DMM.11) para ~10,7 KB — segue positivo e
+estável, mas é uma margem bem mais estreita; acompanhar no soak de DMM.13.
+Pendência não bloqueante: mic/speaker ausentes só com evidência de código,
+não testado fisicamente.
 
 #### DMM.13 — soak e cutover
 
