@@ -265,7 +265,7 @@ head e seguem DM2–DM5. DMM também não autoriza movimento real antes do gate 
 | DMM.2 | Perfil de placa e seleção segura do HAL da Waveshare | `FEITO` |
 | DMM.3 | Alimentação, GND, ADC de 5 V e brownout | `FEITO` |
 | DMM.4 | Áudio físico INMP441/MAX98357A | `FEITO` |
-| DMM.5 | Voice Audio v2, wake, VAD e playback na Waveshare | `PRONTO` |
+| DMM.5 | Voice Audio v2, wake, VAD e playback na Waveshare | `FEITO` |
 | DMM.6 | Touch corporal e calibração na Waveshare | `BLOQUEADO` |
 | DMM.7 | LEDs externos e LED onboard | `BLOQUEADO` |
 | DMM.8 | UART/TTLinker e servos com torque bloqueado | `BLOQUEADO` |
@@ -363,17 +363,37 @@ inexistente no perfil Waveshare (sem SD). Ações com áudio baseado em WAV de
 SD ficam mudas por design até DM5 (storage); chimes via `synth_melody`
 (timers/lembretes/alarmes) funcionam normalmente sem SD.
 
-#### DMM.5 — Voice Audio v2
+#### DMM.5 — Voice Audio v2 — `FEITO`
 
-- validar `audio_io_service_v2`, playback, VAD e sessão de captura;
-- wake word abre sessão somente pela política canônica;
-- bridge recebe áudio real e devolve playback;
-- medir latência, perda, cancelamento, follow-up e recuperação I2S;
-- testar Wi-Fi + link do head + voz simultaneamente;
-- nenhum fallback silencioso para caminhos legados da Freenove.
+- validar `audio_io_service_v2`, playback, VAD e sessão de captura; ✓
+- wake word ("Hi ESP", wn9_hiesp) abre sessão somente pela política
+  canônica; ✓
+- bridge recebe áudio real e devolve playback; ✓ (TCP 192.168.1.25:9000,
+  codec opus-v2)
+- medir latência, perda, cancelamento, follow-up e recuperação I2S; ✓
+  parcial — sessão real de 5 turnos em 2026-06-21 cobriu:
+  - transcript de baixa confiança tratado como ruído/pedido de repetição
+    (turno 1, `LOW_LOGPROB`);
+  - wake sem fala útil tratado com prompt local gracioso (turno 2,
+    `NO_SPEECH`);
+  - **barge-in/cancelamento**: interrupção durante `SPEAKING` cancelou o
+    turno LLM/TTS em 1 ms (turno 3);
+  - dois turnos completos LLM→TTS→playback (turnos 4-5), latência
+    fala→primeiro áudio de resposta 9,4 s e 10,6 s;
+  - sem métrica formal de perda de pacote/recovery I2S durante os turnos —
+    não houve glitch perceptível, mas não foi instrumentado;
+- testar Wi-Fi + link do head + voz simultaneamente; gap conhecido — boot
+  usado (`sdkconfig.dmm.defaults`) mantém `nb_main_link` desligado por
+  configuração; voz só foi validada com Wi-Fi ativo e link do head inativo;
+- nenhum fallback silencioso para caminhos legados da Freenove. ✓
 
-Gate: roteiro de voz completo, soak e testes definidos em
-`docs/VOICE_AUDIO_V2_ARCHITECTURE.md`.
+Gate: roteiro de voz completo definido em
+`docs/VOICE_AUDIO_V2_ARCHITECTURE.md`. Fechado em 2026-06-21 com base na
+sessão real acima (wake, VAD, STT em três qualidades distintas, LLM, TTS
+streaming, playback e barge-in confirmados). Gaps conhecidos, não bloqueantes
+para o gate: soak de longa duração e teste com link do head simultâneo ainda
+não exercitados — revisitar se DMM.9+ exigir voz e link ativos ao mesmo
+tempo.
 
 #### DMM.6 — touch corporal
 
