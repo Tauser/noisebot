@@ -97,6 +97,42 @@ WiFi e USB-PHY.
 GPIOs realmente disponíveis (limpos) na main: **1, 6, 9, 15, 16** sobrando após a
 alocação acima — folga confortável para expansão.
 
+### Separacao por componente - main Waveshare
+
+- Audio INMP441:
+  - `GPIO39` = `SD/RX`
+  - `GPIO40` = `BCLK`
+  - `GPIO41` = `WS/LRCK`
+- Audio MAX98357A:
+  - `GPIO42` = `DIN/TX`
+  - `GPIO40` = `BCLK`
+  - `GPIO41` = `WS/LRCK`
+- Touch corporal:
+  - `GPIO2`
+- LEDs externos:
+  - `GPIO21`
+- LED onboard da Waveshare:
+  - `GPIO38`
+- Servo FE-TTLinker:
+  - `GPIO17` = `TX`
+  - `GPIO18` = `RX`
+- I2C de sensores:
+  - `GPIO4` = `SDA`
+  - `GPIO5` = `SCL`
+- Monitor de 5 V:
+  - `GPIO7` = ADC via divisor
+- Enlace inter-MCU:
+  - `GPIO8` = `HEAD_RESET`
+  - `GPIO10` = `LINK_CS`
+  - `GPIO11` = `LINK_MOSI`
+  - `GPIO12` = `LINK_SCLK`
+  - `GPIO13` = `LINK_MISO`
+  - `GPIO14` = `HEAD_IRQ`
+- Reservados:
+  - `GPIO19`/`GPIO20` = USB nativo
+  - `GPIO43`/`GPIO44` = console
+  - `GPIO47`/`GPIO48` = dominio 1.8 V
+
 ---
 
 ## HEAD — Freenove ESP32-S3 CAM N16R8 (multimídia local)

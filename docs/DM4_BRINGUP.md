@@ -1,5 +1,10 @@
 # DM4 — Bring-up físico da câmera DVP no head
 
+> **Status do programa em 2026-06-20:** evidência física preservada, execução
+> `PAUSADA` até DM2.15. Este documento registra o experimento; não autoriza
+> continuar soak ou integração. A sequência vigente está em
+> `docs/DUAL_MCU_MIGRATION_ROADMAP.md`.
+
 ## Objetivo
 
 Validar a câmera OV2640 DVP exclusivamente na Freenove CAM N16R8 (head),

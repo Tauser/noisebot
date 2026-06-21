@@ -1,5 +1,12 @@
 # DM4 — Migração da câmera para o head-controller
 
+> **Status do programa em 2026-06-20:** `PAUSADO`. O contrato e o bring-up
+> físico permanecem como evidência/spike aproveitável, mas DM4 não avança antes
+> de DM2.15. A ordem e os únicos IDs autorizados estão em
+> `docs/DUAL_MCU_MIGRATION_ROADMAP.md`. Antes da retomada, DM4.3–DM4.6 devem
+> corrigir ownership single-thread do link, correlação por `request_id`,
+> capability degradada e backpressure sem sobrescrita silenciosa.
+
 ## Objetivo
 
 Transferir a autoridade física da câmera DVP (OV2640, Freenove CAM N16R8) para

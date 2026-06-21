@@ -319,6 +319,7 @@ GET autenticado; nunca são persistidos em disco.
 | `docs/PROJECT.md`      | Visão geral, objetivos, princípios de produto   |
 | `docs/ARCHITECTURE.md` | Camadas, componentes, event bus, tasks, memória |
 | `docs/DUAL_MCU_ARCHITECTURE_PLAN.md` | Arquitetura Waveshare/Freenove, protocolo, falhas e migração |
+| `docs/DUAL_MCU_MIGRATION_ROADMAP.md` | Ordem canônica, subfases e gates do programa dual-MCU |
 | `docs/ROADMAP.md`      | Blocos e etapas detalhadas com critérios        |
 | `docs/HARDWARE.md`     | Pinos, barramentos, restrições de GPIO          |
 | `docs/GPIO_DUAL_MCU.md` | Mapa pino a pino e gate elétrico das duas placas |

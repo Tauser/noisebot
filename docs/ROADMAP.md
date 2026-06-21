@@ -25,7 +25,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | TTS HTTP no firmware | Removido do roadmap ativo; duplicava o server/bridge atual |
 | Knowledge OS externo | Nao atualizar por enquanto, por decisao do usuario |
 | Maior risco atual | Roadmap acumular itens antigos e perder poder de decisao |
-| Migração dual-MCU | DM1 aprovado em 10 MHz; DM2 fechada (display remoto, fallback e recuperação); DM4 (câmera) iniciada com contrato semântico |
+| Migração dual-MCU | Roadmap canônico cobre duas trilhas: DMM migra áudio/touch/LED/servo/sensores para a Waveshare; DM2 completa a autoridade visual no head; DM4 permanece pausada |
 
 ## Como Ler
 
@@ -63,7 +63,7 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 | 15.x - Voice polish | Melhorias pontuais em feedback, erros e telemetria apos estabilizar base |
 | C3-C6 - Voz, Obsidian, progresso e backup | Entra apos o historico e o contexto persistente do dashboard estarem estaveis |
 | V4-V5 - TTS inglês e integração de estudos | Entra após STT/LLM bilíngues estarem medidos; preserva Piper PT-BR e Voice Audio v2 |
-| DM2 - Display remoto | DM2.5 técnico aprovado: facade, overlays, reboot e head ausente no boot recuperam sem retries; faltam confirmações visuais finais e paridade ampliada |
+| DM2.6-DM2.15 - Autoridade visual completa no head | Facade e display físico já funcionam, mas faces, animações, estados, texto, status e cutover ainda precisam de paridade e soak |
 
 ### P2 - Backlog
 
@@ -108,27 +108,31 @@ historicos longos, experimentos e notas extensas ficam em arquivos de apoio.
 
 ### Programa DM — Migração dual-MCU
 
-O programa usa as fases técnicas F0-F6 de
-`docs/DUAL_MCU_ARCHITECTURE_PLAN.md`. Elas não substituem as etapas de produto
-deste roadmap; cada fase é mapeada para uma etapa DM:
+O programa usa a ordem, os IDs e os gates de
+`docs/DUAL_MCU_MIGRATION_ROADMAP.md`. Esse documento é a fonte canônica da
+migração e proíbe criar fases ou subfases fora do registro fechado. O plano de
+arquitetura continua em `docs/DUAL_MCU_ARCHITECTURE_PLAN.md`.
 
 | Fase técnica | Etapa do roadmap | Status | Saída |
 | --- | --- | --- | --- |
 | F0 estrutura/contrato | DM0 | `FEITO` | Dois builds, contrato comum, CRC/sequence/créditos testados no host e docs alinhadas |
 | F1 enlace | DM1 | `FEITO` | Soak 8 h em 10 MHz, fault injection segura, reboot dos peers e HEAD_RESET aprovados; bit flip físico segue como laboratório não bloqueante |
-| F2 display | DM2 | `FEITO` | DM2.1–DM2.5 aprovados; main degrada sem head e restaura snapshot atual ao retorno; escopo fechado em oito overlays (paridade de ícones/texto adiada para 16.2/DM6) |
+| Main funcional | DMM | `PRONTO` | Migrar perfil de placa, energia, áudio/Voice v2, touch, LEDs, servo desarmado, sensores e boot integrado para a Waveshare |
+| F2 visual | DM2 | `EM ANDAMENTO` | DM2.1–DM2.5 provaram transporte, display físico, facade e recovery; DM2.6–DM2.15 completam faces, animações, estados, overlays/texto/status, paridade, soak e cutover |
 | F3 touchscreen | DM3 | `BACKLOG` | Evento cru do head, decisão no main; permanece em backlog até a troca física da tela atual por um painel com touchscreen |
-| F4 câmera | DM4 | `EM ANDAMENTO` | DM4.1–DM4.6: bancada real do OV2640 — câmera detectada e capturando de verdade no head (5/5 `status=0`); bug de bloqueio (captura V4L2 na task do enlace) achado e corrigido com fila dedicada. Gate C4 aprovado (~7,8 MB PSRAM livre com display+câmera físicos juntos). Reconfirmação do log da main pendente (tentativa automatizada deu resultado inconsistente por limitação de ferramenta, não confirmado como regressão). Ver `docs/DM4_CAMERA_MIGRATION.md` e `docs/DM4_BRINGUP.md`. Falta soak, preview local e wirear a um consumidor de produto. Hardware devolvido aos perfis padrão ao final da sessão |
-| F5 storage | DM5 | `BACKLOG` | SD único remoto, áudio/LTM validados; entra após DM4 |
-| F6 limpeza | DM6 | `BACKLOG` | Legado multimídia removido do main; último corte, após DM5 |
+| F4 câmera | DM4 | `PAUSADO` | Contrato e bring-up físico são preservados como spike; integração reabre somente após DM2.15 e precisa corrigir concorrência, correlação de requests, capability degradada e backpressure |
+| F5 storage | DM5 | `BLOQUEADO` | Só inicia após DM4.11; SD único remoto, áudio/LTM, power-loss e backpressure têm subfases fixas no roadmap canônico |
+| F6 limpeza | DM6 | `BLOQUEADO` | Legado multimídia removido do main; último corte, somente após DM5.10 |
 
-DM1 de software não começa antes de: pinout elétrico aprovado, teste host do
-contrato e definição dos GPIOs SPI/IRQ/reset. O bring-up físico do enlace exige
-também recabeamento de áudio/servo/LED/touch corporal para a main e prova de que
-GPIO1/2/14/41/42 do head estão em alta impedância. DM5 possui gates próprios de
-underrun de áudio, primeiro som, saturação da fila LTM e power-loss.
-O procedimento executável e os critérios de aceite de bancada estão em
-`docs/DM1_BRINGUP.md`.
+Próximas ações registradas: **DMM.3** segue em andamento com checklist de gate
+elétrico, leitura ADC do barramento 5 V em `GPIO7` e telemetria `power.*` nos
+endpoints de diagnóstico; a bancada agora usa divisor externo temporário
+`100k/100k`, já validado por multímetro (`5V=4.741 V`, `GPIO7=2.368 V`), e o
+firmware foi alinhado a essa montagem para validar a API antes da solução
+física permanente. **DM2.6**, inventário visual, permanece como a outra frente
+documental autorizada. DMM.1 e DMM.2 já foram
+consolidadas; somente um ID entra em andamento sem autorização explicita para
+paralelismo. DM4 e DM5 continuam pausadas/bloqueadas.
 
 ### Etapa 2.2A - Touch: Sensibilidade e Confiabilidade
 

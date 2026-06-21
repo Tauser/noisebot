@@ -255,13 +255,16 @@ compilado e não foi removido.
 - reboot isolado do head restaura snapshot sem piscar estado incorreto;
 - desconexão do head mantém main operacional e fallback coerente.
 
-## Resultado final DM2 — 2026-06-20
+## Resultado do primeiro corte técnico DM2 — 2026-06-20
 
-DM2 está **fechada**: facade visual, render procedural remoto, overlays, fallback
-local, recuperação de reboot isolado e head ausente no boot estão aprovados nos
-gates técnicos descritos acima. O escopo de paridade fica definido na seção
-seguinte; status rail completo (ícones, texto livre) é trabalho futuro fora
-deste corte.
+DM2.1–DM2.5 estão **feitas**: facade visual, render procedural remoto, oito
+overlays, fallback local, recuperação de reboot isolado e head ausente no boot
+foram aprovados nos gates técnicos descritos acima.
+
+Isso não encerra a autoridade visual. Em 2026-06-20, a revisão do programa
+reabriu DM2 até incluir paridade de faces, animações, todos os estados, texto,
+status rail, assets, recovery de transientes, soak e cutover. A sequência
+canônica agora está em `docs/DUAL_MCU_MIGRATION_ROADMAP.md`, DM2.6–DM2.15.
 
 ## Decisão de escopo — paridade de DM2 (2026-06-20)
 
@@ -271,16 +274,16 @@ O `ui_overlay_service` local desenha, além disso, cerca de trinta ícones de
 status (wifi, bateria, volume, mic, câmera, bridge, alarme etc.), texto livre e
 a barra de status rápido — nenhum desses chega ao head pela facade hoje.
 
-Decisão: DM2 fecha com o escopo atual de oito overlays. Estender o protocolo
-para ícones de status e texto livre **não entra neste corte**; fica vinculado à
-Etapa 16.2 (status rail) e/ou à DM6, quando o render local for removido e o
-head precisar assumir a paridade completa. Até lá, o fallback local do main
-continua sendo a única superfície que mostra o status rail completo.
+Decisão anterior, superada em 2026-06-20: DM2 seria fechada com oito overlays e
+a paridade restante seria empurrada para 16.2/DM6. Isso foi rejeitado porque
+DM6 deve remover legado, não descobrir ou implementar a autoridade visual que
+faltou. Ícones, texto e status rail agora pertencem a DM2.11; a Etapa 16.2
+continua sendo a especificação de produto correspondente.
 
-## Fora do corte DM2
+## Fora de DM2.1–DM2.5, mas dentro da fase DM2 reaberta
 
 - touch do display;
 - preview de câmera;
-- paridade completa do render legado (ícones de status, texto livre, barra de
-  status rápido) — adiada para 16.2/DM6;
-- remoção do render local no main.
+- paridade completa do render legado, tratada em DM2.6–DM2.14;
+- cutover do render padrão, tratado em DM2.15;
+- remoção física do render local no main, que continua em DM6 após o cutover.

@@ -241,6 +241,11 @@ Nunca atualizar ambos sem uma versão intermediária compatível.
 
 ## 10. Fases de migração
 
+> **Sequência operacional:** esta seção descreve as fases arquiteturais em alto
+> nível. Os únicos IDs executáveis, sua ordem, dependências e gates vivem em
+> `docs/DUAL_MCU_MIGRATION_ROADMAP.md`. Em caso de divergência de status ou
+> granularidade, o roadmap canônico prevalece.
+
 ### F0 — estrutura e baseline
 
 - reorganizar repositório;
@@ -287,13 +292,15 @@ flag desligada eles retornam `ESP_ERR_NOT_SUPPORTED` antes de tocar GPIO/SPI.
 ### F2 — display remoto
 
 - criar facade visual no main;
-- migrar display, render, expression e overlays para o head;
+- migrar display, render, faces, animações, estados, expression, gaze visual,
+  overlays, texto, status e assets para o head;
 - manter fallback local por flag até validação;
 - mover LovyanGFX para o head ao final.
 
-Scaffold preparado em `docs/DM2_DISPLAY_MIGRATION.md`: contrato visual
-semântico, fila limitada no main e receptor validado no head. O driver físico
-permanece desabilitado até o fechamento dos gates de DM1.
+DM2.1–DM2.5 provaram o transporte visual, display físico, facade e recovery,
+mas não encerraram a autoridade visual. DM2.6–DM2.15 completam inventário,
+contrato v2, paridade, estados, status, soak e cutover. Ver
+`docs/DM2_DISPLAY_MIGRATION.md` e o roadmap canônico.
 
 ### F3 — touch do display
 
