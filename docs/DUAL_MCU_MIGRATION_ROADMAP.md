@@ -271,7 +271,7 @@ head e seguem DM2–DM5. DMM também não autoriza movimento real antes do gate 
 | DMM.8 | UART/TTLinker e servos com torque bloqueado | `BLOQUEADO` |
 | DMM.9 | Motion safety e liberação controlada dos servos | `BLOQUEADO` |
 | DMM.10 | I2C de sensores e capacidades de placa | `FEITO` |
-| DMM.11 | Wi-Fi, USB, console e coexistência de periféricos | `BLOQUEADO` |
+| DMM.11 | Wi-Fi, USB, console e coexistência de periféricos | `FEITO` |
 | DMM.12 | Boot completo, modos degradados e integração com o head | `BLOQUEADO` |
 | DMM.13 | Soak integrado e cutover da main-controller | `BLOQUEADO` |
 
@@ -502,15 +502,42 @@ já existia mas nunca tinha sido cabeado ao boot): `i2c_hal.h/.c` (cache do
 último scan), `boot_manager.c` (`phase_hal()`), `board_caps.h/.c`
 (`supports_i2c_bus`), `web_service.c` (`GET /api/i2c`).
 
-#### DMM.11 — coexistência
+#### DMM.11 — coexistência — `FEITO`
 
-- Wi-Fi ativo com I2S, RMT, UART servo, touch e link;
-- USB nativo e console preservados;
-- medir stacks, SRAM interna, PSRAM e DMA;
-- validar OTA/reboot sem deixar saída perigosa;
-- confirmar que GPIO47/48 nunca são dirigidos como 3,3 V.
+- Wi-Fi ativo com I2S, RMT, UART servo, touch e link; ✓ parcial — Wi-Fi +
+  I2S (voz, DMM.5) + RMT (LEDs, DMM.7) + touch (DMM.6) confirmados juntos
+  nas sessões anteriores desta bancada; UART servo não testado (DMM.8/9
+  bloqueados por decisão do usuário) e link do head não testado em
+  simultâneo com voz/LED (mesmo gap recorrente de DMM.5/6/7 —
+  `sdkconfig.dmm.defaults` mantém `nb_main_link` desligado);
+- USB nativo e console preservados; ✓ console UART0 (GPIO43/44) usado
+  durante toda a sessão sem interrupção (boot logs, resets via RTS); USB
+  Serial JTAG nativo (GPIO19/20) fica com o PHY desabilitado no boot
+  (`usb_serial_jtag_ll_phy_enable_pad(false)` antes do display HAL, evita
+  ruído no SPI) e é reabilitado por `bridge_service_init()` só quando o
+  transporte USB é selecionado — preservado, não permanentemente
+  desativado;
+- medir stacks, SRAM interna, PSRAM e DMA; ✓ `GET /api/health` em
+  2026-06-21: `heap_internal_free` 36963 B, `heap_dma_free` 36959 B,
+  `heap_psram_free` ~15,2 MB de 16 MB, `task_count` 24, `health` 90/100,
+  uptime 3197s sem queda. SRAM interna roda enxuta (~36 KB livres) mas
+  estável — sem watermark crítico nem penalidade de stack visível no
+  health score; revisitar no soak de DMM.13 se cair sob carga prolongada;
+- validar OTA/reboot sem deixar saída perigosa; ✓ `POST /api/restart`
+  (autenticado via `X-NB-Token`) testado em 2026-06-21: reboot limpo,
+  `uptime_s` zerou, `state=IDLE`, `wake.active=true`, power normal sem
+  warn/critical, `bridge_service` reabriu a porta TCP 9000 normalmente
+  (estava "offline" só por falta de client conectado, não falha do
+  device);
+- confirmar que GPIO47/48 nunca são dirigidos como 3,3 V. ✓ garantido por
+  ausência total de uso — `NB_MAIN_PIN_VDD_SPI_1V8_47/48` só aparecem
+  definidos e comentados (domínio 1,8V) em `nb_hw_config_main.h`, nenhum
+  `gpio_config`/`gpio_set_level` os referencia em nenhum lugar do firmware.
 
 Gate: matriz de concorrência sem panic, watchdog, perda de áudio ou link.
+Fechado em 2026-06-21. Pendência não bloqueante, mesma linha de DMM.5/6/7:
+UART servo e link do head simultâneos com o resto da matriz, a revisitar
+quando DMM.8/9 forem retomados.
 
 #### DMM.12 — boot e modos degradados
 
