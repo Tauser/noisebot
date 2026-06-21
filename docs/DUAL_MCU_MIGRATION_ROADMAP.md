@@ -266,7 +266,7 @@ head e seguem DM2–DM5. DMM também não autoriza movimento real antes do gate 
 | DMM.3 | Alimentação, GND, ADC de 5 V e brownout | `FEITO` |
 | DMM.4 | Áudio físico INMP441/MAX98357A | `FEITO` |
 | DMM.5 | Voice Audio v2, wake, VAD e playback na Waveshare | `FEITO` |
-| DMM.6 | Touch corporal e calibração na Waveshare | `BLOQUEADO` |
+| DMM.6 | Touch corporal e calibração na Waveshare | `FEITO` |
 | DMM.7 | LEDs externos e LED onboard | `BLOQUEADO` |
 | DMM.8 | UART/TTLinker e servos com torque bloqueado | `BLOQUEADO` |
 | DMM.9 | Motion safety e liberação controlada dos servos | `BLOQUEADO` |
@@ -395,15 +395,31 @@ para o gate: soak de longa duração e teste com link do head simultâneo ainda
 não exercitados — revisitar se DMM.9+ exigir voz e link ativos ao mesmo
 tempo.
 
-#### DMM.6 — touch corporal
+#### DMM.6 — touch corporal — `FEITO`
 
-- recabear fita/sensor para GPIO2 da Waveshare;
-- recalibrar baseline, ruído, threshold e debounce na nova montagem;
-- validar TAP, LONG, SUSTAINED, DEEP e CARESS;
-- comprovar ausência de conflito com `HEAD_IRQ` da main em GPIO14;
-- manter eventos e semântica existentes no event bus.
+- recabear fita/sensor para GPIO2 da Waveshare; ✓
+- recalibrar baseline, ruído, threshold e debounce na nova montagem; ✓
+  (baseline ~26,3-26,5k, threshold_on/off acompanhando em tempo real via
+  `GET /api/touch`)
+- validar TAP, LONG, SUSTAINED, DEEP e CARESS; ✓ todos observados em
+  2026-06-21 via poll de `/api/touch` durante toque real:
+  - TAP (toque isolado) e DOUBLE_TAP (dois toques em sequência);
+  - LONG_PRESS e SUSTAINED (`state=SUSTAINED_ACTIVE`);
+  - DEEP (duração > 8000 ms) e CARESS (duração > 15000 ms, atingiu
+    17460 ms);
+  - WARM_PULSE também observado (evento de progresso, não exigido pelo
+    gate);
+- comprovar ausência de conflito com `HEAD_IRQ` da main em GPIO14; ✓
+  garantido em tempo de compilação —
+  `nb_hw_config_main.h` tem `_Static_assert(NB_MAIN_PIN_TOUCH_BODY !=
+  NB_MAIN_PIN_HEAD_IRQ, ...)` (GPIO2 vs GPIO14) junto com asserts contra
+  link, áudio, servo, LED e USB;
+- manter eventos e semântica existentes no event bus. ✓ (mesmos
+  `NB_EVT_TOUCH_*` da Etapa 2.2A, sem alteração de semântica)
 
 Gate: critérios da Etapa 2.2A repetidos na Waveshare após reboot e com Wi-Fi.
+Fechado em 2026-06-21 com Wi-Fi ativo (`sdkconfig.dmm.defaults`) e bridge
+conectado — mesmo boot já validado em DMM.5.
 
 #### DMM.7 — LEDs
 
