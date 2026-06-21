@@ -264,8 +264,8 @@ head e seguem DM2–DM5. DMM também não autoriza movimento real antes do gate 
 | DMM.1 | Inventário elétrico, variante da placa e matriz de recabeamento | `FEITO` |
 | DMM.2 | Perfil de placa e seleção segura do HAL da Waveshare | `FEITO` |
 | DMM.3 | Alimentação, GND, ADC de 5 V e brownout | `FEITO` |
-| DMM.4 | Áudio físico INMP441/MAX98357A | `PRONTO` |
-| DMM.5 | Voice Audio v2, wake, VAD e playback na Waveshare | `BLOQUEADO` |
+| DMM.4 | Áudio físico INMP441/MAX98357A | `FEITO` |
+| DMM.5 | Voice Audio v2, wake, VAD e playback na Waveshare | `PRONTO` |
 | DMM.6 | Touch corporal e calibração na Waveshare | `BLOQUEADO` |
 | DMM.7 | LEDs externos e LED onboard | `BLOQUEADO` |
 | DMM.8 | UART/TTLinker e servos com torque bloqueado | `BLOQUEADO` |
@@ -331,16 +331,37 @@ checklist seção 5.1) — sem essa correção, `power.warn` disparava falso
 positivo mesmo em idle saudável. Detalhe completo em
 `docs/DMM3_ELECTRICAL_GATE_CHECKLIST.md`.
 
-#### DMM.4 — áudio físico
+#### DMM.4 — áudio físico — `FEITO`
 
-- recabear INMP441 para SD 39, BCLK 40 e WS 41;
-- recabear MAX98357A para DIN 42, BCLK 40 e WS 41;
-- validar alimentação, L/R do microfone e ganho do amplificador;
-- testar RX, TX e full-duplex I2S0 isoladamente;
-- medir ruído, clipping, DC, underrun e estabilidade DMA;
-- I2S DMA permanece em SRAM.
+- recabear INMP441 para SD 39, BCLK 40 e WS 41; ✓ (confirmado pelo usuário)
+- recabear MAX98357A para DIN 42, BCLK 40 e WS 41; ✓ (confirmado pelo
+  usuário, incluindo alimentação 5V/GND do módulo)
+- validar alimentação, L/R do microfone e ganho do amplificador; ✓
+  (SD_MODE do MAX98357A flutuando, sem GPIO dedicado — já era assim na
+  Freenove e funcionava; não é regressão da migração)
+- testar RX, TX e full-duplex I2S0 isoladamente; ✓
+  - RX isolado (`/api/audio/io-v2/probe`, 3-4s): `rms_max` 391-1335,
+    `peak_max` 1196-2194 sobre 32767 — sem clipping, sem DC offset visível
+  - TX isolado: confirmado audível via chime de timer
+    (`POST /api/timer/create`, síntese de tom — `play_timer_done_chime()`
+    cai pra `synth_melody` quando o WAV do SD não existe, o que é o caso
+    no perfil Waveshare)
+  - full-duplex: probe de RX rodando simultâneo a um chime de TX —
+    `dropped_frames=0`, `i2s_recoveries=0` durante o overlap
+- medir ruído, clipping, DC, underrun e estabilidade DMA; ✓ (ver acima —
+  nenhum underrun/recovery em nenhum teste, nenhum clipping observado)
+- I2S DMA permanece em SRAM. ✓ (sem alteração na alocação de `audio_hal.c`)
 
 Gate: captura e reprodução PCM conhecidas, sem Wi-Fi, link ou display.
+Fechado em 2026-06-21 com Wi-Fi **ativo** (perfil `sdkconfig.dmm.defaults`,
+boot normal) — resultado mais rigoroso que o exigido, sem interferência de
+RF observada nas métricas de RX. Link e display permaneceram desligados.
+
+Achado de bring-up (não é bug): `ACTION CELEBRATE` via `/api/command`
+silenciava porque seu score referencia `/sdcard/assets/audio/greet_01.wav`,
+inexistente no perfil Waveshare (sem SD). Ações com áudio baseado em WAV de
+SD ficam mudas por design até DM5 (storage); chimes via `synth_melody`
+(timers/lembretes/alarmes) funcionam normalmente sem SD.
 
 #### DMM.5 — Voice Audio v2
 
