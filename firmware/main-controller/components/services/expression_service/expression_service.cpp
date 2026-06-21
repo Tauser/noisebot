@@ -1888,12 +1888,16 @@ void expression_service_set(nb_expression_t expr, float transition_ms)
         return;
     }
 
-    xSemaphoreTake(s_set_mutex, portMAX_DELAY);
-    s_pending_base_expr  = expr;
-    s_pending_target     = NB_EXPRESSIONS[expr];
-    s_pending_trans_ms   = transition_ms < 0.0f ? 0.0f : transition_ms;
-    s_new_target_pending = true;
-    xSemaphoreGive(s_set_mutex);
+    if (s_initialized) {
+        xSemaphoreTake(s_set_mutex, portMAX_DELAY);
+        s_pending_base_expr  = expr;
+        s_pending_target     = NB_EXPRESSIONS[expr];
+        s_pending_trans_ms   = transition_ms < 0.0f ? 0.0f : transition_ms;
+        s_new_target_pending = true;
+        xSemaphoreGive(s_set_mutex);
+    }
+    /* Facade chega ao head pelo enlace inter-MCU mesmo sem render local
+     * (perfil Waveshare nao inicializa expression_service). */
     visual_state_facade_set_expression((uint8_t)expr);
 
     ESP_LOGD(TAG, "set expr=%d trans=%.0fms", (int)expr, (double)transition_ms);
@@ -1907,6 +1911,7 @@ esp_err_t expression_play(nb_expression_t expr,
         ESP_LOGW(TAG, "expression_play: expr=%d invalida", (int)expr);
         return ESP_ERR_INVALID_ARG;
     }
+    if (!s_initialized) return ESP_ERR_INVALID_STATE;
 
     xSemaphoreTake(s_set_mutex, portMAX_DELAY);
     if (s_play_count >= PLAY_QUEUE_CAP) {

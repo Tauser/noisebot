@@ -15,6 +15,7 @@
 #include "esp_system.h"
 #include "esp_random.h"
 #include "esp_log.h"
+#include "sdkconfig.h"
 
 #include "boot_manager.h"
 #include "hal/usb_serial_jtag_ll.h"
@@ -1075,8 +1076,13 @@ static esp_err_t phase_hal(void)
      * via usb_serial_jtag_driver_install() quando o bridge for necessário. */
     usb_serial_jtag_ll_phy_enable_pad(false);
 
+    esp_err_t err;
+
     /* Display (Etapa 1.1) */
-    esp_err_t err = display_hal_init();
+#if defined(CONFIG_NB_BOARD_PROFILE_WAVESHARE) && CONFIG_NB_BOARD_PROFILE_WAVESHARE
+    NB_LOGI(TAG, "perfil Waveshare ativo — display fisico local nao inicializado");
+#else
+    err = display_hal_init();
     if (err != ESP_OK) {
         if (s_status.safe_mode) {
             NB_LOGW(TAG, "display_hal_init falhou em safe mode: %s — continuando sem display",
@@ -1085,6 +1091,7 @@ static esp_err_t phase_hal(void)
             NB_ASSERT_FATAL(false, TAG, "display_hal_init falhou: %s", esp_err_to_name(err));
         }
     }
+#endif
 
     /* LEDs (Etapa 2.1) */
     err = led_service_init();
@@ -1185,6 +1192,9 @@ static esp_err_t phase_services(void)
         return ESP_OK;
     }
 
+#if defined(CONFIG_NB_BOARD_PROFILE_WAVESHARE) && CONFIG_NB_BOARD_PROFILE_WAVESHARE
+    NB_LOGI(TAG, "perfil Waveshare ativo — renderer/UI overlay locais pulados");
+#else
     /* render_service (Etapa 1.2): framebuffer + render_task. */
     err = render_service_init();
     if (err != ESP_OK) {
@@ -1215,6 +1225,7 @@ static esp_err_t phase_services(void)
               esp_err_to_name(err));
     ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED,
                                config_get_silence_mode_enabled());
+#endif
 
     /* audio_service (Bloco 4) */
     err = audio_service_init();
@@ -1310,10 +1321,16 @@ static esp_err_t phase_services(void)
         NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate behav_task falhou");
     }
 
-    /* gaze_service (Etapa 5.2): render layer z=5, saccade + micro-drift */
+    /* gaze_service (Etapa 5.2): render layer z=5, saccade + micro-drift.
+     * Registra layer no render_service local — pulado no perfil Waveshare,
+     * onde render_service_init() não roda (display físico vive no head). */
+#if defined(CONFIG_NB_BOARD_PROFILE_WAVESHARE) && CONFIG_NB_BOARD_PROFILE_WAVESHARE
+    NB_LOGI(TAG, "perfil Waveshare ativo — gaze_service (render layer local) pulado");
+#else
     err = gaze_service_init();
     NB_ASSERT(err == ESP_OK, TAG, "gaze_service_init falhou: %s",
               esp_err_to_name(err));
+#endif
 
     /* idle_service (Etapa 5.2): micro-saccades, aversive gaze, yawn */
     err = idle_service_init();
@@ -1411,7 +1428,11 @@ static esp_err_t phase_services(void)
     /* diagnostics_service (Etapa 9.1): observabilidade e health score */
     {
         const nb_diagnostics_config_t diag_cfg = {
+#if defined(CONFIG_NB_BOARD_PROFILE_WAVESHARE) && CONFIG_NB_BOARD_PROFILE_WAVESHARE
+            .get_fps = NULL,
+#else
             .get_fps = render_service_get_fps,
+#endif
         };
         err = diagnostics_init(&diag_cfg);
         NB_ASSERT(err == ESP_OK, TAG, "diagnostics_init falhou: %s",
