@@ -119,7 +119,19 @@
       "PowerShell(cd \"D:\\\\Projetos\\\\Noisebot\"; $env:IDF_PYTHON_ENV_PATH = \"C:\\\\Users\\\\Tauser\\\\.espressif\\\\python_env\\\\idf5.5_py3.14_env\"; cmd.exe /c \"call C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.bat && idf.py build 2>&1\" | Select-Object -Last 20)",
       "PowerShell(cd \"D:\\\\Projetos\\\\Noisebot\"; $env:IDF_PYTHON_ENV_PATH = \"C:\\\\Users\\\\Tauser\\\\.espressif\\\\python_env\\\\idf5.5_py3.14_env\"; cmd.exe /c \"call C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.bat && idf.py build 2>&1\" | Select-Object -Last 8)",
       "PowerShell(cd \"D:\\\\Projetos\\\\Noisebot\"; $env:IDF_PYTHON_ENV_PATH = \"C:\\\\Users\\\\Tauser\\\\.espressif\\\\python_env\\\\idf5.5_py3.14_env\"; cmd.exe /c \"call C:\\\\esp\\\\v5.5.4\\\\esp-idf\\\\export.bat && idf.py build 2>&1\" | Select-Object -Last 6)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(corepack pnpm *)",
+      "Bash(npx --yes pnpm -v)",
+      "Bash(idf.py -B build-e6 -D SDKCONFIG=sdkconfig.e6 -D SDKCONFIG_DEFAULTS=\"sdkconfig.defaults;sdkconfig.e6.defaults\" build)",
+      "Read(//d//**)",
+      "Read(//c/Users/Tauser/**)",
+      "Bash(xargs ls)",
+      "Read(//c/Espressif/**)",
+      "PowerShell([System.IO.Ports.SerialPort]::GetPortNames\\(\\))",
+      "PowerShell(Get-CimInstance *)",
+      "PowerShell($h = Get-Command handle.exe -ErrorAction SilentlyContinue; if \\($h\\) { & $h.Source -accepteula COM5 2>&1 } else { \"handle.exe not found\" })",
+      "Bash(gcc -std=c17 -Wall -Wextra -Werror -Ishared/components/nb_inter_mcu_protocol/include -o /tmp/test_inter_mcu_protocol main-controller/test/host/inter_mcu_protocol/test_inter_mcu_protocol.c shared/components/nb_inter_mcu_protocol/nb_inter_mcu_protocol.c shared/components/nb_inter_mcu_protocol/nb_display_protocol.c shared/components/nb_inter_mcu_protocol/nb_camera_protocol.c shared/components/nb_inter_mcu_protocol/nb_link_wire.c)",
+      "Bash(/tmp/test_inter_mcu_protocol.exe)"
     ]
   }
 }
