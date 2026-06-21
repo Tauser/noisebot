@@ -7,6 +7,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
 
 #include "boot_manager.h"
@@ -42,11 +43,55 @@
 
 static const char *TAG = "nb_main";
 
+static void park_audio_pins_for_dm1_bench(void)
+{
+    const gpio_config_t outputs = {
+        .pin_bit_mask = (1ULL << NB_MAIN_PIN_AUDIO_BCLK) |
+                        (1ULL << NB_MAIN_PIN_AUDIO_WS) |
+                        (1ULL << NB_MAIN_PIN_SPK_DIN),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    const gpio_config_t mic_input = {
+        .pin_bit_mask = (1ULL << NB_MAIN_PIN_MIC_SD),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+
+    esp_err_t err = gpio_config(&outputs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "DM1 audio park outputs falhou: %s",
+                 esp_err_to_name(err));
+    }
+
+    err = gpio_config(&mic_input);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "DM1 audio park mic falhou: %s",
+                 esp_err_to_name(err));
+    }
+
+    gpio_set_level(NB_MAIN_PIN_AUDIO_BCLK, 0);
+    gpio_set_level(NB_MAIN_PIN_AUDIO_WS, 0);
+    gpio_set_level(NB_MAIN_PIN_SPK_DIN, 0);
+
+    ESP_LOGI(TAG,
+             "DM1 audio park aplicado: BCLK=%d WS=%d SPK_DIN=%d em LOW, MIC_SD=%d pulldown",
+             NB_MAIN_PIN_AUDIO_BCLK,
+             NB_MAIN_PIN_AUDIO_WS,
+             NB_MAIN_PIN_SPK_DIN,
+             NB_MAIN_PIN_MIC_SD);
+}
+
 void app_main(void)
 {
     if (CONFIG_NB_DM1_BENCH_PROFILE) {
         ESP_LOGW(TAG,
                  "DM1 bench profile ativo — boot monolitico legado ignorado");
+        park_audio_pins_for_dm1_bench();
         const esp_err_t link_err = nb_main_link_service_init();
         if (link_err != ESP_OK) {
             ESP_LOGE(TAG, "enlace DM1 falhou: %s",
