@@ -1,5 +1,5 @@
 param(
-    [string]$RobotHost = "192.168.1.30",
+    [string]$RobotHost = "192.168.1.25",
     [int]$RobotPort = 9000,
     [string]$RobotHttpUrl = "",
     [string]$Python = "",
