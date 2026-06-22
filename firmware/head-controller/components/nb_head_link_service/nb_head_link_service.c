@@ -11,6 +11,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "nb_camera_protocol.h"
+#include "nb_display_protocol.h"
 #include "nb_head_camera_service.h"
 #include "nb_head_display_service.h"
 #include "nb_head_spi_transport.h"
@@ -76,6 +77,90 @@ static void on_state_change(void *ctx,
              state_name(previous), state_name(current));
 }
 
+/*
+ * on_message roda dentro de link_task (mesma thread que chama
+ * nb_link_engine_tick/poll) -- chamar nb_link_engine_send daqui e' seguro,
+ * diferente do cliente de camera do main que chama de fora (defeito
+ * registrado em DM4.3-4.6, ver docs/DUAL_MCU_MIGRATION_ROADMAP.md).
+ */
+static void send_visual_result_v2(uint8_t status, uint32_t transient_id,
+                                  uint32_t generation)
+{
+    const nb_display_result_v2_t result = {
+        .version = NB_DISPLAY_RESULT_V2_VERSION,
+        .status = status,
+        .reserved = 0U,
+        .transient_id = transient_id,
+        .generation = generation,
+    };
+    if (!nb_link_engine_send(&s_engine, NB_LINK_CHANNEL_EVENT,
+                             NB_LINK_MSG_DISPLAY_RESULT_V2, &result,
+                             sizeof(result))) {
+        ESP_LOGW(TAG, "visual result v2 preserved during link backpressure");
+    }
+}
+
+static void on_display_scene_v2(const void *payload, uint16_t length)
+{
+    const nb_display_scene_v2_t *scene = (const nb_display_scene_v2_t *)payload;
+    if (!nb_display_scene_v2_is_valid(scene, length)) {
+        send_visual_result_v2(NB_DISPLAY_RESULT_REJECTED_INVALID, 0U, 0U);
+        return;
+    }
+    if ((scene->block_mask & (uint8_t)NB_DISPLAY_V2_BLOCK_BASE) == 0U) {
+        /* Bloco BASE ausente: nada a aplicar ainda (blocos futuros de
+         * DM2.8/2.9 nao existem no renderer hoje) -- aceito, sem efeito. */
+        send_visual_result_v2(NB_DISPLAY_RESULT_OK, 0U, scene->generation);
+        return;
+    }
+
+    /* BASE mapeia 1:1 para o v1 -- mesmo pipeline de renderizacao, sem
+     * duplicar logica de desenho enquanto o renderer nao ganha campos
+     * novos (DM2.8). */
+    const nb_display_command_t v1_equivalent = {
+        .version = NB_DISPLAY_COMMAND_VERSION,
+        .opcode = NB_DISPLAY_OP_SET_SCENE,
+        .expression = scene->expression,
+        .brightness = scene->brightness,
+        .gaze_x_milli = scene->gaze_x_milli,
+        .gaze_y_milli = scene->gaze_y_milli,
+        .overlay_flags = scene->overlay_flags,
+        .reserved = 0U,
+        .generation = scene->generation,
+    };
+    const esp_err_t err = nb_head_display_service_apply(
+        &v1_equivalent, sizeof(v1_equivalent));
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "scene v2 rejected: %s", esp_err_to_name(err));
+        send_visual_result_v2(NB_DISPLAY_RESULT_REJECTED_INVALID, 0U,
+                              scene->generation);
+        return;
+    }
+    send_visual_result_v2(NB_DISPLAY_RESULT_OK, 0U, scene->generation);
+}
+
+static void on_display_transient_v2(const void *payload, uint16_t length)
+{
+    const nb_display_transient_v2_t *cmd =
+        (const nb_display_transient_v2_t *)payload;
+    if (!nb_display_transient_v2_is_valid(cmd, length)) {
+        send_visual_result_v2(NB_DISPLAY_RESULT_REJECTED_INVALID, 0U, 0U);
+        return;
+    }
+
+    /* Mecanismo de transporte completo (ID, deadline, cancelamento) --
+     * efeito visual real (mover o gaze do renderer durante a janela)
+     * ainda nao existe; fica para o motor de animacao de DM2.9. Aceitar
+     * aqui so confirma que a mensagem chegou valida, nao que algo mudou
+     * na tela. */
+    if (cmd->op == NB_DISPLAY_TRANSIENT_OP_CANCEL) {
+        send_visual_result_v2(NB_DISPLAY_RESULT_CANCELLED,
+                              cmd->transient_id, 0U);
+        return;
+    }
+    send_visual_result_v2(NB_DISPLAY_RESULT_OK, cmd->transient_id, 0U);
+}
+
 static void on_message(void *ctx,
                        nb_link_channel_t channel,
                        uint16_t message_type,
@@ -90,6 +175,16 @@ static void on_message(void *ctx,
             ESP_LOGW(TAG, "display command rejected: %s",
                      esp_err_to_name(err));
         }
+        return;
+    }
+    if (channel == NB_LINK_CHANNEL_CONTROL &&
+        message_type == NB_LINK_MSG_DISPLAY_SCENE_V2) {
+        on_display_scene_v2(payload, length);
+        return;
+    }
+    if (channel == NB_LINK_CHANNEL_CONTROL &&
+        message_type == NB_LINK_MSG_DISPLAY_TRANSIENT_V2) {
+        on_display_transient_v2(payload, length);
         return;
     }
     if (channel == NB_LINK_CHANNEL_CONTROL &&
@@ -243,6 +338,7 @@ esp_err_t nb_head_link_service_init(void)
         .version_minor = NB_LINK_PROTOCOL_VERSION_MINOR,
         .capability_bits =
             (s_display_capable ? NB_LINK_CAP_DISPLAY_SEMANTIC : 0U) |
+            (s_display_capable ? NB_LINK_CAP_DISPLAY_V2 : 0U) |
             (s_camera_capable ? NB_LINK_CAP_CAMERA_SEMANTIC : 0U),
         .transport = {
             .send = nb_head_spi_transport_send,

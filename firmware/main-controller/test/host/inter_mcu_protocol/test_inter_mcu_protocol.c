@@ -248,6 +248,161 @@ static void test_display_command(void)
          nb_display_generation_is_newer(0U, UINT32_MAX));
 }
 
+static void test_display_scene_v2(void)
+{
+    nb_display_scene_v2_t scene = {
+        .version = NB_DISPLAY_SCENE_V2_VERSION,
+        .block_mask = NB_DISPLAY_V2_BLOCK_BASE,
+        .expression = 3U,
+        .brightness = 200U,
+        .gaze_x_milli = -500,
+        .gaze_y_milli = 600,
+        .overlay_flags = NB_DISPLAY_OVERLAY_LISTENING,
+        .reserved = 0U,
+        .generation = 12U,
+    };
+
+    TEST("scene_v2_valid", nb_display_scene_v2_is_valid(&scene, sizeof(scene)));
+    TEST("scene_v2_null", !nb_display_scene_v2_is_valid(NULL, sizeof(scene)));
+    TEST("scene_v2_bad_size",
+         !nb_display_scene_v2_is_valid(&scene, sizeof(scene) - 1U));
+
+    scene.version++;
+    TEST("scene_v2_bad_version",
+         !nb_display_scene_v2_is_valid(&scene, sizeof(scene)));
+    scene.version = NB_DISPLAY_SCENE_V2_VERSION;
+
+    scene.reserved = 1U;
+    TEST("scene_v2_reserved",
+         !nb_display_scene_v2_is_valid(&scene, sizeof(scene)));
+    scene.reserved = 0U;
+
+    scene.block_mask = (uint8_t)(NB_DISPLAY_V2_BLOCK_ALL + 1U);
+    TEST("scene_v2_bad_block_mask",
+         !nb_display_scene_v2_is_valid(&scene, sizeof(scene)));
+    scene.block_mask = NB_DISPLAY_V2_BLOCK_BASE;
+
+    scene.expression = NB_DISPLAY_EXPRESSION_COUNT;
+    TEST("scene_v2_bad_expression_when_base_present",
+         !nb_display_scene_v2_is_valid(&scene, sizeof(scene)));
+    /* Sem o bloco BASE presente, expressao fora do catalogo nao importa
+     * ainda -- campo pertence a um bloco que o receptor deve ignorar. */
+    scene.block_mask = 0U;
+    TEST("scene_v2_no_block_ignores_expression",
+         nb_display_scene_v2_is_valid(&scene, sizeof(scene)));
+    scene.block_mask = NB_DISPLAY_V2_BLOCK_BASE;
+    scene.expression = 3U;
+
+    scene.gaze_x_milli = NB_DISPLAY_GAZE_MAX + 1;
+    TEST("scene_v2_bad_gaze",
+         !nb_display_scene_v2_is_valid(&scene, sizeof(scene)));
+    scene.gaze_x_milli = -500;
+
+    scene.overlay_flags = NB_DISPLAY_OVERLAY_ALL | (1U << 8);
+    TEST("scene_v2_bad_overlay",
+         !nb_display_scene_v2_is_valid(&scene, sizeof(scene)));
+}
+
+static void test_display_transient_v2(void)
+{
+    nb_display_transient_v2_t cmd = {
+        .version = NB_DISPLAY_TRANSIENT_V2_VERSION,
+        .op = NB_DISPLAY_TRANSIENT_OP_START,
+        .kind = NB_DISPLAY_TRANSIENT_KIND_GLANCE,
+        .reserved8 = 0U,
+        .transient_id = 1U,
+        .gaze_x_milli = -300,
+        .gaze_y_milli = 200,
+        .deadline_ms = 5000U,
+    };
+
+    TEST("transient_v2_valid",
+         nb_display_transient_v2_is_valid(&cmd, sizeof(cmd)));
+    TEST("transient_v2_null",
+         !nb_display_transient_v2_is_valid(NULL, sizeof(cmd)));
+    TEST("transient_v2_bad_size",
+         !nb_display_transient_v2_is_valid(&cmd, sizeof(cmd) - 1U));
+
+    cmd.version++;
+    TEST("transient_v2_bad_version",
+         !nb_display_transient_v2_is_valid(&cmd, sizeof(cmd)));
+    cmd.version = NB_DISPLAY_TRANSIENT_V2_VERSION;
+
+    cmd.reserved8 = 1U;
+    TEST("transient_v2_reserved",
+         !nb_display_transient_v2_is_valid(&cmd, sizeof(cmd)));
+    cmd.reserved8 = 0U;
+
+    cmd.transient_id = 0U;
+    TEST("transient_v2_id_zero_invalid",
+         !nb_display_transient_v2_is_valid(&cmd, sizeof(cmd)));
+    cmd.transient_id = 1U;
+
+    cmd.op = 0U;
+    TEST("transient_v2_bad_op",
+         !nb_display_transient_v2_is_valid(&cmd, sizeof(cmd)));
+    cmd.op = NB_DISPLAY_TRANSIENT_OP_START;
+
+    cmd.kind = 0U;
+    TEST("transient_v2_bad_kind",
+         !nb_display_transient_v2_is_valid(&cmd, sizeof(cmd)));
+    cmd.kind = NB_DISPLAY_TRANSIENT_KIND_GLANCE;
+
+    cmd.gaze_x_milli = NB_DISPLAY_GAZE_MIN - 1;
+    TEST("transient_v2_bad_gaze_on_start",
+         !nb_display_transient_v2_is_valid(&cmd, sizeof(cmd)));
+    cmd.gaze_x_milli = -300;
+
+    /* CANCEL nao carrega gaze valido -- nao deveria ser validado contra
+     * a faixa de gaze, o cancelamento so precisa do transient_id. */
+    cmd.op = NB_DISPLAY_TRANSIENT_OP_CANCEL;
+    cmd.gaze_x_milli = (int16_t)(NB_DISPLAY_GAZE_MIN - 1);
+    TEST("transient_v2_cancel_ignores_gaze",
+         nb_display_transient_v2_is_valid(&cmd, sizeof(cmd)));
+
+    TEST("transient_v2_not_expired",
+         !nb_display_transient_v2_is_expired(5000U, 4999U));
+    TEST("transient_v2_expired",
+         nb_display_transient_v2_is_expired(5000U, 5001U));
+    TEST("transient_v2_deadline_exact_not_expired",
+         !nb_display_transient_v2_is_expired(5000U, 5000U));
+}
+
+static void test_display_result_v2(void)
+{
+    nb_display_result_v2_t result = {
+        .version = NB_DISPLAY_RESULT_V2_VERSION,
+        .status = NB_DISPLAY_RESULT_OK,
+        .reserved = 0U,
+        .transient_id = 1U,
+        .generation = 0U,
+    };
+
+    TEST("result_v2_valid",
+         nb_display_result_v2_is_valid(&result, sizeof(result)));
+    TEST("result_v2_null",
+         !nb_display_result_v2_is_valid(NULL, sizeof(result)));
+    TEST("result_v2_bad_size",
+         !nb_display_result_v2_is_valid(&result, sizeof(result) - 1U));
+
+    result.version++;
+    TEST("result_v2_bad_version",
+         !nb_display_result_v2_is_valid(&result, sizeof(result)));
+    result.version = NB_DISPLAY_RESULT_V2_VERSION;
+
+    result.reserved = 1U;
+    TEST("result_v2_reserved",
+         !nb_display_result_v2_is_valid(&result, sizeof(result)));
+    result.reserved = 0U;
+
+    result.status = NB_DISPLAY_RESULT_CANCELLED + 1U;
+    TEST("result_v2_bad_status",
+         !nb_display_result_v2_is_valid(&result, sizeof(result)));
+    result.status = NB_DISPLAY_RESULT_EXPIRED;
+    TEST("result_v2_expired_status_ok",
+         nb_display_result_v2_is_valid(&result, sizeof(result)));
+}
+
 static void test_camera_command(void)
 {
     nb_camera_link_command_t command = {
@@ -345,6 +500,9 @@ int main(void)
     test_credits();
     test_wire_packet();
     test_display_command();
+    test_display_scene_v2();
+    test_display_transient_v2();
+    test_display_result_v2();
     test_camera_command();
     test_camera_event();
 

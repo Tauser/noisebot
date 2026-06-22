@@ -24,6 +24,8 @@
 #define NB_MAIN_LINK_POLL_MS 10U
 #define NB_MAIN_LINK_TELEMETRY_MS 5000U
 #define NB_MAIN_DISPLAY_QUEUE_DEPTH 1U
+#define NB_MAIN_SCENE_V2_QUEUE_DEPTH 1U
+#define NB_MAIN_TRANSIENT_V2_QUEUE_DEPTH 4U
 
 static const char *TAG = "nb_main_link";
 static nb_link_engine_t s_engine;
@@ -36,6 +38,11 @@ static nb_display_command_t s_display_snapshot;
 static portMUX_TYPE s_camera_event_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool s_camera_event_valid;
 static nb_camera_link_event_t s_camera_event;
+static QueueHandle_t s_scene_v2_queue;
+static QueueHandle_t s_transient_v2_queue;
+static portMUX_TYPE s_result_v2_lock = portMUX_INITIALIZER_UNLOCKED;
+static bool s_result_v2_valid;
+static nb_display_result_v2_t s_result_v2;
 
 static uint32_t monotonic_ms(void)
 {
@@ -110,6 +117,20 @@ static void on_message(void *ctx,
         }
         return;
     }
+    if (channel == NB_LINK_CHANNEL_EVENT &&
+        message_type == NB_LINK_MSG_DISPLAY_RESULT_V2) {
+        if (nb_display_result_v2_is_valid(
+                (const nb_display_result_v2_t *)payload, length)) {
+            taskENTER_CRITICAL(&s_result_v2_lock);
+            memcpy(&s_result_v2, payload, sizeof(s_result_v2));
+            s_result_v2_valid = true;
+            taskEXIT_CRITICAL(&s_result_v2_lock);
+        } else {
+            ESP_LOGW(TAG, "visual result v2 invalid bytes=%u",
+                     (unsigned)length);
+        }
+        return;
+    }
     (void)payload;
     ESP_LOGD(TAG, "application message deferred channel=%u type=%u bytes=%u",
              (unsigned)channel, (unsigned)message_type, (unsigned)length);
@@ -154,6 +175,40 @@ static void link_task(void *arg)
                 break;
             }
             (void)xQueueReceive(s_display_queue, &display_command, 0U);
+        }
+
+        if (nb_link_engine_peer_has_capability(&s_engine,
+                                               NB_LINK_CAP_DISPLAY_V2)) {
+            nb_display_scene_v2_t scene_v2;
+            while (xQueuePeek(s_scene_v2_queue, &scene_v2, 0U) == pdTRUE) {
+                if (!nb_link_engine_send(&s_engine,
+                                         NB_LINK_CHANNEL_CONTROL,
+                                         NB_LINK_MSG_DISPLAY_SCENE_V2,
+                                         &scene_v2,
+                                         sizeof(scene_v2))) {
+                    ESP_LOGW(TAG,
+                             "scene v2 preserved during link backpressure");
+                    break;
+                }
+                (void)xQueueReceive(s_scene_v2_queue, &scene_v2, 0U);
+            }
+
+            nb_display_transient_v2_t transient_v2;
+            while (xQueuePeek(s_transient_v2_queue, &transient_v2, 0U) ==
+                   pdTRUE) {
+                if (!nb_link_engine_send(&s_engine,
+                                         NB_LINK_CHANNEL_CONTROL,
+                                         NB_LINK_MSG_DISPLAY_TRANSIENT_V2,
+                                         &transient_v2,
+                                         sizeof(transient_v2))) {
+                    ESP_LOGW(TAG,
+                             "transient v2 id=%lu preserved during "
+                             "link backpressure",
+                             (unsigned long)transient_v2.transient_id);
+                    break;
+                }
+                (void)xQueueReceive(s_transient_v2_queue, &transient_v2, 0U);
+            }
         }
 
         if (nb_main_spi_transport_head_irq_active() ||
@@ -209,7 +264,18 @@ esp_err_t nb_main_link_service_init(void)
     memset(&s_engine, 0, sizeof(s_engine));
     s_display_queue = xQueueCreate(NB_MAIN_DISPLAY_QUEUE_DEPTH,
                                    sizeof(nb_display_command_t));
-    if (s_display_queue == NULL) {
+    s_scene_v2_queue = xQueueCreate(NB_MAIN_SCENE_V2_QUEUE_DEPTH,
+                                    sizeof(nb_display_scene_v2_t));
+    s_transient_v2_queue = xQueueCreate(NB_MAIN_TRANSIENT_V2_QUEUE_DEPTH,
+                                        sizeof(nb_display_transient_v2_t));
+    if (s_display_queue == NULL || s_scene_v2_queue == NULL ||
+        s_transient_v2_queue == NULL) {
+        if (s_display_queue != NULL) vQueueDelete(s_display_queue);
+        if (s_scene_v2_queue != NULL) vQueueDelete(s_scene_v2_queue);
+        if (s_transient_v2_queue != NULL) vQueueDelete(s_transient_v2_queue);
+        s_display_queue = NULL;
+        s_scene_v2_queue = NULL;
+        s_transient_v2_queue = NULL;
         return ESP_ERR_NO_MEM;
     }
     const nb_link_engine_config_t engine_config = {
@@ -236,7 +302,11 @@ esp_err_t nb_main_link_service_init(void)
     esp_err_t err = nb_main_spi_transport_init(&transport_config);
     if (err != ESP_OK) {
         vQueueDelete(s_display_queue);
+        vQueueDelete(s_scene_v2_queue);
+        vQueueDelete(s_transient_v2_queue);
         s_display_queue = NULL;
+        s_scene_v2_queue = NULL;
+        s_transient_v2_queue = NULL;
         return err;
     }
 
@@ -253,7 +323,11 @@ esp_err_t nb_main_link_service_init(void)
         s_initialized = false;
         (void)nb_main_spi_transport_deinit();
         vQueueDelete(s_display_queue);
+        vQueueDelete(s_scene_v2_queue);
+        vQueueDelete(s_transient_v2_queue);
         s_display_queue = NULL;
+        s_scene_v2_queue = NULL;
+        s_transient_v2_queue = NULL;
         return ESP_ERR_NO_MEM;
     }
 
@@ -340,5 +414,64 @@ esp_err_t nb_main_link_service_get_last_camera_event(
         result = ESP_OK;
     }
     taskEXIT_CRITICAL(&s_camera_event_lock);
+    return result;
+}
+
+esp_err_t nb_main_link_service_request_visual_scene_v2(
+    const nb_display_scene_v2_t *scene)
+{
+    if (!nb_display_scene_v2_is_valid(scene, sizeof(*scene))) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_initialized || s_scene_v2_queue == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!nb_link_engine_peer_has_capability(&s_engine,
+                                            NB_LINK_CAP_DISPLAY_V2)) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    /* Igual ao v1: snapshot idempotente, overwrite e' o comportamento
+     * correto (generation mais nova sempre vence). Quem chama
+     * nb_link_engine_send e' so a link_task. */
+    return xQueueOverwrite(s_scene_v2_queue, scene) == pdPASS
+               ? ESP_OK
+               : ESP_ERR_TIMEOUT;
+}
+
+esp_err_t nb_main_link_service_request_visual_transient_v2(
+    const nb_display_transient_v2_t *command)
+{
+    if (!nb_display_transient_v2_is_valid(command, sizeof(*command))) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_initialized || s_transient_v2_queue == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!nb_link_engine_peer_has_capability(&s_engine,
+                                            NB_LINK_CAP_DISPLAY_V2)) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    /* Fila cheia retorna ESP_ERR_NO_MEM (backpressure explicito) -- nunca
+     * sobrescreve um transiente em voo, ao contrario do scene. */
+    return xQueueSend(s_transient_v2_queue, command, 0U) == pdPASS
+               ? ESP_OK
+               : ESP_ERR_NO_MEM;
+}
+
+esp_err_t nb_main_link_service_get_last_visual_result_v2(
+    nb_display_result_v2_t *out_result)
+{
+    if (out_result == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_err_t result = ESP_ERR_NOT_FOUND;
+    taskENTER_CRITICAL(&s_result_v2_lock);
+    if (s_result_v2_valid) {
+        *out_result = s_result_v2;
+        result = ESP_OK;
+    }
+    taskEXIT_CRITICAL(&s_result_v2_lock);
     return result;
 }

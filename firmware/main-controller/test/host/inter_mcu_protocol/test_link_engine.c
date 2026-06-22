@@ -175,7 +175,9 @@ typedef struct {
     uint32_t clock;
 } fixture_t;
 
-static void fixture_init(fixture_t *fx, uint32_t main_boot, uint32_t head_boot)
+static void fixture_init_with_caps(fixture_t *fx, uint32_t main_boot,
+                                   uint32_t head_boot,
+                                   uint32_t head_capability_bits)
 {
     memset(fx, 0, sizeof(*fx));
     fx->ep_a.wire = &fx->wire;
@@ -198,7 +200,7 @@ static void fixture_init(fixture_t *fx, uint32_t main_boot, uint32_t head_boot)
         .boot_id = head_boot,
         .version_major = 1U,
         .version_minor = 1U,
-        .capability_bits = NB_LINK_CAP_DISPLAY_SEMANTIC,
+        .capability_bits = head_capability_bits,
         .transport = {.send = sim_send, .ctx = &fx->ep_b},
         .on_message = on_message,
         .on_tx_result = on_tx_result,
@@ -206,6 +208,12 @@ static void fixture_init(fixture_t *fx, uint32_t main_boot, uint32_t head_boot)
     };
     nb_link_engine_init(&fx->main_e, &main_cfg);
     nb_link_engine_init(&fx->head_e, &head_cfg);
+}
+
+static void fixture_init(fixture_t *fx, uint32_t main_boot, uint32_t head_boot)
+{
+    fixture_init_with_caps(fx, main_boot, head_boot,
+                           NB_LINK_CAP_DISPLAY_SEMANTIC);
 }
 
 static void fixture_start(fixture_t *fx)
@@ -266,6 +274,35 @@ static void test_handshake(void)
     TEST("head_does_not_invent_main_display_capability",
          !nb_link_engine_peer_has_capability(
              &fx.head_e, NB_LINK_CAP_DISPLAY_SEMANTIC));
+}
+
+static void test_display_v1_v2_capability_compat(void)
+{
+    /* DM2.7: head sem NB_LINK_CAP_DISPLAY_V2 -- main deve continuar vendo
+     * só a capability v1, nunca inventar v2 por conta própria. */
+    fixture_t fx_v1_only;
+    fixture_init_with_caps(&fx_v1_only, 11U, 22U, NB_LINK_CAP_DISPLAY_SEMANTIC);
+    fixture_start(&fx_v1_only);
+    TEST("v1_only_sees_v1",
+         nb_link_engine_peer_has_capability(
+             &fx_v1_only.main_e, NB_LINK_CAP_DISPLAY_SEMANTIC));
+    TEST("v1_only_does_not_see_v2",
+         !nb_link_engine_peer_has_capability(
+             &fx_v1_only.main_e, NB_LINK_CAP_DISPLAY_V2));
+
+    /* Head com v1+v2 juntos -- main deve ver as duas capabilities, prova de
+     * que v2 nao substitui v1 na negociacao (compatibilidade preservada). */
+    fixture_t fx_both;
+    fixture_init_with_caps(
+        &fx_both, 33U, 44U,
+        NB_LINK_CAP_DISPLAY_SEMANTIC | NB_LINK_CAP_DISPLAY_V2);
+    fixture_start(&fx_both);
+    TEST("both_sees_v1",
+         nb_link_engine_peer_has_capability(
+             &fx_both.main_e, NB_LINK_CAP_DISPLAY_SEMANTIC));
+    TEST("both_sees_v2",
+         nb_link_engine_peer_has_capability(
+             &fx_both.main_e, NB_LINK_CAP_DISPLAY_V2));
 }
 
 static void test_heartbeat_keeps_alive(void)
@@ -696,6 +733,7 @@ static void test_version_major_mismatch(void)
 int main(void)
 {
     test_handshake();
+    test_display_v1_v2_capability_compat();
     test_heartbeat_keeps_alive();
     test_snapshot_loss_retries_before_ready();
     test_timeout_then_recover();

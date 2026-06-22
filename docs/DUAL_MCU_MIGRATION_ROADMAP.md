@@ -605,7 +605,7 @@ e um único dono de render.
 | DM2.4 | Facade visual e oito overlays compactos | `FEITO` |
 | DM2.5 | Reboot isolado, head ausente e restauração de snapshot | `FEITO` |
 | DM2.6 | Inventário visual congelado e matriz de paridade | `FEITO` |
-| DM2.7 | Contrato visual v2 modular e testes host | `BLOQUEADO` |
+| DM2.7 | Contrato visual v2 modular e testes host | `FEITO` |
 | DM2.8 | Paridade geométrica das faces e expressões | `BLOQUEADO` |
 | DM2.9 | Motor de animação, blink, gaze, tilt e timelines | `BLOQUEADO` |
 | DM2.10 | Estados visuais e transições da FSM | `BLOQUEADO` |
@@ -641,18 +641,54 @@ Saída obrigatória: matriz “feature → produtor main → representação no 
 → renderer head → teste → status”. Depois do congelamento, qualquer feature
 visual nova entra primeiro nessa matriz, sem criar subfase.
 
-#### DM2.7 — contrato visual v2
+#### DM2.7 — contrato visual v2 — `FEITO`
 
 - substituir a struct visual monolítica limitada por mensagens modulares;
-- manter compatibilidade temporária com protocolo visual v1;
-- fila main→link; nenhuma chamada externa direta ao `nb_link_engine`;
-- snapshots completos idempotentes por `generation`;
-- comandos transitórios com ID, deadline e política de cancelamento;
-- resposta/telemetria de aplicação para erros relevantes;
-- negociação de capability por bloco visual.
+  ✓ `nb_display_scene_v2_t` (idempotente, `block_mask` reserva espaço pra
+  blocos futuros de DM2.8/2.9 sem quebrar wire format) +
+  `nb_display_transient_v2_t` (comando com identidade própria) +
+  `nb_display_result_v2_t` (telemetria de aplicação), em
+  `nb_display_protocol.h`;
+- manter compatibilidade temporária com protocolo visual v1; ✓
+  `nb_display_command_t`/`NB_LINK_MSG_DISPLAY_COMMAND` inalterados; head só
+  recebe v2 se anunciar `NB_LINK_CAP_DISPLAY_V2` no HELLO — sem essa
+  capability, nenhum comportamento muda;
+- fila main→link; nenhuma chamada externa direta ao `nb_link_engine`; ✓
+  `nb_main_link_service_request_visual_scene_v2()`/
+  `..._request_visual_transient_v2()` só enfileiram (`xQueueOverwrite`/
+  `xQueueSend`); só a `link_task` chama `nb_link_engine_send`, mesmo padrão
+  já correto do display v1 — **corrige o anti-padrão encontrado nos
+  defeitos de DM4.3-4.6** (cliente de câmera chama `nb_link_engine_send`
+  direto da task chamadora, sem fila);
+- snapshots completos idempotentes por `generation`; ✓ reaproveita
+  `nb_display_generation_is_newer()` existente, fila de profundidade 1 com
+  overwrite (generation mais nova sempre vence);
+- comandos transitórios com ID, deadline e política de cancelamento; ✓
+  `transient_id` (nunca 0), `deadline_ms`, `op` (`START`/`CANCEL`); fila
+  própria (profundidade 4, FIFO) — cheia retorna `ESP_ERR_NO_MEM`
+  explícito, nunca sobrescreve silenciosamente um transiente em voo
+  (**corrige o outro defeito de DM4.3-4.6**: slot único sobrescrito sem
+  aviso);
+- resposta/telemetria de aplicação para erros relevantes; ✓
+  `NB_LINK_MSG_DISPLAY_RESULT_V2` (head→main, canal EVENT) com
+  `OK`/`REJECTED_*`/`EXPIRED`/`CANCELLED`, distinto do ACK de transporte;
+- negociação de capability por bloco visual. ✓ `NB_LINK_CAP_DISPLAY_V2`
+  independente de `NB_LINK_CAP_DISPLAY_SEMANTIC` (v1) — testado que as duas
+  coexistem sem uma suprimir a outra.
+
+Escopo deliberadamente contido: o bloco `BASE` da v2 mapeia 1:1 pros mesmos
+campos do v1 (sem parâmetros novos de animação ainda — isso é DM2.8/2.9).
+O `TRANSIENT` tem o mecanismo completo (ID/deadline/cancelamento) e já
+recebe `RESULT_V2` honesto, mas **sem efeito visual real no renderer
+ainda** — nenhum glance/blink se move na tela hoje; isso fica para o motor
+de animação de DM2.9, que vai reaproveitar o transporte já pronto.
 
 Gate: testes host cobrem versões, campos reservados, geração, transientes,
-reboot, backpressure e compatibilidade v1/v2.
+reboot, backpressure e compatibilidade v1/v2. Fechado em 2026-06-21: 96/96
+(`test_inter_mcu_protocol`) + 82/82 (`test_link_engine`, incluindo os dois
+novos casos de compat v1/v2) passando; build limpo com `-Werror` no
+main-controller (`sdkconfig.dmm.defaults`) e no head-controller
+(`sdkconfig.dm2.defaults`), sem flash.
 
 #### DM2.8 — faces e expressões
 
