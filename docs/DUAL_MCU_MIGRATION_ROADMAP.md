@@ -748,8 +748,8 @@ comparação de dados é exaustiva, a visual cobriu uma transição).
   gaze continua sem interpolação própria (só a forma da face interpola,
   DM2.8); mecanismo de transiente do DM2.7 (`NB_DISPLAY_TRANSIENT_KIND_
   GLANCE`) está pronto no protocolo mas sem uso real ainda;
-- micro-drift, saccades e tilt sustentado; **implementado, mas
-  desligado** — achado de bancada 2026-06-22. `gaze_service.c` já calcula
+- micro-drift, saccades e tilt sustentado; ✓ **implementado e estabilizado
+  em bancada** em 2026-06-22. `gaze_service.c` calcula
   drift/saccade continuamente (Core 1, render layer z=5), mas isso era
   pulado inteiramente no perfil Waveshare porque dependia de
   `render_service_register_layer()`, que não roda sem display físico
@@ -757,21 +757,22 @@ comparação de dados é exaustiva, a visual cobriu uma transição).
   ~30fps, sem depender de `render_service` — a função de tick nunca usou
   o canvas mesmo na variante antiga, só calcula e publica via
   `expression_service_set_gaze()` → `visual_state_facade` → link).
-  **Problema encontrado**: ligar isso gerou tráfego suficiente no canal
-  CONTROL pra desestabilizar o enlace dual-MCU (`READY` ↔ `DEGRADED` a
-  cada ~7-15s). Adicionado deadband em `visual_state_facade_set_gaze()`
-  (só marca dirty se o delta passar de um limiar, evitando publicar a
-  cada frame de drift) — testado com 4 e depois 10 milli-units; reduziu
-  a frequência de degradação mas **não eliminou**. Com o gaze
-  standalone desligado, o link fica estável (45s sem nenhuma transição
-  `DEGRADED`). Conclusão: o tráfego de gaze contínuo expõe um problema
-  mais fundamental do link sob carga sustentada no canal CONTROL — não é
-  só sensibilidade do drift. `gaze_service_init_standalone()` permanece
-  no código (compilável, host-buildable a parte de cálculo), mas
-  **desabilitada em `boot_manager.c`** até essa instabilidade de base
-  ser investigada e corrigida — provável ponto de partida: orçamento de
-  ACK/retry do `nb_link_engine` sob tráfego CONTROL moderado e sustentado
-  (8 Hz+), não exclusivo do gaze;
+  **Problema encontrado e corrigido**: ao ligar o gaze, o enlace oscilava
+  `READY` ↔ `DEGRADED` a cada ~7-15s. A captura paralela da COM12 mostrou
+  que não era congestionamento do link: o task watchdog abortava o head
+  porque `nb_head_display` mantinha o CPU 1 ocupado e `IDLE1` não rodava.
+  Cada cena de gaze reiniciava indevidamente a interpolação facial de
+  220 ms; como chegavam cenas continuamente, o renderer nunca atingia o
+  estado ocioso e mantinha `pushSprite()` contínuo. A correção separa
+  mudança de expressão de atualização de gaze/overlay/brilho: somente
+  expressão reinicia a interpolação; gaze força um único redesenho. A
+  task também passou de `vTaskDelayUntil()` para `vTaskDelay()`, garantindo
+  yield real mesmo se o push do frame ultrapassar o período nominal.
+  O deadband de 10 milli-units permanece como redução útil de tráfego,
+  mas não era a correção da causa raiz. `gaze_service_init_standalone()`
+  foi reativada no perfil Waveshare. Validação física: soak de 90 s com
+  gaze + blink ativos, link sempre `READY`, 669 TX / 660 RX na última
+  telemetria, zero retry, timeout, erro SPI, watchdog ou reboot;
 - motifs compostos de `IDLE_REFERENCE.md`; **não feito** — blink isolado
   só cobre uma fração do catálogo de `IDLE_REFERENCE.md` §3;
 - prioridade e interrupção de timelines; **não feito** — não existe
@@ -789,10 +790,11 @@ comparação de dados é exaustiva, a visual cobriu uma transição).
 
 Gate: sessões IDLE/ATTENTIVE de 60 s atendem os critérios de
 `docs/IDLE_REFERENCE.md`, sem drift de estado após reconexão. **Gate não
-fechado** — falta gaze dinâmico, motifs compostos, timelines com
-prioridade/interrupção e o soak formal de 60s. Blink isolado validado
-visualmente (piscou naturalmente em bancada, sem desestabilizar o link),
-mas isso é só uma fração do escopo do ID.
+fechado** — gaze dinâmico + blink passaram por soak técnico de 90 s sem
+reset ou degradação, mas ainda faltam motifs compostos, timelines com
+prioridade/interrupção e a validação visual completa segundo
+`IDLE_REFERENCE.md`. Blink isolado também havia sido validado visualmente
+em bancada.
 
 #### DM2.10 — estados visuais
 

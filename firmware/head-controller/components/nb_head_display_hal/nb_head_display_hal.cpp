@@ -164,7 +164,8 @@ esp_err_t nb_head_display_hal_apply(const nb_display_command_t *command)
 }
 
 esp_err_t nb_head_display_hal_apply_blend(const nb_display_command_t *target,
-                                          float face_t)
+                                          float face_t,
+                                          bool force_redraw)
 {
     if (!s_ready) {
         return ESP_ERR_INVALID_STATE;
@@ -184,7 +185,7 @@ esp_err_t nb_head_display_hal_apply_blend(const nb_display_command_t *target,
      * (READY <-> DEGRADED) quando testado pela primeira vez. */
     const nb_head_blink_mult_t blink =
         nb_head_blink_tick(esp_timer_get_time());
-    if (t >= 1.0f && !blink.active) {
+    if (t >= 1.0f && !blink.active && !force_redraw) {
         return ESP_OK;
     }
 

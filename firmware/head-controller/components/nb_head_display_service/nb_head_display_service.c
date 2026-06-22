@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -33,12 +34,13 @@ static portMUX_TYPE s_status_lock = portMUX_INITIALIZER_UNLOCKED;
 static void display_task(void *arg)
 {
     (void)arg;
-    TickType_t last_wake = xTaskGetTickCount();
     nb_display_command_t target = {0};
     bool has_target = false;
-    uint32_t transition_elapsed_ms = 0U;
+    int64_t transition_started_us = 0;
 
     for (;;) {
+        const TickType_t cycle_started = xTaskGetTickCount();
+        bool force_redraw = false;
         nb_display_command_t incoming;
         if (xQueueReceive(s_command_queue, &incoming, 0U) == pdTRUE) {
             taskENTER_CRITICAL(&s_status_lock);
@@ -57,15 +59,31 @@ static void display_task(void *arg)
             } else {
                 esp_err_t hw_err = ESP_OK;
                 if (incoming.opcode == NB_DISPLAY_OP_SET_SCENE) {
-                    if (has_target && s_status.hardware_ready) {
+                    const bool expression_changed =
+                        !has_target ||
+                        incoming.expression != target.expression;
+                    if (has_target && expression_changed &&
+                        s_status.hardware_ready) {
                         /* Finaliza a transicao anterior no alvo antigo antes
                          * de iniciar a proxima -- evita "pular" para um
                          * estado anterior ao alvo interrompido. */
-                        (void)nb_head_display_hal_apply_blend(&target, 1.0f);
+                        (void)nb_head_display_hal_apply_blend(
+                            &target, 1.0f, true);
                     }
                     target = incoming;
                     has_target = true;
-                    transition_elapsed_ms = 0U;
+                    if (expression_changed) {
+                        transition_started_us = esp_timer_get_time();
+                    } else {
+                        /*
+                         * Gaze, overlay e brilho nao reiniciam a interpolacao
+                         * facial. Se ela ja terminou, basta redesenhar uma vez
+                         * com os novos valores. Reiniciar 220 ms a cada gaze
+                         * mantinha pushSprite() continuo e impedia IDLE1 de
+                         * alimentar o task watchdog.
+                         */
+                        force_redraw = true;
+                    }
                 } else if (s_status.hardware_ready) {
                     hw_err = nb_head_display_hal_apply(&incoming);
                 }
@@ -100,13 +118,13 @@ static void display_task(void *arg)
              * terminar (t satura em 1.0) -- o blink autonomo do head
              * (DM2.9) precisa de redesenho continuo, nao so durante a
              * troca de expressao. */
-            if (transition_elapsed_ms < (uint32_t)NB_HEAD_DISPLAY_TRANSITION_MS) {
-                transition_elapsed_ms += NB_HEAD_DISPLAY_TICK_MS;
-            }
-            const float t = (float)transition_elapsed_ms /
-                            NB_HEAD_DISPLAY_TRANSITION_MS;
+            const int64_t elapsed_us =
+                esp_timer_get_time() - transition_started_us;
+            const float t =
+                (float)elapsed_us /
+                (NB_HEAD_DISPLAY_TRANSITION_MS * 1000.0f);
             const esp_err_t hw_err =
-                nb_head_display_hal_apply_blend(&target, t);
+                nb_head_display_hal_apply_blend(&target, t, force_redraw);
             if (hw_err != ESP_OK) {
                 taskENTER_CRITICAL(&s_status_lock);
                 ++s_status.hardware_errors;
@@ -116,7 +134,14 @@ static void display_task(void *arg)
             }
         }
 
-        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(NB_HEAD_DISPLAY_TICK_MS));
+        /*
+         * Mantem o periodo total proximo de 20 ms, descontando o tempo de
+         * render. Se o frame ja excedeu o periodo, bloqueia por um tick para
+         * IDLE1 alimentar o watchdog, sem somar 20 ms inteiros ao frame.
+         */
+        const TickType_t period = pdMS_TO_TICKS(NB_HEAD_DISPLAY_TICK_MS);
+        const TickType_t elapsed = xTaskGetTickCount() - cycle_started;
+        vTaskDelay(elapsed < period ? period - elapsed : 1U);
     }
 }
 
