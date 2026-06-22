@@ -608,7 +608,7 @@ e um único dono de render.
 | DM2.7 | Contrato visual v2 modular e testes host | `FEITO` |
 | DM2.8 | Paridade geométrica das faces e expressões | `FEITO` |
 | DM2.9 | Motor de animação, blink, gaze, tilt e timelines | `EM ANDAMENTO` |
-| DM2.10 | Estados visuais e transições da FSM | `BLOQUEADO` |
+| DM2.10 | Estados visuais e transições da FSM | `EM ANDAMENTO` |
 | DM2.11 | Overlays, texto, timers, toast e status rail | `BLOQUEADO` |
 | DM2.12 | Assets, fontes, ícones e política de memória | `BLOQUEADO` |
 | DM2.13 | Recovery visual, expiração de transientes e fallback | `BLOQUEADO` |
@@ -796,25 +796,42 @@ prioridade/interrupção e a validação visual completa segundo
 `IDLE_REFERENCE.md`. Blink isolado também havia sido validado visualmente
 em bancada.
 
-#### DM2.10 — estados visuais
+#### DM2.10 — estados visuais — `EM ANDAMENTO`
 
 Implementar e validar uma ficha visual para cada estado:
 
-| Estado | Base esperada |
-| --- | --- |
-| `BOOT_UP` | Sequência segura até snapshot válido |
-| `IDLE` | Neutral, gaze central, transientes limpos |
-| `ATTENTIVE` | Atenção sem substituir permanentemente IDLE |
-| `RESPONDING` | Fala/atividade com retorno limpo |
-| `TOUCH_REACTING` | Reação transitória correlacionada |
-| `SLEEPING` | Base própria, wake determinístico |
-| `ERROR` | Alerta legível sem ocultar informação crítica |
-| `SAFE_MODE` | Estado seguro inequívoco |
-| `MEDITATION` | Base calma e mic bloqueado |
-| `SILENT_COMPANY` | Companhia silenciosa sem parecer desligado |
-| `MAINTENANCE` | Diagnóstico explícito e timeout |
+| Estado | Base esperada | Status (2026-06-22) |
+| --- | --- | --- |
+| `BOOT_UP` | Sequência segura até snapshot válido | ✓ validado — reboot real, sequência limpa, sem flicker/corrupção, termina em `IDLE` |
+| `IDLE` | Neutral, gaze central, transientes limpos | ✓ validado |
+| `ATTENTIVE` | Atenção sem substituir permanentemente IDLE | ✓ validado — entra via toque/wake, retorna a `IDLE` sozinho |
+| `RESPONDING` | Fala/atividade com retorno limpo | ✓ validado — animação de fala durante, retorno limpo ao terminar |
+| `TOUCH_REACTING` | Reação transitória correlacionada | ✓ validado **após corrigir bug real** — ver abaixo |
+| `SLEEPING` | Base própria, wake determinístico | ✓ validado — overlay de sono visível, wake limpo de volta a `IDLE` |
+| `MEDITATION` | Base calma e mic bloqueado | ✓ validado — entra via toque DEEP (≥8s) em `IDLE`, sai por tap, retorno limpo |
+| `ERROR` | Alerta legível sem ocultar informação crítica | não testado — sem gancho de debug, só entra por falha real |
+| `SAFE_MODE` | Estado seguro inequívoco | não testado — só via `boot_count` excedendo o limite (falhas de boot repetidas) |
+| `SILENT_COMPANY` | Companhia silenciosa sem parecer desligado | não testado — threshold de 2h hardcoded (`boot_manager.c`, `7200000` ms), sem config exposta |
+| `MAINTENANCE` | Diagnóstico explícito e timeout | não testado — **inalcançável hoje**: `state_machine_on_maintenance_enter()` existe mas não é chamada em nenhum lugar do código |
+
+**Bug real encontrado e corrigido**: `TOUCH_REACTING → IDLE` deixava a expressão da
+reação presa (FSM já tinha voltado a `IDLE`, mas a face não). Causa: em
+`boot_manager.c::on_state_changed()`, o `case NB_STATE_IDLE` só resetava a
+expressão para `NEUTRAL` quando `old_state == NB_STATE_ATTENTIVE` — faltava o
+mesmo reset para `old_state == NB_STATE_TOUCH_REACTING`, violando a regra do
+CLAUDE.md ("toda entrada em IDLE deve limpar expressão... antes de aceitar
+novos comportamentos"). Corrigido adicionando `TOUCH_REACTING` à mesma
+condição. Validado: toque → reação → retorno limpo ao neutral.
+
+**Achado secundário (não corrigido, fora de escopo)**: `POST /api/config`
+para `idle_timeout` só persiste no NVS — não chama nenhum
+`state_machine_set_idle_timeout_s()`, então o valor só faz efeito após
+reboot. Vale revisar quando alguém tocar config dinâmica de novo.
 
 Gate: matriz completa de entrada, permanência, saída, reboot e retorno a IDLE.
+**Não fechado** — 7/11 estados validados (todos os alcançáveis sem gancho de
+debug ou espera de horas); `MAINTENANCE`, `SAFE_MODE`, `ERROR` e
+`SILENT_COMPANY` ficam pendentes por falta de gancho de teste prático.
 
 #### DM2.11 — overlays, texto e status
 

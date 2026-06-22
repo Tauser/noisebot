@@ -659,7 +659,8 @@ static void on_state_changed(nb_robot_state_t new_state,
             led_base_set(NB_LED_BASE_SILENT_COMPANY, true);
             break;
         case NB_STATE_IDLE:
-            if (old_state == NB_STATE_ATTENTIVE) {
+            if (old_state == NB_STATE_ATTENTIVE ||
+                old_state == NB_STATE_TOUCH_REACTING) {
                 expression_service_set(NB_EXPR_NEUTRAL, 600.0f);
             } else if (old_state == NB_STATE_MEDITATION) {
                 led_base_set(NB_LED_BASE_MEDITATION, false);
