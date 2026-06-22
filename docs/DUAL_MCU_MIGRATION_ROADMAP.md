@@ -610,7 +610,7 @@ e um único dono de render.
 | DM2.9 | Motor de animação, blink, gaze, tilt e timelines | `EM ANDAMENTO` |
 | DM2.10 | Estados visuais e transições da FSM | `EM ANDAMENTO` |
 | DM2.11 | Overlays, texto, timers, toast e status rail | `EM ANDAMENTO` |
-| DM2.12 | Assets, fontes, ícones e política de memória | `BLOQUEADO` |
+| DM2.12 | Assets, fontes, ícones e política de memória | `EM ANDAMENTO` |
 | DM2.13 | Recovery visual, expiração de transientes e fallback | `BLOQUEADO` |
 | DM2.14 | Paridade de produto, latência e soak visual | `BLOQUEADO` |
 | DM2.15 | Cutover: head como render padrão; fallback de release | `BLOQUEADO` |
@@ -878,17 +878,36 @@ dinâmicos. Mecanismo de transporte (bitmask genérico, capability
 reaproveitada, draw sem bloquear o link) está pronto para escalar pros
 29 ícones restantes sem nova negociação de protocolo.
 
-#### DM2.12 — assets e memória
+#### DM2.12 — assets e memória — `EM ANDAMENTO`
 
-- fonte editável separada do formato runtime;
-- IDs estáveis para ícones/expressões/assets;
-- assets essenciais em flash do head;
-- cache e assets opcionais no SD entram somente após DM5;
-- framebuffer e sprites em PSRAM;
-- medir PSRAM, SRAM interna, DMA, stack e fragmentação.
+- fonte editável separada do formato runtime; não feito — nenhuma fonte
+  bitmap portada ainda (DM2.11 não incluiu texto/toast);
+- IDs estáveis para ícones/expressões/assets; parcial — expressões já têm
+  enum estável (0-9); ícone de status usa bitmask genérico documentado
+  (bit 0 = `MIC_BLOCKED`), mas sem catálogo formal de IDs pros 29
+  restantes ainda;
+- assets essenciais em flash do head; ✓ `kExpressions[]` e a máscara de
+  `MIC_BLOCKED` são `constexpr` — vivem em `.rodata`/flash, não em RAM;
+- cache e assets opcionais no SD entram somente após DM5; ✓ nenhum SD
+  tocado;
+- framebuffer e sprites em PSRAM; ✓ desde DM2.2 (`setPsram(true)`);
+- medir PSRAM, SRAM interna, DMA, stack e fragmentação. ✓ medido em
+  2026-06-22 — telemetria do head (`nb_head_link_service.c`) passou a
+  logar `internal`/`dma`/`display_stack_min_words` (antes só tinha
+  `spiram`). Achado: SRAM interna/DMA/stack do head nunca tinham sido
+  medidos. Resultado com blend+blink+gaze+ícone todos ativos: PSRAM
+  8.230.504 B livres, SRAM interna 345.387 B livres, DMA 337.599 B
+  livres, stack da `display_task` com 2080 de 4096 bytes livres (~51%
+  de margem) mesmo fazendo blend/blink/ícone a cada tick de 20 ms.
+  Fragmentação não medida separadamente (sem `heap_caps_get_largest_
+  free_block` ainda).
 
 Gate: mínimo de 300 KB de PSRAM livre além dos buffers ativos e zero alocação
-por frame no render loop.
+por frame no render loop. PSRAM passa com folga (8,2 MB). Zero alocação por
+frame confirmado por inspeção — `nb_head_blink_tick`, `nb_head_emo_face_lerp`
+e `nb_head_status_icons_draw` só usam stack/`static`/`constexpr`, sem
+`malloc`/`new`. **Não fechado** — fontes, IDs estáveis completos e medição de
+fragmentação ficam pendentes.
 
 #### DM2.13 — recovery e fallback
 

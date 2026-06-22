@@ -32,4 +32,11 @@ void nb_head_display_service_get_status(nb_head_display_status_t *out);
  */
 esp_err_t nb_head_display_service_set_status_icons(uint32_t icon_bits);
 
+/*
+ * DM2.12 -- stack high-water-mark da display_task, em palavras (words),
+ * pra acompanhar headroom de stack agora que ela faz blend/blink/icones
+ * todo tick. Retorna 0 se a task ainda nao foi criada.
+ */
+uint32_t nb_head_display_service_get_stack_min_free_words(void);
+
 #endif /* NB_HEAD_DISPLAY_SERVICE_H */

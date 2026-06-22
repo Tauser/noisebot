@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -298,7 +299,8 @@ static void link_task(void *arg)
                      "retry=%lu timeout=%lu spi_to=%lu spi_err=%lu "
                      "hs=%lums ack_last/avg/max=%lu/%lu/%lums "
                      "display=%lu/%lu/%lu gen=%lu hw=%u/%lu "
-                     "spiram=%lu",
+                     "spiram=%lu internal=%lu dma=%lu "
+                     "display_stack_min_words=%lu",
                      state_name(nb_link_engine_state(&s_engine)),
                      (unsigned long)stats->frames_tx,
                      (unsigned long)stats->frames_rx,
@@ -319,7 +321,12 @@ static void link_task(void *arg)
                                          : 0U),
                      display_status.hardware_ready ? 1U : 0U,
                      (unsigned long)display_status.hardware_errors,
-                     (unsigned long)display_status.spiram_free_bytes);
+                     (unsigned long)display_status.spiram_free_bytes,
+                     (unsigned long)heap_caps_get_free_size(
+                         MALLOC_CAP_INTERNAL),
+                     (unsigned long)heap_caps_get_free_size(MALLOC_CAP_DMA),
+                     (unsigned long)
+                         nb_head_display_service_get_stack_min_free_words());
             last_telemetry_ms = now_ms;
         }
     }

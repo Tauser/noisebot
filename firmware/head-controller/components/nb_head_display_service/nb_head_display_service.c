@@ -22,6 +22,7 @@ static uint8_t s_command_queue_bytes[sizeof(nb_display_command_t)];
 static portMUX_TYPE s_status_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_status_icon_bits;
 static bool s_status_icon_bits_dirty;
+static TaskHandle_t s_display_task_handle;
 
 /*
  * DM2.8 -- transicao suave entre expressoes. SET_SCENE nao aplica mais
@@ -193,7 +194,7 @@ esp_err_t nb_head_display_service_init(void)
         NB_TASK_HEAD_DISPLAY_STACK,
         NULL,
         NB_TASK_HEAD_DISPLAY_PRIORITY,
-        NULL,
+        &s_display_task_handle,
         NB_TASK_HEAD_DISPLAY_CORE);
     if (created != pdPASS) {
         vQueueDelete(s_command_queue);
@@ -234,6 +235,14 @@ void nb_head_display_service_get_status(nb_head_display_status_t *out)
         *out = s_status;
         taskEXIT_CRITICAL(&s_status_lock);
     }
+}
+
+uint32_t nb_head_display_service_get_stack_min_free_words(void)
+{
+    if (s_display_task_handle == NULL) {
+        return 0U;
+    }
+    return (uint32_t)uxTaskGetStackHighWaterMark(s_display_task_handle);
 }
 
 esp_err_t nb_head_display_service_set_status_icons(uint32_t icon_bits)

@@ -5,6 +5,7 @@ idf_component_register(
         esp_system
         esp_timer
         freertos
+        heap
         log
         head_link_transport
         nb_head_camera_service
