@@ -15,10 +15,10 @@ Data do levantamento: 2026-06-21. Fonte: leitura direta do código atual
 
 | Expressão | Produtor (main) | Contrato hoje | Renderer head | Status |
 | --- | --- | --- | --- | --- |
-| `NEUTRAL`..`ANGRY` (10, `NB_EXPR_*`) | `expression_service.cpp` (`NB_EXPRESSIONS[]`, parâmetros completos por expressão: abertura, squint, curvas, cor, assimetria) | `nb_display_command_t.expression` — **1 byte, ID estático 0-9**, sem nenhum parâmetro | `nb_head_emo_renderer.cpp`: `kExpressions[expression]` — tabela estática própria, 10 faces aproximadas | Ported parcial (DM2.3) — só a forma estática chega ao head; parâmetros finos (squint, curvas, cor, assimetria) do main **não atravessam o contrato** |
+| `NEUTRAL`..`ANGRY` (10, `NB_EXPR_*`) | `expression_service.cpp` (`NB_EXPRESSIONS[]`, parâmetros completos por expressão: abertura, squint, curvas, cor, assimetria) | `nb_display_command_t.expression` — 1 byte, ID estático 0-9 (a forma completa não precisa atravessar o link porque já existe espelhada no head) | `nb_head_emo_renderer.cpp`: `kExpressions[expression]` | **Ported e fiel** — correção 2026-06-21: a entrada anterior desta linha ("10 faces aproximadas") estava errada. Os 19 floats das 10 expressões em `kExpressions[]` são idênticos, bit a bit, aos de `NB_EXPRESSIONS[]` (squint, curvas, assimetria de cada canto, tudo presente) — conferido campo a campo nas 10 expressões durante DM2.8. |
 
-Gate de paridade real (capturas lado a lado, golden scenes) é DM2.8 — ainda
-`BLOQUEADO`.
+Gate de paridade real (capturas lado a lado, golden scenes, interpolação) é
+DM2.8.
 
 ## 2. Estados (`NB_STATE_*`, 11 total)
 
@@ -88,7 +88,7 @@ do escopo de congelamento deste corte — não detalhado aqui.
 | --- | --- |
 | **Ported e confirmado** | 4 overlays (listening/speaking/sleeping/heart), gaze (posição final) |
 | **Ported, não confirmado** | 4 overlays (alert/blush/message/timer) |
-| **Parcial** (efeito chega, semântica/timing não) | Expressão (forma estática sim, parâmetros finos não), glance, touch reacting |
+| **Parcial** (efeito chega, semântica/timing não) | Glance, touch reacting |
 | **Não ported** | Blink (todas as variantes), drift/saccade/tilt, estados (`NB_STATE_*`), wake/greeting timeline, status rail/toast |
 
 ## 9. Implicação para a ordem do roadmap

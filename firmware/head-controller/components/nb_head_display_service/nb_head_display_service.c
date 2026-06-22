@@ -20,60 +20,100 @@ static StaticQueue_t s_command_queue_storage;
 static uint8_t s_command_queue_bytes[sizeof(nb_display_command_t)];
 static portMUX_TYPE s_status_lock = portMUX_INITIALIZER_UNLOCKED;
 
+/*
+ * DM2.8 -- transicao suave entre expressoes. SET_SCENE nao aplica mais
+ * instantaneo: vira o alvo de uma interpolacao de NB_HEAD_DISPLAY_
+ * TRANSITION_MS, redesenhada a cada tick (nb_head_display_hal_apply_blend).
+ * SET_POWER/FORCE_REFRESH continuam instantaneos via nb_head_display_hal_
+ * apply (sem geometria de face envolvida).
+ */
+#define NB_HEAD_DISPLAY_TICK_MS 20U
+#define NB_HEAD_DISPLAY_TRANSITION_MS 220.0f
+
 static void display_task(void *arg)
 {
     (void)arg;
-    nb_display_command_t command;
+    TickType_t last_wake = xTaskGetTickCount();
+    nb_display_command_t target = {0};
+    bool has_target = false;
+    uint32_t transition_elapsed_ms = 0U;
 
     for (;;) {
-        if (xQueueReceive(s_command_queue, &command, portMAX_DELAY) != pdTRUE) {
-            continue;
+        nb_display_command_t incoming;
+        if (xQueueReceive(s_command_queue, &incoming, 0U) == pdTRUE) {
+            taskENTER_CRITICAL(&s_status_lock);
+            const bool is_new =
+                !s_status.scene_valid ||
+                nb_display_generation_is_newer(incoming.generation,
+                                               s_status.scene.generation);
+            if (!is_new) {
+                ++s_status.ignored;
+            }
+            taskEXIT_CRITICAL(&s_status_lock);
+
+            if (!is_new) {
+                ESP_LOGI(TAG, "scene ignored generation=%lu",
+                         (unsigned long)incoming.generation);
+            } else {
+                esp_err_t hw_err = ESP_OK;
+                if (incoming.opcode == NB_DISPLAY_OP_SET_SCENE) {
+                    if (has_target && s_status.hardware_ready) {
+                        /* Finaliza a transicao anterior no alvo antigo antes
+                         * de iniciar a proxima -- evita "pular" para um
+                         * estado anterior ao alvo interrompido. */
+                        (void)nb_head_display_hal_apply_blend(&target, 1.0f);
+                    }
+                    target = incoming;
+                    has_target = true;
+                    transition_elapsed_ms = 0U;
+                } else if (s_status.hardware_ready) {
+                    hw_err = nb_head_display_hal_apply(&incoming);
+                }
+                if (hw_err != ESP_OK) {
+                    taskENTER_CRITICAL(&s_status_lock);
+                    ++s_status.hardware_errors;
+                    taskEXIT_CRITICAL(&s_status_lock);
+                    ESP_LOGE(TAG, "scene hardware apply failed: %s",
+                             esp_err_to_name(hw_err));
+                }
+
+                taskENTER_CRITICAL(&s_status_lock);
+                memcpy(&s_status.scene, &incoming, sizeof(s_status.scene));
+                s_status.scene_valid = true;
+                ++s_status.accepted;
+                taskEXIT_CRITICAL(&s_status_lock);
+
+                ESP_LOGI(TAG,
+                         "scene accepted generation=%lu expression=%u "
+                         "gaze=%d,%d brightness=%u overlays=0x%04x",
+                         (unsigned long)incoming.generation,
+                         (unsigned)incoming.expression,
+                         (int)incoming.gaze_x_milli,
+                         (int)incoming.gaze_y_milli,
+                         (unsigned)incoming.brightness,
+                         (unsigned)incoming.overlay_flags);
+            }
         }
 
-        taskENTER_CRITICAL(&s_status_lock);
-        const bool is_new =
-            !s_status.scene_valid ||
-            nb_display_generation_is_newer(command.generation,
-                                           s_status.scene.generation);
-        if (!is_new) {
-            ++s_status.ignored;
-        }
-        taskEXIT_CRITICAL(&s_status_lock);
-
-        if (!is_new) {
-            ESP_LOGI(TAG,
-                     "scene ignored generation=%lu",
-                     (unsigned long)command.generation);
-            continue;
-        }
-
-        if (s_status.hardware_ready) {
-            const esp_err_t hw_err = nb_head_display_hal_apply(&command);
+        if (has_target && s_status.hardware_ready) {
+            transition_elapsed_ms += NB_HEAD_DISPLAY_TICK_MS;
+            const float t = (float)transition_elapsed_ms /
+                            NB_HEAD_DISPLAY_TRANSITION_MS;
+            const esp_err_t hw_err =
+                nb_head_display_hal_apply_blend(&target, t);
             if (hw_err != ESP_OK) {
                 taskENTER_CRITICAL(&s_status_lock);
                 ++s_status.hardware_errors;
                 taskEXIT_CRITICAL(&s_status_lock);
-                ESP_LOGE(TAG, "scene hardware apply failed: %s",
+                ESP_LOGE(TAG, "scene blend apply failed: %s",
                          esp_err_to_name(hw_err));
-                continue;
+            }
+            if (t >= 1.0f) {
+                has_target = false;
             }
         }
 
-        taskENTER_CRITICAL(&s_status_lock);
-        memcpy(&s_status.scene, &command, sizeof(s_status.scene));
-        s_status.scene_valid = true;
-        ++s_status.accepted;
-        taskEXIT_CRITICAL(&s_status_lock);
-
-        ESP_LOGI(TAG,
-                 "scene accepted generation=%lu expression=%u gaze=%d,%d "
-                 "brightness=%u overlays=0x%04x",
-                 (unsigned long)command.generation,
-                 (unsigned)command.expression,
-                 (int)command.gaze_x_milli,
-                 (int)command.gaze_y_milli,
-                 (unsigned)command.brightness,
-                 (unsigned)command.overlay_flags);
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(NB_HEAD_DISPLAY_TICK_MS));
     }
 }
 

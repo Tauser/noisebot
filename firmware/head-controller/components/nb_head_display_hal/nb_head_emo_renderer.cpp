@@ -7,18 +7,7 @@
 
 namespace {
 
-struct Face {
-    float tl_l, tr_l, bl_l, br_l;
-    float tl_r, tr_r, bl_r, br_r;
-    float open_l, open_r;
-    float y_l, y_r;
-    float x_off;
-    float rt_top, rb_bot;
-    float cv_top, cv_bot;
-    float squint_l, squint_r;
-};
-
-constexpr Face kExpressions[NB_DISPLAY_EXPRESSION_COUNT] = {
+constexpr nb_head_emo_face_t kExpressions[NB_DISPLAY_EXPRESSION_COUNT] = {
     {0,0,0,0, 0,0,0,0, .88f,.88f, 0,0, .60f, .64f,.64f, 0,0, 0,0},
     {0,0,.72f,.72f, 0,0,.72f,.72f, .41f,.41f, 0,0, .60f,
      .27f,.52f, 1,-1, .22f,.22f},
@@ -144,14 +133,54 @@ void draw_eye(LGFX_Sprite &canvas,
 
 }  // namespace
 
-void nb_head_emo_draw(LGFX_Sprite &canvas,
-                      uint8_t expression,
-                      int16_t gaze_x_milli,
-                      int16_t gaze_y_milli,
-                      uint16_t overlay_flags,
-                      uint32_t color)
+const nb_head_emo_face_t &nb_head_emo_get_face(uint8_t expression)
 {
-    const Face &face = kExpressions[expression];
+    const uint8_t idx = (expression < NB_DISPLAY_EXPRESSION_COUNT)
+                             ? expression
+                             : 0U;
+    return kExpressions[idx];
+}
+
+namespace {
+float lerpf(float a, float b, float t)
+{
+    return a + (b - a) * t;
+}
+}  // namespace
+
+void nb_head_emo_face_lerp(const nb_head_emo_face_t &a,
+                           const nb_head_emo_face_t &b,
+                           float t,
+                           nb_head_emo_face_t &out)
+{
+    out.tl_l = lerpf(a.tl_l, b.tl_l, t);
+    out.tr_l = lerpf(a.tr_l, b.tr_l, t);
+    out.bl_l = lerpf(a.bl_l, b.bl_l, t);
+    out.br_l = lerpf(a.br_l, b.br_l, t);
+    out.tl_r = lerpf(a.tl_r, b.tl_r, t);
+    out.tr_r = lerpf(a.tr_r, b.tr_r, t);
+    out.bl_r = lerpf(a.bl_r, b.bl_r, t);
+    out.br_r = lerpf(a.br_r, b.br_r, t);
+    out.open_l = lerpf(a.open_l, b.open_l, t);
+    out.open_r = lerpf(a.open_r, b.open_r, t);
+    out.y_l = lerpf(a.y_l, b.y_l, t);
+    out.y_r = lerpf(a.y_r, b.y_r, t);
+    out.x_off = lerpf(a.x_off, b.x_off, t);
+    out.rt_top = lerpf(a.rt_top, b.rt_top, t);
+    out.rb_bot = lerpf(a.rb_bot, b.rb_bot, t);
+    out.cv_top = lerpf(a.cv_top, b.cv_top, t);
+    out.cv_bot = lerpf(a.cv_bot, b.cv_bot, t);
+    out.squint_l = lerpf(a.squint_l, b.squint_l, t);
+    out.squint_r = lerpf(a.squint_r, b.squint_r, t);
+}
+
+void nb_head_emo_draw_face(LGFX_Sprite &canvas,
+                           const nb_head_emo_face_t &face,
+                           int16_t gaze_x_milli,
+                           int16_t gaze_y_milli,
+                           uint16_t overlay_flags,
+                           uint32_t color)
+{
     const float gaze_x = std::clamp(
         static_cast<float>(gaze_x_milli) / NB_DISPLAY_GAZE_MAX,
         -1.0f, 1.0f);
@@ -211,4 +240,15 @@ void nb_head_emo_draw(LGFX_Sprite &canvas,
                           NB_DISPLAY_OVERLAY_TIMER)) != 0U) {
         canvas.fillCircle(160, 226, 4, 0x36d9ffU);
     }
+}
+
+void nb_head_emo_draw(LGFX_Sprite &canvas,
+                      uint8_t expression,
+                      int16_t gaze_x_milli,
+                      int16_t gaze_y_milli,
+                      uint16_t overlay_flags,
+                      uint32_t color)
+{
+    nb_head_emo_draw_face(canvas, nb_head_emo_get_face(expression),
+                          gaze_x_milli, gaze_y_milli, overlay_flags, color);
 }

@@ -22,6 +22,7 @@ static NBHeadLGFX s_display;
 static LGFX_Sprite s_frame(&s_display);
 static bool s_ready;
 static SemaphoreHandle_t s_display_mutex;
+static nb_head_emo_face_t s_current_face = nb_head_emo_get_face(0U);
 
 static esp_err_t reset_panel(void)
 {
@@ -148,13 +149,56 @@ esp_err_t nb_head_display_hal_apply(const nb_display_command_t *command)
                            ((uint32_t)level << 8) | level;
     s_display.startWrite();
     s_frame.fillScreen(TFT_BLACK);
-    nb_head_emo_draw(s_frame, command->expression,
-                     command->gaze_x_milli, command->gaze_y_milli,
-                     command->overlay_flags, color);
+    s_current_face = nb_head_emo_get_face(command->expression);
+    nb_head_emo_draw_face(s_frame, s_current_face,
+                          command->gaze_x_milli, command->gaze_y_milli,
+                          command->overlay_flags, color);
     s_frame.pushSprite(0, 0);
     s_display.endWrite();
     ESP_LOGD(TAG, "frame desenhado generation=%lu",
              (unsigned long)command->generation);
+    xSemaphoreGive(s_display_mutex);
+    return ESP_OK;
+}
+
+esp_err_t nb_head_display_hal_apply_blend(const nb_display_command_t *target,
+                                          float face_t)
+{
+    if (!s_ready) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!nb_display_command_is_valid(target, sizeof(*target))) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (target->opcode != NB_DISPLAY_OP_SET_SCENE) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (xSemaphoreTake(s_display_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    const float t = std::clamp(face_t, 0.0f, 1.0f);
+    const nb_head_emo_face_t &target_face =
+        nb_head_emo_get_face(target->expression);
+    nb_head_emo_face_t blended;
+    nb_head_emo_face_lerp(s_current_face, target_face, t, blended);
+
+    const uint8_t level = target->brightness;
+    const uint32_t color = ((uint32_t)level << 16) |
+                           ((uint32_t)level << 8) | level;
+    s_display.startWrite();
+    s_frame.fillScreen(TFT_BLACK);
+    nb_head_emo_draw_face(s_frame, blended,
+                          target->gaze_x_milli, target->gaze_y_milli,
+                          target->overlay_flags, color);
+    s_frame.pushSprite(0, 0);
+    s_display.endWrite();
+
+    if (t >= 1.0f) {
+        /* Finaliza no valor exato da tabela -- evita drift de float
+         * acumulado entre transicoes sucessivas. */
+        s_current_face = target_face;
+    }
     xSemaphoreGive(s_display_mutex);
     return ESP_OK;
 }

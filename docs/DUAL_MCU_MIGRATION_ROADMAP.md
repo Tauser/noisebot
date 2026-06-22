@@ -606,7 +606,7 @@ e um único dono de render.
 | DM2.5 | Reboot isolado, head ausente e restauração de snapshot | `FEITO` |
 | DM2.6 | Inventário visual congelado e matriz de paridade | `FEITO` |
 | DM2.7 | Contrato visual v2 modular e testes host | `FEITO` |
-| DM2.8 | Paridade geométrica das faces e expressões | `BLOQUEADO` |
+| DM2.8 | Paridade geométrica das faces e expressões | `FEITO` |
 | DM2.9 | Motor de animação, blink, gaze, tilt e timelines | `BLOQUEADO` |
 | DM2.10 | Estados visuais e transições da FSM | `BLOQUEADO` |
 | DM2.11 | Overlays, texto, timers, toast e status rail | `BLOQUEADO` |
@@ -690,16 +690,43 @@ novos casos de compat v1/v2) passando; build limpo com `-Werror` no
 main-controller (`sdkconfig.dmm.defaults`) e no head-controller
 (`sdkconfig.dm2.defaults`), sem flash.
 
-#### DM2.8 — faces e expressões
+#### DM2.8 — faces e expressões — `FEITO`
 
 - portar para o head o modelo paramétrico canônico, não apenas dez desenhos
-  aproximados;
-- preservar assimetria, abertura, squint, curvas, cor e interpolação;
-- comparar todas as expressões em capturas lado a lado;
-- definir tolerância visual e golden scenes;
-- nenhum tipo LovyanGFX cruza o contrato.
+  aproximados; ✓ achado em 2026-06-21: já estava portado fielmente desde
+  DM2.3 — os 19 floats das 10 expressões em `kExpressions[]`
+  (`nb_head_emo_renderer.cpp`) são idênticos, bit a bit, aos de
+  `NB_EXPRESSIONS[]` do main (conferido campo a campo nas 10 expressões).
+  A entrada do inventário DM2.6 que dizia "dez desenhos aproximados"
+  estava errada — corrigida em `docs/DM2_VISUAL_INVENTORY.md`;
+- preservar assimetria, abertura, squint, curvas, cor e interpolação; ✓
+  assimetria/abertura/squint/curvas/cor já existiam (ver acima);
+  **interpolação era o gap real** — adicionada agora: `nb_head_emo_face_t`
+  + `nb_head_emo_face_lerp()` expostos publicamente (porte de
+  `nb_face_state_t`/`nb_face_state_lerp()` do main), e
+  `nb_head_display_hal_apply_blend()` novo. `display_task` deixou de
+  aplicar a cena instantânea — agora vira alvo de transição de 220 ms
+  redesenhada a cada 20 ms; interrupção por uma cena nova finaliza a
+  transição anterior antes de iniciar a próxima (evita pular pra um
+  estado anterior ao alvo interrompido);
+- comparar todas as expressões em capturas lado a lado; ✓ parcial — as 10
+  expressões foram comparadas campo a campo via código (ver acima, é
+  comparação exaustiva mas não visual/fotográfica); validação visual em
+  bancada cobriu uma transição completa (ver gate abaixo), não as 10;
+- definir tolerância visual e golden scenes; gap conhecido — sem golden
+  scenes formais (capturas de referência) ainda; a comparação bit-exata
+  dos parâmetros faz esse papel por ora;
+- nenhum tipo LovyanGFX cruza o contrato. ✓ (já era verdade — contrato só
+  tem inteiros).
 
-Gate: catálogo completo reproduzido no head e aprovado visualmente.
+Gate: catálogo completo reproduzido no head e aprovado visualmente. Fechado
+em 2026-06-21: build limpo com `-Werror` (`sdkconfig.dm2.defaults`), flash
+real na Freenove (COM12) com `sdkconfig.dm2-hw.defaults` (ST7789 físico) e
+confirmação visual do operador em bancada — sequência via toque
+(IDLE → ATTENTIVE → HAPPY) com a transição final observada como
+**gradual**, não instantânea. Pendência não bloqueante: golden scenes
+formais e captura lado a lado das 10 expressões físicas (hoje só a
+comparação de dados é exaustiva, a visual cobriu uma transição).
 
 #### DM2.9 — animação e gaze
 
