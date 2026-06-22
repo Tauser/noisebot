@@ -1191,12 +1191,20 @@ extern "C" void ui_overlay_status_icon_set(nb_ui_status_icon_t icon, bool enable
 {
     if ((int)icon < 0 || icon >= NB_UI_STATUS_ICON_COUNT) return;
     const uint32_t bit = 1UL << (uint32_t)icon;
+    const uint32_t previous = s_status_icon_flags;
     if (enabled) {
         s_status_icon_flags |= bit;
     } else {
         s_status_icon_flags &= ~bit;
     }
     render_service_force_full_refresh();
+    if (previous != s_status_icon_flags) {
+        /* DM2.11 -- bitmask do wire (nb_display_status_icons_v2_t) usa os
+         * mesmos bits ordinais de nb_ui_status_icon_t -- sem tradução.
+         * Ponte neutra (visual_state_facade) evita dependência circular
+         * de componente; sem sink registrado (perfil sem link), é no-op. */
+        visual_state_facade_set_status_icons(s_status_icon_flags);
+    }
 }
 
 extern "C" void ui_overlay_listening_set(bool enabled)

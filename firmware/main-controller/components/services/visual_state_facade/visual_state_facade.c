@@ -19,6 +19,7 @@ static nb_display_command_t s_scene;
 static uint32_t s_next_generation;
 static bool s_dirty;
 static bool s_initialized;
+static nb_visual_status_icons_sink_fn s_status_icons_sink;
 
 static int16_t gaze_to_milli(float value)
 {
@@ -173,4 +174,17 @@ void visual_state_facade_force_publish(void)
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     s_dirty = true;
     xSemaphoreGive(s_mutex);
+}
+
+void visual_state_facade_set_status_icons_sink(
+    nb_visual_status_icons_sink_fn sink)
+{
+    s_status_icons_sink = sink;
+}
+
+void visual_state_facade_set_status_icons(uint32_t icon_bits)
+{
+    if (s_status_icons_sink != NULL) {
+        (void)s_status_icons_sink(icon_bits);
+    }
 }

@@ -484,19 +484,10 @@ static bool mic_blocked_status_should_show(nb_robot_state_t state)
 }
 
 /*
- * DM2.11 (fatia minima) -- espelha o icone de status MIC_BLOCKED pro head
- * via contrato v2. Falha silenciosa (ESP_ERR_NOT_SUPPORTED/INVALID_STATE)
- * quando o link nao esta pronto ou o head ainda nao anunciou
- * NB_LINK_CAP_DISPLAY_V2 -- nao e erro, so significa que ainda nao ha
- * head pra mostrar o icone.
+ * DM2.11 -- ui_overlay_status_icon_set() ja propaga pro head sozinho
+ * (via visual_state_facade_set_status_icons(), registrada em
+ * phase_services()); nao precisa de push manual aqui.
  */
-static void push_mic_blocked_status_icon_v2(bool blocked)
-{
-    const uint32_t bits =
-        blocked ? NB_DISPLAY_STATUS_ICON_MIC_BLOCKED : 0U;
-    (void)nb_main_link_service_set_status_icons_v2(bits);
-}
-
 static void update_silent_status_icon(nb_robot_state_t new_state,
                                       nb_robot_state_t old_state)
 {
@@ -506,10 +497,8 @@ static void update_silent_status_icon(nb_robot_state_t new_state,
     if (now_silent) {
         ui_overlay_listening_set(false);
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, true);
-        push_mic_blocked_status_icon_v2(true);
     } else if (was_silent) {
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, false);
-        push_mic_blocked_status_icon_v2(false);
     }
 }
 
@@ -1218,6 +1207,12 @@ static esp_err_t phase_services(void)
             NB_LOGW(TAG, "visual_state_facade_init falhou: %s",
                     esp_err_to_name(facade_err));
         }
+        /* DM2.11 -- mesma assinatura de nb_main_link_service_set_status_
+         * icons_v2(), registra direto sem wrapper. A partir daqui, todo
+         * ui_overlay_status_icon_set() (qualquer call site, presente ou
+         * futuro) propaga pro head automaticamente. */
+        visual_state_facade_set_status_icons_sink(
+            nb_main_link_service_set_status_icons_v2);
     }
 
     if (s_status.safe_mode) {

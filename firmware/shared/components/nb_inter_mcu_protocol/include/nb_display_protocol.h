@@ -149,14 +149,17 @@ _Static_assert(sizeof(nb_display_result_v2_t) == 12U,
 
 /*
  * Ícones de status persistentes (DM2.11 -- fatia mínima da Etapa 16.2).
- * Bitmask genérico (até 32 ícones); bit 0 é o único usado por ora
- * (MIC_BLOCKED, espelha NB_UI_STATUS_ICON_MIC_BLOCKED do main). Bits
- * futuros devem seguir a mesma ordem ordinal de nb_ui_status_icon_t do
- * main para não exigir renegociação de protocolo. Snapshot idempotente
- * (sem generation própria -- estado binário, overwrite é seguro).
+ * Bitmask genérico (até 32 ícones) -- bit N = NB_UI_STATUS_ICON_* (main,
+ * ui_overlay_service.h) com ordinal N. O main envia `s_status_icon_flags`
+ * direto (sem tradução); por isso os bits aqui têm que casar exatamente
+ * com a ordem do enum do main, não com a ordem de chegada no head.
+ * Snapshot idempotente (sem generation própria -- estado binário,
+ * overwrite é seguro).
  */
 #define NB_DISPLAY_STATUS_ICONS_V2_VERSION 2U
-#define NB_DISPLAY_STATUS_ICON_MIC_BLOCKED (1UL << 0)
+/* NB_UI_STATUS_ICON_MIC_BLOCKED = 1 no enum do main (MIC_ACTIVE = 0 vem
+ * antes) -- bit 1, não bit 0. */
+#define NB_DISPLAY_STATUS_ICON_MIC_BLOCKED (1UL << 1)
 
 typedef struct __attribute__((packed)) {
     uint8_t version;

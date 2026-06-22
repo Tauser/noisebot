@@ -837,46 +837,67 @@ debug ou espera de horas); `MAINTENANCE`, `SAFE_MODE`, `ERROR` e
 
 - migrar os oito overlays existentes sem regressão; ✓ já confirmado em
   DM2.4/DM2.7 (4 visualmente, 4 só por código até esta sessão);
-- migrar status rail e status rápido; ✓ parcial — fatia mínima provada em
-  2026-06-22: 1 de 30 ícones (`MIC_BLOCKED`) atravessando o link de
-  verdade. Antes desta sessão, `ui_overlay_status_icon_set()` só
+- migrar status rail e status rápido; ✓ porte fiel completo do rail em
+  2026-06-22. Antes desta sessão, `ui_overlay_status_icon_set()` só
   desenhava local (`s_status_icon_flags`, preso ao render legado do
-  main) — nenhum ícone de status nunca tinha chegado ao head. Adicionado
-  `nb_display_status_icons_v2_t` (bitmask genérico, até 32 ícones,
+  main) — nenhum ícone de status nunca tinha chegado ao head. Protocolo:
+  `nb_display_status_icons_v2_t` (bitmask genérico de até 32 ícones,
   reaproveitando `NB_LINK_CAP_DISPLAY_V2`) + `NB_LINK_MSG_DISPLAY_
-  STATUS_ICONS_V2`; máscara 1-bit 28x28 copiada de
-  `nb_ui_overlay_icons.h` (gerador da Etapa 16.2) pro head
-  (`nb_head_status_icons.cpp`), desenhada no canto superior esquerdo
-  (slot livre de olhos/boca/overlays existentes);
-- suportar ícones persistentes, toast e texto limitado; não feito — só o
-  ícone persistente mínimo; toast/texto (fontes bitmap customizadas)
-  ficam pendentes;
-- definir slots, z-order, overflow, severidade e expiração; não feito —
-  só um slot fixo hardcoded; sistema completo de slots/prioridade do
-  `ui_overlay_service` não foi portado;
+  STATUS_ICONS_V2`. **Primeira tentativa cometeu o erro de inventar
+  layout/cores/posição próprios** em vez de migrar o que já existia —
+  corrigido a pedido do usuário: a versão final porta literalmente
+  `status_icon_asset()`, `status_icon_color()`, `draw_status_rail()` e
+  `status_rail_rect()` de `ui_overlay_service.cpp` (main) pro head
+  (`nb_head_status_icons.cpp`), bit a bit — mesma lista de prioridade
+  (29 ícones, `TEMP_ALERT` primeiro), mesmo canto superior direito,
+  mesmas cores por categoria (laranja/vermelho/verde/glow pulsante),
+  mesmo cap de 4 ícones simultâneos, mesma escala 28x28→24x24. Os 30
+  assets (`nb_ui_overlay_icons.h`, gerados pela Etapa 16.2) foram
+  copiados verbatim pro head como `nb_head_status_icon_assets.h`. O
+  bitmask em si usa exatamente os mesmos bits ordinais de
+  `nb_ui_status_icon_t` (main envia `s_status_icon_flags` direto, sem
+  tradução) — `ui_overlay_status_icon_set()` propaga pro head sozinho
+  via uma ponte neutra (`visual_state_facade_set_status_icons()`,
+  registrada uma vez em `phase_services()`), então qualquer call site
+  futuro já funciona sem código novo. Validado com os dois cenários
+  reais que já tinham lógica de negócio: `MIC_BLOCKED` (toggle de
+  `silence_mode_enabled`) e `BRIDGE_OFFLINE` (desconectar o bridge) —
+  os dois apareceram/desapareceram corretamente, na posição e cor
+  certas. Os 27 ícones restantes (bateria, wifi-sinal, câmera,
+  identificação de usuário etc.) não têm fonte de dados ativa ainda no
+  perfil Waveshare (sem bateria/IMU/câmera físicos) — o mecanismo já
+  está pronto pra eles no momento em que tiverem dados reais;
+- suportar ícones persistentes, toast e texto limitado; parcial — ícones
+  persistentes ✓ (rail completo); toast/texto (fontes bitmap
+  customizadas) ficam pendentes;
+- definir slots, z-order, overflow, severidade e expiração; ✓ slots/
+  prioridade/overflow (cap de 4) portados fielmente; severidade só
+  implícita via cor (sem sistema formal de níveis); expiração (toast com
+  timeout) não existe ainda — rail é só estado persistente;
 - nenhum serviço desenha diretamente; ✓ mantido — `on_message` do head só
   marca dirty (`nb_head_display_service_set_status_icons()`), quem
   desenha é exclusivamente a `display_task` no próprio tick (mesmo
   cuidado que evitou esfomear o watchdog em DM2.9);
-- texto e ícones não cobrem olhos, boca ou preview crítico. ✓ slot
-  (4,4)-(32,32) fica fora da área dos olhos (~50-270px) e dos overlays
-  existentes (topo-centro/topo-direita).
+- texto e ícones não cobrem olhos, boca ou preview crítico. ✓ canto
+  superior direito, fora da área dos olhos e dos 8 overlays existentes.
 
 **Bug real encontrado e corrigido**: `apply_silence_mode()` em
-`web_service.c` chama `ui_overlay_status_icon_set(MIC_BLOCKED,...)`
-direto — caminho completamente separado do `on_state_changed()` em
-`boot_manager.c` (que cobre as transições de FSM pra `MEDITATION`/
-`SILENT_COMPANY`). O gancho pro link só tinha sido colocado no segundo
-caminho; o toggle via API não disparava nada no head até eu adicionar o
-push também em `web_service.c`. Validado: ativar/desativar
-`silence_mode_enabled` via `POST /api/config` faz o ícone aparecer e
-desaparecer corretamente.
+`web_service.c` chamava `ui_overlay_status_icon_set(MIC_BLOCKED,...)`
+direto, caminho separado do `on_state_changed()` em `boot_manager.c`
+(MEDITATION/SILENT_COMPANY) — corrigido centralizando o push dentro do
+próprio `ui_overlay_status_icon_set()`, eliminando a classe de bug
+inteira (qualquer call site, presente ou futuro, propaga automaticamente).
+
+**Segundo bug real encontrado e corrigido**: o bit usado pra
+`MIC_BLOCKED` no protocolo (`NB_DISPLAY_STATUS_ICON_MIC_BLOCKED`) estava
+no bit 0, mas o ordinal real de `NB_UI_STATUS_ICON_MIC_BLOCKED` no main é
+1 (`MIC_ACTIVE=0` vem antes) — corrigido antes de gerar regressão, já que
+o main agora envia `s_status_icon_flags` direto sem tradução.
 
 Gate: todos os critérios da Etapa 16.2 executados no renderer do head.
-**Não fechado** — 1/30 ícones, sem toast/texto/severidade/slots
-dinâmicos. Mecanismo de transporte (bitmask genérico, capability
-reaproveitada, draw sem bloquear o link) está pronto para escalar pros
-29 ícones restantes sem nova negociação de protocolo.
+**Não fechado** — faltam toast, texto, severidade formal e expiração; os
+27 ícones sem fonte de dados real não foram exercitados (mecanismo
+pronto, sem o que mostrar ainda).
 
 #### DM2.12 — assets e memória — `EM ANDAMENTO`
 
