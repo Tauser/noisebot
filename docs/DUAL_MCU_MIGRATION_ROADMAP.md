@@ -607,7 +607,7 @@ e um único dono de render.
 | DM2.6 | Inventário visual congelado e matriz de paridade | `FEITO` |
 | DM2.7 | Contrato visual v2 modular e testes host | `FEITO` |
 | DM2.8 | Paridade geométrica das faces e expressões | `FEITO` |
-| DM2.9 | Motor de animação, blink, gaze, tilt e timelines | `BLOQUEADO` |
+| DM2.9 | Motor de animação, blink, gaze, tilt e timelines | `EM ANDAMENTO` |
 | DM2.10 | Estados visuais e transições da FSM | `BLOQUEADO` |
 | DM2.11 | Overlays, texto, timers, toast e status rail | `BLOQUEADO` |
 | DM2.12 | Assets, fontes, ícones e política de memória | `BLOQUEADO` |
@@ -728,18 +728,48 @@ confirmação visual do operador em bancada — sequência via toque
 formais e captura lado a lado das 10 expressões físicas (hoje só a
 comparação de dados é exaustiva, a visual cobriu uma transição).
 
-#### DM2.9 — animação e gaze
+#### DM2.9 — animação e gaze — `EM ANDAMENTO`
 
-- blink simples, duplo e assimétrico;
-- animação preserva expressão base e overlays;
-- gaze target/anchor/glance com timing reproduzível;
-- micro-drift, saccades e tilt sustentado;
-- motifs compostos de `IDLE_REFERENCE.md`;
-- prioridade e interrupção de timelines;
-- renderer continua responsivo durante tráfego do link.
+- blink simples, duplo e assimétrico; ✓ feito em 2026-06-21 —
+  `nb_head_blink.hpp/.cpp` (novo componente em `nb_head_display_hal`),
+  porte fiel das constantes de `expression_service.cpp` (main):
+  `BLINK_MEAN_MS`/`BLINK_MIN_MS` (Poisson), close/hold/open (55/25/80ms),
+  assimetria (~20% de chance, olho atrasado 20-100ms), duplo blink (~12%
+  de chance, 400-600ms depois). Decisão de arquitetura: blink fica
+  **inteiramente local ao head**, não atravessa o link — mesma divisão
+  "main decide o quê (expressão), head decide como renderiza" já usada
+  pela interpolação de DM2.8; não precisa sincronismo exato com o blink
+  legado do main (fallback sem display físico no alvo dual-MCU);
+- animação preserva expressão base e overlays; ✓ blink é multiplicativo
+  sobre `open_l/open_r` da face já resolvida (interpolada + expressão) —
+  preserva corretamente expressões com abertura != 1 (ex.: SLEEPY:
+  open=0.14 também fecha pra ~0, não pra um valor absoluto fixo);
+- gaze target/anchor/glance com timing reproduzível; **não feito** —
+  gaze continua sem interpolação própria (só a forma da face interpola,
+  DM2.8); mecanismo de transiente do DM2.7 (`NB_DISPLAY_TRANSIENT_KIND_
+  GLANCE`) está pronto no protocolo mas sem uso real ainda;
+- micro-drift, saccades e tilt sustentado; **não feito**;
+- motifs compostos de `IDLE_REFERENCE.md`; **não feito** — blink isolado
+  só cobre uma fração do catálogo de `IDLE_REFERENCE.md` §3;
+- prioridade e interrupção de timelines; **não feito** — não existe
+  ainda o conceito de timeline composta no head, só blink autônomo +
+  scene/transição;
+- renderer continua responsivo durante tráfego do link. ✓ achado crítico
+  de bancada 2026-06-21: a primeira versão redesenhava a cada 20ms pra
+  sempre (necessário pro blink), e isso **desestabilizou o enlace**
+  (`READY` ↔ `DEGRADED` oscilando, provavelmente por contenção de
+  SPI/CPU). Corrigido pulando o redesenho/push SPI quando nada está
+  animando (transição concluída e nenhum olho em blink) — só gera
+  tráfego SPI nas janelas reais de animação, não continuamente. Link
+  ficou estável (`state=READY` sem oscilação) com blink funcionando,
+  confirmado visualmente pelo operador.
 
 Gate: sessões IDLE/ATTENTIVE de 60 s atendem os critérios de
-`docs/IDLE_REFERENCE.md`, sem drift de estado após reconexão.
+`docs/IDLE_REFERENCE.md`, sem drift de estado após reconexão. **Gate não
+fechado** — falta gaze dinâmico, motifs compostos, timelines com
+prioridade/interrupção e o soak formal de 60s. Blink isolado validado
+visualmente (piscou naturalmente em bancada, sem desestabilizar o link),
+mas isso é só uma fração do escopo do ID.
 
 #### DM2.10 — estados visuais
 

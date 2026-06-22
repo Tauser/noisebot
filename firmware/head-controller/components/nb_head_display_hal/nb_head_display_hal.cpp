@@ -8,6 +8,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "esp_timer.h"
+#include "nb_head_blink.hpp"
 #include "nb_head_emo_renderer.hpp"
 #include "nb_head_lgfx_config.hpp"
 
@@ -173,15 +175,29 @@ esp_err_t nb_head_display_hal_apply_blend(const nb_display_command_t *target,
     if (target->opcode != NB_DISPLAY_OP_SET_SCENE) {
         return ESP_ERR_INVALID_ARG;
     }
+    const float t = std::clamp(face_t, 0.0f, 1.0f);
+
+    /* DM2.9 -- blink autonomo do head. Calculado fora do mutex/SPI: se
+     * nada esta animando (transicao concluida e nenhum olho em blink),
+     * pula o redesenho/push SPI -- evita trafego SPI continuo a 50Hz
+     * pra sempre, que desestabilizou o enlace dual-MCU em bancada
+     * (READY <-> DEGRADED) quando testado pela primeira vez. */
+    const nb_head_blink_mult_t blink =
+        nb_head_blink_tick(esp_timer_get_time());
+    if (t >= 1.0f && !blink.active) {
+        return ESP_OK;
+    }
+
     if (xSemaphoreTake(s_display_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
     }
 
-    const float t = std::clamp(face_t, 0.0f, 1.0f);
     const nb_head_emo_face_t &target_face =
         nb_head_emo_get_face(target->expression);
     nb_head_emo_face_t blended;
     nb_head_emo_face_lerp(s_current_face, target_face, t, blended);
+    blended.open_l *= blink.open_mult_l;
+    blended.open_r *= blink.open_mult_r;
 
     const uint8_t level = target->brightness;
     const uint32_t color = ((uint32_t)level << 16) |

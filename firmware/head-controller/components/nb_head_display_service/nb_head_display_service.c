@@ -96,7 +96,13 @@ static void display_task(void *arg)
         }
 
         if (has_target && s_status.hardware_ready) {
-            transition_elapsed_ms += NB_HEAD_DISPLAY_TICK_MS;
+            /* Continua redesenhando indefinidamente apos a transicao
+             * terminar (t satura em 1.0) -- o blink autonomo do head
+             * (DM2.9) precisa de redesenho continuo, nao so durante a
+             * troca de expressao. */
+            if (transition_elapsed_ms < (uint32_t)NB_HEAD_DISPLAY_TRANSITION_MS) {
+                transition_elapsed_ms += NB_HEAD_DISPLAY_TICK_MS;
+            }
             const float t = (float)transition_elapsed_ms /
                             NB_HEAD_DISPLAY_TRANSITION_MS;
             const esp_err_t hw_err =
@@ -107,9 +113,6 @@ static void display_task(void *arg)
                 taskEXIT_CRITICAL(&s_status_lock);
                 ESP_LOGE(TAG, "scene blend apply failed: %s",
                          esp_err_to_name(hw_err));
-            }
-            if (t >= 1.0f) {
-                has_target = false;
             }
         }
 
