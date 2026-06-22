@@ -26,6 +26,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_random.h"
 
@@ -288,6 +289,36 @@ esp_err_t gaze_service_init(void)
 
     s_initialized = true;
     ESP_LOGI(TAG, "gaze_service inicializado (render layer z=5)");
+    return ESP_OK;
+}
+
+#define NB_GAZE_TASK_STACK    2560U
+#define NB_GAZE_TASK_PRIORITY 4U
+
+static void gaze_standalone_task(void *arg)
+{
+    (void)arg;
+    TickType_t last_wake = xTaskGetTickCount();
+    for (;;) {
+        gaze_render_cb(NULL, NULL);
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS((uint32_t)FRAME_MS));
+    }
+}
+
+esp_err_t gaze_service_init_standalone(void)
+{
+    if (s_initialized) return ESP_ERR_INVALID_STATE;
+
+    const BaseType_t created = xTaskCreate(
+        gaze_standalone_task, "nb_gaze_task", NB_GAZE_TASK_STACK, NULL,
+        NB_GAZE_TASK_PRIORITY, NULL);
+    if (created != pdPASS) {
+        ESP_LOGE(TAG, "xTaskCreate nb_gaze_task falhou");
+        return ESP_ERR_NO_MEM;
+    }
+
+    s_initialized = true;
+    ESP_LOGI(TAG, "gaze_service inicializado (task standalone ~30fps, sem render_service)");
     return ESP_OK;
 }
 

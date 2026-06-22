@@ -1,6 +1,7 @@
 #include "visual_state_facade.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
@@ -102,6 +103,18 @@ void visual_state_facade_set_expression(uint8_t expression)
     xSemaphoreGive(s_mutex);
 }
 
+/*
+ * DM2.9 -- deadband mínimo pra marcar dirty. gaze_service tickando a
+ * ~30fps produz delta de drift a cada frame (DRIFT_STEP=0.0025 normalizado,
+ * ~2.5 milli-units); sem deadband isso mantém dirty=true continuamente e
+ * o facade publica a 8Hz pra sempre -- gerou tráfego suficiente no canal
+ * CONTROL pra desestabilizar o enlace em bancada (READY <-> DEGRADED,
+ * mesma classe de achado do redesenho contínuo no head, DM2.9). O drift
+ * é sutil (amplitude <= 0.035 normalizado, ver IDLE_REFERENCE.md §3.3) --
+ * agregar variações pequenas antes de publicar não perde percepção visual.
+ */
+#define NB_VISUAL_GAZE_DEADBAND_MILLI 10
+
 void visual_state_facade_set_gaze(float x, float y)
 {
     if (!s_initialized) {
@@ -110,8 +123,10 @@ void visual_state_facade_set_gaze(float x, float y)
     const int16_t x_milli = gaze_to_milli(x);
     const int16_t y_milli = gaze_to_milli(y);
     xSemaphoreTake(s_mutex, portMAX_DELAY);
-    if (s_scene.gaze_x_milli != x_milli ||
-        s_scene.gaze_y_milli != y_milli) {
+    const int16_t dx = (int16_t)(x_milli - s_scene.gaze_x_milli);
+    const int16_t dy = (int16_t)(y_milli - s_scene.gaze_y_milli);
+    if (abs(dx) >= NB_VISUAL_GAZE_DEADBAND_MILLI ||
+        abs(dy) >= NB_VISUAL_GAZE_DEADBAND_MILLI) {
         s_scene.gaze_x_milli = x_milli;
         s_scene.gaze_y_milli = y_milli;
         s_dirty = true;

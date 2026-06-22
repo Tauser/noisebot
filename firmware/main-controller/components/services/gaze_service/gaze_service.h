@@ -36,6 +36,21 @@ extern "C" {
 esp_err_t gaze_service_init(void);
 
 /**
+ * @brief Inicializa o gaze service sem depender de render_service (DM2.9).
+ *
+ * Mesma lógica de drift/saccade de gaze_service_init(), mas tickada por uma
+ * task própria a ~30fps em vez de um render layer -- usada no perfil
+ * Waveshare, onde não há render_service local (display físico vive no
+ * head, via visual_state_facade). A função de tick não desenha nada
+ * (sempre foi `(void)canvas` mesmo na variante render layer); só calcula
+ * e publica a posição via expression_service_set_gaze() -> facade -> link.
+ *
+ * @return ESP_OK, ESP_ERR_INVALID_STATE se já inicializado, ou
+ *         ESP_ERR_NO_MEM se a task não pôde ser criada.
+ */
+esp_err_t gaze_service_init_standalone(void);
+
+/**
  * @brief Define o alvo do próximo saccade (persistente).
  *
  * O olhar permanece no alvo até outro comando. Thread-safe.

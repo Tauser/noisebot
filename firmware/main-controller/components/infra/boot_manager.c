@@ -1337,11 +1337,20 @@ static esp_err_t phase_services(void)
         NB_ASSERT(rc == pdPASS, TAG, "xTaskCreate behav_task falhou");
     }
 
-    /* gaze_service (Etapa 5.2): render layer z=5, saccade + micro-drift.
-     * Registra layer no render_service local — pulado no perfil Waveshare,
-     * onde render_service_init() não roda (display físico vive no head). */
+    /* gaze_service (Etapa 5.2 / DM2.9): saccade + micro-drift.
+     * Perfil legado: registra render layer z=5 no render_service local.
+     * Perfil Waveshare: gaze_service_init_standalone() existe (task própria,
+     * sem depender de render_service) mas fica DESLIGADA por ora -- achado
+     * de bancada 2026-06-22: o tráfego de gaze drift no canal CONTROL,
+     * mesmo com deadband de 10 milli-units em
+     * visual_state_facade_set_gaze(), continuou desestabilizando o enlace
+     * dual-MCU (READY <-> DEGRADED a cada ~7-15s). Não é só sensibilidade
+     * do gaze -- parece sintoma de um problema mais fundamental do link
+     * sob tráfego CONTROL sustentado, que precisa de investigação própria
+     * antes de habilitar isso em produção. Ver
+     * docs/DUAL_MCU_MIGRATION_ROADMAP.md (DM2.9). */
 #if defined(CONFIG_NB_BOARD_PROFILE_WAVESHARE) && CONFIG_NB_BOARD_PROFILE_WAVESHARE
-    NB_LOGI(TAG, "perfil Waveshare ativo — gaze_service (render layer local) pulado");
+    NB_LOGI(TAG, "perfil Waveshare ativo — gaze_service standalone implementado, desligado (ver achado de instabilidade 2026-06-22)");
 #else
     err = gaze_service_init();
     NB_ASSERT(err == ESP_OK, TAG, "gaze_service_init falhou: %s",
