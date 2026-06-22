@@ -147,6 +147,29 @@ typedef struct __attribute__((packed)) {
 _Static_assert(sizeof(nb_display_result_v2_t) == 12U,
                "display result v2 wire size changed");
 
+/*
+ * Ícones de status persistentes (DM2.11 -- fatia mínima da Etapa 16.2).
+ * Bitmask genérico (até 32 ícones); bit 0 é o único usado por ora
+ * (MIC_BLOCKED, espelha NB_UI_STATUS_ICON_MIC_BLOCKED do main). Bits
+ * futuros devem seguir a mesma ordem ordinal de nb_ui_status_icon_t do
+ * main para não exigir renegociação de protocolo. Snapshot idempotente
+ * (sem generation própria -- estado binário, overwrite é seguro).
+ */
+#define NB_DISPLAY_STATUS_ICONS_V2_VERSION 2U
+#define NB_DISPLAY_STATUS_ICON_MIC_BLOCKED (1UL << 0)
+
+typedef struct __attribute__((packed)) {
+    uint8_t version;
+    uint8_t reserved[3];
+    uint32_t icon_bits;
+} nb_display_status_icons_v2_t;
+
+_Static_assert(sizeof(nb_display_status_icons_v2_t) == 8U,
+               "display status icons v2 wire size changed");
+
+bool nb_display_status_icons_v2_is_valid(
+    const nb_display_status_icons_v2_t *icons, size_t length);
+
 bool nb_display_scene_v2_is_valid(const nb_display_scene_v2_t *scene,
                                   size_t length);
 bool nb_display_transient_v2_is_valid(const nb_display_transient_v2_t *cmd,

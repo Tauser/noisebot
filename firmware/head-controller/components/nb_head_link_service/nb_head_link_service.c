@@ -161,6 +161,19 @@ static void on_display_transient_v2(const void *payload, uint16_t length)
     send_visual_result_v2(NB_DISPLAY_RESULT_OK, cmd->transient_id, 0U);
 }
 
+static void on_display_status_icons_v2(const void *payload, uint16_t length)
+{
+    const nb_display_status_icons_v2_t *icons =
+        (const nb_display_status_icons_v2_t *)payload;
+    if (!nb_display_status_icons_v2_is_valid(icons, length)) {
+        ESP_LOGW(TAG, "status icons v2 invalid bytes=%u", (unsigned)length);
+        return;
+    }
+    /* So marca dirty -- nb_head_display_service desenha no proprio tick,
+     * nunca aqui (mesmo cuidado do DM2.9 contra esfomear o watchdog). */
+    (void)nb_head_display_service_set_status_icons(icons->icon_bits);
+}
+
 static void on_message(void *ctx,
                        nb_link_channel_t channel,
                        uint16_t message_type,
@@ -185,6 +198,11 @@ static void on_message(void *ctx,
     if (channel == NB_LINK_CHANNEL_CONTROL &&
         message_type == NB_LINK_MSG_DISPLAY_TRANSIENT_V2) {
         on_display_transient_v2(payload, length);
+        return;
+    }
+    if (channel == NB_LINK_CHANNEL_CONTROL &&
+        message_type == NB_LINK_MSG_DISPLAY_STATUS_ICONS_V2) {
+        on_display_status_icons_v2(payload, length);
         return;
     }
     if (channel == NB_LINK_CHANNEL_CONTROL &&

@@ -39,6 +39,7 @@
 #include "long_term_memory.h"
 #include "nb_config_keys.h"
 #include "bridge_service.h"
+#include "nb_main_link_service.h"
 #include "presence_semantic_service.h"
 #include "behavior_engine.h"
 #include "wake_service.h"
@@ -939,6 +940,8 @@ static esp_err_t apply_silence_mode(bool enabled)
             (void)audio_service_end_listen_session(NB_LISTEN_END_CANCELLED);
         }
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, true);
+        (void)nb_main_link_service_set_status_icons_v2(
+            NB_DISPLAY_STATUS_ICON_MIC_BLOCKED);
         wake_service_suspend();
         NB_LOGI(TAG, "modo silencio ativado: wake/listen suspensos");
     } else {
@@ -946,6 +949,8 @@ static esp_err_t apply_silence_mode(bool enabled)
         bool state_blocks_mic = state == NB_STATE_MEDITATION ||
                                 state == NB_STATE_SILENT_COMPANY;
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, state_blocks_mic);
+        (void)nb_main_link_service_set_status_icons_v2(
+            state_blocks_mic ? NB_DISPLAY_STATUS_ICON_MIC_BLOCKED : 0U);
         if (state_machine_get_state() == NB_STATE_IDLE) {
             wake_service_rearm();
         }

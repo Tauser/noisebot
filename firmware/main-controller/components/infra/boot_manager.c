@@ -483,6 +483,20 @@ static bool mic_blocked_status_should_show(nb_robot_state_t state)
     return config_get_silence_mode_enabled() || state_is_intentional_silent(state);
 }
 
+/*
+ * DM2.11 (fatia minima) -- espelha o icone de status MIC_BLOCKED pro head
+ * via contrato v2. Falha silenciosa (ESP_ERR_NOT_SUPPORTED/INVALID_STATE)
+ * quando o link nao esta pronto ou o head ainda nao anunciou
+ * NB_LINK_CAP_DISPLAY_V2 -- nao e erro, so significa que ainda nao ha
+ * head pra mostrar o icone.
+ */
+static void push_mic_blocked_status_icon_v2(bool blocked)
+{
+    const uint32_t bits =
+        blocked ? NB_DISPLAY_STATUS_ICON_MIC_BLOCKED : 0U;
+    (void)nb_main_link_service_set_status_icons_v2(bits);
+}
+
 static void update_silent_status_icon(nb_robot_state_t new_state,
                                       nb_robot_state_t old_state)
 {
@@ -492,8 +506,10 @@ static void update_silent_status_icon(nb_robot_state_t new_state,
     if (now_silent) {
         ui_overlay_listening_set(false);
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, true);
+        push_mic_blocked_status_icon_v2(true);
     } else if (was_silent) {
         ui_overlay_status_icon_set(NB_UI_STATUS_ICON_MIC_BLOCKED, false);
+        push_mic_blocked_status_icon_v2(false);
     }
 }
 

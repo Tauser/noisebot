@@ -118,3 +118,19 @@ bool nb_display_transient_v2_is_expired(uint32_t deadline_ms, uint32_t now_ms)
 {
     return (int32_t)(now_ms - deadline_ms) > 0;
 }
+
+bool nb_display_status_icons_v2_is_valid(
+    const nb_display_status_icons_v2_t *icons, size_t length)
+{
+    if (icons == NULL || length != sizeof(*icons)) {
+        return false;
+    }
+    if (icons->version != NB_DISPLAY_STATUS_ICONS_V2_VERSION) {
+        return false;
+    }
+    if (icons->reserved[0] != 0U || icons->reserved[1] != 0U ||
+        icons->reserved[2] != 0U) {
+        return false;
+    }
+    return true;
+}

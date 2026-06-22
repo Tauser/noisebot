@@ -609,7 +609,7 @@ e um único dono de render.
 | DM2.8 | Paridade geométrica das faces e expressões | `FEITO` |
 | DM2.9 | Motor de animação, blink, gaze, tilt e timelines | `EM ANDAMENTO` |
 | DM2.10 | Estados visuais e transições da FSM | `EM ANDAMENTO` |
-| DM2.11 | Overlays, texto, timers, toast e status rail | `BLOQUEADO` |
+| DM2.11 | Overlays, texto, timers, toast e status rail | `EM ANDAMENTO` |
 | DM2.12 | Assets, fontes, ícones e política de memória | `BLOQUEADO` |
 | DM2.13 | Recovery visual, expiração de transientes e fallback | `BLOQUEADO` |
 | DM2.14 | Paridade de produto, latência e soak visual | `BLOQUEADO` |
@@ -833,16 +833,50 @@ Gate: matriz completa de entrada, permanência, saída, reboot e retorno a IDLE.
 debug ou espera de horas); `MAINTENANCE`, `SAFE_MODE`, `ERROR` e
 `SILENT_COMPANY` ficam pendentes por falta de gancho de teste prático.
 
-#### DM2.11 — overlays, texto e status
+#### DM2.11 — overlays, texto e status — `EM ANDAMENTO`
 
-- migrar os oito overlays existentes sem regressão;
-- migrar status rail e status rápido;
-- suportar ícones persistentes, toast e texto limitado;
-- definir slots, z-order, overflow, severidade e expiração;
-- nenhum serviço desenha diretamente;
-- texto e ícones não cobrem olhos, boca ou preview crítico.
+- migrar os oito overlays existentes sem regressão; ✓ já confirmado em
+  DM2.4/DM2.7 (4 visualmente, 4 só por código até esta sessão);
+- migrar status rail e status rápido; ✓ parcial — fatia mínima provada em
+  2026-06-22: 1 de 30 ícones (`MIC_BLOCKED`) atravessando o link de
+  verdade. Antes desta sessão, `ui_overlay_status_icon_set()` só
+  desenhava local (`s_status_icon_flags`, preso ao render legado do
+  main) — nenhum ícone de status nunca tinha chegado ao head. Adicionado
+  `nb_display_status_icons_v2_t` (bitmask genérico, até 32 ícones,
+  reaproveitando `NB_LINK_CAP_DISPLAY_V2`) + `NB_LINK_MSG_DISPLAY_
+  STATUS_ICONS_V2`; máscara 1-bit 28x28 copiada de
+  `nb_ui_overlay_icons.h` (gerador da Etapa 16.2) pro head
+  (`nb_head_status_icons.cpp`), desenhada no canto superior esquerdo
+  (slot livre de olhos/boca/overlays existentes);
+- suportar ícones persistentes, toast e texto limitado; não feito — só o
+  ícone persistente mínimo; toast/texto (fontes bitmap customizadas)
+  ficam pendentes;
+- definir slots, z-order, overflow, severidade e expiração; não feito —
+  só um slot fixo hardcoded; sistema completo de slots/prioridade do
+  `ui_overlay_service` não foi portado;
+- nenhum serviço desenha diretamente; ✓ mantido — `on_message` do head só
+  marca dirty (`nb_head_display_service_set_status_icons()`), quem
+  desenha é exclusivamente a `display_task` no próprio tick (mesmo
+  cuidado que evitou esfomear o watchdog em DM2.9);
+- texto e ícones não cobrem olhos, boca ou preview crítico. ✓ slot
+  (4,4)-(32,32) fica fora da área dos olhos (~50-270px) e dos overlays
+  existentes (topo-centro/topo-direita).
+
+**Bug real encontrado e corrigido**: `apply_silence_mode()` em
+`web_service.c` chama `ui_overlay_status_icon_set(MIC_BLOCKED,...)`
+direto — caminho completamente separado do `on_state_changed()` em
+`boot_manager.c` (que cobre as transições de FSM pra `MEDITATION`/
+`SILENT_COMPANY`). O gancho pro link só tinha sido colocado no segundo
+caminho; o toggle via API não disparava nada no head até eu adicionar o
+push também em `web_service.c`. Validado: ativar/desativar
+`silence_mode_enabled` via `POST /api/config` faz o ícone aparecer e
+desaparecer corretamente.
 
 Gate: todos os critérios da Etapa 16.2 executados no renderer do head.
+**Não fechado** — 1/30 ícones, sem toast/texto/severidade/slots
+dinâmicos. Mecanismo de transporte (bitmask genérico, capability
+reaproveitada, draw sem bloquear o link) está pronto para escalar pros
+29 ícones restantes sem nova negociação de protocolo.
 
 #### DM2.12 — assets e memória
 

@@ -3,6 +3,7 @@ idf_component_register(
         "nb_head_display_hal.cpp"
         "nb_head_emo_renderer.cpp"
         "nb_head_blink.cpp"
+        "nb_head_status_icons.cpp"
     INCLUDE_DIRS "."
     REQUIRES
         esp_common

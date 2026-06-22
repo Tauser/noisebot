@@ -12,6 +12,7 @@
 #include "nb_head_blink.hpp"
 #include "nb_head_emo_renderer.hpp"
 #include "nb_head_lgfx_config.hpp"
+#include "nb_head_status_icons.hpp"
 
 #ifndef CONFIG_NB_HEAD_DISPLAY_HW_ENABLED
 #define CONFIG_NB_HEAD_DISPLAY_HW_ENABLED 0
@@ -165,7 +166,8 @@ esp_err_t nb_head_display_hal_apply(const nb_display_command_t *command)
 
 esp_err_t nb_head_display_hal_apply_blend(const nb_display_command_t *target,
                                           float face_t,
-                                          bool force_redraw)
+                                          bool force_redraw,
+                                          uint32_t icon_bits)
 {
     if (!s_ready) {
         return ESP_ERR_INVALID_STATE;
@@ -208,6 +210,7 @@ esp_err_t nb_head_display_hal_apply_blend(const nb_display_command_t *target,
     nb_head_emo_draw_face(s_frame, blended,
                           target->gaze_x_milli, target->gaze_y_milli,
                           target->overlay_flags, color);
+    nb_head_status_icons_draw(s_frame, icon_bits);
     s_frame.pushSprite(0, 0);
     s_display.endWrite();
 

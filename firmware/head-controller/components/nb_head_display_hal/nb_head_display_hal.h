@@ -23,10 +23,14 @@ esp_err_t nb_head_display_hal_apply(const nb_display_command_t *command);
  * `face_t >= 1.0f` finaliza exatamente no valor da tabela (sem drift).
  * `force_redraw` aplica gaze/overlay/brilho novos mesmo quando a geometria
  * da face ja terminou e nenhum blink esta ativo.
+ * `icon_bits` (DM2.11, fatia minima) -- bitmask de icones de status
+ * persistentes; bit 0 = NB_DISPLAY_STATUS_ICON_MIC_BLOCKED. Desenhado num
+ * slot fixo, nao cobre olhos/boca/preview.
  */
 esp_err_t nb_head_display_hal_apply_blend(const nb_display_command_t *target,
                                           float face_t,
-                                          bool force_redraw);
+                                          bool force_redraw,
+                                          uint32_t icon_bits);
 
 bool nb_head_display_hal_is_ready(void);
 uint32_t nb_head_display_hal_spiram_free(void);

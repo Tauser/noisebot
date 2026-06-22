@@ -23,4 +23,13 @@ esp_err_t nb_head_display_service_init(void);
 esp_err_t nb_head_display_service_apply(const void *payload, uint16_t length);
 void nb_head_display_service_get_status(nb_head_display_status_t *out);
 
+/*
+ * DM2.11 (fatia minima) -- atualiza o bitmask de icones de status (so
+ * marca dirty; quem desenha de fato e' a propria display_task no proximo
+ * tick, nunca a thread chamadora). Chamado por nb_head_link_service ao
+ * receber NB_LINK_MSG_DISPLAY_STATUS_ICONS_V2 -- nao bloquear, nao
+ * desenhar aqui, mesmo cuidado que evitou esfomear o watchdog no DM2.9.
+ */
+esp_err_t nb_head_display_service_set_status_icons(uint32_t icon_bits);
+
 #endif /* NB_HEAD_DISPLAY_SERVICE_H */

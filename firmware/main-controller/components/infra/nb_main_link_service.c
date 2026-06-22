@@ -26,6 +26,7 @@
 #define NB_MAIN_DISPLAY_QUEUE_DEPTH 1U
 #define NB_MAIN_SCENE_V2_QUEUE_DEPTH 1U
 #define NB_MAIN_TRANSIENT_V2_QUEUE_DEPTH 4U
+#define NB_MAIN_STATUS_ICONS_V2_QUEUE_DEPTH 1U
 
 static const char *TAG = "nb_main_link";
 static nb_link_engine_t s_engine;
@@ -40,6 +41,7 @@ static bool s_camera_event_valid;
 static nb_camera_link_event_t s_camera_event;
 static QueueHandle_t s_scene_v2_queue;
 static QueueHandle_t s_transient_v2_queue;
+static QueueHandle_t s_status_icons_v2_queue;
 static portMUX_TYPE s_result_v2_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool s_result_v2_valid;
 static nb_display_result_v2_t s_result_v2;
@@ -209,6 +211,23 @@ static void link_task(void *arg)
                 }
                 (void)xQueueReceive(s_transient_v2_queue, &transient_v2, 0U);
             }
+
+            nb_display_status_icons_v2_t status_icons_v2;
+            while (xQueuePeek(s_status_icons_v2_queue, &status_icons_v2,
+                              0U) == pdTRUE) {
+                if (!nb_link_engine_send(&s_engine,
+                                         NB_LINK_CHANNEL_CONTROL,
+                                         NB_LINK_MSG_DISPLAY_STATUS_ICONS_V2,
+                                         &status_icons_v2,
+                                         sizeof(status_icons_v2))) {
+                    ESP_LOGW(TAG,
+                             "status icons v2 preserved during link "
+                             "backpressure");
+                    break;
+                }
+                (void)xQueueReceive(s_status_icons_v2_queue,
+                                    &status_icons_v2, 0U);
+            }
         }
 
         if (nb_main_spi_transport_head_irq_active() ||
@@ -268,14 +287,19 @@ esp_err_t nb_main_link_service_init(void)
                                     sizeof(nb_display_scene_v2_t));
     s_transient_v2_queue = xQueueCreate(NB_MAIN_TRANSIENT_V2_QUEUE_DEPTH,
                                         sizeof(nb_display_transient_v2_t));
+    s_status_icons_v2_queue = xQueueCreate(
+        NB_MAIN_STATUS_ICONS_V2_QUEUE_DEPTH,
+        sizeof(nb_display_status_icons_v2_t));
     if (s_display_queue == NULL || s_scene_v2_queue == NULL ||
-        s_transient_v2_queue == NULL) {
+        s_transient_v2_queue == NULL || s_status_icons_v2_queue == NULL) {
         if (s_display_queue != NULL) vQueueDelete(s_display_queue);
         if (s_scene_v2_queue != NULL) vQueueDelete(s_scene_v2_queue);
         if (s_transient_v2_queue != NULL) vQueueDelete(s_transient_v2_queue);
+        if (s_status_icons_v2_queue != NULL) vQueueDelete(s_status_icons_v2_queue);
         s_display_queue = NULL;
         s_scene_v2_queue = NULL;
         s_transient_v2_queue = NULL;
+        s_status_icons_v2_queue = NULL;
         return ESP_ERR_NO_MEM;
     }
     const nb_link_engine_config_t engine_config = {
@@ -304,9 +328,11 @@ esp_err_t nb_main_link_service_init(void)
         vQueueDelete(s_display_queue);
         vQueueDelete(s_scene_v2_queue);
         vQueueDelete(s_transient_v2_queue);
+        vQueueDelete(s_status_icons_v2_queue);
         s_display_queue = NULL;
         s_scene_v2_queue = NULL;
         s_transient_v2_queue = NULL;
+        s_status_icons_v2_queue = NULL;
         return err;
     }
 
@@ -325,9 +351,11 @@ esp_err_t nb_main_link_service_init(void)
         vQueueDelete(s_display_queue);
         vQueueDelete(s_scene_v2_queue);
         vQueueDelete(s_transient_v2_queue);
+        vQueueDelete(s_status_icons_v2_queue);
         s_display_queue = NULL;
         s_scene_v2_queue = NULL;
         s_transient_v2_queue = NULL;
+        s_status_icons_v2_queue = NULL;
         return ESP_ERR_NO_MEM;
     }
 
@@ -474,4 +502,24 @@ esp_err_t nb_main_link_service_get_last_visual_result_v2(
     }
     taskEXIT_CRITICAL(&s_result_v2_lock);
     return result;
+}
+
+esp_err_t nb_main_link_service_set_status_icons_v2(uint32_t icon_bits)
+{
+    if (!s_initialized || s_status_icons_v2_queue == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (!nb_link_engine_peer_has_capability(&s_engine,
+                                            NB_LINK_CAP_DISPLAY_V2)) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    const nb_display_status_icons_v2_t icons = {
+        .version = NB_DISPLAY_STATUS_ICONS_V2_VERSION,
+        .reserved = {0U, 0U, 0U},
+        .icon_bits = icon_bits,
+    };
+    return xQueueOverwrite(s_status_icons_v2_queue, &icons) == pdPASS
+               ? ESP_OK
+               : ESP_ERR_TIMEOUT;
 }

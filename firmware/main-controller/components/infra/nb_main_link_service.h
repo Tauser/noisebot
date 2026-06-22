@@ -61,4 +61,12 @@ esp_err_t nb_main_link_service_request_visual_transient_v2(
 esp_err_t nb_main_link_service_get_last_visual_result_v2(
     nb_display_result_v2_t *out_result);
 
+/*
+ * Ícones de status persistentes (DM2.11, fatia mínima). Snapshot
+ * idempotente -- fila de profundidade 1 com overwrite, mesmo padrão da
+ * scene v2. Falha com ESP_ERR_NOT_SUPPORTED se o head não anunciou
+ * NB_LINK_CAP_DISPLAY_V2.
+ */
+esp_err_t nb_main_link_service_set_status_icons_v2(uint32_t icon_bits);
+
 #endif /* NB_MAIN_LINK_SERVICE_H */

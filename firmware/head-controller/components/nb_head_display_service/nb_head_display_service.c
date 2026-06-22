@@ -20,6 +20,8 @@ static QueueHandle_t s_command_queue;
 static StaticQueue_t s_command_queue_storage;
 static uint8_t s_command_queue_bytes[sizeof(nb_display_command_t)];
 static portMUX_TYPE s_status_lock = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t s_status_icon_bits;
+static bool s_status_icon_bits_dirty;
 
 /*
  * DM2.8 -- transicao suave entre expressoes. SET_SCENE nao aplica mais
@@ -41,6 +43,16 @@ static void display_task(void *arg)
     for (;;) {
         const TickType_t cycle_started = xTaskGetTickCount();
         bool force_redraw = false;
+
+        taskENTER_CRITICAL(&s_status_lock);
+        const uint32_t icon_bits = s_status_icon_bits;
+        const bool icon_bits_changed = s_status_icon_bits_dirty;
+        s_status_icon_bits_dirty = false;
+        taskEXIT_CRITICAL(&s_status_lock);
+        if (icon_bits_changed) {
+            force_redraw = true;
+        }
+
         nb_display_command_t incoming;
         if (xQueueReceive(s_command_queue, &incoming, 0U) == pdTRUE) {
             taskENTER_CRITICAL(&s_status_lock);
@@ -68,7 +80,7 @@ static void display_task(void *arg)
                          * de iniciar a proxima -- evita "pular" para um
                          * estado anterior ao alvo interrompido. */
                         (void)nb_head_display_hal_apply_blend(
-                            &target, 1.0f, true);
+                            &target, 1.0f, true, icon_bits);
                     }
                     target = incoming;
                     has_target = true;
@@ -123,8 +135,8 @@ static void display_task(void *arg)
             const float t =
                 (float)elapsed_us /
                 (NB_HEAD_DISPLAY_TRANSITION_MS * 1000.0f);
-            const esp_err_t hw_err =
-                nb_head_display_hal_apply_blend(&target, t, force_redraw);
+            const esp_err_t hw_err = nb_head_display_hal_apply_blend(
+                &target, t, force_redraw, icon_bits);
             if (hw_err != ESP_OK) {
                 taskENTER_CRITICAL(&s_status_lock);
                 ++s_status.hardware_errors;
@@ -222,4 +234,18 @@ void nb_head_display_service_get_status(nb_head_display_status_t *out)
         *out = s_status;
         taskEXIT_CRITICAL(&s_status_lock);
     }
+}
+
+esp_err_t nb_head_display_service_set_status_icons(uint32_t icon_bits)
+{
+    if (!s_status.enabled) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    taskENTER_CRITICAL(&s_status_lock);
+    if (s_status_icon_bits != icon_bits) {
+        s_status_icon_bits = icon_bits;
+        s_status_icon_bits_dirty = true;
+    }
+    taskEXIT_CRITICAL(&s_status_lock);
+    return ESP_OK;
 }

@@ -403,6 +403,40 @@ static void test_display_result_v2(void)
          nb_display_result_v2_is_valid(&result, sizeof(result)));
 }
 
+static void test_display_status_icons_v2(void)
+{
+    nb_display_status_icons_v2_t icons = {
+        .version = NB_DISPLAY_STATUS_ICONS_V2_VERSION,
+        .reserved = {0U, 0U, 0U},
+        .icon_bits = NB_DISPLAY_STATUS_ICON_MIC_BLOCKED,
+    };
+
+    TEST("status_icons_v2_valid",
+         nb_display_status_icons_v2_is_valid(&icons, sizeof(icons)));
+    TEST("status_icons_v2_null",
+         !nb_display_status_icons_v2_is_valid(NULL, sizeof(icons)));
+    TEST("status_icons_v2_bad_size",
+         !nb_display_status_icons_v2_is_valid(&icons, sizeof(icons) - 1U));
+
+    icons.version++;
+    TEST("status_icons_v2_bad_version",
+         !nb_display_status_icons_v2_is_valid(&icons, sizeof(icons)));
+    icons.version = NB_DISPLAY_STATUS_ICONS_V2_VERSION;
+
+    icons.reserved[1] = 1U;
+    TEST("status_icons_v2_reserved",
+         !nb_display_status_icons_v2_is_valid(&icons, sizeof(icons)));
+    icons.reserved[1] = 0U;
+
+    icons.icon_bits = 0U;
+    TEST("status_icons_v2_all_clear_ok",
+         nb_display_status_icons_v2_is_valid(&icons, sizeof(icons)));
+
+    icons.icon_bits = 0xFFFFFFFFU;
+    TEST("status_icons_v2_all_set_ok",
+         nb_display_status_icons_v2_is_valid(&icons, sizeof(icons)));
+}
+
 static void test_camera_command(void)
 {
     nb_camera_link_command_t command = {
@@ -503,6 +537,7 @@ int main(void)
     test_display_scene_v2();
     test_display_transient_v2();
     test_display_result_v2();
+    test_display_status_icons_v2();
     test_camera_command();
     test_camera_event();
 
